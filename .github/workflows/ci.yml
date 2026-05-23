@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+
+      # Install typst so the compile-check tests can run end-to-end.
+      - name: Install typst
+        uses: typst-community/setup-typst@v5
+
+      - name: cargo fmt
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: cargo test
+        run: cargo test --workspace --all-targets
+
+  corpus:
+    name: corpus pass-rate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build CLI
+        run: cargo build -p bytetex-cli --release
+
+      - name: Harvest corpus
+        run: |
+          ./target/release/bytetex corpus harvest \
+            --source context/latex-context.md \
+            --out tests/corpus/
+
+      - name: Run corpus
+        run: ./target/release/bytetex corpus run --dir tests/corpus/
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: corpus-report
+          path: tests/corpus/report.json

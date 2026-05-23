@@ -1,0 +1,129 @@
+# Using ByeTex from an AI agent
+
+This document is the canonical entry point for AI coding agents (Claude Code,
+Cursor, Codex, etc.) that want to convert a LaTeX document to Typst as part
+of a larger workflow.
+
+## Four invariants
+
+1. **`bytetex convert input.tex` exits 0 on success**, even when warnings are
+   emitted. Inspect the sidecar JSON, not the exit code.
+2. **Warnings live in `<stem>.warnings.json`** next to the `.typ`. The file
+   is always written, even if empty (`[]`).
+3. **Skills are reachable in three ways**:
+   - `bytetex skills list` and `bytetex skills read <name>` from the CLI.
+   - `skills/<name>.md` files in the release archive (or this repo).
+   - The `list_skills` and `read_skill` MCP tools when running `bytetex serve`.
+4. **The output `.typ` is always written.** Even if some constructs are
+   unconvertible, ByeTex emits something — possibly with `#text(red)[\foo]`
+   placeholders — and points you at the warning + skill needed to repair it.
+
+## Quickstart
+
+```bash
+# Download and extract a release tarball (single static binary):
+curl -sSL -o bytetex.tar.gz https://github.com/zeyuyang42/ByeTex/releases/latest/download/bytetex-vX.Y.Z-x86_64-unknown-linux-musl.tar.gz
+tar -xzf bytetex.tar.gz
+cd bytetex-vX.Y.Z-x86_64-unknown-linux-musl
+
+# Convert:
+./bytetex convert paper.tex
+
+# Inspect:
+cat paper.warnings.json | jq '.[].category.kind' | sort | uniq -c
+typst compile paper.typ
+```
+
+## Workflow
+
+```
+   ┌─────────────────┐       ┌─────────────────┐       ┌─────────────────┐
+   │  paper.tex      │──────▶│ bytetex convert │──────▶│  paper.typ      │
+   └─────────────────┘       └─────────────────┘       │  paper.warnings.│
+                                      │                │      json       │
+                                      ▼                └─────────────────┘
+                             ┌─────────────────┐                │
+                             │ bytetex skills  │                │
+                             │ read <suggested>│◀───────────────┘
+                             └─────────────────┘
+                                      │
+                                      ▼
+                             Edit paper.typ at the warned ranges
+                                      │
+                                      ▼
+                             typst compile paper.typ
+```
+
+1. Run `bytetex convert input.tex`.
+2. If `input.warnings.json` is `[]`, you're done — `typst compile` and move
+   on.
+3. Otherwise:
+   1. Group warnings by `category.kind`.
+   2. For each kind, read the file named by `suggested_skill` (when set).
+      That skill explains the resolution pattern.
+   3. Apply edits to the `.typ` at the byte ranges given.
+   4. Re-run `typst compile input.typ`.
+
+## MCP server mode
+
+For interactive use, the converter speaks MCP over stdio:
+
+```bash
+./bytetex serve
+```
+
+The five tools exposed:
+
+| Tool                | Purpose                                                        |
+|---------------------|----------------------------------------------------------------|
+| `convert`           | Convert a LaTeX string in-memory, get `{typst, warnings}`.     |
+| `convert_file`      | Convert a `.tex` path, write `.typ` + sidecar, return paths.   |
+| `convert_fragment`  | Convert a snippet with a `context_hint` (inline / block / math). |
+| `list_skills`       | List bundled skills (`name`, `description`).                   |
+| `read_skill`        | Read a skill's full markdown body.                             |
+
+## Reading `warnings.json`
+
+The complete JSON schema is at [`warnings.schema.json`](warnings.schema.json).
+A minimal recipe:
+
+```bash
+# Total warnings
+jq 'length' paper.warnings.json
+
+# Group by category
+jq 'group_by(.category.kind) | map({kind: .[0].category.kind, count: length})' paper.warnings.json
+
+# Pretty-print warnings with their skill suggestions
+jq '.[] | {line: .range.start_line, kind: .category.kind, skill: .suggested_skill, snippet}' paper.warnings.json
+```
+
+Categories you will see:
+
+- `unsupported_command` — a backslash command outside the v1 subset (e.g. `\marginpar`, `\title`).
+- `unsupported_environment` — a LaTeX environment outside the v1 subset.
+- `custom_macro` — `\newcommand` / `\def`. Rare path; ByeTex passes them through.
+- `tikz` — TikZ picture; CeTZ migration recommended.
+- `parse_error` — tree-sitter could not parse that region.
+- `ambiguous_math` — math command without a Typst equivalent. The `.typ` will
+  contain a `#text(red)[\foo]` placeholder at the position.
+- `unknown_package` — `\usepackage{...}` with no known mapping.
+- `drop_only` — benign drop, already handled.
+- `needs_manual_review` — converted approximately; verify against the original PDF.
+
+## Recovering from `parse_error`
+
+These usually come from:
+
+- Mismatched `{` / `}` in the original `.tex`.
+- `\verb` with unusual delimiters.
+- Custom `\def` that produces unbalanced output.
+
+Read `bytetex skills read bytetex-parse-error` for the full procedure.
+
+## When ByeTex isn't enough
+
+If too many warnings have `needs_manual_review` and you can't make progress,
+the best escape hatch is to render the original LaTeX fragment to PDF/SVG
+using `pdflatex` or `tectonic`, then `#image("frag.pdf")` from Typst. This is
+documented in `bytetex-unsupported-environment.md`.

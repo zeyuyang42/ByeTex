@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zeyuyang42/ByeTex/blob/main/docs/warnings.schema.json",
+  "title": "ByeTex warnings.json",
+  "description": "Sidecar file written by `bytetex convert` alongside the output .typ. Each entry describes a region of the input LaTeX that ByeTex could not (or chose not to) translate deterministically.",
+  "type": "array",
+  "items": { "$ref": "#/$defs/Warning" },
+  "$defs": {
+    "Warning": {
+      "type": "object",
+      "required": ["range", "category", "severity", "message", "snippet", "suggested_skill"],
+      "properties": {
+        "range":            { "$ref": "#/$defs/Range" },
+        "category":         { "$ref": "#/$defs/Category" },
+        "severity":         { "enum": ["info", "warning", "error"] },
+        "message":          { "type": "string" },
+        "snippet":          { "type": "string", "description": "Exact source bytes of the warned region." },
+        "suggested_skill":  { "type": ["string", "null"], "description": "Name of a bundled skill that explains how to resolve this warning. `null` when no specific skill applies." }
+      },
+      "additionalProperties": false
+    },
+    "Range": {
+      "type": "object",
+      "required": ["start_line", "start_col", "end_line", "end_col", "byte_start", "byte_end"],
+      "properties": {
+        "start_line": { "type": "integer", "minimum": 1, "description": "1-indexed inclusive." },
+        "start_col":  { "type": "integer", "minimum": 1, "description": "1-indexed inclusive, UTF-8 chars." },
+        "end_line":   { "type": "integer", "minimum": 1, "description": "1-indexed exclusive." },
+        "end_col":    { "type": "integer", "minimum": 1, "description": "1-indexed exclusive, UTF-8 chars." },
+        "byte_start": { "type": "integer", "minimum": 0 },
+        "byte_end":   { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "Category": {
+      "oneOf": [
+        { "type": "object", "required": ["kind", "name"], "properties": { "kind": { "const": "unsupported_command"    }, "name": { "type": "string" } } },
+        { "type": "object", "required": ["kind", "name"], "properties": { "kind": { "const": "unsupported_environment"}, "name": { "type": "string" } } },
+        { "type": "object", "required": ["kind", "name"], "properties": { "kind": { "const": "custom_macro"           }, "name": { "type": "string" } } },
+        { "type": "object", "required": ["kind"],         "properties": { "kind": { "const": "tikz"                   } } },
+        { "type": "object", "required": ["kind", "tree_sitter_node"], "properties": { "kind": { "const": "parse_error" }, "tree_sitter_node": { "type": "string" } } },
+        { "type": "object", "required": ["kind", "reason"], "properties": { "kind": { "const": "ambiguous_math"        }, "reason": { "type": "string" } } },
+        { "type": "object", "required": ["kind", "name"], "properties": { "kind": { "const": "unknown_package"        }, "name": { "type": "string" } } },
+        { "type": "object", "required": ["kind"],         "properties": { "kind": { "const": "drop_only"              } } },
+        { "type": "object", "required": ["kind", "reason"], "properties": { "kind": { "const": "needs_manual_review"  }, "reason": { "type": "string" } } }
+      ]
+    }
+  }
+}
