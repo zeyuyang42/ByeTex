@@ -37,6 +37,10 @@ pub(crate) struct Emitter<'a> {
     needs_heading_numbering: bool,
     /// Same for equations / `@eq:...` references.
     needs_equation_numbering: bool,
+    /// True if `\documentclass[...]{X}` (or an explicit `\twocolumn`) implied
+    /// a two-column layout. `finish()` prepends `#set page(columns: 2)` so
+    /// the converted PDF matches the LaTeX rendering.
+    needs_two_column: bool,
     /// Tracks the key of an in-flight `\bibitem{key}` so we can close its
     /// content wrapper and attach `<key>` at the right place.
     pending_bibitem_key: Option<String>,
@@ -65,6 +69,7 @@ impl<'a> Emitter<'a> {
             pending_bib_style: None,
             needs_heading_numbering: false,
             needs_equation_numbering: false,
+            needs_two_column: false,
             pending_bibitem_key: None,
             skip_until: 0,
             pending_title: None,
@@ -93,6 +98,9 @@ impl<'a> Emitter<'a> {
         // this preamble, `@sec:foo` etc. fail with "cannot reference X without
         // numbering".
         let mut preamble = String::new();
+        if self.needs_two_column {
+            preamble.push_str("#set page(columns: 2)\n");
+        }
         if self.needs_heading_numbering {
             preamble.push_str("#set heading(numbering: \"1.\")\n");
         }
@@ -331,9 +339,15 @@ impl<'a> Emitter<'a> {
             return node.end_byte();
         }
 
-        // `\documentclass{...}` — always drop silently. The class governs
-        // page layout, which Typst handles via its own defaults.
+        // `\documentclass[opts]{class}` — drop silently, but extract layout
+        // info first: the class + options often imply a two-column page
+        // layout (IEEEtran conference, acmart sigconf, `[twocolumn]` opt).
+        // We surface that as `#set page(columns: 2)` in `finish()`.
         if node.kind() == "class_include" {
+            let (class, opts) = extract_class_and_options(node, self.src);
+            if implies_two_column(class.as_deref(), &opts) {
+                self.needs_two_column = true;
+            }
             return node.end_byte();
         }
 
@@ -721,6 +735,18 @@ impl<'a> Emitter<'a> {
                     let _ = write!(self.out, "#link(\"{}\")", url);
                 }
                 node.end_byte()
+            }
+            // Explicit column switches mid-document.
+            Some("\\twocolumn") => {
+                self.needs_two_column = true;
+                consume_trailing_inline_space(self.src, node.end_byte())
+            }
+            Some("\\onecolumn") => {
+                // We don't yet support intra-document column toggling, but
+                // we honor the *most recent* directive: `\onecolumn` clears
+                // the flag set by an earlier `\twocolumn`.
+                self.needs_two_column = false;
+                consume_trailing_inline_space(self.src, node.end_byte())
             }
             // Font-size directives — drop silently. They're scoped commands
             // (no argument) that change subsequent text style; Typst's
@@ -2473,6 +2499,128 @@ fn lookup_math_symbol(name: &str) -> Option<&'static str> {
         // Common math fonts not handled by emit_math_wrap
         _ => return None,
     })
+}
+
+/// Extract the class name and option list from a `class_include` node.
+/// `\documentclass[opt1,opt2]{class}` → (Some("class"), ["opt1", "opt2"]).
+fn extract_class_and_options(node: Node<'_>, src: &str) -> (Option<String>, Vec<String>) {
+    let mut class: Option<String> = None;
+    let mut opts: Vec<String> = Vec::new();
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "curly_group_path" | "curly_group_path_list" => {
+                let mut sub = child.walk();
+                for gc in child.children(&mut sub) {
+                    if gc.kind() == "path" {
+                        class = Some(src[gc.start_byte()..gc.end_byte()].to_string());
+                    }
+                }
+            }
+            "brack_group_key_value" => {
+                let mut sub = child.walk();
+                for gc in child.children(&mut sub) {
+                    if gc.kind() == "key_value_pair" {
+                        // Take the key (everything before `=` if any).
+                        let mut kv_cursor = gc.walk();
+                        let mut key_buf = String::new();
+                        for kc in gc.children(&mut kv_cursor) {
+                            if kc.kind() == "=" {
+                                break;
+                            }
+                            key_buf.push_str(&src[kc.start_byte()..kc.end_byte()]);
+                        }
+                        let k = key_buf.trim().to_string();
+                        if !k.is_empty() {
+                            opts.push(k);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    (class, opts)
+}
+
+/// Does `\documentclass[options]{class}` imply a two-column page layout?
+/// Heuristic:
+///   - explicit `[twocolumn]` option ⇒ yes
+///   - explicit `[onecolumn]` option ⇒ no (overrides class default)
+///   - class is in the always-two-column allowlist (IEEEtran, acmart's
+///     sigconf/sigplan/sigchi/sigsmall family, revtex4 in PRA/PRB/PRC/PRD
+///     style, elsarticle with twocolumn, aastex galleys) ⇒ yes
+///   - otherwise: no.
+///
+/// We're optimizing for false-negatives over false-positives. If a class
+/// isn't on the list, we leave the user in single-column and they can
+/// add `#set page(columns: 2)` by hand. Better than the reverse where
+/// every plain `\documentclass{article}` becomes a two-column doc.
+fn implies_two_column(class: Option<&str>, opts: &[String]) -> bool {
+    if opts.iter().any(|o| o == "onecolumn") {
+        return false;
+    }
+    if opts.iter().any(|o| o == "twocolumn") {
+        return true;
+    }
+    let class = match class {
+        Some(c) => c,
+        None => return false,
+    };
+    // IEEEtran is two-column for every standard option (conference, journal,
+    // technote). The single-column variants are esoteric (`peerreview`).
+    if class == "IEEEtran" || class == "IEEEconf" {
+        return !opts
+            .iter()
+            .any(|o| o == "peerreview" || o == "peerreviewca");
+    }
+    // acmart format options: SIG-prefixed conference styles are two-column.
+    if class == "acmart" {
+        return opts.iter().any(|o| {
+            matches!(
+                o.as_str(),
+                "sigconf" | "sigplan" | "sigchi" | "sigchi-a" | "sigplan-edited" | "acmtog"
+            )
+        });
+    }
+    // REVTeX (Physical Review family) defaults to two-column for most styles.
+    if matches!(class, "revtex4" | "revtex4-1" | "revtex4-2") {
+        // `preprint`, `reprint`, `manuscript`, no opts → reprint = two-column.
+        return !opts.iter().any(|o| o == "preprint" || o == "manuscript");
+    }
+    // Elsevier elsarticle is one-column by default; only with `[3p]` /
+    // `[5p]` / `twocolumn` does it switch (twocolumn handled above).
+    if class == "elsarticle" {
+        return opts.iter().any(|o| matches!(o.as_str(), "3p" | "5p"));
+    }
+    // AAS journals (ApJ, AJ, …) ship galley mode (two-column) by default.
+    if matches!(class, "aastex" | "aastex62" | "aastex631" | "aastex641") {
+        return !opts
+            .iter()
+            .any(|o| matches!(o.as_str(), "preprint" | "preprint2"));
+    }
+    // Common journal-side classes that ship two-column by default.
+    if matches!(
+        class,
+        "amsart"
+            | "iopart"
+            | "spphys"
+            | "svjour"
+            | "svjour3"
+            | "llncs"
+            | "ws-procs9x6"
+            | "ws-rv9x6"
+            | "PoSlogo"
+    ) {
+        // amsart is single-column by default actually; remove from this list.
+        // Keeping the rest conservative.
+        let true_twocol = matches!(
+            class,
+            "iopart" | "spphys" | "svjour" | "svjour3" | "ws-procs9x6" | "ws-rv9x6"
+        );
+        return true_twocol;
+    }
+    false
 }
 
 /// Extract the package name from `\usepackage[opts]{name}`. The container is
