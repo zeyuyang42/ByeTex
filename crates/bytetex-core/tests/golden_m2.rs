@@ -177,6 +177,48 @@ fn m2_list_description() {
 // ============== M2.2: inline formatting ==============
 
 #[test]
+fn m2_lone_backtick_in_body_gets_escaped() {
+    // Bug #12 regression: a stray `` ` `` in the body — used by LaTeX as
+    // the left single quote (`` `partial' ``) and sometimes pasted from
+    // markdown-style notes — opened a Typst raw block and failed with
+    // "unclosed raw text". The post-typography pass now escapes lone
+    // backticks. `\texttt{X}` no longer emits backticks (uses `#raw(...)`)
+    // so legitimate raw inlines aren't affected.
+    let src = "He called it `partial' tokens.\n";
+    let out = convert(
+        src,
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        out.typst.contains("\\`partial"),
+        "expected escaped `\\``, got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn m2_texttt_uses_raw_function_form() {
+    // Bug #12 follow-up: `\texttt{X}` now emits `#raw("X")` rather than
+    // backtick-wrapped raw inline, so the surrounding lone-backtick escape
+    // can run without breaking us.
+    let out = convert(
+        "Use \\texttt{convert} please.\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        out.typst.contains("#raw(\"convert\")"),
+        "expected `#raw(\"convert\")`, got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
 fn m2_inline_basic() {
     insta::assert_snapshot!(run("m2_inline/basic.tex"), @r#"
     ==== TYPST ====

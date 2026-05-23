@@ -31,6 +31,10 @@ in this doc.
 | #7 `\newtheorem` verbatim | Drop the definition silently | **Fixed**. `theorem_definition` joins `new_command_definition` / `counter_declaration` in the silent-drop branch. | `tests/golden_m4.rs::m4_newtheorem_dropped_silently` |
 | #8 BibLaTeX `@string` macros | Preprocess `.bib` to substitute string macros before handing to Typst | **Deferred**. Touches the CLI's bibliography handoff, not the converter. Tracked for the next iteration. | — |
 | #9 missing `.bib` path | Probe alternative `.bib` locations | **Deferred**. Same as #8 — moved to the bibliography track. | — |
+| #10 math `\#` triggers code mode | Keep the backslash in `\#` / `\$` / `\&` / `\_` / `\{` / `\}` math mappings | **Fixed**. `f_\#` now emits `f_(\#)`, accepted by Typst as the math escape (was emitting `f_(#)` → "unexpected closing paren"). | `tests/golden_m3.rs::m3_math_escape_for_hash_dollar_etc` |
+| #11 `\mathbb`-style wrap fuses with prior letter | Generalize the letter-boundary check from `push_math_symbol` to every letter-starting wrapper (`bb(`, `sqrt(`, `binom(`, `op(`) | **Fixed**. `ensure_math_letter_boundary` is now called from `emit_math_wrap` / `_sqrt` / `_binom` / `_operatorname`. `\in\mathbb{R}` emits `in bb(R)` instead of the fused `inbb(R)`. | `tests/golden_m3.rs::m3_mathbb_does_not_fuse_with_preceding_letter` |
+| #12 backticks in body trigger Typst raw | Switch `\texttt{X}` from `` `X` `` to `#raw("X")`; escape stray source backticks in the typography pass | **Fixed**. `` `partial' `` from LaTeX left-single-quote escapes to `` \`partial' ``; `\texttt{X}` emits the function form (no backticks). | `tests/golden_m2.rs::m2_lone_backtick_in_body_gets_escaped`, `m2_texttt_uses_raw_function_form` |
+| #13 `\partial` emits deprecated `diff` | Map `\partial` to `partial`; `\langle`/`\rangle` to `chevron.l`/`chevron.r` | **Fixed**. Removes the deprecation warning cascades on math-heavy papers. | `tests/golden_m3.rs::m3_partial_uses_modern_typst_name` |
 
 ---
 
@@ -401,3 +405,131 @@ See `docs/test-results-2026-05-23.md` for the prior test run:
   instance. The broader macro-expansion problem covers `\newcommand` too.
 - **Finding #2** (ambiguous_math dominance) — Bug #3 here is one manifestation.
 - Bug #2 (`\linewidth` in images) is **new** — not present in the prior findings.
+
+---
+
+## Round 3 findings (post-Bug-#1–#9 fixes, 2026-05-23 evening)
+
+After Bugs #1–#7 landed, four new failure modes dominated the surviving
+compile errors. Each is documented below and addressed in the same patch.
+
+## Bug #10 — `\#` in math triggers Typst's code context (P0 — NEW)
+
+### What happens
+
+`f_\#` in LaTeX (literal `#` as subscript, often used for the
+pushforward operator) was mapped in the math symbol table as `\#` → `#`.
+Inside math, `#` is how Typst leaves math and enters code context, so
+`f_(#)` was parsed as `f_(<code expression>)` and Typst reported
+"unexpected closing paren" at the `)`.
+
+### Evidence
+
+Paper `arxiv:2605.22507`:
+```
+error: unexpected closing paren
+447 │ ... function $f: "real" ^(d times d) "ra"   "real" ^d$, we use $f_(#)p$ ...
+```
+
+Paper `arxiv:2605.22724` shows the same pattern with `$N_#$`.
+
+### Fix
+
+Keep the leading backslash in the math symbol table for every char that
+has special meaning in Typst code/math:
+
+```
+\\# → \#      \\$ → \$      \\% → \%      \\& → \&
+\\_ → \_      \\{ → \{      \\} → \}
+```
+
+Typst then takes them as math escapes for the literal characters.
+
+---
+
+## Bug #11 — letter-starting math wrappers fuse with preceding letter (P0 — NEW)
+
+### What happens
+
+`\in\mathbb{R}` emitted as `inbb(R)`. The fix for Bug #5 — separator
+between a letter and a math-symbol replacement (`\in` → `in`) — only
+covered `push_math_symbol` (the lookup-table path). Function-call
+wrappers (`bb(`, `sqrt(`, `binom(`, `op(`) wrote their prefix straight
+through `push_str`, so the boundary check never fired.
+
+### Evidence
+
+Paper `arxiv:2605.22820`:
+```
+error: unknown variable: inbb
+561 │ ... Let $q(p,x)inbb(R)^n_(+)$ denote the demand vector at prices $p inbb(R)^n_(+)$ ...
+```
+
+### Fix
+
+Extract the separator logic out of `push_math_symbol` into
+`ensure_math_letter_boundary(next: &str)` and call it from
+`emit_math_wrap`, `emit_math_sqrt`, `emit_math_binom`, and
+`emit_math_operatorname` before the letter-starting prefix.
+
+---
+
+## Bug #12 — stray backticks in body open Typst raw blocks (P1 — NEW)
+
+### What happens
+
+A lone `` ` `` in the source (LaTeX uses it as a left single quote, e.g.
+`` `partial' ``) opens a Typst raw block. Without a matching closing
+`` ` ``, Typst fails with "unclosed raw text". Earlier the
+`\texttt{X}` → `` `X` `` emission would conflict with any escape we tried
+in the typography pass, because both source and texttt-emitted backticks
+look identical by the time the pass runs.
+
+### Evidence
+
+Paper `arxiv:2605.22821`:
+```
+error: unclosed raw text
+514 │ grapheme or morpheme boundaries (analogously to `Boundless`; @schmidt2025boundlessbpe), ...
+```
+
+(The actual source of the unclosed raw is line 335's `` `partial' ``
+single-quote pattern; the `Boundless` form is from `\texttt{Boundless}`
+and is now emitted as `#raw("Boundless")` instead.)
+
+### Fix
+
+Two-part:
+
+1. Change `\texttt{X}` to emit `#raw("X")` (Typst's function form of
+   inline raw text), so we no longer emit any backticks ourselves.
+2. Add a lone-backtick branch to `post_process_typography`: any `` ` ``
+   left after the `` `` `` → `"` pair conversion is now a source-only
+   single backtick, so escape it as `` \` ``.
+
+---
+
+## Bug #13 — `\partial` emits deprecated Typst symbol `diff` (P2 — NEW)
+
+### What happens
+
+Typst 0.13+ deprecated `diff` in favor of `partial` and `angle.l` /
+`angle.r` in favor of `chevron.l` / `chevron.r`. Math-heavy papers (e.g.
+`2605.22315`) emit dozens of deprecation warnings per compile.
+
+### Evidence
+
+```
+warning: `diff` is deprecated, use `partial` instead
+87 │ $cal(L) := (diff) / (diff t) + (1) / (2) sigma^2 S^2 (diff^2) / (diff S^2) + (r-delta)S (diff) / (diff S) - r$
+```
+
+### Fix
+
+Update the math symbol table:
+
+```
+\\partial → partial   (was: diff)
+\\langle  → chevron.l (was: angle.l)
+\\rangle  → chevron.r (was: angle.r)
+```
