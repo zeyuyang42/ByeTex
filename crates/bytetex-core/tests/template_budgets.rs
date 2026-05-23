@@ -52,24 +52,27 @@ fn check_template(rel: &str, budget: usize) {
 //   v0.2 T2 (title block + typography)                     IEEE 43 ACM 16 NeurIPS 34 thesis 15
 //   v0.2 T3 (math splitting + tables + theorems + bib map) IEEE 37 ACM 13 NeurIPS 21 thesis 12
 //   v0.2 T4 (inline cleanup + usepackage allowlist)        IEEE 20 ACM  1 NeurIPS  9 thesis  0
-// All four templates compile to PDF, all at or below the <20 plan target.
-// IEEE's residual 20 are IEEE-class-specific commands (IEEEauthorblockN/A,
+//   post-merge corpus pass (math accents, escapes, footnote, multirow,
+//   href, url, label, font sizes, appendix, more no-op packages, more
+//   transparent envs)                                      IEEE 17 ACM  0 NeurIPS  1 thesis  0
+// All four templates compile to PDF; ACM and thesis are at 0 warnings.
+// IEEE's residual 17 are IEEE-class-specific commands (IEEEauthorblockN/A,
 // IEEEpubid, etc.) — covered by a future IEEE-specific skill rather than
 // emitter rules.
 
 #[test]
 fn ieee_template_within_budget() {
-    check_template("templates/IEEE/conference_101719.tex", 20);
+    check_template("templates/IEEE/conference_101719.tex", 17);
 }
 
 #[test]
 fn acm_template_within_budget() {
-    check_template("templates/ACM/sample-sigconf.tex", 1);
+    check_template("templates/ACM/sample-sigconf.tex", 0);
 }
 
 #[test]
 fn neurips_template_within_budget() {
-    check_template("templates/NeurIPS/neurips_paper.tex", 9);
+    check_template("templates/NeurIPS/neurips_paper.tex", 1);
 }
 
 #[test]

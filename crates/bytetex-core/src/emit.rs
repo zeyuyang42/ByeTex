@@ -227,6 +227,66 @@ impl<'a> Emitter<'a> {
             "bibtex_include" => return self.emit_bibliography(node),
             "bibstyle_include" => return self.emit_bibstyle(node),
             "graphics_include" => return self.emit_graphics_include(node),
+            // Orphan `\label{X}` outside any section/equation/figure — emit
+            // the Typst label syntax so subsequent `@X` references resolve.
+            "label_definition" => {
+                if let Some(key) = extract_label_name(node, self.src) {
+                    let _ = write!(self.out, " <{}>", key);
+                }
+                return node.end_byte();
+            }
+            // `\href{url}{display}` — Typst `#link("url")[display]`.
+            "hyperlink" => {
+                let mut cursor = node.walk();
+                let mut url: Option<String> = None;
+                let mut display: Option<Node<'_>> = None;
+                for child in node.children(&mut cursor) {
+                    match child.kind() {
+                        "curly_group_uri" => {
+                            let mut sub = child.walk();
+                            for gc in child.children(&mut sub) {
+                                if gc.kind() == "uri" {
+                                    url =
+                                        Some(self.src[gc.start_byte()..gc.end_byte()].to_string());
+                                }
+                            }
+                        }
+                        "curly_group" if display.is_none() => {
+                            display = Some(child);
+                        }
+                        _ => {}
+                    }
+                }
+                if let Some(u) = url {
+                    if let Some(d) = display {
+                        let rendered = self.render_curly_group_content(d);
+                        let _ = write!(self.out, "#link(\"{}\")[{}]", u, rendered);
+                    } else {
+                        let _ = write!(self.out, "#link(\"{}\")", u);
+                    }
+                }
+                return node.end_byte();
+            }
+            // `\input` / `\include` — emit a NeedsManualReview warning with a
+            // pointer to the multi-file skill.
+            "latex_include" => {
+                let snippet = self.src[node.start_byte()..node.end_byte()].to_string();
+                self.warnings.push(Warning {
+                    range: range_of(node),
+                    category: Category::NeedsManualReview {
+                        reason: "multi-file include (\\input/\\include) is out of scope"
+                            .to_string(),
+                    },
+                    severity: Severity::Warning,
+                    message: "ByeTex converts one file at a time. Concatenate \
+                              the included sources before running, or rewrite \
+                              using Typst's `#include` directive."
+                        .to_string(),
+                    snippet,
+                    suggested_skill: Some("bytetex-unsupported-environment".to_string()),
+                });
+                return node.end_byte();
+            }
             "title_declaration" => {
                 if let Some(arg) = first_curly_group(node) {
                     self.pending_title = Some(self.render_curly_group_content(arg));
@@ -274,6 +334,13 @@ impl<'a> Emitter<'a> {
         // `\documentclass{...}` — always drop silently. The class governs
         // page layout, which Typst handles via its own defaults.
         if node.kind() == "class_include" {
+            return node.end_byte();
+        }
+
+        // Macro / theorem / counter definitions — drop silently. We don't
+        // expand `\newcommand` bodies (v0.2 non-goal) but the *definition*
+        // itself shouldn't show up as a warning every time.
+        if node.kind() == "new_command_definition" || node.kind() == "counter_declaration" {
             return node.end_byte();
         }
 
@@ -498,6 +565,50 @@ impl<'a> Emitter<'a> {
                 let _ = write!(self.out, "table.cell(colspan: {})[{}]", n, content);
                 node.end_byte()
             }
+            // LaTeX text-mode literal escapes for special characters.
+            // Typst needs its own escape syntax for some of these.
+            Some("\\{") => {
+                self.out.push_str("\\{");
+                node.end_byte()
+            }
+            Some("\\}") => {
+                self.out.push_str("\\}");
+                node.end_byte()
+            }
+            Some("\\#") => {
+                self.out.push_str("\\#");
+                node.end_byte()
+            }
+            Some("\\$") => {
+                self.out.push_str("\\$");
+                node.end_byte()
+            }
+            Some("\\&") => {
+                self.out.push('&');
+                node.end_byte()
+            }
+            Some("\\%") => {
+                self.out.push('%');
+                node.end_byte()
+            }
+            Some("\\_") => {
+                self.out.push_str("\\_");
+                node.end_byte()
+            }
+            // `\ ` (backslash-space) is LaTeX's literal-space marker; emit a
+            // regular space and consume the original.
+            Some("\\ ") => {
+                self.out.push(' ');
+                node.end_byte()
+            }
+            // Other TeX-isms that should drop silently:
+            //  \/  italic correction
+            //  \-  discretionary hyphen
+            //  \@  spacing tweak before sentence-ending period
+            //  \~  tilde accent (would translate the following letter; rare)
+            //  \'  \"  \^  accent-on-next-letter; complex; drop for now
+            Some("\\/") | Some("\\-") | Some("\\@") | Some("\\~") | Some("\\'") | Some("\\\"")
+            | Some("\\^") | Some("\\`") => node.end_byte(),
             // Typographic logos — drop the styling, keep the text.
             Some("\\LaTeX") => self.emit_logo(node, "LaTeX"),
             Some("\\TeX") => self.emit_logo(node, "TeX"),
@@ -535,11 +646,138 @@ impl<'a> Emitter<'a> {
             }
             // `\thanks{X}` attaches a footnote to whatever preceded it. We
             // render inline as a Typst footnote at the current position.
-            Some("\\thanks") => {
+            Some("\\thanks") | Some("\\footnote") | Some("\\footnotetext") => {
                 if let Some(arg) = first_curly_group(node) {
                     let content = self.render_curly_group_content(arg);
                     let _ = write!(self.out, "#footnote[{}]", content);
                 }
+                node.end_byte()
+            }
+            // `\mbox{X}` (and `\hbox{X}`, `\fbox{X}`, `\framebox{X}`) — boxing
+            // primitives that just render their content; emit X as-is.
+            Some("\\mbox") | Some("\\hbox") | Some("\\fbox") | Some("\\framebox") => {
+                self.emit_inline_unwrap(node)
+            }
+            // `\multirow{n}{w}{X}` → `table.cell(rowspan: n)[X]`. The third
+            // `{X}` argument is the cell content; the second is column width.
+            Some("\\multirow") => {
+                let mut cursor = node.walk();
+                let groups: Vec<Node<'_>> = node
+                    .children(&mut cursor)
+                    .filter(|c| c.kind() == "curly_group")
+                    .collect();
+                if groups.len() < 3 {
+                    self.warn_unsupported_command(node);
+                    return node.end_byte();
+                }
+                let n = self
+                    .src
+                    .get(groups[0].start_byte() + 1..groups[0].end_byte() - 1)
+                    .unwrap_or("1")
+                    .trim();
+                let content = self.render_curly_group_content(groups[2]);
+                let _ = write!(self.out, "table.cell(rowspan: {})[{}]", n, content);
+                node.end_byte()
+            }
+            // `\makecell[opts]{X}` — render the content; the [opts] are layout
+            // hints we ignore.
+            Some("\\makecell") => self.emit_inline_unwrap(node),
+            // `\lipsum[N]` and `\blindtext` — placeholder-text generators.
+            // Drop silently; the user added them as filler.
+            Some("\\lipsum") | Some("\\blindtext") | Some("\\Blindtext") => node.end_byte(),
+            // `\href{url}{display}` → Typst `#link("url")[display]`.
+            Some("\\href") => {
+                let mut cursor = node.walk();
+                let groups: Vec<Node<'_>> = node
+                    .children(&mut cursor)
+                    .filter(|c| c.kind() == "curly_group")
+                    .collect();
+                if groups.len() >= 2 {
+                    let url = self
+                        .src
+                        .get(groups[0].start_byte() + 1..groups[0].end_byte() - 1)
+                        .unwrap_or("")
+                        .trim();
+                    let display = self.render_curly_group_content(groups[1]);
+                    let _ = write!(self.out, "#link(\"{}\")[{}]", url, display);
+                } else if let Some(arg) = first_curly_group(node) {
+                    let url = self
+                        .src
+                        .get(arg.start_byte() + 1..arg.end_byte() - 1)
+                        .unwrap_or("")
+                        .trim();
+                    let _ = write!(self.out, "#link(\"{}\")", url);
+                }
+                node.end_byte()
+            }
+            // `\url{X}` → bare link in Typst.
+            Some("\\url") => {
+                if let Some(arg) = first_curly_group(node) {
+                    let url = self
+                        .src
+                        .get(arg.start_byte() + 1..arg.end_byte() - 1)
+                        .unwrap_or("")
+                        .trim();
+                    let _ = write!(self.out, "#link(\"{}\")", url);
+                }
+                node.end_byte()
+            }
+            // Font-size directives — drop silently. They're scoped commands
+            // (no argument) that change subsequent text style; Typst's
+            // equivalent would be a #set text(size: ...) wrapper, but that
+            // needs proper grouping tracking we don't yet have.
+            Some("\\small")
+            | Some("\\large")
+            | Some("\\Large")
+            | Some("\\LARGE")
+            | Some("\\huge")
+            | Some("\\Huge")
+            | Some("\\normalsize")
+            | Some("\\footnotesize")
+            | Some("\\scriptsize")
+            | Some("\\tiny") => node.end_byte(),
+            // `\appendix` toggles section-number style to letters; emit as a
+            // set rule.
+            Some("\\appendix") => {
+                self.out.push_str("\n#set heading(numbering: \"A.1\")\n");
+                node.end_byte()
+            }
+            // `\label{X}` outside any section/equation context — keep the
+            // label so subsequent `\ref{X}` resolves. Typst syntax: `<x>`.
+            Some("\\label") => {
+                if let Some(arg) = first_curly_group(node) {
+                    let key = self
+                        .src
+                        .get(arg.start_byte() + 1..arg.end_byte() - 1)
+                        .unwrap_or("")
+                        .trim();
+                    let _ = write!(self.out, " <{}>", key);
+                }
+                node.end_byte()
+            }
+            // `\DeclareMathOperator{\name}{display}` — macro definition for a
+            // new math operator. We don't yet expand custom macros; drop the
+            // definition silently and let any uses of `\name` warn as usual.
+            Some("\\DeclareMathOperator") | Some("\\DeclareMathOperator*") => node.end_byte(),
+            // `\input{file}` / `\include{file}` — multi-file include. Out of
+            // scope per the v1 non-goals; warn with the skill pointing at the
+            // multi-file workaround.
+            Some("\\input") | Some("\\include") | Some("\\subfile") => {
+                let snippet = self.src[node.start_byte()..node.end_byte()].to_string();
+                self.warnings.push(Warning {
+                    range: range_of(node),
+                    category: Category::NeedsManualReview {
+                        reason: "multi-file include (\\input/\\include) is out of scope"
+                            .to_string(),
+                    },
+                    severity: Severity::Warning,
+                    message: "ByeTex converts one file at a time. Concatenate \
+                              your inputs before running, or rewrite using \
+                              Typst's `#include` directive."
+                        .to_string(),
+                    snippet,
+                    suggested_skill: Some("bytetex-unsupported-environment".to_string()),
+                });
                 node.end_byte()
             }
             _ => {
@@ -621,7 +859,11 @@ impl<'a> Emitter<'a> {
             Some("description") => self.emit_description(node),
             // Transparent wrappers: emit body, no markup. `\documentclass` etc.
             // already produced warnings as separate top-level commands.
-            Some("document") | Some("abstract") => self.emit_environment_body(node),
+            Some("document") | Some("abstract") | Some("subequations") | Some("center")
+            | Some("flushleft") | Some("flushright") | Some("quote") | Some("quotation")
+            | Some("verse") | Some("titlepage") | Some("minipage") => {
+                self.emit_environment_body(node)
+            }
             // Matrix family — handled wherever we encounter them. If we're
             // not already in math mode, the surrounding container will wrap
             // us; pmatrix() etc. assume math context.
@@ -1029,12 +1271,29 @@ impl<'a> Emitter<'a> {
                 node.end_byte()
             }
             // `\mathbf{X}` → bold math; `\mathbb{X}` → blackboard bold (`bb(X)`).
-            "\\mathbf" => self.emit_math_wrap(node, "bold(", ")"),
-            "\\mathbb" => self.emit_math_wrap(node, "bb(", ")"),
+            "\\mathbf" | "\\bm" | "\\bs" => self.emit_math_wrap(node, "bold(", ")"),
+            "\\mathbb" | "\\mathbbm" => self.emit_math_wrap(node, "bb(", ")"),
             "\\mathcal" => self.emit_math_wrap(node, "cal(", ")"),
             "\\mathfrak" => self.emit_math_wrap(node, "frak(", ")"),
             "\\mathsf" => self.emit_math_wrap(node, "sans(", ")"),
             "\\mathit" => self.emit_math_wrap(node, "italic(", ")"),
+            "\\mathtt" => self.emit_math_wrap(node, "mono(", ")"),
+            // Math accents
+            "\\bar" | "\\overline" => self.emit_math_wrap(node, "overline(", ")"),
+            "\\underline" => self.emit_math_wrap(node, "underline(", ")"),
+            "\\hat" | "\\widehat" => self.emit_math_wrap(node, "hat(", ")"),
+            "\\tilde" | "\\widetilde" => self.emit_math_wrap(node, "tilde(", ")"),
+            "\\vec" => self.emit_math_wrap(node, "arrow(", ")"),
+            "\\dot" => self.emit_math_wrap(node, "dot(", ")"),
+            "\\ddot" => self.emit_math_wrap(node, "dot.double(", ")"),
+            "\\acute" => self.emit_math_wrap(node, "acute(", ")"),
+            "\\grave" => self.emit_math_wrap(node, "grave(", ")"),
+            "\\check" => self.emit_math_wrap(node, "caron(", ")"),
+            "\\breve" => self.emit_math_wrap(node, "breve(", ")"),
+            // `\operatorname{name}` → `op("name")` — upright math text.
+            "\\operatorname" => self.emit_math_operatorname(node),
+            // Math-mode spacing primitives — drop silently.
+            "\\hspace" | "\\vspace" | "\\!" | "\\linebreak" | "\\nobreak" => node.end_byte(),
             // Row break inside math envs. We emit just `\`; the source's
             // surrounding whitespace (gap-copied by the parent) takes care of
             // spacing around it.
@@ -1093,6 +1352,21 @@ impl<'a> Emitter<'a> {
             None => {
                 self.warn_ambiguous_math(node, "\\sqrt (missing arg)");
             }
+        }
+        node.end_byte()
+    }
+
+    /// `\operatorname{X}` → `op("X")` — render the literal name as upright text.
+    fn emit_math_operatorname(&mut self, node: Node<'_>) -> usize {
+        if let Some(arg) = first_curly_group(node) {
+            let inner = self
+                .src
+                .get(arg.start_byte() + 1..arg.end_byte() - 1)
+                .unwrap_or("")
+                .trim();
+            let _ = write!(self.out, "op(\"{}\")", inner);
+        } else {
+            self.warn_ambiguous_math(node, "\\operatorname (missing arg)");
         }
         node.end_byte()
     }
@@ -2167,6 +2441,36 @@ fn lookup_math_symbol(name: &str) -> Option<&'static str> {
         "\\pmod" => "mod",
         "\\bmod" => "mod",
         "\\gcd" => "gcd",
+        // Norm / bar delimiters
+        "\\|" | "\\Vert" => "||",
+        "\\vert" => "|",
+        "\\lvert" => "|",
+        "\\rvert" => "|",
+        "\\lVert" | "\\rVert" => "||",
+        "\\langle" => "angle.l",
+        "\\rangle" => "angle.r",
+        "\\lceil" => "ceil.l",
+        "\\rceil" => "ceil.r",
+        "\\lfloor" => "floor.l",
+        "\\rfloor" => "floor.r",
+        // Math spacing
+        "\\qquad" => "quad quad",
+        "\\quad" => "quad",
+        // Delimiter-size commands (Typst auto-sizes via `lr(...)`); drop.
+        "\\big" | "\\Big" | "\\bigg" | "\\Bigg" | "\\bigl" | "\\Bigl" | "\\biggl" | "\\Biggl"
+        | "\\bigr" | "\\Bigr" | "\\biggr" | "\\Biggr" | "\\bigm" | "\\Bigm" | "\\biggm"
+        | "\\Biggm" => "",
+        // Math escapes for ASCII chars
+        "\\#" => "#",
+        "\\$" => "$",
+        "\\%" => "%",
+        "\\&" => "&",
+        "\\_" => "_",
+        "\\{" => "{",
+        "\\}" => "}",
+        // Bold variants
+        "\\boldsymbol" | "\\pmb" => "bold",
+        // Common math fonts not handled by emit_math_wrap
         _ => return None,
     })
 }
@@ -2195,56 +2499,42 @@ fn extract_package_name(node: Node<'_>, src: &str) -> Option<String> {
 fn is_known_noop_package(name: &str) -> bool {
     matches!(
         name,
-        "amsmath"
-            | "amssymb"
-            | "amsfonts"
-            | "amsthm"
-            | "graphicx"
-            | "textcomp"
-            | "xcolor"
-            | "color"
-            | "inputenc"
-            | "fontenc"
-            | "cite"
-            | "natbib"
-            | "biblatex"
-            | "hyperref"
-            | "url"
-            | "geometry"
-            | "microtype"
-            | "booktabs"
-            | "array"
-            | "tabularx"
-            | "longtable"
-            | "siunitx"
-            | "babel"
-            | "fancyhdr"
-            | "setspace"
-            | "indentfirst"
-            | "lipsum"
-            | "nicefrac"
-            | "algorithmic"
-            | "subfigure"
-            | "subcaption"
-            | "float"
-            | "wrapfig"
-            | "enumitem"
-            | "etoolbox"
-            | "xparse"
-            | "ifthen"
-            | "verbatim"
-            | "fancyvrb"
-            | "listings"
-            | "minted"
-            | "lmodern"
-            | "times"
-            | "helvet"
-            | "courier"
-            | "mathptmx"
-            | "newtxtext"
-            | "newtxmath"
-            | "T1"
-            | "utf8"
+        // Math / fonts
+        "amsmath" | "amssymb" | "amsfonts" | "amsthm" | "amsopn"
+        | "mathtools" | "mathrsfs" | "dsfont" | "stmaryrd" | "bm" | "bbm"
+        | "accents" | "nicefrac" | "siunitx" | "rsfso"
+        // Graphics / color / layout
+        | "graphicx" | "graphics" | "xcolor" | "color" | "tikz"
+        | "geometry" | "microtype" | "fancyhdr" | "setspace" | "indentfirst"
+        | "adjustbox" | "float" | "wrapfig" | "placeins" | "subfigure" | "subcaption"
+        | "lineno" | "rotating" | "subfig"
+        // Tables
+        | "booktabs" | "array" | "tabularx" | "longtable" | "arydshln"
+        | "colortbl" | "multirow" | "makecell"
+        // Encoding / fonts
+        | "inputenc" | "fontenc" | "lmodern" | "times" | "helvet" | "courier"
+        | "mathptmx" | "newtxtext" | "newtxmath" | "fontspec" | "babel"
+        | "T1" | "utf8"
+        // Bibliography / refs
+        | "cite" | "natbib" | "biblatex" | "hyperref" | "url"
+        | "cleveref" | "varioref" | "nameref" | "backref" | "footmisc"
+        // Verb / code
+        | "verbatim" | "fancyvrb" | "listings" | "minted" | "ulem"
+        // Algorithms
+        | "algorithm" | "algorithmic" | "algorithmicx" | "algpseudocode"
+        // Misc utilities
+        | "enumitem" | "etoolbox" | "xparse" | "ifthen" | "ifpdf" | "iftex"
+        | "textcomp" | "lipsum" | "blindtext" | "authblk" | "caption"
+        | "tcolorbox" | "framed" | "mdframed" | "epstopdf" | "pgf" | "pgfplots"
+        | "comment" | "xspace" | "pifont" | "xurl" | "xr" | "xr-hyper"
+        | "xfrac" | "type1cm" | "titlesec" | "soul" | "multicol"
+        | "makeidx" | "dirtytalk" | "changepage" | "afterpage" | "ragged2e"
+        | "xstring" | "calc" | "currfile" | "kvoptions" | "fp"
+        // Conference/journal style files commonly preloaded by templates.
+        | "neurips_2022" | "neurips_2023" | "neurips_2024" | "neurips_2025"
+        | "neurips_2026" | "iclr2024_conference" | "iclr2025_conference"
+        | "icml2024" | "icml2025" | "icml2026"
+        | "acmart" | "IEEEtran" | "spconf"
     )
 }
 

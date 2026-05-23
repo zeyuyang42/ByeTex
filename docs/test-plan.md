@@ -26,13 +26,14 @@ assumes they're present.
 
 **Corpus prerequisite (only for Scenario D):** the LaTeX template harvester
 described in `~/.claude/plans/i-want-to-download-flickering-mango.md` populates
-a top-level `corpus/` directory with real-world templates from
+a top-level `templates/` directory with real-world templates from
 latextemplates.com and recent arXiv papers. If you plan to run Scenario D,
 let the harvester finish first. The rest of the scenarios work without it.
 
 ```bash
 # Check whether the corpus is ready:
-ls -la corpus/ 2>/dev/null && jq '.entries | length' corpus/manifest.json 2>/dev/null
+ls -la templates/latextemplates/ templates/arxiv/ 2>/dev/null && \
+  jq '.entries | length' templates/manifest.json 2>/dev/null
 ```
 Expected: at least one entry in `manifest.json` (the small-batch run produces
 ~5; the large-batch run ~45). If the directory doesn't exist, Scenario D
@@ -209,7 +210,7 @@ acting on any warning.
 ## Scenario D — Stress-test against the real-world corpus
 
 This is the real test. The corpus harvester pulls real LaTeX (templates from
-latextemplates.com + recent arXiv submissions) into `corpus/`. We run ByeTex
+latextemplates.com + recent arXiv submissions) into `templates/`. We run ByeTex
 across the whole set and look at the aggregate behavior — which templates
 convert cleanly, which fail, and which warning categories dominate.
 
@@ -217,9 +218,9 @@ convert cleanly, which fail, and which warning categories dominate.
 
 ```bash
 cd ~/Workspace/tools/ByeTex
-jq '.entries | length' corpus/manifest.json
+jq '.entries | length' templates/manifest.json
 jq '.entries | group_by(.source) | map({source: .[0].source, count: length})' \
-   corpus/manifest.json
+   templates/manifest.json
 ```
 
 **Expected**: at least 5 entries (small-batch run). The breakdown should show
@@ -235,16 +236,16 @@ Pick one latextemplates entry and two arXiv papers — favor a math-heavy one:
 
 ```bash
 # List candidates:
-jq -r '.entries[] | "\(.id)  [\(.source):\(.category)]  \(.title // "?")"' corpus/manifest.json
+jq -r '.entries[] | "\(.id)  [\(.source):\(.category)]  \(.title // "?")"' templates/manifest.json
 ```
 
 For each pick, run ByeTex and inspect:
 
 ```bash
 # Replace <slug> with one from the list above. Source path lives under
-# corpus/<source>/<category-slug>/<id>/source/ — find the main .tex file
+# templates/<source>/<category-slug>/<id>/source/ — find the main .tex file
 # (usually the one with \documentclass).
-SAMPLE="corpus/latextemplates/essay/tufte-essay/source"
+SAMPLE="templates/latextemplates/essay/tufte-essay/source"
 MAIN=$(grep -l '\\documentclass' $SAMPLE/*.tex 2>/dev/null | head -1)
 echo "main: $MAIN"
 bytetex convert "$MAIN"
@@ -273,7 +274,7 @@ Drop this script into the repo (or copy into a temp file):
 cat > /tmp/corpus_eval.sh << 'EOF'
 #!/usr/bin/env bash
 set -uo pipefail
-ROOT=${1:-corpus}
+ROOT=${1:-templates}
 TOTAL=0; CONVERTED=0; COMPILED=0; PANICKED=0
 TOTAL_WARN=0
 declare -A KIND_COUNTS
@@ -315,7 +316,7 @@ for k in "${!KIND_COUNTS[@]}"; do
 done | sort -t: -k2 -rn | head -10
 EOF
 chmod +x /tmp/corpus_eval.sh
-/tmp/corpus_eval.sh corpus
+/tmp/corpus_eval.sh templates
 ```
 
 **Expected** (small-batch, ~5 docs):
@@ -333,7 +334,7 @@ chmod +x /tmp/corpus_eval.sh
 struggling with:
 
 ```bash
-find corpus -name '*.warnings.json' -exec sh -c 'echo "$(jq length "$1") $1"' _ {} \; \
+find templates -name '*.warnings.json' -exec sh -c 'echo "$(jq length "$1") $1"' _ {} \; \
   | sort -rn | head -5
 ```
 
@@ -426,7 +427,7 @@ Verify the connection from inside Claude Code:
 Pick a real paper from the harvested corpus (or your own if you skipped D):
 
 ```bash
-TARGET=$(find corpus -path '*/source/*.tex' -exec grep -l '\\documentclass' {} \; 2>/dev/null | head -1)
+TARGET=$(find templates -path '*/source/*.tex' -exec grep -l '\\documentclass' {} \; 2>/dev/null | head -1)
 echo "agent target: $TARGET"
 ```
 
@@ -590,8 +591,8 @@ claude mcp add bytetex bytetex serve           # one-time setup
 typst compile input.typ
 
 # Corpus (after the harvester has run)
-jq '.entries | length' corpus/manifest.json
-find corpus -path '*/source/*.tex' -exec grep -l '\\documentclass' {} \;
-find corpus -name '*.warnings.json' -exec sh -c \
+jq '.entries | length' templates/manifest.json
+find templates -path '*/source/*.tex' -exec grep -l '\\documentclass' {} \;
+find templates -name '*.warnings.json' -exec sh -c \
   'echo "$(jq length "$1") $1"' _ {} \; | sort -rn | head
 ```

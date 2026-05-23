@@ -2,6 +2,14 @@
 **/*.rs.bk
 Cargo.lock.bak
 
+# Harvested templates (produced by scripts/harvest_templates.py).
+# Kept gitignored so we don't commit external content; regenerate with
+# `python scripts/harvest_templates.py`.
+/templates/manifest.json
+/templates/latextemplates/
+/templates/arxiv/
+/templates/overleaf/
+
 # Generated artifacts during development
 *.typ.swp
 *.warnings.json.swp
@@ -28,3 +36,4 @@ Cargo.lock.bak
 # insta pending snapshot files (transient, not source)
 **/*.pending-snap
 **/*.snap.new
+scripts/__pycache__/
