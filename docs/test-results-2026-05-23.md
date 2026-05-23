@@ -181,6 +181,25 @@ target-installation glitch in `release.yml`.
 
 ## Findings
 
+### Finding #0 (high) — `\documentclass` options were dropped, breaking two-column layout
+
+**Spotted by the user after the initial run.** The converted PDFs for IEEE
+and ACM templates were rendering single-column even though the LaTeX
+sources are two-column (IEEEtran conference, acmart sigconf). Root cause:
+the `class_include` AST node was being silently dropped, so options like
+`[conference]`, `[sigconf]`, `[twocolumn]` were lost.
+
+**Fix landed in `48bafef` on this branch.** Extract class + options,
+decide column count via a small heuristic (IEEEtran, acmart sigconf
+family, revtex4 reprint, elsarticle 3p/5p, aastex non-preprint → two-
+column). Also honor inline `\twocolumn` / `\onecolumn` directives.
+Result: `#set page(columns: 2)` is now prepended for IEEE and ACM;
+NeurIPS and thesis remain single-column (correctly).
+
+This finding **invalidates Scenario B's PASS** in the original run — the
+PDF was wrong-but-compileable. After the fix B re-passes, this time
+with correct layout.
+
 ### Finding #1 (high) — converter handles arXiv-class macro density poorly
 
 3 of 3 D2 picks (and 32 of 45 D3 documents) fail to compile after
