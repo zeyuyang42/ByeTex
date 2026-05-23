@@ -109,9 +109,10 @@ fn m2_misc_linebreaks() {
 
 #[test]
 fn m2_misc_full_article() {
-    // \documentclass and \usepackage are dropped as preamble noise (warnings).
-    // \begin{document}...\end{document} is transparent.
-    insta::assert_snapshot!(run("m2_misc/full_article.tex"), @r#"
+    // v0.2: `\documentclass` is silently dropped (always); `\usepackage` is
+    // silently dropped when the package is in the known-noop allowlist
+    // (inputenc is). The resulting Typst is clean — no warnings.
+    insta::assert_snapshot!(run("m2_misc/full_article.tex"), @r"
     ==== TYPST ====
     = Introduction <sec:intro>
 
@@ -126,45 +127,8 @@ fn m2_misc_full_article() {
 
     We thank the #smallcaps[Authors] for everything.
     ==== WARNINGS ====
-    [
-      {
-        "range": {
-          "start_line": 1,
-          "start_col": 1,
-          "end_line": 1,
-          "end_col": 24,
-          "byte_start": 0,
-          "byte_end": 23
-        },
-        "category": {
-          "kind": "unsupported_command",
-          "name": "\\documentclass"
-        },
-        "severity": "warning",
-        "message": "command not yet supported by ByeTex; raw source dropped",
-        "snippet": "\\documentclass{article}",
-        "suggested_skill": null
-      },
-      {
-        "range": {
-          "start_line": 2,
-          "start_col": 1,
-          "end_line": 2,
-          "end_col": 28,
-          "byte_start": 24,
-          "byte_end": 51
-        },
-        "category": {
-          "kind": "unsupported_command",
-          "name": "\\usepackage"
-        },
-        "severity": "warning",
-        "message": "command not yet supported by ByeTex; raw source dropped",
-        "snippet": "\\usepackage[utf8]{inputenc}",
-        "suggested_skill": null
-      }
-    ]
-    "#);
+    []
+    ");
 }
 
 // ============== M2.3: lists ==============

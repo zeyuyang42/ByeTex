@@ -1,0 +1,110 @@
+% A representative NeurIPS-style paper. Written for ByeTex test purposes;
+% uses the documented neurips_2024.sty patterns. To compile with pdflatex,
+% obtain neurips_2024.sty from https://neurips.cc/Conferences/2024/PaperInformation/StyleFiles
+\documentclass{article}
+
+\PassOptionsToPackage{numbers, compress}{natbib}
+\usepackage[final]{neurips_2024}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{amsfonts}
+\usepackage{nicefrac}
+\usepackage{microtype}
+\usepackage{graphicx}
+
+\title{A Generic NeurIPS Paper Template}
+
+\author{%
+  Alice Anderson\thanks{Equal contribution. Correspondence to: alice@example.edu.} \\
+  Department of Computer Science \\
+  Example University \\
+  Springfield, USA \\
+  \texttt{alice@example.edu} \\
+  \And
+  Bob Brown \\
+  Department of Statistics \\
+  Example University \\
+  Springfield, USA \\
+  \texttt{bob@example.edu}
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+The abstract paragraph should be indented \nicefrac{1}{2}~inch (3~picas) on
+both the left- and right-hand margins. Use 10~point type, with a vertical
+spacing (leading) of 11~points. The word \textbf{Abstract} must be centered,
+bold, and in point size 12. Two line spaces precede the abstract. The abstract
+must be limited to one paragraph.
+\end{abstract}
+
+\section{Introduction}
+
+A neural network with parameters $\theta \in \mathbb{R}^d$ minimizes a loss
+function $\mathcal{L}(\theta)$ via stochastic gradient descent:
+\begin{equation}
+\theta_{t+1} = \theta_t - \eta_t \nabla \mathcal{L}(\theta_t).
+\label{eq:sgd}
+\end{equation}
+
+\section{Background}
+
+\subsection{Notation}
+
+We use lowercase letters for scalars ($x \in \mathbb{R}$), bold lowercase for
+vectors ($\mathbf{x} \in \mathbb{R}^d$), and bold uppercase for matrices
+($\mathbf{A} \in \mathbb{R}^{m \times n}$). The Frobenius norm is
+$\|\mathbf{A}\|_F = \sqrt{\sum_{i,j} A_{ij}^2}$.
+
+\subsection{Related work}
+
+Prior approaches~\citep{einstein,dirac} formulated this problem differently.
+\citet{bohr} showed that the canonical form is optimal under mild assumptions.
+
+\section{Method}
+
+We propose a two-stage procedure. First, we align by minimizing
+\begin{align}
+\mathcal{L}_{\text{align}}(\theta) &= \frac{1}{N} \sum_{i=1}^{N} \| f_\theta(x_i) - y_i \|_2^2 \\
+&\quad + \lambda \| \theta \|_2^2.
+\end{align}
+Second, we fine-tune with the standard cross-entropy loss.
+
+\subsection{Implementation details}
+
+We trained for $200$ epochs with learning rate $\eta = 10^{-3}$. See
+Table~\ref{tab:results} for the final numbers.
+
+\begin{table}[h]
+  \caption{Final results across three random seeds.}
+  \label{tab:results}
+  \centering
+  \begin{tabular}{lrr}
+    \toprule
+    Method     & Accuracy & Wall time (h) \\
+    \midrule
+    Baseline   & 81.2     & 12.3 \\
+    Ours       & 93.4     & 14.7 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{Discussion}
+
+Equation~\eqref{eq:sgd} is the canonical SGD update. Our refinement applies
+when the gradient is sparse.
+
+\section*{Acknowledgments}
+
+We thank the anonymous reviewers and our funding agency for support.
+
+\bibliographystyle{plainnat}
+\bibliography{refs}
+
+\end{document}

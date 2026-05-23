@@ -83,7 +83,7 @@ fn m4_bibliography() {
     ==== TYPST ====
     References are listed at the end.
 
-    #bibliography("refs.bib", style: "plain")
+    #bibliography("refs.bib", style: "ieee")
     ==== WARNINGS ====
     []
     "#);

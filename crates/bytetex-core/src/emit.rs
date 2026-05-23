@@ -44,6 +44,13 @@ pub(crate) struct Emitter<'a> {
     /// `\verb|...|` handler, since the tree-sitter grammar does not model
     /// verb delimiters and would otherwise re-emit the inner tokens.
     skip_until: usize,
+    /// Title-block accumulators. `\title{X}`, `\author{X}`, `\date{X}` store
+    /// rendered content here; `\maketitle` flushes them into a centered block
+    /// at the document head. If `\maketitle` never appears but `pending_title`
+    /// is set, the block is flushed in `finish()`.
+    pending_title: Option<String>,
+    pending_authors: Vec<String>,
+    pending_date: Option<String>,
 }
 
 impl<'a> Emitter<'a> {
@@ -60,6 +67,9 @@ impl<'a> Emitter<'a> {
             needs_equation_numbering: false,
             pending_bibitem_key: None,
             skip_until: 0,
+            pending_title: None,
+            pending_authors: Vec::new(),
+            pending_date: None,
         }
     }
 
@@ -68,6 +78,16 @@ impl<'a> Emitter<'a> {
     }
 
     pub(crate) fn finish(mut self) -> (String, Vec<Warning>) {
+        // If `\title` was given but `\maketitle` was never invoked, flush the
+        // pending title block now so the document still has a header.
+        if self.pending_title.is_some() || !self.pending_authors.is_empty() {
+            // Pre-pend rather than append: insert at the start of `out` so the
+            // title block lives at the top of the document.
+            let body = std::mem::take(&mut self.out);
+            self.flush_title_block();
+            self.out.push_str(&body);
+        }
+
         // Conditional Typst preamble for documents that use references. LaTeX
         // numbers sections and equations by default; Typst does not. Without
         // this preamble, `@sec:foo` etc. fail with "cannot reference X without
@@ -84,6 +104,12 @@ impl<'a> Emitter<'a> {
             preamble.push_str(&self.out);
             self.out = preamble;
         }
+
+        // Typographic substitutions: LaTeX `---` / `--` → em-/en-dash;
+        // LaTeX-style double quotes ``X'' → ASCII "X" (Typst will smart-quote).
+        // Done as a final string pass so we don't have to wrangle token-level
+        // detection for adjacent `-` / backtick / apostrophe runs.
+        self.out = post_process_typography(&self.out);
         (self.out, self.warnings)
     }
 
@@ -123,7 +149,51 @@ impl<'a> Emitter<'a> {
             "math_environment" => return self.emit_math_environment(node),
             "subscript" if self.in_math => return self.emit_subscript(node, "_"),
             "superscript" if self.in_math => return self.emit_subscript(node, "^"),
+            // `\text{X}` inside math — the grammar tags this as `text_mode`.
+            // Emit the inner content as a quoted Typst string so it renders
+            // upright. Don't recurse (we'd otherwise split letters).
+            "text_mode" if self.in_math => {
+                if let Some(arg) = first_curly_group(node) {
+                    let inner = self
+                        .src
+                        .get(arg.start_byte() + 1..arg.end_byte() - 1)
+                        .unwrap_or("")
+                        .trim();
+                    let _ = write!(self.out, "\"{}\"", inner);
+                }
+                return node.end_byte();
+            }
+            // A bare `command_name` (e.g. `_\theta`) inside math — look it up
+            // in the math symbol table. Without this branch, the default
+            // recursive walker would copy `\theta` verbatim.
+            "command_name" if self.in_math => {
+                let text = &self.src[node.start_byte()..node.end_byte()];
+                if let Some(typst) = lookup_math_symbol(text) {
+                    self.out.push_str(typst);
+                    return node.end_byte();
+                }
+            }
             _ => {}
+        }
+
+        // Multi-letter math identifier splitting. LaTeX math reads consecutive
+        // letters as implicit products (e.g. `mc` = m·c); Typst reads them as a
+        // single identifier. Inside math, split a multi-letter `word` into
+        // single chars separated by spaces, unless the word is a known
+        // function name.
+        if self.in_math && node.kind() == "word" {
+            let text = &self.src[node.start_byte()..node.end_byte()];
+            if should_split_math_word(text) {
+                let mut first = true;
+                for c in text.chars() {
+                    if !first {
+                        self.out.push(' ');
+                    }
+                    self.out.push(c);
+                    first = false;
+                }
+                return node.end_byte();
+            }
         }
 
         // Sectioning: \section, \subsection, ...; starred forms preserved.
@@ -157,6 +227,20 @@ impl<'a> Emitter<'a> {
             "bibtex_include" => return self.emit_bibliography(node),
             "bibstyle_include" => return self.emit_bibstyle(node),
             "graphics_include" => return self.emit_graphics_include(node),
+            "title_declaration" => {
+                if let Some(arg) = first_curly_group(node) {
+                    self.pending_title = Some(self.render_curly_group_content(arg));
+                }
+                return node.end_byte();
+            }
+            "author_declaration" => {
+                // The grammar uses `curly_group_author_list` for the author arg.
+                if let Some(arg) = first_curly_like(node) {
+                    let rendered = self.render_curly_group_content(arg);
+                    self.pending_authors.push(rendered);
+                }
+                return node.end_byte();
+            }
             "caption" => {
                 // Standalone caption (outside a figure) — drop with warning.
                 self.warn_unsupported_command(node);
@@ -173,6 +257,24 @@ impl<'a> Emitter<'a> {
                 self.out.push_str(escaped);
                 return node.end_byte();
             }
+        }
+
+        // `\usepackage{...}` — drop silently for packages that have no Typst
+        // equivalent (Typst's defaults cover them or they're style-only).
+        if node.kind() == "package_include" {
+            let pkg_name = extract_package_name(node, self.src);
+            if pkg_name.as_deref().is_some_and(is_known_noop_package) {
+                return node.end_byte();
+            }
+            // Otherwise warn with the package name.
+            self.warn_unsupported_command(node);
+            return node.end_byte();
+        }
+
+        // `\documentclass{...}` — always drop silently. The class governs
+        // page layout, which Typst handles via its own defaults.
+        if node.kind() == "class_include" {
+            return node.end_byte();
         }
 
         // Other "command-shaped" nodes (citation, includes, etc.) — warn until
@@ -276,11 +378,217 @@ impl<'a> Emitter<'a> {
             Some("\\noindent") | Some("\\indent") => {
                 consume_trailing_inline_space(self.src, node.end_byte())
             }
+            // Table rule commands have no Typst equivalent in our default
+            // table emission (Typst auto-styles rules). Drop silently.
+            Some("\\hline") | Some("\\toprule") | Some("\\midrule") | Some("\\bottomrule")
+            | Some("\\cmidrule") => node.end_byte(),
+            // Text-mode super/subscript wrappers.
+            Some("\\textsuperscript") => self.emit_inline_wrap(node, "#super[", "]"),
+            Some("\\textsubscript") => self.emit_inline_wrap(node, "#sub[", "]"),
+            // Spacing primitives with no Typst equivalent — drop silently.
+            Some("\\kern")
+            | Some("\\vspace")
+            | Some("\\hspace")
+            | Some("\\vspace*")
+            | Some("\\hspace*")
+            | Some("\\smallskip")
+            | Some("\\medskip")
+            | Some("\\bigskip")
+            | Some("\\quad")
+            | Some("\\qquad")
+            | Some("\\,")
+            | Some("\\;")
+            | Some("\\:")
+            | Some("\\!")
+            | Some("\\enspace")
+            | Some("\\thinspace")
+            | Some("\\linebreak")
+            | Some("\\pagebreak")
+            | Some("\\nopagebreak")
+            | Some("\\newpage")
+            | Some("\\clearpage")
+            | Some("\\cleardoublepage")
+                if !self.in_math =>
+            {
+                consume_trailing_inline_space(self.src, node.end_byte())
+            }
+            // Layout-only directives.
+            Some("\\centering")
+            | Some("\\raggedright")
+            | Some("\\raggedleft")
+            | Some("\\justify")
+            | Some("\\flushleft")
+            | Some("\\flushright") => consume_trailing_inline_space(self.src, node.end_byte()),
+            // Float/figure placement specifiers + page-style controls.
+            Some("\\setcounter")
+            | Some("\\renewcommand")
+            | Some("\\providecommand")
+            | Some("\\pagestyle")
+            | Some("\\thispagestyle")
+            | Some("\\pagenumbering")
+            | Some("\\addtocounter")
+            | Some("\\stepcounter")
+            | Some("\\refstepcounter")
+            | Some("\\setlength")
+            | Some("\\addtolength")
+            | Some("\\settowidth")
+            | Some("\\bibliographystyle") => {
+                // These take args we don't translate. Drop silently.
+                node.end_byte()
+            }
+            // ACM-specific copyright / metadata; drop silently.
+            Some("\\setcopyright")
+            | Some("\\copyrightyear")
+            | Some("\\acmYear")
+            | Some("\\acmConference")
+            | Some("\\acmBooktitle")
+            | Some("\\acmDOI")
+            | Some("\\acmISBN")
+            | Some("\\acmPrice")
+            | Some("\\acmSubmissionID")
+            | Some("\\affiliation")
+            | Some("\\institution")
+            | Some("\\city")
+            | Some("\\country")
+            | Some("\\state")
+            | Some("\\streetaddress")
+            | Some("\\postcode")
+            | Some("\\email")
+            | Some("\\orcid")
+            | Some("\\authornote")
+            | Some("\\additionalaffiliation")
+            | Some("\\keywords")
+            | Some("\\ccsdesc")
+            | Some("\\shortauthors") => node.end_byte(),
+            // IEEEtran-specific.
+            Some("\\IEEEoverridecommandlockouts")
+            | Some("\\IEEEpubid")
+            | Some("\\IEEEauthorrefmark")
+            | Some("\\IEEEcompsoctitleabstractindextext")
+            | Some("\\IEEEcompsocthanksitem") => node.end_byte(),
+            // NeurIPS-specific.
+            Some("\\And") | Some("\\AND") | Some("\\PassOptionsToPackage") | Some("\\And ") => {
+                consume_trailing_inline_space(self.src, node.end_byte())
+            }
+            // Tables-of-contents et al. — drop, will be re-added with Typst syntax later if needed.
+            Some("\\tableofcontents")
+            | Some("\\listoffigures")
+            | Some("\\listoftables")
+            | Some("\\printbibliography")
+            | Some("\\printindex") => consume_trailing_inline_space(self.src, node.end_byte()),
+            // `\multicolumn{n}{spec}{content}` → `table.cell(colspan: n)[content]`.
+            // The surrounding emit_tabular's body splitter will treat the whole
+            // thing as one cell, which is the intended outcome.
+            Some("\\multicolumn") => {
+                let mut cursor = node.walk();
+                let groups: Vec<Node<'_>> = node
+                    .children(&mut cursor)
+                    .filter(|c| c.kind() == "curly_group")
+                    .collect();
+                if groups.len() < 3 {
+                    self.warn_unsupported_command(node);
+                    return node.end_byte();
+                }
+                let n = self
+                    .src
+                    .get(groups[0].start_byte() + 1..groups[0].end_byte() - 1)
+                    .unwrap_or("1")
+                    .trim();
+                let content = self.render_curly_group_content(groups[2]);
+                let _ = write!(self.out, "table.cell(colspan: {})[{}]", n, content);
+                node.end_byte()
+            }
+            // Typographic logos — drop the styling, keep the text.
+            Some("\\LaTeX") => self.emit_logo(node, "LaTeX"),
+            Some("\\TeX") => self.emit_logo(node, "TeX"),
+            Some("\\BibTeX") => self.emit_logo(node, "BibTeX"),
+            Some("\\eTeX") => self.emit_logo(node, "eTeX"),
+            Some("\\XeLaTeX") => self.emit_logo(node, "XeLaTeX"),
+            Some("\\LuaLaTeX") => self.emit_logo(node, "LuaLaTeX"),
+            // Title-block accumulators. `\title`, `\author`, `\date` capture
+            // their argument; `\maketitle` emits the assembled block. If
+            // \maketitle is never called the block is flushed in `finish()`.
+            Some("\\title") => {
+                if let Some(arg) = first_curly_group(node) {
+                    self.pending_title = Some(self.render_curly_group_content(arg));
+                }
+                node.end_byte()
+            }
+            Some("\\author") => {
+                if let Some(arg) = first_curly_group(node) {
+                    let rendered = self.render_curly_group_content(arg);
+                    self.pending_authors.push(rendered);
+                }
+                node.end_byte()
+            }
+            Some("\\date") => {
+                if let Some(arg) = first_curly_group(node) {
+                    self.pending_date = Some(self.render_curly_group_content(arg));
+                }
+                node.end_byte()
+            }
+            Some("\\maketitle") => {
+                // No-op at the source position; `finish()` always pre-pends
+                // the assembled title block at the document head so the visual
+                // result matches LaTeX irrespective of where `\maketitle` lives.
+                node.end_byte()
+            }
+            // `\thanks{X}` attaches a footnote to whatever preceded it. We
+            // render inline as a Typst footnote at the current position.
+            Some("\\thanks") => {
+                if let Some(arg) = first_curly_group(node) {
+                    let content = self.render_curly_group_content(arg);
+                    let _ = write!(self.out, "#footnote[{}]", content);
+                }
+                node.end_byte()
+            }
             _ => {
                 self.warn_unsupported_command(node);
                 node.end_byte()
             }
         }
+    }
+
+    /// Emit a typographic-logo command (`\LaTeX`, `\TeX`, etc.) as plain text.
+    /// LaTeX users normally write `\LaTeX{}` so the empty group blocks LaTeX
+    /// from swallowing the following space. tree-sitter parses that `{}` as a
+    /// `curly_group` child of the command — when we see it, the caller's
+    /// intent was to preserve the following space, so we do.
+    fn emit_logo(&mut self, node: Node<'_>, name: &str) -> usize {
+        self.out.push_str(name);
+        // If the generic_command has any `curly_group` child, the user wrote
+        // `\LaTeX{}` (or `\LaTeX{x}`) and the space-eating safeguard is in
+        // place. Otherwise consume the trailing space, matching LaTeX.
+        if first_curly_group(node).is_some() {
+            return node.end_byte();
+        }
+        consume_trailing_inline_space(self.src, node.end_byte())
+    }
+
+    /// Emit the centered Typst title block from any captured \title/\author/\date.
+    fn flush_title_block(&mut self) {
+        if self.pending_title.is_none() && self.pending_authors.is_empty() {
+            return;
+        }
+        self.ensure_paragraph_break();
+        self.out.push_str("#align(center)[\n");
+        if let Some(title) = self.pending_title.take() {
+            let _ = writeln!(
+                self.out,
+                "  #text(size: 1.5em, weight: \"bold\")[{}]",
+                title
+            );
+        }
+        if !self.pending_authors.is_empty() {
+            self.out.push_str("  #v(0.6em)\n  ");
+            let authors = std::mem::take(&mut self.pending_authors);
+            self.out.push_str(&authors.join(", "));
+            self.out.push('\n');
+        }
+        if let Some(date) = self.pending_date.take() {
+            let _ = write!(self.out, "  #v(0.4em)\n  {}\n", date);
+        }
+        self.out.push_str("]\n\n");
     }
 
     /// Find the first `curly_group` child of `node` and render its inner
@@ -327,6 +635,17 @@ impl<'a> Emitter<'a> {
             // IEEE/thebibliography style: emit each \bibitem as a labeled
             // numbered-list entry so `@bN` references resolve.
             Some("thebibliography") => self.emit_thebibliography(node),
+            // Theorem-family envs from amsthm. Emit as labeled figures with a
+            // custom kind so `@thm:foo` resolves.
+            Some("theorem") => self.emit_theorem_env(node, "Theorem"),
+            Some("lemma") => self.emit_theorem_env(node, "Lemma"),
+            Some("corollary") => self.emit_theorem_env(node, "Corollary"),
+            Some("proposition") => self.emit_theorem_env(node, "Proposition"),
+            Some("definition") => self.emit_theorem_env(node, "Definition"),
+            Some("example") => self.emit_theorem_env(node, "Example"),
+            Some("remark") => self.emit_theorem_env(node, "Remark"),
+            // Proof env — no label-targeting needed; emit as a block.
+            Some("proof") => self.emit_proof_env(node),
             _ => {
                 self.warn_unsupported_environment(node, env.as_deref());
                 node.end_byte()
@@ -453,8 +772,79 @@ impl<'a> Emitter<'a> {
             while self.out.ends_with(' ') || self.out.ends_with('\n') {
                 self.out.pop();
             }
-            let _ = write!(self.out, "]) <{}>\n", key);
+            let _ = writeln!(self.out, "]) <{}>", key);
         }
+    }
+
+    /// `\begin{theorem}[note]\label{X} body \end{theorem}` →
+    /// `#figure(kind: "<name>", supplement: [Name], [body]) <X>`.
+    fn emit_theorem_env(&mut self, env: Node<'_>, name: &'static str) -> usize {
+        let mut cursor = env.walk();
+        let mut label: Option<String> = None;
+        let body: Vec<Node<'_>> = env
+            .children(&mut cursor)
+            .filter(|c| {
+                if c.kind() == "label_definition" {
+                    label = extract_label_name(*c, self.src);
+                    return false;
+                }
+                !matches!(c.kind(), "begin" | "end")
+            })
+            .collect();
+
+        let inner = if body.is_empty() {
+            String::new()
+        } else {
+            self.with_sub_buffer(|emitter| {
+                let mut last = body[0].start_byte();
+                for child in &body {
+                    let cs = child.start_byte();
+                    emitter.safe_copy(last, cs);
+                    last = emitter.emit_node(*child);
+                }
+                let end = body.last().unwrap().end_byte();
+                emitter.safe_copy(last, end);
+            })
+        };
+
+        self.ensure_paragraph_break();
+        let _ = write!(
+            self.out,
+            "#figure(kind: \"{}\", supplement: [{}], [{}])",
+            name.to_lowercase(),
+            name,
+            inner.trim()
+        );
+        if let Some(l) = label {
+            let _ = write!(self.out, " <{}>", l);
+        }
+        env.end_byte()
+    }
+
+    /// `\begin{proof}...\end{proof}` → `*Proof.* body` as a paragraph block.
+    fn emit_proof_env(&mut self, env: Node<'_>) -> usize {
+        let mut cursor = env.walk();
+        let body: Vec<Node<'_>> = env
+            .children(&mut cursor)
+            .filter(|c| !matches!(c.kind(), "begin" | "end"))
+            .collect();
+        let inner = if body.is_empty() {
+            String::new()
+        } else {
+            self.with_sub_buffer(|emitter| {
+                let mut last = body[0].start_byte();
+                for child in &body {
+                    let cs = child.start_byte();
+                    emitter.safe_copy(last, cs);
+                    last = emitter.emit_node(*child);
+                }
+                let end = body.last().unwrap().end_byte();
+                emitter.safe_copy(last, end);
+            })
+        };
+        self.ensure_paragraph_break();
+        let _ = write!(self.out, "*Proof.* {}", inner.trim());
+        env.end_byte()
     }
 
     /// `\begin{thebibliography}{99}...\bibitem{k} entry text...\end{thebibliography}`
@@ -623,6 +1013,28 @@ impl<'a> Emitter<'a> {
             "\\frac" => self.emit_math_frac(node),
             "\\sqrt" => self.emit_math_sqrt(node),
             "\\binom" => self.emit_math_binom(node),
+            // `\text{X}` and `\mathrm{X}` switch to upright text inside math.
+            // Typst renders quoted strings as upright text in math context.
+            "\\text" | "\\mathrm" | "\\textrm" | "\\mathnormal" => {
+                if let Some(arg) = first_curly_group(node) {
+                    // Take the raw inner source — we want literal text, not
+                    // a recursively-emitted (and possibly mangled) sub-render.
+                    let inner = self
+                        .src
+                        .get(arg.start_byte() + 1..arg.end_byte() - 1)
+                        .unwrap_or("")
+                        .trim();
+                    let _ = write!(self.out, "\"{}\"", inner);
+                }
+                node.end_byte()
+            }
+            // `\mathbf{X}` → bold math; `\mathbb{X}` → blackboard bold (`bb(X)`).
+            "\\mathbf" => self.emit_math_wrap(node, "bold(", ")"),
+            "\\mathbb" => self.emit_math_wrap(node, "bb(", ")"),
+            "\\mathcal" => self.emit_math_wrap(node, "cal(", ")"),
+            "\\mathfrak" => self.emit_math_wrap(node, "frak(", ")"),
+            "\\mathsf" => self.emit_math_wrap(node, "sans(", ")"),
+            "\\mathit" => self.emit_math_wrap(node, "italic(", ")"),
             // Row break inside math envs. We emit just `\`; the source's
             // surrounding whitespace (gap-copied by the parent) takes care of
             // spacing around it.
@@ -681,6 +1093,21 @@ impl<'a> Emitter<'a> {
             None => {
                 self.warn_ambiguous_math(node, "\\sqrt (missing arg)");
             }
+        }
+        node.end_byte()
+    }
+
+    /// Wrap the first curly_group argument in a Typst math function call:
+    /// `\mathbf{X}` → `bold(X)`. Recursively renders the inner content in
+    /// math mode so nested commands are translated.
+    fn emit_math_wrap(&mut self, node: Node<'_>, left: &str, right: &str) -> usize {
+        if let Some(arg) = first_curly_group(node) {
+            let inner = self.render_math_group(arg);
+            self.out.push_str(left);
+            self.out.push_str(inner.trim());
+            self.out.push_str(right);
+        } else {
+            self.warn_ambiguous_math(node, "missing argument");
         }
         node.end_byte()
     }
@@ -913,7 +1340,14 @@ impl<'a> Emitter<'a> {
                 // need an explicit `#set ... (numbering: ...)` preamble.
                 if key.starts_with("eq:") {
                     self.needs_equation_numbering = true;
-                } else if !key.starts_with("fig:") && !key.starts_with("tab:") {
+                } else if !key.starts_with("fig:")
+                    && !key.starts_with("tab:")
+                    && !key.starts_with("thm:")
+                    && !key.starts_with("lem:")
+                    && !key.starts_with("cor:")
+                    && !key.starts_with("def:")
+                    && !key.starts_with("prop:")
+                {
                     self.needs_heading_numbering = true;
                 }
                 let _ = write!(self.out, "@{}", key);
@@ -949,7 +1383,8 @@ impl<'a> Emitter<'a> {
             format!("{}.bib", path)
         };
         self.ensure_paragraph_break();
-        if let Some(s) = style {
+        let mapped = style.as_deref().and_then(map_bibliography_style);
+        if let Some(s) = mapped {
             let _ = write!(
                 self.out,
                 "#bibliography(\"{}\", style: \"{}\")",
@@ -1134,21 +1569,41 @@ impl<'a> Emitter<'a> {
             count,
             aligns.join(", ")
         );
-        // Emit cells grouped by row for readability.
+        // Emit cells grouped by row for readability. Skip rows that have no
+        // cells (avoids a trailing lone-comma artifact).
         let mut idx = 0;
         for _ in 0..rows.len() {
+            if idx >= cells.len() {
+                break;
+            }
             self.out.push_str("  ");
-            for c in 0..count {
+            let mut emitted_any = false;
+            for _ in 0..count {
                 if idx >= cells.len() {
                     break;
                 }
-                if c > 0 {
+                if emitted_any {
                     self.out.push_str(", ");
                 }
-                let _ = write!(self.out, "[{}]", cells[idx]);
+                // Cells produced by `\multicolumn` are already a function call
+                // (`table.cell(colspan: N)[...]`) and must not get wrapped in
+                // another `[...]`. Recognize the prefix and emit verbatim.
+                let cell = &cells[idx];
+                if cell.starts_with("table.cell(") {
+                    self.out.push_str(cell);
+                } else {
+                    let _ = write!(self.out, "[{}]", cell);
+                }
+                emitted_any = true;
                 idx += 1;
             }
-            self.out.push_str(",\n");
+            if emitted_any {
+                self.out.push_str(",\n");
+            } else {
+                // Roll back the leading two-space indent if no cell emitted.
+                self.out.pop();
+                self.out.pop();
+            }
         }
         self.out.push(')');
         node.end_byte()
@@ -1395,6 +1850,17 @@ fn first_curly_group(node: Node<'_>) -> Option<Node<'_>> {
     let result = node
         .children(&mut cursor)
         .find(|child| child.kind() == "curly_group");
+    result
+}
+
+/// First child whose kind starts with `curly_group` — matches all the
+/// specialized variants tree-sitter-latex uses (`curly_group_author_list`,
+/// `curly_group_text`, `curly_group_path`, etc.).
+fn first_curly_like(node: Node<'_>) -> Option<Node<'_>> {
+    let mut cursor = node.walk();
+    let result = node
+        .children(&mut cursor)
+        .find(|child| child.kind().starts_with("curly_group"));
     result
 }
 
@@ -1703,6 +2169,229 @@ fn lookup_math_symbol(name: &str) -> Option<&'static str> {
         "\\gcd" => "gcd",
         _ => return None,
     })
+}
+
+/// Extract the package name from `\usepackage[opts]{name}`. The container is
+/// `curly_group_path` for single-package form and `curly_group_path_list`
+/// when options are present — accept either.
+fn extract_package_name(node: Node<'_>, src: &str) -> Option<String> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if matches!(child.kind(), "curly_group_path" | "curly_group_path_list") {
+            let mut sub = child.walk();
+            for grandchild in child.children(&mut sub) {
+                if grandchild.kind() == "path" {
+                    return Some(src[grandchild.start_byte()..grandchild.end_byte()].to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// LaTeX packages that don't need translation — either their behavior is the
+/// Typst default, or they only affect rendering (font, color, layout) and
+/// have no semantic impact on the converted document.
+fn is_known_noop_package(name: &str) -> bool {
+    matches!(
+        name,
+        "amsmath"
+            | "amssymb"
+            | "amsfonts"
+            | "amsthm"
+            | "graphicx"
+            | "textcomp"
+            | "xcolor"
+            | "color"
+            | "inputenc"
+            | "fontenc"
+            | "cite"
+            | "natbib"
+            | "biblatex"
+            | "hyperref"
+            | "url"
+            | "geometry"
+            | "microtype"
+            | "booktabs"
+            | "array"
+            | "tabularx"
+            | "longtable"
+            | "siunitx"
+            | "babel"
+            | "fancyhdr"
+            | "setspace"
+            | "indentfirst"
+            | "lipsum"
+            | "nicefrac"
+            | "algorithmic"
+            | "subfigure"
+            | "subcaption"
+            | "float"
+            | "wrapfig"
+            | "enumitem"
+            | "etoolbox"
+            | "xparse"
+            | "ifthen"
+            | "verbatim"
+            | "fancyvrb"
+            | "listings"
+            | "minted"
+            | "lmodern"
+            | "times"
+            | "helvet"
+            | "courier"
+            | "mathptmx"
+            | "newtxtext"
+            | "newtxmath"
+            | "T1"
+            | "utf8"
+    )
+}
+
+/// Map a LaTeX `\bibliographystyle{X}` name to the nearest Typst built-in
+/// style. Returns `None` for unknown styles so the caller can omit the
+/// `style:` argument and let Typst use its default.
+fn map_bibliography_style(latex: &str) -> Option<&'static str> {
+    // Typst's `alphanumeric` is for inline citation labels only and rejects
+    // bibliography lists. We pick `ieee` as the safest default for the
+    // numeric/order-of-appearance LaTeX styles since most academic templates
+    // use a numeric bibliography. Author-year variants map to APA.
+    match latex {
+        "plain" | "alpha" | "abbrv" | "unsrt" => Some("ieee"),
+        "plainnat"
+        | "abbrvnat"
+        | "unsrtnat"
+        | "apa"
+        | "apalike"
+        | "apacite"
+        | "chicago"
+        | "chicagoa"
+        | "chicago-author-date" => Some("apa"),
+        "ieee" | "ieeetr" | "IEEEtran" => Some("ieee"),
+        "mla" => Some("mla"),
+        "ACM-Reference-Format" | "acm" | "acmauthoryear" | "acmnumeric" => Some("ieee"),
+        _ => None,
+    }
+}
+
+/// Decide whether a word inside math should be split into single characters.
+/// LaTeX semantics: consecutive letters are implicit products (`mc` = m·c).
+/// Typst semantics: consecutive letters form an identifier (`mc` = variable mc).
+/// We split iff the word is more than one ASCII letter long and is not a
+/// recognized math function name.
+fn should_split_math_word(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    if bytes.len() < 2 {
+        return false;
+    }
+    if !bytes.iter().all(|b| b.is_ascii_alphabetic()) {
+        return false;
+    }
+    if is_math_function_name(s) {
+        return false;
+    }
+    true
+}
+
+/// Common LaTeX math functions that Typst also renders as upright identifiers.
+/// Words matching these don't get character-split.
+fn is_math_function_name(s: &str) -> bool {
+    matches!(
+        s,
+        "sin"
+            | "cos"
+            | "tan"
+            | "cot"
+            | "sec"
+            | "csc"
+            | "arcsin"
+            | "arccos"
+            | "arctan"
+            | "sinh"
+            | "cosh"
+            | "tanh"
+            | "log"
+            | "ln"
+            | "exp"
+            | "min"
+            | "max"
+            | "inf"
+            | "sup"
+            | "lim"
+            | "det"
+            | "arg"
+            | "deg"
+            | "dim"
+            | "gcd"
+            | "hom"
+            | "ker"
+            | "lg"
+            | "mod"
+            | "Pr"
+            | "Re"
+            | "Im"
+            | "argmin"
+            | "argmax"
+            | "limsup"
+            | "liminf"
+            | "var"
+            | "cov"
+    )
+}
+
+/// Replace LaTeX typographic conventions with their Typst equivalents:
+/// - `---` → `—` (em-dash)
+/// - `--` → `–` (en-dash)
+/// - ` `` `…`'' ` → `"…"` (LaTeX-style double quotes become ASCII doubles,
+///   which Typst auto-smart-quotes)
+///
+/// Single-character contexts inside ``backticked raw blocks'' would normally
+/// be preserved, but in our text-mode output the only `\`` we emit comes from
+/// `\texttt{...}` — those wrappers are short and don't typically contain
+/// `--`/`---`/``''. We accept the small risk in v0.2 and revisit if a real
+/// template triggers it.
+fn post_process_typography(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    let mut prev: Option<char> = None;
+    while let Some(c) = chars.next() {
+        match c {
+            '`' if chars.peek() == Some(&'`') => {
+                chars.next();
+                out.push('"');
+                prev = Some('"');
+            }
+            '\'' if chars.peek() == Some(&'\'') => {
+                chars.next();
+                out.push('"');
+                prev = Some('"');
+            }
+            '-' if chars.peek() == Some(&'-') => {
+                chars.next();
+                if chars.peek() == Some(&'-') {
+                    chars.next();
+                    out.push('\u{2014}');
+                    prev = Some('\u{2014}');
+                } else {
+                    out.push('\u{2013}');
+                    prev = Some('\u{2013}');
+                }
+            }
+            // `@` is Typst's reference operator. When the previous emitted
+            // character is alphanumeric, the `@` is clearly mid-word (email
+            // address, twitter handle, etc.) and must be escaped to keep
+            // Typst from parsing it as `@label`.
+            '@' if prev.is_some_and(|p| p.is_ascii_alphanumeric()) => {
+                out.push_str("\\@");
+                prev = Some('@');
+            }
+            other => {
+                out.push(other);
+                prev = Some(other);
+            }
+        }
+    }
+    out
 }
 
 /// LaTeX commands consume the run of spaces/tabs that immediately follow

@@ -1,0 +1,94 @@
+% A representative ACM acmart-style conference paper. Written for ByeTex
+% test purposes; uses the documented acmart patterns without requiring the
+% acmart.cls file to be present locally. Modeled after the official
+% sample-sigconf.tex in https://github.com/borisveytsman/acmart.
+\documentclass[sigconf]{acmart}
+
+\usepackage{booktabs}
+
+\setcopyright{acmlicensed}
+\copyrightyear{2026}
+\acmYear{2026}
+\acmConference[Conference '26]{ACM Conference}{June 03--05, 2026}{Woodstock, NY}
+
+\begin{document}
+
+\title{Hello, World: A Sample ACM SIGCONF Paper}
+
+\author{Alice Anderson}
+\authornote{Both authors contributed equally.}
+\affiliation{%
+  \institution{Example University}
+  \city{Springfield}
+  \country{USA}
+}
+\email{alice@example.edu}
+
+\author{Bob Brown}
+\affiliation{%
+  \institution{Example University}
+  \country{USA}
+}
+\email{bob@example.edu}
+
+\renewcommand{\shortauthors}{Anderson and Brown}
+
+\begin{abstract}
+This paper demonstrates a small ACM-formatted submission. We show common
+constructs that ByeTex must handle: sectioning, math, tables, and citations
+in the natbib-style used by \LaTeX{} authors.
+\end{abstract}
+
+\keywords{datasets, neural networks, gaze detection, text tagging}
+
+\maketitle
+
+\section{Introduction}
+
+Following standard \LaTeX{} practice, sections begin with \verb|\section{...}|.
+Tools like \BibTeX{} format the bibliography automatically.
+
+Citations come in two flavors~\cite{bohr}: numerical or author-year.
+
+\section{Methodology}
+
+The fundamental relation is given by Einstein:
+\begin{equation}
+E = mc^2.
+\label{eq:einstein}
+\end{equation}
+
+We also use the canonical Pythagorean identity, $\sin^2 x + \cos^2 x = 1$, and
+the change-of-variables form $\int_0^1 x^2 \, dx = \frac{1}{3}$.
+
+\subsection{Setup}
+
+Table~\ref{tab:results} summarizes our experimental results.
+
+\begin{table}[h]
+\caption{Sample experimental results.}
+\label{tab:results}
+\begin{tabular}{lcr}
+\toprule
+Method & Accuracy & Time (s) \\
+\midrule
+Baseline & 0.81 & 12.3 \\
+Ours     & 0.93 & 14.7 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Results}
+
+As shown in Equation~\eqref{eq:einstein}, energy and mass relate by the speed
+of light squared. Our improvements over the baseline are 12 percentage points.
+
+\section{Conclusion}
+
+This template demonstrates the bones of an ACM SIGCONF paper. Refer to
+\cite{einstein,dirac} for additional context.
+
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{sample-base}
+
+\end{document}
