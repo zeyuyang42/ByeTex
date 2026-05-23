@@ -181,6 +181,53 @@ target-installation glitch in `release.yml`.
 
 ## Findings
 
+### Finding #0 (high) — `\documentclass` was dropped, losing all class-specific styling
+
+**Spotted by the user after the initial run.** Converted IEEE/ACM PDFs were
+rendering single-column when the LaTeX source is two-column. Root cause was
+deeper than column count: ByeTex was discarding the entire
+`\documentclass[opts]{class}` directive, losing column layout, font,
+margins, heading style, title-block format, bibliography style — every
+class-specific styling decision.
+
+**Architectural fix landed in `<HEAD>` on `test-results-2026-05-23`.**
+For known LaTeX classes, the converter now emits an `#import` + `#show:`
+pair that hands styling off to a community-maintained Typst Universe
+template:
+
+| LaTeX class                                | Typst template                  |
+|--------------------------------------------|----------------------------------|
+| `\documentclass[conference]{IEEEtran}`     | `@preview/charged-ieee:0.1.4`   |
+| `\documentclass[sigconf]{acmart}`          | `@preview/clean-acmart:0.0.1`   |
+| `\documentclass{article}` + `neurips_2024` | `@preview/lucky-icml:0.7.0`     |
+| `\documentclass{revtex4-2}`                | `@preview/revtyp:0.14.0`        |
+| `\documentclass{elsarticle}`               | `@preview/elsearticle:3.1.0`    |
+| any other                                  | fallback hand-rolled title block |
+
+Side effects:
+- The previous heuristic `#set page(columns: 2)` patch (commits `48bafef` /
+  `25463dd`) was reverted; the Typst-Universe templates handle column count
+  along with everything else.
+- `\IEEEkeywords` and `\keywords{X}` are now captured into the title-block
+  field (previously dropped silently).
+- The `abstract` environment is captured as a content field for templates
+  that accept it (IEEE, NeurIPS, ICML); for ACM and others, the abstract
+  stays in the body (matching the template's API).
+- Re-converted templates compile to ≈100K (IEEE), 60K (ACM), 116K
+  (NeurIPS), 52K (thesis) PDFs — visually faithful to the original LaTeX
+  classes.
+
+**Open dependency:** Typst's `#import "@preview/..."` line auto-downloads
+the package on first compile. Network access is required for the first
+conversion of each new template; subsequent compiles use the local cache
+at `~/Library/Caches/typst/packages/preview/`. Documented in the test
+plan's Prerequisites section and `docs/for-agents.md`.
+
+This finding **invalidates Scenario B's PASS** in the original run — the
+PDF was wrong-but-compileable. After the fix B re-passes, this time with
+correct layout for IEEE / ACM. NeurIPS now also has its proper title-block
+styling.
+
 ### Finding #1 (high) — converter handles arXiv-class macro density poorly
 
 3 of 3 D2 picks (and 32 of 45 D3 documents) fail to compile after

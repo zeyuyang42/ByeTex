@@ -55,14 +55,17 @@ fn check_template(rel: &str, budget: usize) {
 //   post-merge corpus pass (math accents, escapes, footnote, multirow,
 //   href, url, label, font sizes, appendix, more no-op packages, more
 //   transparent envs)                                      IEEE 17 ACM  0 NeurIPS  1 thesis  0
+//   class-aware template emission (charged-ieee, clean-acmart,
+//   lucky-icml; \IEEEkeywords captured; abstract field captured for
+//   classes that accept it)                                IEEE 16 ACM  0 NeurIPS  1 thesis  0
 // All four templates compile to PDF; ACM and thesis are at 0 warnings.
-// IEEE's residual 17 are IEEE-class-specific commands (IEEEauthorblockN/A,
+// IEEE's residual 16 are IEEE-class-specific commands (IEEEauthorblockN/A,
 // IEEEpubid, etc.) — covered by a future IEEE-specific skill rather than
 // emitter rules.
 
 #[test]
 fn ieee_template_within_budget() {
-    check_template("templates/IEEE/conference_101719.tex", 17);
+    check_template("templates/IEEE/conference_101719.tex", 16);
 }
 
 #[test]

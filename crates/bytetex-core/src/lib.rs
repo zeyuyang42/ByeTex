@@ -10,6 +10,7 @@ pub mod parser;
 pub mod skills;
 pub mod warnings;
 
+mod class_map;
 mod emit;
 
 pub use warnings::{Category, Range, Severity, Warning};

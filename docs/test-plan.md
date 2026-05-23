@@ -24,6 +24,14 @@ You need on your machine:
 If any of those is missing, install before continuing. The rest of the plan
 assumes they're present.
 
+**Network on first compile:** when ByeTex detects a known LaTeX class
+(IEEEtran, acmart, NeurIPS-style article, revtex4, elsarticle), the
+converted `.typ` includes a `#import "@preview/<template>:<v>"` line.
+Typst auto-downloads the template package on first `typst compile`;
+subsequent compiles use the local cache. Offline runs of the test plan
+will fail on Scenarios B and D2 unless those packages are already in
+`~/Library/Caches/typst/packages/preview/`.
+
 **Corpus prerequisite (only for Scenario D):** the LaTeX template harvester
 described in `~/.claude/plans/i-want-to-download-flickering-mango.md` populates
 a top-level `templates/` directory with real-world templates from

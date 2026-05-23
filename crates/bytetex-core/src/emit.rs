@@ -12,6 +12,7 @@ use std::fmt::Write;
 
 use tree_sitter::Node;
 
+use crate::class_map::DocClass;
 use crate::warnings::{Category, Range, Severity, Warning};
 
 pub(crate) struct Emitter<'a> {
@@ -51,6 +52,12 @@ pub(crate) struct Emitter<'a> {
     pending_title: Option<String>,
     pending_authors: Vec<String>,
     pending_date: Option<String>,
+    pending_abstract: Option<String>,
+    pending_keywords: Option<String>,
+    /// LaTeX document class detected from `\documentclass[opts]{class}` and
+    /// refined by `\usepackage{...}` calls. Drives the Typst Universe template
+    /// import emitted in `finish()`.
+    detected_class: DocClass,
 }
 
 impl<'a> Emitter<'a> {
@@ -70,6 +77,9 @@ impl<'a> Emitter<'a> {
             pending_title: None,
             pending_authors: Vec::new(),
             pending_date: None,
+            pending_abstract: None,
+            pending_keywords: None,
+            detected_class: DocClass::Unknown,
         }
     }
 
@@ -78,9 +88,16 @@ impl<'a> Emitter<'a> {
     }
 
     pub(crate) fn finish(mut self) -> (String, Vec<Warning>) {
-        // If `\title` was given but `\maketitle` was never invoked, flush the
-        // pending title block now so the document still has a header.
-        if self.pending_title.is_some() || !self.pending_authors.is_empty() {
+        // If `\documentclass` mapped to a known Typst Universe template,
+        // prepend the `#import` + `#show:` pair so the converted PDF gets
+        // that class's full visual identity (columns, font, headings, title
+        // block). Otherwise fall back to the hand-rolled centered title.
+        let template_preamble = self.build_template_preamble();
+        if let Some(p) = template_preamble {
+            let body = std::mem::take(&mut self.out);
+            self.out.push_str(&p);
+            self.out.push_str(&body);
+        } else if self.pending_title.is_some() || !self.pending_authors.is_empty() {
             // Pre-pend rather than append: insert at the start of `out` so the
             // title block lives at the top of the document.
             let body = std::mem::take(&mut self.out);
@@ -321,19 +338,30 @@ impl<'a> Emitter<'a> {
 
         // `\usepackage{...}` — drop silently for packages that have no Typst
         // equivalent (Typst's defaults cover them or they're style-only).
+        // Also: certain ML-conference style packages (`neurips_2024`,
+        // `iclr2025_conference`, `icml*`) imply a document class, so we
+        // refine `detected_class` even though we drop the package itself.
         if node.kind() == "package_include" {
-            let pkg_name = extract_package_name(node, self.src);
-            if pkg_name.as_deref().is_some_and(is_known_noop_package) {
-                return node.end_byte();
+            if let Some(pkg) = extract_package_name(node, self.src) {
+                self.detected_class =
+                    std::mem::replace(&mut self.detected_class, DocClass::Unknown)
+                        .refine_from_package(&pkg);
+                if is_known_noop_package(&pkg) {
+                    return node.end_byte();
+                }
             }
-            // Otherwise warn with the package name.
             self.warn_unsupported_command(node);
             return node.end_byte();
         }
 
-        // `\documentclass{...}` — always drop silently. The class governs
-        // page layout, which Typst handles via its own defaults.
+        // `\documentclass[opts]{class}` — capture class + options so we can
+        // emit the matching Typst Universe template in `finish()`. The
+        // source line itself is dropped from the output.
         if node.kind() == "class_include" {
+            let (class, opts) = extract_class_and_options(node, self.src);
+            if let Some(c) = class {
+                self.detected_class = DocClass::from_class(&c, &opts);
+            }
             return node.end_byte();
         }
 
@@ -524,9 +552,20 @@ impl<'a> Emitter<'a> {
             | Some("\\orcid")
             | Some("\\authornote")
             | Some("\\additionalaffiliation")
-            | Some("\\keywords")
             | Some("\\ccsdesc")
             | Some("\\shortauthors") => node.end_byte(),
+            // `\keywords{a, b, c}` and `\IEEEkeywords{...}` — capture into the
+            // title-block field when the class template wants it; otherwise
+            // silently drop.
+            Some("\\keywords") | Some("\\IEEEkeywords") => {
+                if self.detected_class.import_line().is_some() {
+                    if let Some(arg) = first_curly_like(node) {
+                        let rendered = self.render_curly_group_content(arg);
+                        self.pending_keywords = Some(rendered);
+                    }
+                }
+                node.end_byte()
+            }
             // IEEEtran-specific.
             Some("\\IEEEoverridecommandlockouts")
             | Some("\\IEEEpubid")
@@ -857,13 +896,35 @@ impl<'a> Emitter<'a> {
             Some("itemize") => self.emit_simple_list(node, "-"),
             Some("enumerate") => self.emit_simple_list(node, "+"),
             Some("description") => self.emit_description(node),
+            // Abstract: capture into a title-block field when the class's
+            // template accepts an `abstract:` parameter (IEEE, NeurIPS).
+            // For acmart and unknown classes the abstract stays inline.
+            Some("abstract") => {
+                if self.detected_class.wants_abstract_field()
+                    && self.pending_abstract.is_none()
+                {
+                    let body = self.render_env_body_to_string(node);
+                    self.pending_abstract = Some(body.trim().to_string());
+                    node.end_byte()
+                } else {
+                    self.emit_environment_body(node)
+                }
+            }
+            // IEEEtran's keywords env. Same capture-or-drop dance as abstract.
+            Some("IEEEkeywords") => {
+                if self.detected_class.import_line().is_some() && self.pending_keywords.is_none() {
+                    let body = self.render_env_body_to_string(node);
+                    self.pending_keywords = Some(body.trim().to_string());
+                    node.end_byte()
+                } else {
+                    self.emit_environment_body(node)
+                }
+            }
             // Transparent wrappers: emit body, no markup. `\documentclass` etc.
             // already produced warnings as separate top-level commands.
-            Some("document") | Some("abstract") | Some("subequations") | Some("center")
-            | Some("flushleft") | Some("flushright") | Some("quote") | Some("quotation")
-            | Some("verse") | Some("titlepage") | Some("minipage") => {
-                self.emit_environment_body(node)
-            }
+            Some("document") | Some("subequations") | Some("center") | Some("flushleft")
+            | Some("flushright") | Some("quote") | Some("quotation") | Some("verse")
+            | Some("titlepage") | Some("minipage") => self.emit_environment_body(node),
             // Matrix family — handled wherever we encounter them. If we're
             // not already in math mode, the surrounding container will wrap
             // us; pmatrix() etc. assume math context.
@@ -893,6 +954,15 @@ impl<'a> Emitter<'a> {
                 node.end_byte()
             }
         }
+    }
+
+    /// Render an environment's body into a fresh `String` (no side effect on
+    /// `self.out`). Used by `abstract` capture when a class template wants
+    /// the body as a content field rather than inline document text.
+    fn render_env_body_to_string(&mut self, env: Node<'_>) -> String {
+        self.with_sub_buffer(|emitter| {
+            emitter.emit_environment_body(env);
+        })
     }
 
     /// Emit just the body of an environment (skip `begin` and `end` children).
@@ -1004,6 +1074,27 @@ impl<'a> Emitter<'a> {
             }
         }
         None
+    }
+
+    /// Build the `#import "@preview/X:V": fn` + `#show: fn.with(...)` pair
+    /// that styles the converted document as the LaTeX class would. Returns
+    /// `None` for unknown classes (caller falls back to the hand-rolled
+    /// centered title block).
+    fn build_template_preamble(&mut self) -> Option<String> {
+        let import_line = self.detected_class.import_line()?;
+        let title = self.pending_title.take().unwrap_or_default();
+        let authors = std::mem::take(&mut self.pending_authors);
+        let abstract_ = self.pending_abstract.take().unwrap_or_default();
+        let keywords = self.pending_keywords.take().unwrap_or_default();
+        let show_call = self
+            .detected_class
+            .show_call(&title, &authors, &abstract_, &keywords)?;
+        let mut s = String::new();
+        s.push_str(import_line);
+        s.push('\n');
+        s.push_str(&show_call);
+        s.push('\n');
+        Some(s)
     }
 
     /// Close any in-flight `\bibitem{key}` by emitting `]) <key>` so the label
@@ -2473,6 +2564,47 @@ fn lookup_math_symbol(name: &str) -> Option<&'static str> {
         // Common math fonts not handled by emit_math_wrap
         _ => return None,
     })
+}
+
+/// Extract the class name and option list from a `class_include` node.
+/// `\documentclass[opt1,opt2]{class}` → (Some("class"), ["opt1", "opt2"]).
+fn extract_class_and_options(node: Node<'_>, src: &str) -> (Option<String>, Vec<String>) {
+    let mut class: Option<String> = None;
+    let mut opts: Vec<String> = Vec::new();
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "curly_group_path" | "curly_group_path_list" => {
+                let mut sub = child.walk();
+                for gc in child.children(&mut sub) {
+                    if gc.kind() == "path" {
+                        class = Some(src[gc.start_byte()..gc.end_byte()].to_string());
+                    }
+                }
+            }
+            "brack_group_key_value" => {
+                let mut sub = child.walk();
+                for gc in child.children(&mut sub) {
+                    if gc.kind() == "key_value_pair" {
+                        let mut kv_cursor = gc.walk();
+                        let mut key_buf = String::new();
+                        for kc in gc.children(&mut kv_cursor) {
+                            if kc.kind() == "=" {
+                                break;
+                            }
+                            key_buf.push_str(&src[kc.start_byte()..kc.end_byte()]);
+                        }
+                        let k = key_buf.trim().to_string();
+                        if !k.is_empty() {
+                            opts.push(k);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    (class, opts)
 }
 
 /// Extract the package name from `\usepackage[opts]{name}`. The container is
