@@ -1,7 +1,8 @@
 # Manual test plan — end-to-end user walkthrough
 
 This document is what you execute by hand to validate ByeTex from a real user's
-perspective. Budget: ~30 minutes if everything works on the first try.
+perspective. Budget: ~45 minutes if everything works on the first try (~30 min
+without the corpus stress-test in Scenario D).
 
 Each scenario has explicit **expected output** lines. If yours diverges, that's
 a finding worth recording. Stop and report.
@@ -17,10 +18,25 @@ You need on your machine:
 - `cargo` (Rust toolchain ≥ 1.85). Verify: `rustc --version`
 - `typst` CLI (any 0.14+). Verify: `typst --version`
 - `jq` for inspecting `warnings.json` (optional but recommended)
-- About 200 MB free disk for the build
+- `python3` ≥ 3.10 (only needed for Scenario D)
+- About 200 MB free disk for the build, plus ~50–200 MB for the harvested corpus
 
 If any of those is missing, install before continuing. The rest of the plan
 assumes they're present.
+
+**Corpus prerequisite (only for Scenario D):** the LaTeX template harvester
+described in `~/.claude/plans/i-want-to-download-flickering-mango.md` populates
+a top-level `corpus/` directory with real-world templates from
+latextemplates.com and recent arXiv papers. If you plan to run Scenario D,
+let the harvester finish first. The rest of the scenarios work without it.
+
+```bash
+# Check whether the corpus is ready:
+ls -la corpus/ 2>/dev/null && jq '.entries | length' corpus/manifest.json 2>/dev/null
+```
+Expected: at least one entry in `manifest.json` (the small-batch run produces
+~5; the large-batch run ~45). If the directory doesn't exist, Scenario D
+falls back to "bring your own paper".
 
 ---
 
@@ -190,67 +206,156 @@ acting on any warning.
 
 ---
 
-## Scenario D — Your own LaTeX paper
+## Scenario D — Stress-test against the real-world corpus
 
-This is the real test. Bring a LaTeX paper you've actually used — an arXiv
-preprint, a homework writeup, a workshop submission, anything. The bigger and
-weirder the better.
+This is the real test. The corpus harvester pulls real LaTeX (templates from
+latextemplates.com + recent arXiv submissions) into `corpus/`. We run ByeTex
+across the whole set and look at the aggregate behavior — which templates
+convert cleanly, which fail, and which warning categories dominate.
+
+### D1. Confirm the corpus is present
+
+```bash
+cd ~/Workspace/tools/ByeTex
+jq '.entries | length' corpus/manifest.json
+jq '.entries | group_by(.source) | map({source: .[0].source, count: length})' \
+   corpus/manifest.json
+```
+
+**Expected**: at least 5 entries (small-batch run). The breakdown should show
+some from `latextemplates` and some from `arxiv`.
+
+**If the harvester hasn't run yet**: either wait for it (recommended — the
+small batch takes a few minutes) or skip to Scenario D-alt below for the
+bring-your-own fallback.
+
+### D2. Spot-check three templates by hand
+
+Pick one latextemplates entry and two arXiv papers — favor a math-heavy one:
+
+```bash
+# List candidates:
+jq -r '.entries[] | "\(.id)  [\(.source):\(.category)]  \(.title // "?")"' corpus/manifest.json
+```
+
+For each pick, run ByeTex and inspect:
+
+```bash
+# Replace <slug> with one from the list above. Source path lives under
+# corpus/<source>/<category-slug>/<id>/source/ — find the main .tex file
+# (usually the one with \documentclass).
+SAMPLE="corpus/latextemplates/essay/tufte-essay/source"
+MAIN=$(grep -l '\\documentclass' $SAMPLE/*.tex 2>/dev/null | head -1)
+echo "main: $MAIN"
+bytetex convert "$MAIN"
+jq 'length' "${MAIN%.tex}.warnings.json"
+typst compile "${MAIN%.tex}.typ" 2>&1 | head -3
+```
+
+**Expected for each**:
+- `bytetex convert` exits 0 (no panic — this is the floor).
+- The `.typ` file exists and is well-formed Typst.
+- Warning count is reasonable: ≤ 5% of `wc -l` on the source for academic
+  papers; templates with heavy custom commands may be higher.
+- `typst compile` either succeeds OR fails with an error that maps to a
+  specific warning entry (check via `jq`).
+
+**Pass criteria**: at least 2 of 3 picks produce a viewable PDF without
+manual intervention.
+
+### D3. Batch-eval across the whole corpus
+
+This is the aggregate signal — how does ByeTex behave at scale?
+
+Drop this script into the repo (or copy into a temp file):
+
+```bash
+cat > /tmp/corpus_eval.sh << 'EOF'
+#!/usr/bin/env bash
+set -uo pipefail
+ROOT=${1:-corpus}
+TOTAL=0; CONVERTED=0; COMPILED=0; PANICKED=0
+TOTAL_WARN=0
+declare -A KIND_COUNTS
+for tex in $(find "$ROOT" -path '*/source/*.tex' -type f 2>/dev/null); do
+  # Heuristic: only pick files that actually look like a doc root.
+  grep -q '\\documentclass' "$tex" || continue
+  TOTAL=$((TOTAL+1))
+  base="${tex%.tex}"
+  out=$(bytetex convert "$tex" 2>&1 || echo "PANIC")
+  if echo "$out" | grep -q "PANIC"; then
+    PANICKED=$((PANICKED+1))
+    continue
+  fi
+  CONVERTED=$((CONVERTED+1))
+  warn_file="${base}.warnings.json"
+  if [ -f "$warn_file" ]; then
+    n=$(jq 'length' "$warn_file")
+    TOTAL_WARN=$((TOTAL_WARN+n))
+    while read -r kind; do
+      KIND_COUNTS[$kind]=$((${KIND_COUNTS[$kind]:-0}+1))
+    done < <(jq -r '.[].category.kind' "$warn_file")
+  fi
+  if typst compile "${base}.typ" >/dev/null 2>&1; then
+    COMPILED=$((COMPILED+1))
+  fi
+done
+echo "=== corpus eval ==="
+echo "total .tex sources:    $TOTAL"
+echo "converted (no panic):  $CONVERTED"
+echo "compiled to PDF:       $COMPILED"
+echo "converter panics:      $PANICKED"
+echo "total warnings:        $TOTAL_WARN"
+if [ $CONVERTED -gt 0 ]; then
+  echo "avg warnings/doc:    $((TOTAL_WARN/CONVERTED))"
+fi
+echo "=== top warning categories ==="
+for k in "${!KIND_COUNTS[@]}"; do
+  printf "  %s: %d\n" "$k" "${KIND_COUNTS[$k]}"
+done | sort -t: -k2 -rn | head -10
+EOF
+chmod +x /tmp/corpus_eval.sh
+/tmp/corpus_eval.sh corpus
+```
+
+**Expected** (small-batch, ~5 docs):
+- `converter panics: 0` — this is a hard fail signal. Any non-zero count is
+  a converter bug.
+- `converted ≥ TOTAL - parse_error_count`. Per-doc parse errors are OK; full
+  panics are not.
+- `compiled to PDF` ≥ ~60% of converted. Templates often reference missing
+  bibs / figures, which legitimately fail typst — that's fine, we're not
+  judging Typst compilation, we're judging conversion correctness.
+- The top-categories histogram should be dominated by `unsupported_command`,
+  with a tail of `unsupported_environment`, `ambiguous_math`, and `parse_error`.
+
+**Useful follow-up** — find the highest-warning doc and look at what it's
+struggling with:
+
+```bash
+find corpus -name '*.warnings.json' -exec sh -c 'echo "$(jq length "$1") $1"' _ {} \; \
+  | sort -rn | head -5
+```
+
+Read the top-of-list warnings to surface what categories of LaTeX we don't
+yet handle. These are the inputs for the next round of emitter rules.
+
+### D-alt. Bring your own paper (corpus unavailable)
+
+If you don't have the corpus yet, fall back to a single paper of your own:
 
 ```bash
 cp ~/path/to/your/paper.tex /tmp/bytetex-test/
 cd /tmp/bytetex-test
 bytetex convert paper.tex
-```
-
-**Expected**: writes `paper.typ` and `paper.warnings.json`, exits 0.
-
-Inspect the conversion quality:
-
-```bash
-echo "=== converted size ==="
-wc -l paper.tex paper.typ
-echo "=== warning count + top categories ==="
 jq 'length' paper.warnings.json
 jq '[.[].category.kind] | group_by(.) | map({kind: .[0], count: length}) | sort_by(-.count) | .[0:5]' \
    paper.warnings.json
-```
-
-**Expected**: warnings.json length should be at most ~5% of `paper.tex` line
-count for a typical academic paper. If it's much higher, your paper uses
-heavy class-specific machinery (perfectly fine — that's what the skills
-handle).
-
-Try to compile:
-
-```bash
 typst compile paper.typ
 ```
 
-If this succeeds → open the PDF, eyeball compared against your original LaTeX
-PDF. Common discrepancies to expect:
-
-- Different fonts (Typst defaults vs your LaTeX class)
-- Equation numbering offset by ±1 in places
-- Figure placement different (Typst is stricter about float placement)
-
-If this fails → take the first error line, find that line in `paper.typ`,
-and check `paper.warnings.json` for warnings near that range. The
-`suggested_skill` field should point at the file documenting the fix.
-
-```bash
-# Example: see all warnings between lines 50 and 100
-jq '[.[] | select(.range.start_line >= 50 and .range.start_line <= 100)]' paper.warnings.json
-```
-
-**Pass criteria**:
-- `bytetex convert` exits 0 (no panic).
-- The `.typ` is well-formed Typst (you can manually look at any section and
-  recognize the structure).
-- If `typst compile` fails, each remaining error is **traceable** to a
-  specific warning entry with a `suggested_skill`.
-
-**Fail signals**: a panic from `bytetex`, garbled binary output, or compile
-errors that don't correspond to any warning in the sidecar.
+Same pass criteria as D2: convert exits 0, `.typ` is well-formed, compile
+either succeeds or fails with a traceable warning.
 
 ---
 
@@ -318,9 +423,16 @@ Verify the connection from inside Claude Code:
 
 ### E4. Drive a real conversion through the agent
 
-In Claude Code, ask:
+Pick a real paper from the harvested corpus (or your own if you skipped D):
 
-> Using the bytetex MCP server, convert `/tmp/bytetex-test/paper.tex` to Typst.
+```bash
+TARGET=$(find corpus -path '*/source/*.tex' -exec grep -l '\\documentclass' {} \; 2>/dev/null | head -1)
+echo "agent target: $TARGET"
+```
+
+In Claude Code, ask (substitute the path you printed):
+
+> Using the bytetex MCP server, convert `<TARGET path>` to Typst.
 > Then read the warnings.json and tell me what's there. For each warning
 > category, read the relevant skill and summarize the remediation steps in 1–2
 > sentences each.
@@ -340,12 +452,13 @@ errors, or the summary contradicts what's in `skills/bytetex-*.md`.
 
 ### E5. Have the agent apply fixes end-to-end
 
-Ask Claude to actually apply the fixes:
+Ask Claude to actually apply the fixes (substitute the same `<TARGET path>`,
+or use its sibling `.typ`):
 
-> Now, edit `paper.typ` at the ranges listed in `paper.warnings.json` to
-> resolve each warning. Use the skills you just read. After every fix, run
-> `typst compile paper.typ` to verify it still builds. Stop when the PDF
-> compiles cleanly.
+> Now, edit the converted `.typ` file at the ranges listed in its
+> `.warnings.json` to resolve each warning. Use the skills you just read.
+> After every fix, run `typst compile <typ-path>` to verify it still builds.
+> Stop when the PDF compiles cleanly.
 
 **Expected**: a back-and-forth where the agent edits, recompiles, and
 iterates. This is the "drifting wilkes" loop the project is designed around.
@@ -441,12 +554,17 @@ For each scenario, jot down:
 - **Anything surprising** — output that diverged from what's documented above,
   even if the test still passed.
 - **Time spent on the scenario** — useful for budgeting future iterations.
-- **Files to keep** — the `.typ` and `.warnings.json` from your real paper
-  are the most useful artifact for follow-up debugging.
+- **Files to keep**:
+  - From D2/D-alt: the `.typ` and `.warnings.json` for any source that
+    panicked or whose compile errors didn't map to a warning entry.
+  - From D3: the `corpus_eval.sh` output (the summary block + top-categories
+    histogram). This is the single highest-signal artifact for v0.3 planning.
+  - From E: a transcript of the agent loop with the final compiled PDF.
 
-If a scenario fails, please attach the `paper.tex` / `paper.typ` /
-`paper.warnings.json` and the exact command + first error line. That's
-usually enough to reproduce.
+If a scenario fails, please attach the `.tex` / `.typ` / `.warnings.json`
+and the exact command + first error line. For corpus runs, also note the
+manifest `id` so the source is reproducible (rerun the harvester with
+`--resume`).
 
 ---
 
@@ -470,4 +588,10 @@ claude mcp add bytetex bytetex serve           # one-time setup
 
 # Compile
 typst compile input.typ
+
+# Corpus (after the harvester has run)
+jq '.entries | length' corpus/manifest.json
+find corpus -path '*/source/*.tex' -exec grep -l '\\documentclass' {} \;
+find corpus -name '*.warnings.json' -exec sh -c \
+  'echo "$(jq length "$1") $1"' _ {} \; | sort -rn | head
 ```
