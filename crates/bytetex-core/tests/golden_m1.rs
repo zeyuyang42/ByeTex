@@ -22,6 +22,7 @@ fn run_fixture(name: &str) -> String {
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {}", path.display(), e));
     let opts = ConvertOptions {
         source_name: Some(name.to_string()),
+        ..Default::default()
     };
     let out = convert(&source, &opts);
     let warnings_json = serde_json::to_string_pretty(&out.warnings).expect("warnings serialize");

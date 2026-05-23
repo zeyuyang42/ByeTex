@@ -18,6 +18,7 @@ fn run(rel: &str) -> String {
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {}", path.display(), e));
     let opts = ConvertOptions {
         source_name: Some(rel.to_string()),
+        ..Default::default()
     };
     let out = convert(&source, &opts);
     let warnings_json = serde_json::to_string_pretty(&out.warnings).expect("warnings serialize");
@@ -79,7 +80,7 @@ fn m3_greek_ops() {
 
     Operators: $a dot.c b$, $x times y$, $a plus.minus b$, $u <= v >= w$, $p != q$, $f arrow.r g$.
 
-    Symbols: $infinity$, $diff$, $nabla f$, $forall x exists y$, $A union B inter C$.
+    Symbols: $infinity$, $partial$, $nabla f$, $forall x exists y$, $A union B inter C$.
     ==== WARNINGS ====
     []
     ");
@@ -120,6 +121,209 @@ fn m3_align_env() {
     ==== WARNINGS ====
     []
     ");
+}
+
+#[test]
+fn m3_half_open_interval_escapes_unbalanced_bracket() {
+    // Regression: LaTeX half-open intervals `(0, s_*]` previously emitted
+    // a bare `]` inside `$...$`, which Typst rejects with "unclosed
+    // delimiter" because `[` / `]` are paired in math mode. The unmatched
+    // `]` is now escaped as `\]`. Balanced ranges like `[a, b]` stay
+    // as-is and still render correctly.
+    let src = "$s \\in (0, s_*]$\n";
+    let out = convert(
+        src,
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        out.typst.contains("\\]"),
+        "expected escaped `\\]` in output, got:\n{}",
+        out.typst
+    );
+    assert!(
+        !out.typst.contains("s_*]"),
+        "raw unescaped `]` should not remain:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn m3_balanced_brackets_not_escaped() {
+    // Balanced `[a, b]` must NOT be escaped — they pair correctly in Typst
+    // math and over-escaping would be a regression in rendering.
+    let src = "$[a, b]$\n";
+    let out = convert(
+        src,
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        !out.typst.contains("\\["),
+        "balanced `[` should not be escaped, got:\n{}",
+        out.typst
+    );
+    assert!(
+        !out.typst.contains("\\]"),
+        "balanced `]` should not be escaped, got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn m3_dagger_ddagger_in_math_table() {
+    // Regression: `\dagger` previously emitted `agger` (the `\d` accent
+    // command was matched first, leaving the `agger` tail dangling and
+    // tripping Typst's "unknown variable" check).
+    let out = convert(
+        "$x^\\dagger$ and $y^\\ddagger$\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        out.typst.contains("$x^dagger$"),
+        "expected `$x^dagger$`, got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("$y^dagger.double$"),
+        "expected `$y^dagger.double$`, got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn m3_letter_then_math_command_keeps_separator() {
+    // Regression: `t\in[0,T]` previously emitted `tin[0,T]` — the `t` and
+    // `\in` (-> `in`) collapsed into the unknown identifier `tin`. A space
+    // must separate them so Typst tokenizes `t` and `in` independently.
+    let out = convert(
+        "$t\\in[0,T]$\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        !out.typst.contains("tin"),
+        "letter+math-command must not fuse, got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("t in"),
+        "expected separator between `t` and `in`, got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn m3_paren_math_delimiters_treated_as_inline_math() {
+    // `\( x = 1 \)` is the LaTeX inline-math form equivalent to `$ x = 1 $`.
+    // Previously the literal `\(` / `\)` tokens leaked into the Typst body,
+    // producing `$\(x = 1\)$` which Typst then rejected. The math child
+    // filter now drops both delimiter kinds.
+    let out = convert(
+        "Before \\( x = 1 \\) after.\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        !out.typst.contains("\\("),
+        "raw `\\(` should not appear in output, got:\n{}",
+        out.typst
+    );
+    assert!(
+        !out.typst.contains("\\)"),
+        "raw `\\)` should not appear in output, got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("$x = 1$") || out.typst.contains("$ x = 1 $"),
+        "expected inline-math body, got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn m3_math_escape_for_hash_dollar_etc() {
+    // Bug #10 regression: in math, `\#` previously mapped to bare `#`, which
+    // Typst treats as the start of a code-context expression. The subscript
+    // `f_\#` thus emitted as `f_(#)` and failed with "unexpected closing
+    // paren". The mapping now keeps the backslash so Typst takes it as a
+    // math escape for the literal character.
+    let out = convert(
+        "$f_{\\#}$ and $g_{\\&}$ and $h_{\\_}$\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        out.typst.contains("\\#") && out.typst.contains("\\&") && out.typst.contains("\\_"),
+        "expected escaped \\#, \\&, \\_ in math output, got:\n{}",
+        out.typst
+    );
+    assert!(
+        !out.typst.contains("_(#)") && !out.typst.contains("_(&)") && !out.typst.contains("_(_)"),
+        "bare subscript with special char should never appear, got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn m3_mathbb_does_not_fuse_with_preceding_letter() {
+    // Bug #11 regression: `\in\mathbb{R}` previously emitted `inbb(R)`
+    // because `emit_math_wrap` wrote `bb(` straight after the `in` from
+    // `\in`. The letter-boundary check now also fires for function-call
+    // wrappers (`bb(`, `bold(`, `sqrt(`, `binom(`, `op(`).
+    let out = convert(
+        "$p\\in\\mathbb{R}^n$\n$q(p,x)\\in\\mathbb{R}_+$\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        !out.typst.contains("inbb"),
+        "`in` + `bb(...)` should not fuse into `inbb`, got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("in bb(R)"),
+        "expected `in bb(R)` with separator, got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn m3_partial_uses_modern_typst_name() {
+    // Bug #13: Typst 0.13+ deprecates `diff` in favour of `partial`. The
+    // emitter now uses the new name to keep the compile clean.
+    let out = convert(
+        "$\\partial f$\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        out.typst.contains("partial"),
+        "expected `partial`, got:\n{}",
+        out.typst
+    );
+    assert!(
+        !out.typst.contains("diff"),
+        "should not use deprecated `diff`, got:\n{}",
+        out.typst
+    );
 }
 
 #[test]

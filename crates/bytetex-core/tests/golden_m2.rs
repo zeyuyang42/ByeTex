@@ -18,6 +18,7 @@ fn run(rel: &str) -> String {
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {}", path.display(), e));
     let opts = ConvertOptions {
         source_name: Some(rel.to_string()),
+        ..Default::default()
     };
     let out = convert(&source, &opts);
     let warnings_json = serde_json::to_string_pretty(&out.warnings).expect("warnings serialize");
@@ -112,12 +113,12 @@ fn m2_misc_full_article() {
     // v0.2: `\documentclass` is silently dropped (always); `\usepackage` is
     // silently dropped when the package is in the known-noop allowlist
     // (inputenc is). The resulting Typst is clean — no warnings.
-    insta::assert_snapshot!(run("m2_misc/full_article.tex"), @r"
+    insta::assert_snapshot!(run("m2_misc/full_article.tex"), @r#"
     ==== TYPST ====
     = Introduction <sec:intro>
 
     This article demonstrates *several* features at once: _italics_,
-    `monospace`, and section labels.
+    #raw("monospace"), and section labels.
 
     - One.
     - Two.
@@ -128,7 +129,7 @@ fn m2_misc_full_article() {
     We thank the #smallcaps[Authors] for everything.
     ==== WARNINGS ====
     []
-    ");
+    "#);
 }
 
 // ============== M2.3: lists ==============
@@ -177,14 +178,14 @@ fn m2_list_description() {
 
 #[test]
 fn m2_inline_basic() {
-    insta::assert_snapshot!(run("m2_inline/basic.tex"), @r"
+    insta::assert_snapshot!(run("m2_inline/basic.tex"), @r#"
     ==== TYPST ====
-    A paragraph with _italics_, *bold*, _also italics_, and `monospace` words.
+    A paragraph with _italics_, *bold*, _also italics_, and #raw("monospace") words.
 
     Another with #underline[underlined] and #smallcaps[Small Caps].
     ==== WARNINGS ====
     []
-    ");
+    "#);
 }
 
 #[test]
@@ -201,18 +202,18 @@ fn m2_inline_nested() {
 
 #[test]
 fn m2_inline_in_heading() {
-    insta::assert_snapshot!(run("m2_inline/in_heading.tex"), @r"
+    insta::assert_snapshot!(run("m2_inline/in_heading.tex"), @r#"
     ==== TYPST ====
     = The _Curious_ Case of *Bold*
 
     Body of the section.
 
-    #heading(level: 2, numbering: none)[Heading with `code`]
+    #heading(level: 2, numbering: none)[Heading with #raw("code")]
 
     More body.
     ==== WARNINGS ====
     []
-    ");
+    "#);
 }
 
 #[test]

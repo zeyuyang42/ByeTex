@@ -101,10 +101,11 @@ ByeTex/
 │   ├── m3_math/                            ← $x = y^2$, matrices, \frac
 │   └── m4_floats/                          ← tables, figures, citations
 │
-├── templates/IEEE/                         ← real-world IEEE paper sample
-│   ├── conference_101719.tex
-│   ├── IEEEtran.cls
-│   └── fig1.png
+├── tests/inhouse/                          ← committed regression templates
+│   ├── ieee/conference_101719.tex          ← IEEE conference paper
+│   ├── acm/sample-sigconf.tex              ← ACM SIGCONF paper
+│   ├── neurips/neurips_paper.tex           ← NeurIPS-style paper
+│   └── thesis/thesis_skeleton.tex          ← thesis skeleton
 │
 ├── context/                                ← scraped LaTeX/Typst docs (495 examples)
 │   ├── latex-context.md
@@ -115,7 +116,7 @@ ByeTex/
     └── release.yml                         ← build binaries when you tag a version
 ```
 
-**The mental model**: three Rust crates (libraries) in one workspace. `core` does the conversion. `cli` is what users run. `mcp` is for AI tools. The `skills/` folder has human-readable repair instructions; the `templates/` folder has full LaTeX papers to test against; `tests/fixtures/` has small targeted snippets.
+**The mental model**: three Rust crates (libraries) in one workspace. `core` does the conversion. `cli` is what users run. `mcp` is for AI tools. The `skills/` folder has human-readable repair instructions; `tests/inhouse/` has committed full-paper regression templates; `tests/fixtures/` has small targeted snippets. The gitignored `corpus/` holds the broader downloaded test corpus.
 
 ---
 
@@ -191,12 +192,13 @@ cargo test --workspace
 Try a real template:
 
 ```bash
-./target/release/bytetex convert templates/IEEE/conference_101719.tex
-typst compile templates/IEEE/conference_101719.typ
-open templates/IEEE/conference_101719.pdf
+python scripts/setup_corpus.py
+./target/release/bytetex convert corpus/inhouse/ieee/conference_101719.tex
+typst compile corpus/inhouse/ieee/conference_101719.typ
+open corpus/inhouse/ieee/conference_101719.pdf
 ```
 
-That's the IEEE conference paper template — 288 lines of LaTeX become a compilable Typst doc with 43 things flagged for manual review.
+That's the IEEE conference paper template — 288 lines of LaTeX become a compilable Typst doc with 16 things flagged for manual review.
 
 ---
 

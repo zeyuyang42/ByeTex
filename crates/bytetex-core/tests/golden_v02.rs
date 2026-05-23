@@ -18,6 +18,7 @@ fn run(rel: &str) -> String {
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {}", path.display(), e));
     let opts = ConvertOptions {
         source_name: Some(rel.to_string()),
+        ..Default::default()
     };
     let out = convert(&source, &opts);
     format!("==== TYPST ====\n{}", out.typst)

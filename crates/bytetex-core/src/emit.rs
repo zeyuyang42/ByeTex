@@ -8,7 +8,9 @@
 //!   Inline formatting + lists come in subsequent M2 sub-tasks; this file is
 //!   structured around a dispatch-by-kind pattern so each batch is additive.
 
+use std::collections::HashSet;
 use std::fmt::Write;
+use std::path::{Path, PathBuf};
 
 use tree_sitter::Node;
 
@@ -58,10 +60,30 @@ pub(crate) struct Emitter<'a> {
     /// refined by `\usepackage{...}` calls. Drives the Typst Universe template
     /// import emitted in `finish()`.
     detected_class: DocClass,
+    /// Directory used to resolve `\input{...}` / `\include{...}` paths. When
+    /// `Some`, the emitter expands those directives inline; when `None`, it
+    /// drops them with a `needs_manual_review` warning (the v0.1 behaviour
+    /// that runs when `convert()` is called with bare source and no file).
+    base_dir: Option<PathBuf>,
+    /// Canonicalised paths of files already expanded along the current
+    /// expansion chain — used to break `\input` cycles. Each successful
+    /// recursive expansion inserts the resolved file's canonical path before
+    /// recursing and is left in the set so a sibling include of the same
+    /// file is treated as a duplicate (warn) rather than an infinite loop.
+    visited_includes: HashSet<PathBuf>,
 }
 
 impl<'a> Emitter<'a> {
-    pub(crate) fn new(src: &'a str, source_name: &'a str) -> Self {
+    /// Constructor variant used by the public `convert()` entry point and by
+    /// recursive `\input` expansion. `base_dir` enables include resolution;
+    /// `visited` is the cycle-detection set carried across the chain of
+    /// nested includes.
+    pub(crate) fn with_includes(
+        src: &'a str,
+        source_name: &'a str,
+        base_dir: Option<PathBuf>,
+        visited: HashSet<PathBuf>,
+    ) -> Self {
         Self {
             out: String::new(),
             warnings: Vec::new(),
@@ -80,6 +102,8 @@ impl<'a> Emitter<'a> {
             pending_abstract: None,
             pending_keywords: None,
             detected_class: DocClass::Unknown,
+            base_dir,
+            visited_includes: visited,
         }
     }
 
@@ -186,7 +210,7 @@ impl<'a> Emitter<'a> {
             "command_name" if self.in_math => {
                 let text = &self.src[node.start_byte()..node.end_byte()];
                 if let Some(typst) = lookup_math_symbol(text) {
-                    self.out.push_str(typst);
+                    self.push_math_symbol(typst);
                     return node.end_byte();
                 }
             }
@@ -284,9 +308,23 @@ impl<'a> Emitter<'a> {
                 }
                 return node.end_byte();
             }
-            // `\input` / `\include` — emit a NeedsManualReview warning with a
-            // pointer to the multi-file skill.
+            // `\input` / `\include` — when the caller supplied a base
+            // directory (the file's parent, in the CLI), resolve the path
+            // and recursively convert the included source so its body
+            // appears inline at this point. Without a base directory we
+            // can't do filesystem I/O safely; fall back to the
+            // needs_manual_review warning that documented the v0.1
+            // behaviour.
             "latex_include" => {
+                if self.base_dir.is_some() {
+                    if self.expand_latex_include(node) {
+                        return node.end_byte();
+                    }
+                    // expand_latex_include returns false only when it
+                    // already pushed a more specific warning (missing
+                    // file, cycle, read error). Don't double-warn.
+                    return node.end_byte();
+                }
                 let snippet = self.src[node.start_byte()..node.end_byte()].to_string();
                 self.warnings.push(Warning {
                     range: range_of(node),
@@ -367,8 +405,15 @@ impl<'a> Emitter<'a> {
 
         // Macro / theorem / counter definitions — drop silently. We don't
         // expand `\newcommand` bodies (v0.2 non-goal) but the *definition*
-        // itself shouldn't show up as a warning every time.
-        if node.kind() == "new_command_definition" || node.kind() == "counter_declaration" {
+        // itself shouldn't show up as a warning every time. `theorem_definition`
+        // covers `\newtheorem` / `\newtheorem*` / `\declaretheorem(*)` (the
+        // tree-sitter-latex grammar dedicates a node kind to them) — leaving
+        // it unhandled previously emitted the source verbatim and broke the
+        // compile with a backslash-in-code error.
+        if matches!(
+            node.kind(),
+            "new_command_definition" | "counter_declaration" | "theorem_definition"
+        ) {
             return node.end_byte();
         }
 
@@ -451,7 +496,13 @@ impl<'a> Emitter<'a> {
             // Bold
             Some("\\textbf") => self.emit_inline_wrap(node, "*", "*"),
             // Monospace / typewriter
-            Some("\\texttt") => self.emit_inline_wrap(node, "`", "`"),
+            // Use the `#raw(...)` function rather than the `` `…` `` literal
+            // syntax. The function form composes cleanly with any backticks
+            // in the surrounding body (post_process_typography escapes lone
+            // source backticks at the end), and avoids the "unclosed raw"
+            // error when source text mixes `\texttt{X}` with stray ` `` ` from
+            // LaTeX left-single-quote.
+            Some("\\texttt") => self.emit_inline_raw(node),
             // Underline
             Some("\\underline") => self.emit_inline_wrap(node, "#underline[", "]"),
             // Small caps
@@ -798,10 +849,16 @@ impl<'a> Emitter<'a> {
             // new math operator. We don't yet expand custom macros; drop the
             // definition silently and let any uses of `\name` warn as usual.
             Some("\\DeclareMathOperator") | Some("\\DeclareMathOperator*") => node.end_byte(),
-            // `\input{file}` / `\include{file}` — multi-file include. Out of
-            // scope per the v1 non-goals; warn with the skill pointing at the
-            // multi-file workaround.
+            // `\input{file}` / `\include{file}` / `\subfile{file}` — when the
+            // caller supplied a base directory, expand inline by parsing and
+            // converting the referenced file. Without a base directory, fall
+            // back to a needs_manual_review warning (the v0.1 behaviour for
+            // callers that pass raw source without a containing file).
             Some("\\input") | Some("\\include") | Some("\\subfile") => {
+                if self.base_dir.is_some() {
+                    let _ = self.expand_latex_include(node);
+                    return node.end_byte();
+                }
                 let snippet = self.src[node.start_byte()..node.end_byte()].to_string();
                 self.warnings.push(Warning {
                     range: range_of(node),
@@ -824,6 +881,130 @@ impl<'a> Emitter<'a> {
                 node.end_byte()
             }
         }
+    }
+
+    /// Expand a `\input{...}` / `\include{...}` directive inline.
+    ///
+    /// Looks up the referenced file relative to `self.base_dir`, parses it
+    /// with the same tree-sitter LaTeX grammar, runs a child `Emitter` over
+    /// its content, and appends the child's body to `self.out`. Pending
+    /// title-block fields (title, authors, abstract, keywords), document
+    /// class, and the numbering flags are merged so that an `\input` that
+    /// contains `\title{...}` or sets a class still drives the parent's
+    /// preamble.
+    ///
+    /// Cycle detection uses canonical paths: a file already on the include
+    /// chain is reported via a `needs_manual_review` warning rather than
+    /// re-expanded.
+    ///
+    /// Returns true when the include resolved and was expanded; false when
+    /// the resolution failed (a more specific warning has been pushed).
+    fn expand_latex_include(&mut self, node: Node<'_>) -> bool {
+        let base_dir = match self.base_dir.clone() {
+            Some(b) => b,
+            None => return false,
+        };
+        let raw_path = match extract_latex_include_path(node, self.src) {
+            Some(p) => p,
+            None => return false,
+        };
+        let snippet = self.src[node.start_byte()..node.end_byte()].to_string();
+        let resolved = match resolve_input_path(&base_dir, &raw_path) {
+            Some(p) => p,
+            None => {
+                self.warnings.push(Warning {
+                    range: range_of(node),
+                    category: Category::NeedsManualReview {
+                        reason: format!("included file not found relative to base: {}", raw_path),
+                    },
+                    severity: Severity::Warning,
+                    message: format!(
+                        "could not resolve `{}` against base directory `{}` (tried `{0}` and `{0}.tex`)",
+                        raw_path,
+                        base_dir.display()
+                    ),
+                    snippet,
+                    suggested_skill: Some("bytetex-unsupported-environment".to_string()),
+                });
+                return false;
+            }
+        };
+        let canonical = resolved.canonicalize().unwrap_or_else(|_| resolved.clone());
+        if self.visited_includes.contains(&canonical) {
+            self.warnings.push(Warning {
+                range: range_of(node),
+                category: Category::NeedsManualReview {
+                    reason: "circular \\input / \\include chain".to_string(),
+                },
+                severity: Severity::Warning,
+                message: format!(
+                    "`{}` is already on the include chain — skipping to avoid an infinite loop",
+                    canonical.display()
+                ),
+                snippet,
+                suggested_skill: None,
+            });
+            return false;
+        }
+        let source = match std::fs::read_to_string(&resolved) {
+            Ok(s) => s,
+            Err(e) => {
+                self.warnings.push(Warning {
+                    range: range_of(node),
+                    category: Category::NeedsManualReview {
+                        reason: format!("failed to read included file: {}", e),
+                    },
+                    severity: Severity::Warning,
+                    message: format!("could not read `{}`: {}", resolved.display(), e),
+                    snippet,
+                    suggested_skill: Some("bytetex-unsupported-environment".to_string()),
+                });
+                return false;
+            }
+        };
+        let new_base = resolved.parent().map(Path::to_path_buf).unwrap_or(base_dir);
+        let source_name = resolved.display().to_string();
+        // Move the visited set into the child so the chain is shared. Insert
+        // before recursing so the child's own includes see the parent in
+        // its chain.
+        let mut visited = std::mem::take(&mut self.visited_includes);
+        visited.insert(canonical);
+        let tree = crate::parser::parse(&source);
+        let mut sub = Emitter::with_includes(&source, &source_name, Some(new_base), visited);
+        sub.emit_root(tree.root_node());
+        // Merge the child's body and state back into the parent.
+        if !self.out.ends_with('\n') && !self.out.is_empty() {
+            self.out.push('\n');
+        }
+        self.out.push_str(&sub.out);
+        self.warnings.append(&mut sub.warnings);
+        self.needs_heading_numbering |= sub.needs_heading_numbering;
+        self.needs_equation_numbering |= sub.needs_equation_numbering;
+        if self.pending_title.is_none() {
+            self.pending_title = sub.pending_title.take();
+        }
+        if self.pending_authors.is_empty() {
+            self.pending_authors.append(&mut sub.pending_authors);
+        }
+        if self.pending_date.is_none() {
+            self.pending_date = sub.pending_date.take();
+        }
+        if self.pending_abstract.is_none() {
+            self.pending_abstract = sub.pending_abstract.take();
+        }
+        if self.pending_keywords.is_none() {
+            self.pending_keywords = sub.pending_keywords.take();
+        }
+        if matches!(self.detected_class, DocClass::Unknown) {
+            self.detected_class = std::mem::replace(&mut sub.detected_class, DocClass::Unknown);
+        }
+        // Take the (possibly extended) visited set back so siblings see
+        // the chain. Drop the canonical insert that belonged to *this*
+        // include so a sibling `\input{x}` after the current one is still
+        // detected as a duplicate (which it is — the rest of the chain
+        // remains).
+        self.visited_includes = std::mem::take(&mut sub.visited_includes);
+        true
     }
 
     /// Emit a typographic-logo command (`\LaTeX`, `\TeX`, etc.) as plain text.
@@ -881,6 +1062,27 @@ impl<'a> Emitter<'a> {
         node.end_byte()
     }
 
+    /// `\texttt{X}` → `#raw("X")` (Typst's function form of inline raw text).
+    /// We deliberately avoid the `` `…` `` literal syntax so that the
+    /// surrounding output's backtick handling — see
+    /// [`post_process_typography`] — can safely escape stray source
+    /// backticks without breaking us.
+    fn emit_inline_raw(&mut self, node: Node<'_>) -> usize {
+        if let Some(arg) = first_curly_group(node) {
+            let content = self
+                .src
+                .get(arg.start_byte() + 1..arg.end_byte() - 1)
+                .unwrap_or("")
+                .trim();
+            // Escape only the characters Typst's string literal must
+            // escape; everything else (including `_`, `*`, `#`) stays
+            // literal because `#raw(...)` doesn't reparse the content.
+            let escaped = content.replace('\\', "\\\\").replace('"', "\\\"");
+            let _ = write!(self.out, "#raw(\"{}\")", escaped);
+        }
+        node.end_byte()
+    }
+
     /// Emit just the body of `\textrm{X}` etc. — strips the command, keeps `X`.
     fn emit_inline_unwrap(&mut self, node: Node<'_>) -> usize {
         if let Some(arg) = first_curly_group(node) {
@@ -900,9 +1102,7 @@ impl<'a> Emitter<'a> {
             // template accepts an `abstract:` parameter (IEEE, NeurIPS).
             // For acmart and unknown classes the abstract stays inline.
             Some("abstract") => {
-                if self.detected_class.wants_abstract_field()
-                    && self.pending_abstract.is_none()
-                {
+                if self.detected_class.wants_abstract_field() && self.pending_abstract.is_none() {
                     let body = self.render_env_body_to_string(node);
                     self.pending_abstract = Some(body.trim().to_string());
                     node.end_byte()
@@ -1238,12 +1438,60 @@ impl<'a> Emitter<'a> {
 
     // ===== Math mode =====
 
+    /// Push a math-symbol replacement into `self.out`, prepending a space
+    /// when the symbol starts with a letter and the last emitted character
+    /// is also a letter. LaTeX writes `t\in[0,T]` with no separator; the
+    /// LaTeX tokenizer treats the `\` as a word boundary. Typst reads
+    /// adjacent letters as a single identifier, so `t` + `in` collapses to
+    /// the unknown variable `tin`. Inserting a space recovers the boundary.
+    fn push_math_symbol(&mut self, typst: &str) {
+        if typst.is_empty() {
+            return;
+        }
+        self.ensure_math_letter_boundary(typst);
+        self.out.push_str(typst);
+    }
+
+    /// Insert a single space into `self.out` when needed to keep a letter
+    /// at the end of the current output from fusing with a letter at the
+    /// start of `next`. The same fusion bites every math emitter that
+    /// writes a function-call wrapper (`bb(`, `sqrt(`, `binom(`, `op(`,
+    /// …) — e.g. `\in\mathbb{R}` was emitting `inbb(R)` because
+    /// `emit_math_wrap`'s `bb(` followed the `in` from `\in` with no
+    /// separator. Callers invoke this before the letter-starting prefix.
+    fn ensure_math_letter_boundary(&mut self, next: &str) {
+        let starts_with_letter = next.chars().next().is_some_and(|c| c.is_ascii_alphabetic());
+        let prev_is_letter = self
+            .out
+            .chars()
+            .last()
+            .is_some_and(|c| c.is_ascii_alphabetic());
+        if starts_with_letter && prev_is_letter {
+            self.out.push(' ');
+        }
+    }
+
+    /// Replace the in-progress math body (output bytes from `body_start` to
+    /// the current end of `self.out`) with a copy where unbalanced `[` / `]`
+    /// have been escaped as `\[` / `\]`. Balanced pairs are left as-is. See
+    /// [`escape_unbalanced_math_brackets`] for the rationale.
+    fn balance_math_brackets(&mut self, body_start: usize) {
+        let body_len = self.out.len() - body_start;
+        let escaped = escape_unbalanced_math_brackets(&self.out[body_start..]);
+        if escaped.len() != body_len {
+            self.out.truncate(body_start);
+            self.out.push_str(&escaped);
+        }
+    }
+
     fn emit_inline_math(&mut self, node: Node<'_>) -> usize {
         self.out.push('$');
+        let body_start = self.out.len();
         let was = self.in_math;
         self.in_math = true;
         self.emit_math_children(node);
         self.in_math = was;
+        self.balance_math_brackets(body_start);
         self.out.push('$');
         node.end_byte()
     }
@@ -1252,6 +1500,7 @@ impl<'a> Emitter<'a> {
         // Typst block math wants a blank line before the `$ ... $`.
         self.ensure_paragraph_break();
         self.out.push_str("$ ");
+        let body_start = self.out.len();
         let was = self.in_math;
         self.in_math = true;
         self.emit_math_children(node);
@@ -1261,6 +1510,7 @@ impl<'a> Emitter<'a> {
         while self.out.ends_with(' ') || self.out.ends_with('\n') {
             self.out.pop();
         }
+        self.balance_math_brackets(body_start);
         self.out.push_str(" $");
         node.end_byte()
     }
@@ -1272,6 +1522,7 @@ impl<'a> Emitter<'a> {
         let _env_name = environment_name(node, self.src).unwrap_or_default();
         self.ensure_paragraph_break();
         self.out.push_str("$ ");
+        let body_start = self.out.len();
         let was = self.in_math;
         self.in_math = true;
 
@@ -1297,6 +1548,7 @@ impl<'a> Emitter<'a> {
         while self.out.ends_with(' ') || self.out.ends_with('\n') {
             self.out.pop();
         }
+        self.balance_math_brackets(body_start);
         self.out.push_str(" $");
         if let Some(l) = self.pending_math_label.take() {
             let _ = write!(self.out, " <{}>", l);
@@ -1311,7 +1563,7 @@ impl<'a> Emitter<'a> {
         let mut cursor = node.walk();
         let body: Vec<Node<'_>> = node
             .children(&mut cursor)
-            .filter(|c| !matches!(c.kind(), "$" | "$$" | "\\[" | "\\]"))
+            .filter(|c| !matches!(c.kind(), "$" | "$$" | "\\[" | "\\]" | "\\(" | "\\)"))
             .collect();
         if body.is_empty() {
             return;
@@ -1339,7 +1591,7 @@ impl<'a> Emitter<'a> {
             }
         };
         if let Some(typst) = lookup_math_symbol(n) {
-            self.out.push_str(typst);
+            self.push_math_symbol(typst);
             return node.end_byte();
         }
         match n {
@@ -1438,6 +1690,7 @@ impl<'a> Emitter<'a> {
         match arg {
             Some(g) => {
                 let inner = self.render_math_group(g);
+                self.ensure_math_letter_boundary("sqrt(");
                 let _ = write!(self.out, "sqrt({})", inner.trim());
             }
             None => {
@@ -1455,6 +1708,7 @@ impl<'a> Emitter<'a> {
                 .get(arg.start_byte() + 1..arg.end_byte() - 1)
                 .unwrap_or("")
                 .trim();
+            self.ensure_math_letter_boundary("op(");
             let _ = write!(self.out, "op(\"{}\")", inner);
         } else {
             self.warn_ambiguous_math(node, "\\operatorname (missing arg)");
@@ -1468,6 +1722,7 @@ impl<'a> Emitter<'a> {
     fn emit_math_wrap(&mut self, node: Node<'_>, left: &str, right: &str) -> usize {
         if let Some(arg) = first_curly_group(node) {
             let inner = self.render_math_group(arg);
+            self.ensure_math_letter_boundary(left);
             self.out.push_str(left);
             self.out.push_str(inner.trim());
             self.out.push_str(right);
@@ -1489,6 +1744,7 @@ impl<'a> Emitter<'a> {
         }
         let n = self.render_math_group(args[0]);
         let k = self.render_math_group(args[1]);
+        self.ensure_math_letter_boundary("binom(");
         let _ = write!(self.out, "binom({}, {})", n.trim(), k.trim());
         node.end_byte()
     }
@@ -2359,18 +2615,24 @@ fn extract_graphics_options(node: Node<'_>, src: &str) -> Vec<(String, String)> 
 }
 
 /// Translate LaTeX length expressions to Typst.
+/// - `\linewidth` / `\textwidth` / `\columnwidth` → `100%`
 /// - `0.5\textwidth` → `50%`
 /// - `3cm`, `2in`, `100pt` → as-is (Typst accepts these units)
+///
+/// Bare width tokens with no numeric coefficient previously fell through
+/// verbatim — Typst then rejected the `\` in code context, blocking
+/// compilation. Treat the bare form as the full container width.
 fn normalize_graphics_length(v: &str) -> String {
     let v = v.trim();
-    if let Some(num) = v.strip_suffix("\\textwidth") {
-        if let Ok(f) = num.trim().parse::<f64>() {
-            return format!("{}%", (f * 100.0).round() as i64);
-        }
-    }
-    if let Some(num) = v.strip_suffix("\\linewidth") {
-        if let Ok(f) = num.trim().parse::<f64>() {
-            return format!("{}%", (f * 100.0).round() as i64);
+    for kw in ["\\textwidth", "\\linewidth", "\\columnwidth"] {
+        if let Some(num) = v.strip_suffix(kw) {
+            let num = num.trim();
+            if num.is_empty() {
+                return "100%".to_string();
+            }
+            if let Ok(f) = num.parse::<f64>() {
+                return format!("{}%", (f * 100.0).round() as i64);
+            }
         }
     }
     v.to_string()
@@ -2390,6 +2652,54 @@ fn parse_column_spec(spec: &str) -> (usize, Vec<String>) {
         }
     }
     (aligns.len(), aligns)
+}
+
+/// Escape unbalanced paired delimiters (`[`, `]`, `(`, `)`) in a Typst math
+/// body. LaTeX half-open intervals such as `(0, s_*]` or `[a, b)` mix
+/// delimiter kinds: Typst pairs `[..]` and `(..)` independently, so when one
+/// kind doesn't balance, both the orphan close (`]`) AND the partner of the
+/// other kind that no longer has a matching close (`(`) need escaping —
+/// otherwise Typst complains about an unclosed delimiter on the *other* one.
+/// Balanced pairs are left untouched. Pre-existing backslash escapes are
+/// skipped so we never double-escape.
+fn escape_unbalanced_math_brackets(body: &str) -> String {
+    let bytes = body.as_bytes();
+    let mut bracket_opens: Vec<usize> = Vec::new();
+    let mut paren_opens: Vec<usize> = Vec::new();
+    let mut escapes: Vec<usize> = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        // Skip any backslash-escaped character (including pre-existing
+        // `\[` / `\(` from `\left[`-style emissions we may add later).
+        if bytes[i] == b'\\' && i + 1 < bytes.len() {
+            i += 2;
+            continue;
+        }
+        match bytes[i] {
+            b'[' => bracket_opens.push(i),
+            b']' if bracket_opens.pop().is_none() => escapes.push(i),
+            b'(' => paren_opens.push(i),
+            b')' if paren_opens.pop().is_none() => escapes.push(i),
+            _ => {}
+        }
+        i += 1;
+    }
+    escapes.extend(bracket_opens);
+    escapes.extend(paren_opens);
+    if escapes.is_empty() {
+        return body.to_string();
+    }
+    escapes.sort_unstable();
+    let mut out = String::with_capacity(body.len() + escapes.len());
+    let mut last = 0;
+    for pos in escapes {
+        out.push_str(&body[last..pos]);
+        out.push('\\');
+        out.push(bytes[pos] as char);
+        last = pos + 1;
+    }
+    out.push_str(&body[last..]);
+    out
 }
 
 /// Translate a LaTeX math command (with the leading backslash) into the
@@ -2502,7 +2812,7 @@ fn lookup_math_symbol(name: &str) -> Option<&'static str> {
         "\\C" => "CC",
         // Special
         "\\infty" => "infinity",
-        "\\partial" => "diff",
+        "\\partial" => "partial",
         "\\nabla" => "nabla",
         "\\hbar" => "planck.reduce",
         "\\ell" => "ell",
@@ -2512,6 +2822,9 @@ fn lookup_math_symbol(name: &str) -> Option<&'static str> {
         "\\ddots" => "dots.down",
         "\\angle" => "angle",
         "\\degree" => "degree",
+        "\\dagger" => "dagger",
+        "\\ddagger" => "dagger.double",
+        "\\prime" => "prime",
         // Trig and log functions — Typst recognises these by name in math.
         "\\sin" => "sin",
         "\\cos" => "cos",
@@ -2538,8 +2851,11 @@ fn lookup_math_symbol(name: &str) -> Option<&'static str> {
         "\\lvert" => "|",
         "\\rvert" => "|",
         "\\lVert" | "\\rVert" => "||",
-        "\\langle" => "angle.l",
-        "\\rangle" => "angle.r",
+        // Typst 0.13+ deprecated `angle.l` / `angle.r` in favour of
+        // `chevron.l` / `chevron.r`; emitting the new names keeps the
+        // compile clean of deprecation warnings.
+        "\\langle" => "chevron.l",
+        "\\rangle" => "chevron.r",
         "\\lceil" => "ceil.l",
         "\\rceil" => "ceil.r",
         "\\lfloor" => "floor.l",
@@ -2551,14 +2867,20 @@ fn lookup_math_symbol(name: &str) -> Option<&'static str> {
         "\\big" | "\\Big" | "\\bigg" | "\\Bigg" | "\\bigl" | "\\Bigl" | "\\biggl" | "\\Biggl"
         | "\\bigr" | "\\Bigr" | "\\biggr" | "\\Biggr" | "\\bigm" | "\\Bigm" | "\\biggm"
         | "\\Biggm" => "",
-        // Math escapes for ASCII chars
-        "\\#" => "#",
-        "\\$" => "$",
-        "\\%" => "%",
-        "\\&" => "&",
-        "\\_" => "_",
-        "\\{" => "{",
-        "\\}" => "}",
+        // Math escapes for ASCII chars. Keep the leading backslash so Typst
+        // treats them as math escapes — emitting the bare character would
+        // trigger Typst's own special handling: `#` opens code context,
+        // `$` toggles math, `&` is alignment, `_` / `^` are sub/superscript,
+        // `{` / `}` are paired delimiters. Concretely, `f_\#` previously
+        // emitted as `f_(#)` was parsed as `(code)` and failed with
+        // "unexpected closing paren".
+        "\\#" => "\\#",
+        "\\$" => "\\$",
+        "\\%" => "\\%",
+        "\\&" => "\\&",
+        "\\_" => "\\_",
+        "\\{" => "\\{",
+        "\\}" => "\\}",
         // Bold variants
         "\\boldsymbol" | "\\pmb" => "bold",
         // Common math fonts not handled by emit_math_wrap
@@ -2605,6 +2927,57 @@ fn extract_class_and_options(node: Node<'_>, src: &str) -> (Option<String>, Vec<
         }
     }
     (class, opts)
+}
+
+/// Extract the file path argument from `\input{...}` / `\include{...}` /
+/// `\subfile{...}`. Both the dedicated `latex_include` node kind and the
+/// generic-command variant share the same `curly_group_path > path`
+/// substructure, so a single helper covers both call sites.
+fn extract_latex_include_path(node: Node<'_>, src: &str) -> Option<String> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if matches!(child.kind(), "curly_group_path" | "curly_group") {
+            let mut sub = child.walk();
+            for grandchild in child.children(&mut sub) {
+                if grandchild.kind() == "path" {
+                    return Some(src[grandchild.start_byte()..grandchild.end_byte()].to_string());
+                }
+            }
+            // Fallback: strip the literal braces. Covers shapes where the
+            // grammar tagged the curly contents as a generic node.
+            let raw = &src[child.start_byte()..child.end_byte()];
+            let inner = raw
+                .strip_prefix('{')
+                .and_then(|s| s.strip_suffix('}'))
+                .map(str::trim)
+                .filter(|s| !s.is_empty());
+            if let Some(s) = inner {
+                return Some(s.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Resolve an `\input{rel}` style path against `base`. LaTeX accepts both
+/// `\input{foo}` (no extension; the `.tex` is implicit) and `\input{foo.tex}`
+/// — try the literal first, then the `.tex`-appended form.
+fn resolve_input_path(base: &Path, raw: &str) -> Option<PathBuf> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    let direct = base.join(raw);
+    if direct.is_file() {
+        return Some(direct);
+    }
+    if !raw.ends_with(".tex") {
+        let with_ext = base.join(format!("{}.tex", raw));
+        if with_ext.is_file() {
+            return Some(with_ext);
+        }
+    }
+    None
 }
 
 /// Extract the package name from `\usepackage[opts]{name}`. The container is
@@ -2782,6 +3155,17 @@ fn post_process_typography(s: &str) -> String {
                 chars.next();
                 out.push('"');
                 prev = Some('"');
+            }
+            // Lone backtick — LaTeX uses it as a left single quote (`'X'`)
+            // and authors sometimes paste markdown-style code spans into
+            // the source. Either way, Typst reads `` ` `` as the opener of
+            // a raw block and fails with "unclosed raw text". Escape it so
+            // it renders as a literal backtick. `\texttt{X}` no longer emits
+            // backticks (it uses `#raw(...)` instead), so this pass only
+            // ever sees backticks that came from the source.
+            '`' => {
+                out.push_str("\\`");
+                prev = Some('`');
             }
             '\'' if chars.peek() == Some(&'\'') => {
                 chars.next();

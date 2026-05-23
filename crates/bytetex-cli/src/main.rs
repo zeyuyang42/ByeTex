@@ -161,6 +161,7 @@ fn corpus_run(dir: PathBuf, out_path: Option<PathBuf>) -> Result<()> {
             &source,
             &bytetex_core::ConvertOptions {
                 source_name: Some(path.display().to_string()),
+                base_dir: None,
             },
         );
         if result.warnings.is_empty() {
@@ -244,8 +245,24 @@ fn run_convert(input: PathBuf, output: Option<PathBuf>) -> Result<()> {
     let source =
         std::fs::read_to_string(&input).with_context(|| format!("reading {}", input.display()))?;
 
+    // Resolve `\input{...}` / `\include{...}` relative to the input file's
+    // parent directory. Falls back to "." when the path has no parent so
+    // that an entry file passed by bare name still gets includes resolved
+    // from the working directory.
+    let base_dir = input
+        .parent()
+        .map(|p| {
+            if p.as_os_str().is_empty() {
+                PathBuf::from(".")
+            } else {
+                p.to_path_buf()
+            }
+        })
+        .or_else(|| Some(PathBuf::from(".")));
+
     let opts = bytetex_core::ConvertOptions {
         source_name: Some(input.display().to_string()),
+        base_dir,
     };
     let result = bytetex_core::convert(&source, &opts);
 

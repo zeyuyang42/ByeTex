@@ -104,6 +104,7 @@ impl ByeTexServer {
         })?;
         let opts = ConvertOptions {
             source_name: Some(p.path.clone()),
+            base_dir: path.parent().map(|p| p.to_path_buf()),
         };
         let result = convert(&source, &opts);
         let typst_path = path.with_extension("typ");

@@ -1,6 +1,6 @@
 //! Per-template warning budget regression test.
 //!
-//! For every template under `templates/<name>/`, runs `bytetex_core::convert`
+//! For every template under `tests/inhouse/<name>/`, runs `bytetex_core::convert`
 //! on the entry `.tex` and asserts the warning count stays at or below the
 //! recorded budget. The budgets are intentionally tight — a regression
 //! (e.g. a refactor that re-warns on previously-handled commands) trips this
@@ -29,6 +29,7 @@ fn check_template(rel: &str, budget: usize) {
         &source,
         &ConvertOptions {
             source_name: Some(rel.to_string()),
+            ..Default::default()
         },
     );
     let count = out.warnings.len();
@@ -65,20 +66,20 @@ fn check_template(rel: &str, budget: usize) {
 
 #[test]
 fn ieee_template_within_budget() {
-    check_template("templates/IEEE/conference_101719.tex", 16);
+    check_template("tests/inhouse/ieee/conference_101719.tex", 16);
 }
 
 #[test]
 fn acm_template_within_budget() {
-    check_template("templates/ACM/sample-sigconf.tex", 0);
+    check_template("tests/inhouse/acm/sample-sigconf.tex", 0);
 }
 
 #[test]
 fn neurips_template_within_budget() {
-    check_template("templates/NeurIPS/neurips_paper.tex", 1);
+    check_template("tests/inhouse/neurips/neurips_paper.tex", 1);
 }
 
 #[test]
 fn thesis_template_within_budget() {
-    check_template("templates/thesis/thesis_skeleton.tex", 0);
+    check_template("tests/inhouse/thesis/thesis_skeleton.tex", 0);
 }
