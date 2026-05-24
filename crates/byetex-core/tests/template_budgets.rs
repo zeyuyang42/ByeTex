@@ -74,6 +74,10 @@ fn check_template(rel: &str, budget: usize) {
 //   \textuparrow, \textdownarrow, \checkmark, \AA, \l, \newline,
 //   \tabularnewline) now emit Unicode directly.
 //                                                          IEEE 13 ACM  6 NeurIPS  1 thesis  2
+//   PR2: \nolinkurl/\hyperlink/\hypertarget as inline wraps; \num/
+//   \texorpdfstring/\ensuremath via KATEX_BUILTIN passthroughs.
+//   No template budget change (none of these appear in the 4 templates).
+//                                                          IEEE 13 ACM  6 NeurIPS  1 thesis  2
 
 #[test]
 fn ieee_template_within_budget() {

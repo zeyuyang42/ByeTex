@@ -1326,6 +1326,26 @@ impl<'a> Emitter<'a> {
                 }
                 node.end_byte()
             }
+            // `\nolinkurl{URL}` → monospace raw (no hyperlink; same as \texttt).
+            Some("\\nolinkurl") => self.emit_inline_raw(node),
+            // `\hyperlink{id}{text}` / `\hypertarget{id}{text}` — emit visible
+            // text; drop the hyperlink id (Typst cross-references require @label
+            // syntax which needs coordinated target/source changes).
+            Some("\\hyperlink") | Some("\\hypertarget") => {
+                let mut cursor = node.walk();
+                let groups: Vec<Node<'_>> = node
+                    .children(&mut cursor)
+                    .filter(|c| c.kind() == "curly_group")
+                    .collect();
+                if groups.len() >= 2 {
+                    let content = self.render_curly_group_content(groups[1]);
+                    self.out.push_str(&content);
+                } else if let Some(arg) = first_curly_group(node) {
+                    let content = self.render_curly_group_content(arg);
+                    self.out.push_str(&content);
+                }
+                node.end_byte()
+            }
             // Font-size directives — unscoped toggles. Typst's equivalent
             // would be a #text(size: …)[…] wrap but that needs end-of-group
             // tracking we don't yet have. Silently drop so papers don't accumulate
