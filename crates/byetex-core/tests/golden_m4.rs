@@ -223,11 +223,10 @@ fn m4_bibliography() {
 // ============== Phase B: TDD red tests for Bugs #17, #19 ==============
 
 #[test]
-#[ignore = "Bug #17 — pending fix: unescaped _/*/#  in tabular cell content"]
 fn m4_tabular_cell_escapes_markup_chars() {
-    // Bug #17: `_sla`, `*bold`, `#hash` in table cells open unclosed italic /
-    // bold / code-context markup in Typst. Cell content in `[...]` must have
-    // these markup-active characters escaped with a backslash.
+    // Bug #17 (fixed): `_sla`, `*bold`, `#hash` in table cells used to open
+    // unclosed italic / bold / code-context markup in Typst. Cell content in
+    // `[...]` now has these markup-active characters escaped with a backslash.
     let src = "\\begin{tabular}{cc}\n_sla & *bold \\\\\n\\#hash & plain\n\\end{tabular}\n";
     let out = convert(
         src,
@@ -254,12 +253,11 @@ fn m4_tabular_cell_escapes_markup_chars() {
 }
 
 #[test]
-#[ignore = "Bug #19 — pending fix: image(\"???\") placeholder fails typst compile"]
 fn m4_figure_without_includegraphics_uses_compileable_placeholder() {
-    // Bug #19: when a `\begin{figure}` has no `\includegraphics`, the emitter
-    // produces `image("???")`. Typst aborts because the file `???` does not
-    // exist. The fix should emit a compileable placeholder such as
-    // `rect(width: 100%, height: 4cm, fill: luma(230))`.
+    // Bug #19 (fixed): when a `\begin{figure}` had no `\includegraphics`, the
+    // emitter produced `image("???")` and Typst aborted because the file
+    // `???` did not exist. The fix emits a compileable placeholder (`rect(...)`
+    // or a comment) instead.
     let src = "\\begin{figure}\n\\caption{X}\n\\end{figure}\n";
     let out = convert(
         src,
@@ -276,6 +274,29 @@ fn m4_figure_without_includegraphics_uses_compileable_placeholder() {
     assert!(
         out.typst.contains("rect(") || out.typst.contains("// missing"),
         "expected compileable placeholder (`rect(` or comment), got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn m4_multicolumn_emits_complete_table_cell_expression() {
+    // Bug #22 (fixed): `\multicolumn{N}{spec}{body}` used to emit
+    // `table.cell(colspan: N)` with the body on a separate line —
+    // Typst parsed that as a *call with no body argument*, breaking
+    // the surrounding table. The fix sub-renders the body and writes
+    // the single combined call `table.cell(colspan: N)[<body>]`.
+    let src = "\\begin{tabular}{cccc}\n\\multicolumn{4}{c}{header text} \\\\\na & b & c & d\n\\end{tabular}\n";
+    let out = convert(
+        src,
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    // The colspan call must include its body in `[...]` directly.
+    assert!(
+        out.typst.contains("table.cell(colspan: 4)[header text]"),
+        "expected `table.cell(colspan: 4)[header text]` in one expr; got:\n{}",
         out.typst
     );
 }
