@@ -143,7 +143,11 @@ pub(crate) struct Emitter<'a> {
 }
 
 /// Maximum allowed `\newcommand` expansion depth (see `Emitter::macro_depth`).
-const MAX_MACRO_DEPTH: u32 = 64;
+/// Each level allocates a fresh sub-Emitter and re-parses the body, so the
+/// per-level stack usage is high; values much above 24 can overflow test
+/// threads' default 2 MB stack. Real papers rarely nest macros more than
+/// 4-5 levels.
+const MAX_MACRO_DEPTH: u32 = 24;
 
 impl<'a> Emitter<'a> {
     /// Constructor variant used by the public `convert()` entry point and by
@@ -366,6 +370,46 @@ impl<'a> Emitter<'a> {
         if from < to {
             self.out.push_str(&self.src[from..to]);
         }
+    }
+
+    /// Run a child `Emitter` over `src` and merge its side-effects
+    /// (warnings, asset_refs, newly-defined macros, returned visited
+    /// set) back into the parent. Returns the child's body output.
+    ///
+    /// The child inherits the parent's `source_name`, `base_dir`,
+    /// `visited_includes`, and `macros` table. `in_math` is passed
+    /// explicitly because the caller knows its math context. When
+    /// `increment_depth` is `true`, `macro_depth` is bumped so the
+    /// recursion cap (`MAX_MACRO_DEPTH`) reaches into the child.
+    /// Three call sites use it: `expand_user_macro` and both
+    /// `emit_math_wrap` branches (Command + Group). `expand_latex_include`
+    /// stays inline because it merges several additional fields
+    /// (metadata, raw_authors, detected_class, needs_*_numbering)
+    /// that aren't part of the common pattern.
+    fn render_in_sub_emitter(
+        &mut self,
+        src: &str,
+        in_math: bool,
+        increment_depth: bool,
+    ) -> String {
+        let tree = crate::parser::parse(src);
+        let visited = std::mem::take(&mut self.visited_includes);
+        let macros = self.macros.clone();
+        let mut sub = Emitter::with_includes(src, self.source_name, self.base_dir.clone(), visited);
+        sub.in_math = in_math;
+        sub.macros = macros;
+        if increment_depth {
+            sub.macro_depth = self.macro_depth + 1;
+        }
+        sub.emit_root(tree.root_node());
+        // Merge side-effects back into the parent.
+        self.visited_includes = std::mem::take(&mut sub.visited_includes);
+        for (k, v) in sub.macros.drain() {
+            self.macros.entry(k).or_insert(v);
+        }
+        self.warnings.append(&mut sub.warnings);
+        self.asset_refs.append(&mut sub.asset_refs);
+        sub.out
     }
 
     /// Emit `node` and return the source byte offset to resume after.
@@ -1412,32 +1456,15 @@ impl<'a> Emitter<'a> {
         let expanded = substitute_macro_args(&macro_def.body, &args[..macro_def.params]);
         // Re-parse and emit. Use a sub-emitter so we don't disturb
         // our `out` cursor management — its output is appended.
-        let tree = crate::parser::parse(&expanded);
-        let visited = std::mem::take(&mut self.visited_includes);
-        let macros = self.macros.clone();
-        let mut sub =
-            Emitter::with_includes(&expanded, self.source_name, self.base_dir.clone(), visited);
-        sub.in_math = self.in_math;
-        sub.macros = macros;
-        sub.macro_depth = self.macro_depth + 1;
-        sub.emit_root(tree.root_node());
-        // Merge child state back.
-        self.visited_includes = std::mem::take(&mut sub.visited_includes);
-        // The macro's expansion may have defined additional macros
-        // (rare but allowed). Pull those back to the parent.
-        for (k, v) in sub.macros.drain() {
-            self.macros.entry(k).or_insert(v);
-        }
-        let body_out = sub.out;
+        // `increment_depth = true` so a self-referential macro
+        // (e.g. `\newcommand{\foo}{\foo}`) hits MAX_MACRO_DEPTH and
+        // warns instead of overflowing the stack.
+        let body_out = self.render_in_sub_emitter(&expanded, self.in_math, true);
         // Trim the trailing newline the child may have added if the
         // body is a one-liner; otherwise math expansions get
         // unwanted line breaks.
         let body_out = body_out.trim_end_matches('\n');
         self.out.push_str(body_out);
-        self.warnings.append(&mut sub.warnings);
-        // A `\includegraphics` or `\bibliography` reached via a macro body
-        // must still bubble up so the project materialiser copies the file.
-        self.asset_refs.append(&mut sub.asset_refs);
         // Return the end of the consumed range so the AST walker resumes
         // past any brace-less args we ate. For purely curly-group calls,
         // `consumed_end == node.end_byte()` and this matches the prior
@@ -2654,27 +2681,9 @@ impl<'a> Emitter<'a> {
                 } else if let Some(macro_def) = self.macros.get(&cmd).cloned() {
                     // Expand: re-parse the macro body and render via a
                     // sub-emitter inheriting the math context + macro table.
-                    let body = macro_def.body.clone();
-                    let tree = crate::parser::parse(&body);
-                    let visited = std::mem::take(&mut self.visited_includes);
-                    let macros = self.macros.clone();
-                    let mut sub = Emitter::with_includes(
-                        &body,
-                        self.source_name,
-                        self.base_dir.clone(),
-                        visited,
-                    );
-                    sub.in_math = true;
-                    sub.macros = macros;
-                    sub.macro_depth = self.macro_depth + 1;
-                    sub.emit_root(tree.root_node());
-                    self.visited_includes = std::mem::take(&mut sub.visited_includes);
-                    for (k, v) in sub.macros.drain() {
-                        self.macros.entry(k).or_insert(v);
-                    }
-                    self.warnings.append(&mut sub.warnings);
-                    self.asset_refs.append(&mut sub.asset_refs);
-                    sub.out.trim().to_string()
+                    self.render_in_sub_emitter(&macro_def.body, true, true)
+                        .trim()
+                        .to_string()
                 } else {
                     cmd
                 }
@@ -2682,25 +2691,15 @@ impl<'a> Emitter<'a> {
             BracelessArg::Group(inner_src) => {
                 // Brace group as the arg: re-parse inner content with the
                 // current math context so nested commands render properly.
-                let tree = crate::parser::parse(&inner_src);
-                let visited = std::mem::take(&mut self.visited_includes);
-                let macros = self.macros.clone();
-                let mut sub = Emitter::with_includes(
-                    &inner_src,
-                    self.source_name,
-                    self.base_dir.clone(),
-                    visited,
-                );
-                sub.in_math = true;
-                sub.macros = macros;
-                sub.emit_root(tree.root_node());
-                self.visited_includes = std::mem::take(&mut sub.visited_includes);
-                for (k, v) in sub.macros.drain() {
-                    self.macros.entry(k).or_insert(v);
-                }
-                self.warnings.append(&mut sub.warnings);
-                self.asset_refs.append(&mut sub.asset_refs);
-                sub.out.trim().to_string()
+                // `increment_depth = true` so a `\hat{\foo}` chain where
+                // `\foo` recursively expands to more `\hat{\foo}` hits the
+                // MAX_MACRO_DEPTH cap. Previously this branch left the
+                // depth at parent value (the audit's B2 bug), so a
+                // recursive macro reached through a brace-group never
+                // tripped the cap and could overflow the stack.
+                self.render_in_sub_emitter(&inner_src, true, true)
+                    .trim()
+                    .to_string()
             }
             BracelessArg::Char(c) => c,
         };
