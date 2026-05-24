@@ -529,12 +529,12 @@ fn m3_pmatrix() {
 // ============== Phase B: TDD red tests for Bugs #16, #20 ==============
 
 #[test]
-#[ignore = "Bug #16 — pending fix: label underscore split in math env"]
 fn m3_label_with_underscores_in_math_env() {
-    // Bug #16: tree-sitter parses `_` inside `\label{eq:foo_bar}` as a
+    // Bug #16 (fixed): tree-sitter parsed `_` inside `\label{eq:foo_bar}` as a
     // subscript operator in math context, truncating the key to `eq:foo` and
-    // leaking `_b a r}` as a stray subscript expression. The fix must preserve
-    // the full label text `eq:foo_bar` as the Typst `<eq:foo_bar>` anchor.
+    // leaking `_b a r}` as a stray subscript expression. The label emitter
+    // now reads the curly_group_text byte-for-byte before any math-mode
+    // processing, so the full `<eq:foo_bar>` anchor is preserved.
     let out = convert(
         "\\begin{equation}\\label{eq:foo_bar}x=1\\end{equation}\n",
         &ConvertOptions {

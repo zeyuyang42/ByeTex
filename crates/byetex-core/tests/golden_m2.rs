@@ -284,12 +284,12 @@ fn m2_sections_mixed_body() {
 // ============== Phase B: TDD red test for Bug #18 ==============
 
 #[test]
-#[ignore = "Bug #18 — pending fix: \\def/\\edef/\\gdef emitted verbatim"]
 fn m2_def_primitives_dropped_silently() {
-    // Bug #18: TeX primitives `\def`, `\edef`, `\gdef`, `\xdef`, `\let` pass
-    // through the emitter verbatim. In Typst the leading backslash is either
-    // a math escape or a syntax error, so the document fails to compile. These
-    // primitives should be silently dropped (same policy as `\newcommand`).
+    // Bug #18 (fixed): TeX primitives `\def`, `\edef`, `\gdef`, `\xdef`, `\let`
+    // used to pass through the emitter verbatim, causing typst compile to
+    // fail. They are now harvested by `harvest_macros_from_source` /
+    // `extract_def_and_record` and their source range is consumed via
+    // `skip_until` so nothing leaks into the output.
     let out = convert(
         "\\def\\foo{bar}\n\\edef\\baz{qux}\n\\gdef\\hello{world}\n\nBody.\n",
         &ConvertOptions {
