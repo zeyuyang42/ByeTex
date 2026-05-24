@@ -941,6 +941,38 @@ impl<'a> Emitter<'a> {
                 self.out.push('®');
                 node.end_byte()
             }
+            // Text-mode symbol commands — emit the Unicode character directly.
+            Some("\\texttimes") => {
+                self.out.push('×');
+                node.end_byte()
+            }
+            Some("\\textuparrow") => {
+                self.out.push('↑');
+                node.end_byte()
+            }
+            Some("\\textdownarrow") => {
+                self.out.push('↓');
+                node.end_byte()
+            }
+            Some("\\checkmark") => {
+                self.out.push('✓');
+                node.end_byte()
+            }
+            Some("\\AA") => {
+                self.out.push('Å');
+                node.end_byte()
+            }
+            Some("\\l") => {
+                self.out.push('ł');
+                node.end_byte()
+            }
+            // `\newline` — explicit line break; `\tabularnewline` is handled
+            // structurally by the table emitter but may surface here in malformed
+            // input; treat as a line break too.
+            Some("\\newline") | Some("\\tabularnewline") => {
+                self.out.push_str("\\ \n");
+                node.end_byte()
+            }
             // Deprecated font-switching commands. These change the style of
             // all following text until the group ends — Typst would need a
             // #strong[…]/#emph[…] scope wrap, which requires end-of-group
@@ -990,26 +1022,36 @@ impl<'a> Emitter<'a> {
             | Some("\\enspace")
             | Some("\\thinspace")
             | Some("\\linebreak")
-            | Some("\\pagebreak")
+                if !self.in_math =>
+            {
+                consume_trailing_inline_space(self.src, node.end_byte())
+            }
+            // Forced page breaks — Typst's pagination is automatic; warn so the
+            // user knows their explicit layout intent was not preserved.
+            Some("\\pagebreak")
             | Some("\\nopagebreak")
             | Some("\\newpage")
             | Some("\\clearpage")
             | Some("\\cleardoublepage")
                 if !self.in_math =>
             {
+                self.warn_silently_dropped(node);
                 consume_trailing_inline_space(self.src, node.end_byte())
             }
-            // Layout-only directives.
+            // Layout-only alignment directives — warn so the user knows their
+            // alignment intent was not preserved.
             Some("\\centering")
             | Some("\\raggedright")
             | Some("\\raggedleft")
             | Some("\\justify")
             | Some("\\flushleft")
-            | Some("\\flushright") => consume_trailing_inline_space(self.src, node.end_byte()),
-            // Float/figure placement specifiers + page-style controls.
+            | Some("\\flushright") => {
+                self.warn_silently_dropped(node);
+                consume_trailing_inline_space(self.src, node.end_byte())
+            }
+            // Float/figure placement specifiers + page-style controls. These are
+            // inert in Typst and carry no visible content — drop silently.
             Some("\\setcounter")
-            | Some("\\renewcommand")
-            | Some("\\providecommand")
             | Some("\\pagestyle")
             | Some("\\thispagestyle")
             | Some("\\pagenumbering")
@@ -1020,21 +1062,84 @@ impl<'a> Emitter<'a> {
             | Some("\\addtolength")
             | Some("\\settowidth")
             | Some("\\bibliographystyle") => {
-                // These take args we don't translate. Drop silently.
                 node.end_byte()
             }
-            // ACM publication-metadata (conference/journal machinery); no visible
-            // author content — drop silently.
-            Some("\\setcopyright")
-            | Some("\\copyrightyear")
-            | Some("\\acmYear")
-            | Some("\\acmConference")
+            // Preamble plumbing with no visible rendered effect — drop silently.
+            // • Debug/logging: \typeout writes to the .log; no output.
+            // • Theorem styles: \theoremstyle{plain|definition|…} — Typst theorem
+            //   environments don't have a style parameter in our emission layer.
+            // • cleveref naming: \crefname / \Crefname configure label format only.
+            // • hyperref setup: \hypersetup{key=val,…} — PDF metadata, not content.
+            // • Paragraph layout hints: \enlargethispage, \looseness have no Typst
+            //   equivalent; Typst auto-handles line/page breaking.
+            // • TeX low-level: \endcsname, \expandafter, \makeatletter are TeX
+            //   engine directives that tree-sitter surfaces as generic_command.
+            // • Column formatting: \addlinespace is a booktabs spacing hint; Typst
+            //   table auto-handles row spacing.
+            // • Hook registration: \AddToHook is LaTeX3 machinery with no Typst
+            //   equivalent.
+            // • Float barriers: \FloatBarrier (placeins) forces floats before the
+            //   current point; Typst places figures where #figure() is called.
+            // • Color definitions: \colorlet defines a colour alias; without colortbl
+            //   support the alias is never used, so the definition is inert.
+            // • Conditionals: \ifthenelse/\fi/\else are xcolor/ifthen preamble
+            //   control flow that tree-sitter surfaces as bare generic_commands
+            //   (the contained body is processed separately by tree-sitter's normal
+            //   child walk). Dropping these tokens is safe; the content nodes are
+            //   emitted normally.
+            Some("\\typeout")
+            | Some("\\theoremstyle")
+            | Some("\\crefname")
+            | Some("\\Crefname")
+            | Some("\\hypersetup")
+            | Some("\\enlargethispage")
+            | Some("\\looseness")
+            | Some("\\endcsname")
+            | Some("\\expandafter")
+            | Some("\\makeatletter")
+            | Some("\\makeatother")
+            | Some("\\addlinespace")
+            | Some("\\AddToHook")
+            | Some("\\FloatBarrier")
+            | Some("\\colorlet")
+            | Some("\\ifthenelse")
+            | Some("\\fi")
+            | Some("\\else") => {
+                node.end_byte()
+            }
+            // `\newcommandx` (xargs package) — tree-sitter sees this as a
+            // generic_command (not new_command_definition) so we cannot harvest
+            // it via extract_newcommand. Silently drop the definition token;
+            // any calls to the undefined macro will warn at expansion time.
+            // `\newsiamremark` (SIAM theorem-like declaration) — same issue:
+            // custom theorem declarations aren't harvested here. Drop silently
+            // so the warning count doesn't inflate on SIAM papers.
+            Some("\\newcommandx") | Some("\\newsiamremark") | Some("\\newsiamthm") => {
+                node.end_byte()
+            }
+            // Macro (re)definitions in text mode — warn because the user may
+            // have redefined a command that the conversion depends on.
+            Some("\\renewcommand") | Some("\\providecommand") => {
+                self.warn_silently_dropped(node);
+                node.end_byte()
+            }
+            // ACM publication-metadata (display-only administrative fields) —
+            // no visible author content, drop silently.
+            Some("\\setcopyright") | Some("\\copyrightyear") | Some("\\acmYear") => {
+                node.end_byte()
+            }
+            // ACM fields that carry real visible content in the published paper —
+            // warn so the user knows they were not rendered.
+            Some("\\acmConference")
             | Some("\\acmBooktitle")
             | Some("\\acmDOI")
             | Some("\\acmISBN")
             | Some("\\acmPrice")
             | Some("\\acmSubmissionID")
-            | Some("\\affiliation") => node.end_byte(),
+            | Some("\\affiliation") => {
+                self.warn_silently_dropped(node);
+                node.end_byte()
+            }
             // ACM author-info fields. Capture into class_metadata so callers
             // and class templates can access the values, and warn so the user
             // knows these fields are not yet fully rendered.
@@ -1061,8 +1166,8 @@ impl<'a> Emitter<'a> {
                 node.end_byte()
             }
             // `\keywords{a, b, c}` and `\IEEEkeywords{...}` — capture into the
-            // title-block field when the class template wants it; otherwise
-            // silently drop.
+            // title-block field when the class template wants it; otherwise warn
+            // so the user knows the keyword list was lost.
             Some("\\keywords") | Some("\\IEEEkeywords") => {
                 if self.detected_class.import_line().is_some() {
                     if let Some(arg) = first_curly_like(node) {
@@ -1073,6 +1178,8 @@ impl<'a> Emitter<'a> {
                             .filter(|k| !k.is_empty())
                             .collect();
                     }
+                } else {
+                    self.warn_silently_dropped(node);
                 }
                 node.end_byte()
             }
@@ -1091,12 +1198,16 @@ impl<'a> Emitter<'a> {
             Some("\\And") | Some("\\AND") | Some("\\PassOptionsToPackage") | Some("\\And ") => {
                 consume_trailing_inline_space(self.src, node.end_byte())
             }
-            // Tables-of-contents et al. — drop, will be re-added with Typst syntax later if needed.
+            // Tables-of-contents et al. — Typst equivalents not yet emitted; warn
+            // so the user knows these structural sections were not preserved.
             Some("\\tableofcontents")
             | Some("\\listoffigures")
             | Some("\\listoftables")
             | Some("\\printbibliography")
-            | Some("\\printindex") => consume_trailing_inline_space(self.src, node.end_byte()),
+            | Some("\\printindex") => {
+                self.warn_silently_dropped(node);
+                consume_trailing_inline_space(self.src, node.end_byte())
+            }
             // `\multicolumn{n}{spec}{content}` → `table.cell(colspan: n)[content]`.
             // The surrounding emit_tabular's body splitter will treat the whole
             // thing as one cell, which is the intended outcome.
@@ -1268,9 +1379,30 @@ impl<'a> Emitter<'a> {
                 }
                 node.end_byte()
             }
+            // `\nolinkurl{URL}` → monospace raw (no hyperlink; same as \texttt).
+            Some("\\nolinkurl") => self.emit_inline_raw(node),
+            // `\hyperlink{id}{text}` / `\hypertarget{id}{text}` — emit visible
+            // text; drop the hyperlink id (Typst cross-references require @label
+            // syntax which needs coordinated target/source changes).
+            Some("\\hyperlink") | Some("\\hypertarget") => {
+                let mut cursor = node.walk();
+                let groups: Vec<Node<'_>> = node
+                    .children(&mut cursor)
+                    .filter(|c| c.kind() == "curly_group")
+                    .collect();
+                if groups.len() >= 2 {
+                    let content = self.render_curly_group_content(groups[1]);
+                    self.out.push_str(&content);
+                } else if let Some(arg) = first_curly_group(node) {
+                    let content = self.render_curly_group_content(arg);
+                    self.out.push_str(&content);
+                }
+                node.end_byte()
+            }
             // Font-size directives — unscoped toggles. Typst's equivalent
             // would be a #text(size: …)[…] wrap but that needs end-of-group
-            // tracking we don't yet have. Warn so the caller can see the loss.
+            // tracking we don't yet have. Silently drop so papers don't accumulate
+            // dozens of low-signal warnings (one per paragraph size switch).
             Some("\\small")
             | Some("\\large")
             | Some("\\Large")
@@ -1280,10 +1412,7 @@ impl<'a> Emitter<'a> {
             | Some("\\normalsize")
             | Some("\\footnotesize")
             | Some("\\scriptsize")
-            | Some("\\tiny") => {
-                self.warn_unsupported_command(node);
-                node.end_byte()
-            }
+            | Some("\\tiny") => node.end_byte(),
             // `\appendix` toggles section-number style to letters; emit as a
             // set rule.
             Some("\\appendix") => {
@@ -2543,9 +2672,27 @@ impl<'a> Emitter<'a> {
             // Math-mode spacing primitives — drop silently.
             "\\hspace" | "\\vspace" | "\\!" | "\\linebreak" | "\\nobreak" => node.end_byte(),
             // `\tag{...}` adds LaTeX equation labels for presentation only;
-            // Typst handles equation numbering itself. Drop the command and its
-            // curly-group argument (the generic_command node covers both).
-            "\\tag" => node.end_byte(),
+            // Typst handles equation numbering itself. Warn so the user knows
+            // their custom label text was not preserved.
+            "\\tag" => {
+                self.warn_silently_dropped(node);
+                node.end_byte()
+            }
+            // `\not` is a prefix slash-overlay (e.g. `\not =` → `≠`).
+            // Typst's cancel(...) takes an argument, so the bare prefix form
+            // can't be mechanically translated. Warn rather than silently
+            // dropping the negation, which would produce incorrect math.
+            "\\not" => {
+                self.warn_silently_dropped(node);
+                node.end_byte()
+            }
+            // Math style switches — Typst determines display/inline style from
+            // the equation context; these per-expression overrides have no
+            // direct equivalent. Warn so the user is aware.
+            "\\displaystyle" | "\\textstyle" | "\\scriptstyle" | "\\scriptscriptstyle" => {
+                self.warn_silently_dropped(node);
+                node.end_byte()
+            }
             // Row break inside math envs. We emit just `\`; the source's
             // surrounding whitespace (gap-copied by the parent) takes care of
             // spacing around it.
@@ -3647,6 +3794,22 @@ impl<'a> Emitter<'a> {
             suggested_skill: None,
         });
     }
+
+    fn warn_silently_dropped(&mut self, node: Node<'_>) {
+        let snippet = self.src[node.start_byte()..node.end_byte()].to_string();
+        let name = command_name_of(&snippet);
+        self.warnings.push(Warning {
+            range: range_of(node),
+            category: Category::DropOnly { name: name.clone() },
+            severity: Severity::Warning,
+            message: format!(
+                "`{name}` has no Typst equivalent and was dropped; \
+                 the rendered output may differ from the LaTeX original"
+            ),
+            snippet,
+            suggested_skill: None,
+        });
+    }
 }
 
 fn is_comment(kind: &str) -> bool {
@@ -4261,11 +4424,9 @@ pub(crate) fn lookup_math_symbol(name: &str) -> Option<&'static str> {
         "\\clubsuit" => "♣",
         "\\spadesuit" => "♠",
         "\\heartsuit" => "♥",
-        // `\not` as a slash overlay — Typst's `cancel(...)` is the
-        // closest match but takes an argument; for the bare-prefix
-        // form (`\not =`) drop the prefix and let the `=` render
-        // unmodified.
-        "\\not" => "",
+        // `\not` is handled by an explicit arm in emit_math_command that
+        // emits a DropOnly warning; it must not appear here or push_math_symbol
+        // would silently swallow it via the empty-string early-return.
         // Trig and log functions — Typst recognises these by name in math.
         "\\sin" => "sin",
         "\\cos" => "cos",
@@ -4345,12 +4506,10 @@ pub(crate) fn lookup_math_symbol(name: &str) -> Option<&'static str> {
         // explicit force is a no-op. Drop the command name itself; if
         // left in, `\limits` was emitted as the literal word and the
         // subscript that followed became an unknown symbol modifier.
-        "\\limits"
-        | "\\nolimits"
-        | "\\displaystyle"
-        | "\\textstyle"
-        | "\\scriptstyle"
-        | "\\scriptscriptstyle" => "",
+        "\\limits" | "\\nolimits" => "",
+        // `\displaystyle` / `\textstyle` / `\scriptstyle` /
+        // `\scriptscriptstyle` are handled by explicit warning arms in
+        // emit_math_command; they must not appear here.
         // Math escapes for ASCII chars. Keep the leading backslash so Typst
         // treats them as math escapes — emitting the bare character would
         // trigger Typst's own special handling: `#` opens code context,

@@ -41,7 +41,7 @@
         { "type": "object", "required": ["kind", "tree_sitter_node"], "properties": { "kind": { "const": "parse_error" }, "tree_sitter_node": { "type": "string" } } },
         { "type": "object", "required": ["kind", "reason"], "properties": { "kind": { "const": "ambiguous_math"        }, "reason": { "type": "string" } } },
         { "type": "object", "required": ["kind", "name"], "properties": { "kind": { "const": "unknown_package"        }, "name": { "type": "string" } } },
-        { "type": "object", "required": ["kind"],         "properties": { "kind": { "const": "drop_only"              } } },
+        { "type": "object", "required": ["kind", "name"], "properties": { "kind": { "const": "drop_only"              }, "name": { "type": "string" } } },
         { "type": "object", "required": ["kind", "reason"], "properties": { "kind": { "const": "needs_manual_review"  }, "reason": { "type": "string" } } }
       ]
     }

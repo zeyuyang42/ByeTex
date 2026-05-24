@@ -312,7 +312,7 @@ fn category_kind_name(c: &byetex_core::Category) -> String {
         ParseError { .. } => "parse_error".into(),
         AmbiguousMath { .. } => "ambiguous_math".into(),
         UnknownPackage { .. } => "unknown_package".into(),
-        DropOnly => "drop_only".into(),
+        DropOnly { .. } => "drop_only".into(),
         NeedsManualReview { .. } => "needs_manual_review".into(),
     }
 }

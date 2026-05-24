@@ -47,6 +47,6 @@ pub enum Category {
     ParseError { tree_sitter_node: String },
     AmbiguousMath { reason: String },
     UnknownPackage { name: String },
-    DropOnly,
+    DropOnly { name: String },
     NeedsManualReview { reason: String },
 }
