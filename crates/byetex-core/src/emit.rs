@@ -30,6 +30,37 @@ pub(crate) struct MacroDef {
     pub body: String,
 }
 
+/// Walk `source` once and collect every `\newcommand` / `\def`
+/// declaration into a fresh table. Used by the project-mode pre-scan
+/// (see `project::harvest_project_macros`) so macros defined in
+/// `.cls`/`.sty` files or in sibling `.tex` files unreached by `\input`
+/// are still available when the entry file is converted.
+pub(crate) fn harvest_macros_from_source(source: &str) -> HashMap<String, MacroDef> {
+    let tree = crate::parser::parse(source);
+    let mut out: HashMap<String, MacroDef> = HashMap::new();
+    let root = tree.root_node();
+    let mut stack: Vec<Node<'_>> = vec![root];
+    while let Some(n) = stack.pop() {
+        match n.kind() {
+            "new_command_definition" => {
+                if let Some((name, def)) = extract_newcommand(n, source) {
+                    out.insert(name, def);
+                }
+            }
+            "old_command_definition" => {
+                let _ = extract_def_and_record(n, source, &mut out);
+            }
+            _ => {
+                let mut cursor = n.walk();
+                for c in n.children(&mut cursor) {
+                    stack.push(c);
+                }
+            }
+        }
+    }
+    out
+}
+
 /// Sentinel character emitted by `push_math_symbol` immediately after a
 /// multi-character math identifier so that `collapse_math_spaces` can
 /// later decide whether to insert a real separator (when the next char
@@ -125,6 +156,22 @@ impl<'a> Emitter<'a> {
         base_dir: Option<PathBuf>,
         visited: HashSet<PathBuf>,
     ) -> Self {
+        Self::with_includes_and_macros(src, source_name, base_dir, visited, HashMap::new())
+    }
+
+    /// Same as `with_includes` but lets the caller seed the macro table.
+    /// Used by the folder-input path (`plan_project_from_dir`) which
+    /// pre-scans every `.tex`/`.sty`/`.cls` for `\newcommand`/`\def`
+    /// before converting the entry file. This guarantees that a macro
+    /// defined in a sibling source file never reached via `\input` is
+    /// still available at every call site in the entry's expansion tree.
+    pub(crate) fn with_includes_and_macros(
+        src: &'a str,
+        source_name: &'a str,
+        base_dir: Option<PathBuf>,
+        visited: HashSet<PathBuf>,
+        preseeded_macros: HashMap<String, MacroDef>,
+    ) -> Self {
         Self {
             out: String::new(),
             warnings: Vec::new(),
@@ -142,7 +189,7 @@ impl<'a> Emitter<'a> {
             detected_class: DocClass::Unknown,
             base_dir,
             visited_includes: visited,
-            macros: HashMap::new(),
+            macros: preseeded_macros,
             asset_refs: Vec::new(),
             macro_depth: 0,
         }

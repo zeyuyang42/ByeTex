@@ -288,30 +288,56 @@ fn run_convert_project(
     no_toml: bool,
     force: bool,
 ) -> Result<()> {
-    let out_dir = project_out.unwrap_or_else(|| {
+    // Resolve the input shape. When the user passes a directory, ByeTex
+    // detects the entry `.tex` file (`\documentclass`-bearing) and
+    // pre-scans every `.tex`/`.sty`/`.cls` in the tree for macros.
+    // When they pass a file, behaviour is unchanged.
+    let input_is_dir = input.is_dir();
+    let (plan, base_dir, default_out_stem) = if input_is_dir {
+        let plan = byetex_core::project::plan_project_from_dir(&input, no_toml)
+            .with_context(|| format!("planning project from {}", input.display()))?;
+        let stem = input
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("project")
+            .to_string();
+        (plan, input.clone(), stem)
+    } else {
+        let plan = byetex_core::project::plan_project(&input, no_toml)
+            .with_context(|| format!("planning project from {}", input.display()))?;
+        let base_dir = input
+            .parent()
+            .map(|p| {
+                if p.as_os_str().is_empty() {
+                    PathBuf::from(".")
+                } else {
+                    p.to_path_buf()
+                }
+            })
+            .unwrap_or_else(|| PathBuf::from("."));
         let stem = input
             .file_stem()
             .and_then(|s| s.to_str())
-            .unwrap_or("project");
-        input
-            .parent()
-            .map(|p| p.join(format!("{}.typst-project", stem)))
-            .unwrap_or_else(|| PathBuf::from(format!("{}.typst-project", stem)))
+            .unwrap_or("project")
+            .to_string();
+        (plan, base_dir, stem)
+    };
+
+    let out_dir = project_out.unwrap_or_else(|| {
+        // For dir input the output sits next to the input directory; for
+        // file input it sits next to the file. In both cases use the
+        // stem to name the output: `<stem>.typst-project/`.
+        let parent = if input_is_dir {
+            input.parent().map(|p| p.to_path_buf())
+        } else {
+            input.parent().map(|p| p.to_path_buf())
+        };
+        let name = format!("{}.typst-project", default_out_stem);
+        parent
+            .filter(|p| !p.as_os_str().is_empty())
+            .map(|p| p.join(&name))
+            .unwrap_or_else(|| PathBuf::from(name))
     });
-
-    let base_dir = input
-        .parent()
-        .map(|p| {
-            if p.as_os_str().is_empty() {
-                PathBuf::from(".")
-            } else {
-                p.to_path_buf()
-            }
-        })
-        .unwrap_or_else(|| PathBuf::from("."));
-
-    let plan = byetex_core::project::plan_project(&input, no_toml)
-        .with_context(|| format!("planning project from {}", input.display()))?;
 
     let n_warnings = plan.warnings.len();
     let n_assets = plan.assets.len();
@@ -343,6 +369,13 @@ fn run_convert_project(
 }
 
 fn run_convert(input: PathBuf, output: Option<PathBuf>) -> Result<()> {
+    // When the user hands us a directory, route through the same
+    // entry-detect + macro pre-scan pipeline as project mode but emit
+    // a flat `<dir>.typ` next to the dir instead of a project tree.
+    if input.is_dir() {
+        return run_convert_dir_flat(input, output);
+    }
+
     let source =
         std::fs::read_to_string(&input).with_context(|| format!("reading {}", input.display()))?;
 
@@ -383,6 +416,42 @@ fn run_convert(input: PathBuf, output: Option<PathBuf>) -> Result<()> {
         typst_path.display(),
         result.warnings.len(),
         if result.warnings.len() == 1 { "" } else { "s" }
+    );
+    Ok(())
+}
+
+/// Non-project conversion when the user hands us a directory. Detects
+/// the entry `.tex` and writes `<dir>.typ` + `<dir>.warnings.json` next
+/// to the dir. Asset files are NOT copied — use `--project` for that.
+fn run_convert_dir_flat(input: PathBuf, output: Option<PathBuf>) -> Result<()> {
+    let plan = byetex_core::project::plan_project_from_dir(&input, true)
+        .with_context(|| format!("planning project from {}", input.display()))?;
+
+    let stem = input
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("project");
+    let parent = input.parent().filter(|p| !p.as_os_str().is_empty());
+    let typst_path = output.unwrap_or_else(|| {
+        let name = format!("{}.typ", stem);
+        parent
+            .map(|p| p.join(&name))
+            .unwrap_or_else(|| PathBuf::from(name))
+    });
+    let warnings_path = typst_path.with_extension("warnings.json");
+
+    std::fs::write(&typst_path, &plan.main_typst)
+        .with_context(|| format!("writing {}", typst_path.display()))?;
+    let warnings_json =
+        serde_json::to_string_pretty(&plan.warnings).context("serializing warnings to JSON")?;
+    std::fs::write(&warnings_path, warnings_json)
+        .with_context(|| format!("writing {}", warnings_path.display()))?;
+
+    eprintln!(
+        "wrote {} ({} warning{}; assets NOT copied — use --project for that)",
+        typst_path.display(),
+        plan.warnings.len(),
+        if plan.warnings.len() == 1 { "" } else { "s" }
     );
     Ok(())
 }

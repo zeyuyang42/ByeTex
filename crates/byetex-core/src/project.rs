@@ -7,9 +7,11 @@
 //!
 //! The materializer lives in `byetex-cli` to keep IO out of the library crate.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::{convert, AssetKind, AssetRef, ConvertOptions, Warning};
+use crate::emit::MacroDef;
+use crate::{convert, convert_with_macros, AssetKind, AssetRef, ConvertOptions, Warning};
 
 /// A single file that must be copied from the source project into the output.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,12 +43,34 @@ pub struct ProjectPlan {
 #[derive(Debug)]
 pub enum ProjectError {
     Io(std::io::Error),
+    /// No `.tex` file in the project tree carries a `\documentclass`
+    /// declaration. The caller should re-check the input directory.
+    NoEntryFile { searched: PathBuf },
+    /// More than one `.tex` file declares `\documentclass`. The caller
+    /// has to disambiguate by passing the path to the desired entry
+    /// directly instead of the directory.
+    AmbiguousEntryFile { candidates: Vec<PathBuf> },
 }
 
 impl std::fmt::Display for ProjectError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ProjectError::Io(e) => write!(f, "I/O error: {}", e),
+            ProjectError::NoEntryFile { searched } => write!(
+                f,
+                "no `.tex` file with a `\\documentclass` declaration was found under `{}`",
+                searched.display()
+            ),
+            ProjectError::AmbiguousEntryFile { candidates } => {
+                writeln!(
+                    f,
+                    "multiple `.tex` files declare `\\documentclass`; pass one of these paths directly:"
+                )?;
+                for c in candidates {
+                    writeln!(f, "  - {}", c.display())?;
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -55,6 +79,7 @@ impl std::error::Error for ProjectError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             ProjectError::Io(e) => Some(e),
+            _ => None,
         }
     }
 }
@@ -153,4 +178,184 @@ fn derive_manifest(typst: &str) -> Option<String> {
         "[package]\nname = \"{}\"\nversion = \"0.1.0\"\nentrypoint = \"main.typ\"\n",
         name
     ))
+}
+
+// ---------------------------------------------------------------------------
+// Folder-input mode
+// ---------------------------------------------------------------------------
+//
+// Real-world LaTeX projects (arXiv tarballs, paper repos) hand you a folder,
+// not a single .tex. The functions below let callers point ByeTex at that
+// folder directly:
+//
+// - `detect_entry_file` finds the single `.tex` that carries
+//   `\documentclass` (the entry point).
+// - `harvest_project_macros` pre-scans every `.tex`/`.sty`/`.cls` in the
+//   tree for `\newcommand`/`\def` so a macro defined in a sibling file
+//   never reached via `\input` is still available at every call site.
+// - `plan_project_from_dir` glues both together and runs the standard
+//   `plan_project` pipeline on the detected entry.
+
+/// Walk `dir` recursively and collect every file whose extension matches
+/// one of `wanted`. Skips hidden directories (any path component
+/// starting with `.`), doesn't follow symlinks (avoids escaping the
+/// project tree), and ignores `target/`/`node_modules/` build outputs.
+fn walk_project_files(dir: &Path, wanted: &[&str]) -> Result<Vec<PathBuf>, ProjectError> {
+    let mut out = Vec::new();
+    let mut stack: Vec<PathBuf> = vec![dir.to_path_buf()];
+    while let Some(current) = stack.pop() {
+        let read = match std::fs::read_dir(&current) {
+            Ok(r) => r,
+            // A dir that vanished mid-walk is uninteresting, not fatal.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(ProjectError::Io(e)),
+        };
+        for entry in read {
+            let entry = entry?;
+            let file_type = entry.file_type()?;
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+            // Skip dotfiles and well-known build dirs.
+            if name_str.starts_with('.') {
+                continue;
+            }
+            if file_type.is_dir() {
+                if matches!(name_str.as_ref(), "target" | "node_modules") {
+                    continue;
+                }
+                if file_type.is_symlink() {
+                    continue;
+                }
+                stack.push(entry.path());
+            } else if file_type.is_file() {
+                let path = entry.path();
+                if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                    if wanted.iter().any(|w| w.eq_ignore_ascii_case(ext)) {
+                        out.push(path);
+                    }
+                }
+            }
+        }
+    }
+    out.sort(); // deterministic order across runs / OSes
+    Ok(out)
+}
+
+/// True if `source` has a `\documentclass` declaration on a line that
+/// isn't commented out. Tolerates leading whitespace; doesn't try to
+/// reason about `\verb|...|` blocks (would be vanishingly rare).
+fn source_declares_documentclass(source: &str) -> bool {
+    for line in source.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with('%') {
+            continue;
+        }
+        if trimmed.contains("\\documentclass") {
+            return true;
+        }
+    }
+    false
+}
+
+/// Find the single `.tex` file under `dir` that declares `\documentclass`.
+///
+/// Returns:
+/// - `Ok(path)` when exactly one candidate is found.
+/// - `Err(ProjectError::NoEntryFile)` when zero candidates exist.
+/// - `Err(ProjectError::AmbiguousEntryFile)` when more than one does.
+///
+/// The walk is recursive but skips hidden directories and `target/`
+/// build outputs. Use this when the caller wants to convert "a project
+/// tree" without manually identifying the entry file.
+pub fn detect_entry_file(dir: &Path) -> Result<PathBuf, ProjectError> {
+    let tex_files = walk_project_files(dir, &["tex"])?;
+    let mut candidates = Vec::new();
+    for path in tex_files {
+        let source = match std::fs::read_to_string(&path) {
+            Ok(s) => s,
+            Err(_) => continue, // unreadable files don't disqualify the search
+        };
+        if source_declares_documentclass(&source) {
+            candidates.push(path);
+        }
+    }
+    match candidates.len() {
+        0 => Err(ProjectError::NoEntryFile {
+            searched: dir.to_path_buf(),
+        }),
+        1 => Ok(candidates.remove(0)),
+        _ => Err(ProjectError::AmbiguousEntryFile { candidates }),
+    }
+}
+
+/// Pre-scan every `.tex` / `.sty` / `.cls` under `dir` and merge their
+/// `\newcommand` / `\def` declarations into one table. Last-write-wins
+/// across files; the entry file's own definitions are NOT included here
+/// (they're picked up during the main conversion walk and would over-
+/// write any duplicates with their own values, which is the desired
+/// "definition closest to use" semantics).
+///
+/// Unreadable files are skipped silently — a missing or
+/// permission-denied file shouldn't sabotage the whole pre-scan.
+pub(crate) fn harvest_project_macros(
+    dir: &Path,
+) -> Result<HashMap<String, MacroDef>, ProjectError> {
+    let files = walk_project_files(dir, &["tex", "sty", "cls"])?;
+    let mut merged: HashMap<String, MacroDef> = HashMap::new();
+    for path in files {
+        let source = match std::fs::read_to_string(&path) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        let local = crate::emit::harvest_macros_from_source(&source);
+        for (k, v) in local {
+            merged.insert(k, v);
+        }
+    }
+    Ok(merged)
+}
+
+/// Plan a conversion when the caller has a project directory rather
+/// than a specific main `.tex` file.
+///
+/// 1. [`detect_entry_file`] picks the single `\documentclass`-bearing
+///    `.tex` (errors clearly when 0 or >1 candidates exist).
+/// 2. [`harvest_project_macros`] pre-scans every `.tex`/`.sty`/`.cls`
+///    in the tree for `\newcommand`/`\def`. Without this step, a macro
+///    defined in (say) a sibling file that the entry file never
+///    `\input`s would be unknown at its call site.
+/// 3. The entry file is converted with `base_dir = dir`, with the
+///    harvested macros pre-seeded into the emitter.
+/// 4. The returned [`ProjectPlan`] is identical in shape to
+///    [`plan_project`]'s, so the same materialiser can write it out.
+pub fn plan_project_from_dir(
+    dir: &Path,
+    no_toml: bool,
+) -> Result<ProjectPlan, ProjectError> {
+    let entry = detect_entry_file(dir)?;
+    let preseeded = harvest_project_macros(dir)?;
+
+    let source = std::fs::read_to_string(&entry)?;
+    let opts = ConvertOptions {
+        source_name: Some(entry.display().to_string()),
+        base_dir: Some(dir.to_path_buf()),
+    };
+    let out = convert_with_macros(&source, &opts, preseeded);
+
+    let assets = out
+        .asset_refs
+        .iter()
+        .map(|r| asset_ref_to_copy(r, dir))
+        .collect();
+    let manifest = if no_toml {
+        None
+    } else {
+        derive_manifest(&out.typst)
+    };
+    Ok(ProjectPlan {
+        main_typst: out.typst,
+        assets,
+        warnings: out.warnings,
+        manifest,
+    })
 }
