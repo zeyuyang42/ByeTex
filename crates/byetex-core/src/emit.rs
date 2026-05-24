@@ -1615,7 +1615,21 @@ impl<'a> Emitter<'a> {
         let mut visited = std::mem::take(&mut self.visited_includes);
         visited.insert(canonical);
         let tree = crate::parser::parse(&source);
-        let mut sub = Emitter::with_includes(&source, &source_name, Some(new_base), visited);
+        // Inherit the parent's macro table so `\input`ed files can use
+        // macros defined in the parent (or pre-scanned by the project
+        // layer). Without this, an arXiv paper with `\newcommand\src`
+        // in `style/header.tex` and `$\src$` in `1-intro.tex` would
+        // produce an `ambiguous_math` warning for every call site,
+        // because the sub-emitter for `1-intro.tex` started with an
+        // empty macro table.
+        let macros = self.macros.clone();
+        let mut sub = Emitter::with_includes_and_macros(
+            &source,
+            &source_name,
+            Some(new_base),
+            visited,
+            macros,
+        );
         sub.emit_root(tree.root_node());
         // Merge the child's body and state back into the parent.
         if !self.out.ends_with('\n') && !self.out.is_empty() {
@@ -1641,6 +1655,14 @@ impl<'a> Emitter<'a> {
         // detected as a duplicate (which it is — the rest of the chain
         // remains).
         self.visited_includes = std::mem::take(&mut sub.visited_includes);
+        // Propagate any macros the include newly defined back to the
+        // parent so subsequent calls at the parent level see them.
+        // `or_insert` preserves parent-wins semantics (the parent's
+        // pre-existing definitions, including those seeded by the
+        // project-layer pre-scan, take precedence).
+        for (k, v) in sub.macros.drain() {
+            self.macros.entry(k).or_insert(v);
+        }
         true
     }
 
@@ -4694,12 +4716,31 @@ fn substitute_macro_args(body: &str, args: &[String]) -> String {
 /// Returns `None` when the new command has an optional-default
 /// argument (the form `\newcommand{\name}[1][default]{body}`) — we
 /// don't model defaults yet, so let those fall through to silent drop.
+///
+/// Accepts both name forms tree-sitter-latex produces for the
+/// `declaration` field of `new_command_definition`:
+///
+/// - `\newcommand{\name}{body}` — the canonical, curly-wrapped name.
+///   The child kind is `curly_group_command_name`; the inner
+///   `command_name` carries the actual name string.
+/// - `\newcommand\name{body}` — the brace-less name form, common in
+///   arXiv preamble macro files (`style/header.tex` etc.). The child
+///   kind is `command_name` directly. Without this branch, ~400
+///   user macros across the test corpus failed to be harvested by
+///   the pre-scan and every call site emitted `ambiguous_math`.
 fn extract_newcommand(node: Node<'_>, src: &str) -> Option<(String, MacroDef)> {
     let mut cursor = node.walk();
     let mut name: Option<String> = None;
     let mut params: usize = 0;
     let mut body_group: Option<Node<'_>> = None;
     let mut brack_groups: usize = 0;
+    // Track whether we've seen the declaration child yet. The
+    // brace-less form has a `command_name` as the declaration field,
+    // but the body of the macro is also a curly group, and the AST
+    // may include the macro `\newcommand` token itself as a separate
+    // `command_name` sibling. We only treat the FIRST `command_name`
+    // (the one before any `curly_group`) as the declaration name.
+    let mut saw_declaration = false;
     for child in node.children(&mut cursor) {
         match child.kind() {
             "curly_group_command_name" => {
@@ -4709,6 +4750,14 @@ fn extract_newcommand(node: Node<'_>, src: &str) -> Option<(String, MacroDef)> {
                         name = Some(src[gc.start_byte()..gc.end_byte()].to_string());
                     }
                 }
+                saw_declaration = true;
+            }
+            "command_name" if !saw_declaration && name.is_none() => {
+                // Brace-less name form: `\newcommand\name{body}`.
+                // tree-sitter-latex parses the name as a direct
+                // `command_name` child of `new_command_definition`.
+                name = Some(src[child.start_byte()..child.end_byte()].to_string());
+                saw_declaration = true;
             }
             "brack_group_argc" => {
                 let mut sub = child.walk();
