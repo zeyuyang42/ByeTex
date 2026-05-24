@@ -449,634 +449,385 @@ name = "\\~"
 reason = "TeX text-mode accent commands, not math symbols"
 [[exclude]]
 name = "\\>"
-reason = "TODO phase 2"
+reason = "TeX mskip spacing shorthand, no math content, skip"
 [[exclude]]
 name = "\\@hspace"
-reason = "TODO phase 2"
+reason = "KaTeX internal hspace helper, not user-facing, skip"
 [[exclude]]
 name = "\\@hspacer"
-reason = "TODO phase 2"
+reason = "KaTeX internal hspace* helper, not user-facing, skip"
 [[exclude]]
 name = "\\@ifstar"
-reason = "TODO phase 2"
+reason = "TeX conditional, not math content, skip"
 [[exclude]]
 name = "\\AA"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\Alpha"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\Bbbk"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\Beta"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\Bra"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\Chi"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\Complex"
-reason = "TODO phase 2"
+reason = "text-mode ring-A accent, not math, skip"
 [[exclude]]
 name = "\\DOTSB"
-reason = "TODO phase 2"
+reason = "KaTeX internal dots-context marker (expands to relax), skip"
 [[exclude]]
 name = "\\DOTSI"
-reason = "TODO phase 2"
+reason = "KaTeX internal dots-context marker (expands to relax), skip"
 [[exclude]]
 name = "\\DOTSX"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\Dagger"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\Darr"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\Epsilon"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\Eta"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\Harr"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\Iota"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\Kappa"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\Ket"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\Larr"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\Lrarr"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\Mu"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\Nu"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\Omicron"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\Rarr"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\Reals"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\Rho"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\Tau"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\Uarr"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\Zeta"
-reason = "TODO phase 2"
+reason = "KaTeX internal dots-context marker (expands to relax), skip"
 [[exclude]]
 name = "\\aa"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\alef"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\alefsym"
-reason = "TODO phase 2"
+reason = "text-mode ring-a accent, not math, skip"
 [[exclude]]
 name = "\\angln"
-reason = "TODO phase 2"
+reason = "actuarial angle notation, very niche, defer"
 [[exclude]]
 name = "\\approxcolon"
-reason = "TODO phase 2"
+reason = "complex mathrel combinator, no Typst equivalent, defer"
 [[exclude]]
 name = "\\approxcoloncolon"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\argmax"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\argmin"
-reason = "TODO phase 2"
+reason = "complex mathrel combinator, no Typst equivalent, defer"
 [[exclude]]
 name = "\\bgroup"
-reason = "TODO phase 2"
+reason = "structural { delimiter, not a math command, skip"
 [[exclude]]
 name = "\\blue"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\blueA"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\blueB"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\blueC"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\blueD"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\blueE"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\boxed"
-reason = "TODO phase 2"
+reason = "Phase 4.5 structural command (enclose.ts), defer"
 [[exclude]]
 name = "\\bra"
-reason = "TODO phase 2"
+reason = "covered by physics package seed (PHYSICS table), skip"
 [[exclude]]
 name = "\\braket"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\bull"
-reason = "TODO phase 2"
+reason = "covered by physics package seed (PHYSICS table), skip"
 [[exclude]]
 name = "\\clap"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\clubs"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\cnums"
-reason = "TODO phase 2"
+reason = "TeX layout mathclap, no Typst equivalent, skip"
 [[exclude]]
 name = "\\coloncolon"
-reason = "TODO phase 2"
+reason = "chains to dblcolon which uses html@mathml body, defer"
 [[exclude]]
 name = "\\coloncolonapprox"
-reason = "TODO phase 2"
+reason = "chains to Colonapprox with html@mathml body, defer"
 [[exclude]]
 name = "\\coloncolonequals"
-reason = "TODO phase 2"
+reason = "chains to Coloneqq with html@mathml body, defer"
 [[exclude]]
 name = "\\coloncolonminus"
-reason = "TODO phase 2"
+reason = "chains to Coloneq with html@mathml body, defer"
 [[exclude]]
 name = "\\coloncolonsim"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\colonequals"
-reason = "TODO phase 2"
+reason = "chains to Colonsim with html@mathml body, defer"
 [[exclude]]
 name = "\\colonminus"
-reason = "TODO phase 2"
+reason = "chains to coloneq with html@mathml body, defer"
 [[exclude]]
 name = "\\copyright"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\dArr"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\darr"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\diamonds"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\dotsb"
-reason = "TODO phase 2"
+reason = "text-mode copyright symbol, not math, skip"
 [[exclude]]
 name = "\\dotsi"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\dotsm"
-reason = "TODO phase 2"
+reason = "expands to negspace + cdots, complex spacing, defer"
 [[exclude]]
 name = "\\dotsx"
-reason = "TODO phase 2"
+reason = "expands to ldots + thin space, minor variant, defer"
 [[exclude]]
 name = "\\egroup"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\empty"
-reason = "TODO phase 2"
+reason = "structural } delimiter, not a math command, skip"
 [[exclude]]
 name = "\\enskip"
-reason = "TODO phase 2"
+reason = "TeX hskip .5em spacing, no math content, skip"
 [[exclude]]
 name = "\\enspace"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\equalscolon"
-reason = "TODO phase 2"
+reason = "TeX kern .5em spacing, no math content, skip"
 [[exclude]]
 name = "\\equalscoloncolon"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\exist"
-reason = "TODO phase 2"
+reason = "chains to Eqqcolon with html@mathml body, defer"
 [[exclude]]
 name = "\\goldA"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\goldB"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\goldC"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\goldD"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\goldE"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\gray"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\grayA"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\grayB"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\grayC"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\grayD"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\grayE"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\grayF"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\grayG"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\grayH"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\grayI"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\green"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\greenA"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\greenB"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\greenC"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\greenD"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\greenE"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\gvertneqq"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\hArr"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\harr"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\hearts"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\image"
-reason = "TODO phase 2"
+reason = "html@mathml with private-area glyph, no clean expansion, skip"
 [[exclude]]
 name = "\\impliedby"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\infin"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\injlim"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\isin"
-reason = "TODO phase 2"
+reason = "already in lookup_math_symbol (arrow.l.double.long), skip"
 [[exclude]]
 name = "\\kaBlue"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\kaGreen"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\ket"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\lArr"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\lang"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\larr"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\liminf"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\limsup"
-reason = "TODO phase 2"
+reason = "covered by physics package seed (PHYSICS table), skip"
 [[exclude]]
 name = "\\llap"
-reason = "TODO phase 2"
+reason = "TeX layout mathllap, no Typst equivalent, skip"
 [[exclude]]
 name = "\\lq"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\lrArr"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\lrarr"
-reason = "TODO phase 2"
+reason = "text-mode backtick character, not math, skip"
 [[exclude]]
 name = "\\lvertneqq"
-reason = "TODO phase 2"
+reason = "html@mathml with private-area glyph, no clean expansion, skip"
 [[exclude]]
 name = "\\maroonA"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\maroonB"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\maroonC"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\maroonD"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\maroonE"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\mathstrut"
-reason = "TODO phase 2"
+reason = "vphantom{(} phantom spacing, no Typst equivalent, skip"
 [[exclude]]
 name = "\\mintA"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\mintB"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\mintC"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\minuscolon"
-reason = "TODO phase 2"
+reason = "chains to eqcolon with html@mathml body, defer"
 [[exclude]]
 name = "\\minuscoloncolon"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\natnums"
-reason = "TODO phase 2"
+reason = "chains to Eqcolon with html@mathml body, defer"
 [[exclude]]
 name = "\\newline"
-reason = "TODO phase 2"
+reason = "expands to line-break relax, not math content, skip"
 [[exclude]]
 name = "\\ngeqq"
-reason = "TODO phase 2"
+reason = "html@mathml with private-area glyph, no clean expansion, skip"
 [[exclude]]
 name = "\\ngeqslant"
-reason = "TODO phase 2"
+reason = "html@mathml with private-area glyph, no clean expansion, skip"
 [[exclude]]
 name = "\\nleqq"
-reason = "TODO phase 2"
+reason = "html@mathml with private-area glyph, no clean expansion, skip"
 [[exclude]]
 name = "\\nleqslant"
-reason = "TODO phase 2"
+reason = "html@mathml with private-area glyph, no clean expansion, skip"
 [[exclude]]
 name = "\\notni"
-reason = "TODO phase 2"
+reason = "html@mathml body, no clean LaTeX expansion, skip"
 [[exclude]]
 name = "\\nshortmid"
-reason = "TODO phase 2"
+reason = "html@mathml with Unicode char, no named Typst symbol, skip"
 [[exclude]]
 name = "\\nsubseteqq"
-reason = "TODO phase 2"
+reason = "html@mathml with Unicode char, no named Typst symbol, skip"
 [[exclude]]
 name = "\\nsupseteqq"
-reason = "TODO phase 2"
+reason = "html@mathml with Unicode char, no named Typst symbol, skip"
 [[exclude]]
 name = "\\orange"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\ordinarycolon"
-reason = "TODO phase 2"
+reason = "colon literal, trivial alias, not worth seeding, skip"
 [[exclude]]
 name = "\\pink"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\plim"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\plusmn"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\projlim"
-reason = "TODO phase 2"
+reason = "complex operatorname with limits, not a simple alias, defer"
 [[exclude]]
 name = "\\purple"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\purpleA"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\purpleB"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\purpleC"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\purpleD"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\purpleE"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\rArr"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\rang"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\rarr"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\ratio"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\real"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\reals"
-reason = "TODO phase 2"
+reason = "chains to vcentcolon which has complex body, defer"
 [[exclude]]
 name = "\\red"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\redA"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\redB"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\redC"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\redD"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\redE"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\rlap"
-reason = "TODO phase 2"
+reason = "TeX layout mathrlap, no Typst equivalent, skip"
 [[exclude]]
 name = "\\rq"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\sdot"
-reason = "TODO phase 2"
+reason = "text-mode single-quote character, not math, skip"
 [[exclude]]
 name = "\\sect"
-reason = "TODO phase 2"
+reason = "S section sign, text-mode use, not math, skip"
 [[exclude]]
 name = "\\set"
-reason = "TODO phase 2"
+reason = "braket set uses complex bra@set helper function, defer"
 [[exclude]]
 name = "\\simcolon"
-reason = "TODO phase 2"
+reason = "complex mathrel combinator, no Typst equivalent, defer"
 [[exclude]]
 name = "\\simcoloncolon"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\spades"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\sub"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\sube"
-reason = "TODO phase 2"
+reason = "complex mathrel combinator, no Typst equivalent, defer"
 [[exclude]]
 name = "\\substack"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\supe"
-reason = "TODO phase 2"
+reason = "Phase 4.6 structural (subarray environment), defer"
 [[exclude]]
 name = "\\tag@paren"
-reason = "TODO phase 2"
+reason = "KaTeX internal tag helper, not user-facing, skip"
 [[exclude]]
 name = "\\tealA"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\tealB"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\tealC"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\tealD"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\tealE"
-reason = "TODO phase 2"
+reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\textcopyright"
-reason = "TODO phase 2"
+reason = "text-mode copyright, not math, skip"
 [[exclude]]
 name = "\\textregistered"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\thetasym"
-reason = "TODO phase 2"
+reason = "text-mode registered symbol, not math, skip"
 [[exclude]]
 name = "\\tmspace"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\uArr"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\uarr"
-reason = "TODO phase 2"
+reason = "KaTeX internal spacing helper, not user-facing, skip"
 [[exclude]]
 name = "\\underbar"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\varDelta"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\varGamma"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\varLambda"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\varOmega"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\varPhi"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\varPi"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\varPsi"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\varSigma"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\varTheta"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\varUpsilon"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\varXi"
-reason = "TODO phase 2"
+reason = "underline text underlining, not math, skip"
 [[exclude]]
 name = "\\varcoppa"
-reason = "TODO phase 2"
+reason = "archaic Greek letter, no Typst equivalent, skip"
 [[exclude]]
 name = "\\varinjlim"
-reason = "TODO phase 2"
+reason = "complex body with underrightarrow, defer to Phase 4"
 [[exclude]]
 name = "\\varliminf"
-reason = "TODO phase 2"
+reason = "complex body with underline op, defer to Phase 4"
 [[exclude]]
 name = "\\varlimsup"
-reason = "TODO phase 2"
+reason = "complex body with overline op, defer to Phase 4"
 [[exclude]]
 name = "\\varprojlim"
-reason = "TODO phase 2"
+reason = "complex body with underleftarrow, defer to Phase 4"
 [[exclude]]
 name = "\\varsubsetneqq"
-reason = "TODO phase 2"
+reason = "html@mathml with Unicode char, no named Typst symbol, skip"
 [[exclude]]
 name = "\\varsupsetneqq"
-reason = "TODO phase 2"
+reason = "html@mathml with Unicode char, no named Typst symbol, skip"
 [[exclude]]
 name = "\\vcentcolon"
-reason = "TODO phase 2"
-[[exclude]]
-name = "\\weierp"
-reason = "TODO phase 2"
+reason = "mathrel mathop ordinarycolon, complex math class ops, skip"
 [[exclude]]
 name = "$"
 reason = "math mode delimiter, handled separately"

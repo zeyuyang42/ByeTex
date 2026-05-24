@@ -29,6 +29,10 @@ pub mod __test_support {
     pub fn wrap_for_command_name(name: &str) -> Option<(&'static str, &'static str)> {
         super::emit::wrap_for_command_name(name)
     }
+    /// Returns true if the name is seeded as an always-on KATEX_BUILTIN macro.
+    pub fn is_katex_builtin(name: &str) -> bool {
+        super::package_macros::KATEX_BUILTIN.iter().any(|(n, _)| *n == name)
+    }
 }
 
 pub use warnings::{Category, Range, Severity, Warning};
