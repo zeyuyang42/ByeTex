@@ -33,37 +33,37 @@ Pre-built binaries are published with each release for:
 
 ```bash
 # Download the latest tarball for your platform from GitHub Releases.
-# Each archive includes the `bytetex` binary plus the `skills/` directory.
-tar -xzf bytetex-vX.Y.Z-<target>.tar.gz
-./bytetex-vX.Y.Z-<target>/bytetex --version
+# Each archive includes the `byetex` binary plus the `skills/` directory.
+tar -xzf byetex-vX.Y.Z-<target>.tar.gz
+./byetex-vX.Y.Z-<target>/byetex --version
 ```
 
 Or via cargo (requires Rust 1.85+):
 
 ```bash
-cargo install --git https://github.com/zeyuyang42/ByeTex bytetex-cli --features mcp
+cargo install --git https://github.com/zeyuyang42/ByeTex byetex-cli --features mcp
 ```
 
 ## CLI
 
 ```bash
 # Convert a LaTeX document.
-bytetex convert paper.tex
+byetex convert paper.tex
 # Writes paper.typ and paper.warnings.json.
 
 # Inspect the warnings.
 cat paper.warnings.json | jq '.[].category.kind' | sort | uniq -c
 
 # Browse the bundled skills.
-bytetex skills list
-bytetex skills read bytetex-using-warnings-json
+byetex skills list
+byetex skills read byetex-using-warnings-json
 
 # Run as an MCP server over stdio.
-bytetex serve
+byetex serve
 
 # Track regression coverage against a markdown-bundled corpus.
-bytetex corpus harvest --source context/latex-context.md --out tests/corpus/
-bytetex corpus run --dir tests/corpus/
+byetex corpus harvest --source context/latex-context.md --out tests/corpus/
+byetex corpus run --dir tests/corpus/
 ```
 
 ### Project mode
@@ -74,7 +74,7 @@ directory that compiles end-to-end:
 
 ```bash
 # Convert a LaTeX project.
-bytetex convert paper.tex --project
+byetex convert paper.tex --project
 # Writes paper.typst-project/ containing:
 #   main.typ          — the converted Typst body
 #   fig/foo.pdf       — asset files copied from the source project
@@ -82,13 +82,13 @@ bytetex convert paper.tex --project
 #   typst.toml        — optional manifest for known document classes
 
 # Specify a custom output directory.
-bytetex convert paper.tex --project --project-out /tmp/my-project
+byetex convert paper.tex --project --project-out /tmp/my-project
 
 # Skip typst.toml generation.
-bytetex convert paper.tex --project --no-toml
+byetex convert paper.tex --project --no-toml
 
 # Overwrite a non-empty output directory.
-bytetex convert paper.tex --project --project-out /tmp/my-project --force
+byetex convert paper.tex --project --project-out /tmp/my-project --force
 
 # Compile the result.
 typst compile paper.typst-project/main.typ
@@ -96,7 +96,7 @@ typst compile paper.typst-project/main.typ
 
 ## Output contract
 
-Every `bytetex convert` writes two files next to the input:
+Every `byetex convert` writes two files next to the input:
 
 - `<stem>.typ` — the converted Typst document.
 - `<stem>.warnings.json` — an array of warnings, even if empty, so downstream
@@ -104,7 +104,7 @@ Every `bytetex convert` writes two files next to the input:
 
 The JSON schema is fully documented at [`docs/warnings.schema.json`](docs/warnings.schema.json)
 and the public shape is locked by a regression test
-(`crates/bytetex-core/tests/warnings_schema.rs`).
+(`crates/byetex-core/tests/warnings_schema.rs`).
 
 A representative warning:
 
@@ -119,11 +119,11 @@ A representative warning:
   "severity": "warning",
   "message": "...",
   "snippet": "\\begin{tikzpicture}...\\end{tikzpicture}",
-  "suggested_skill": "bytetex-tikz-to-typst"
+  "suggested_skill": "byetex-tikz-to-typst"
 }
 ```
 
-`severity` is `info | warning | error`. The exit code of `bytetex convert` is
+`severity` is `info | warning | error`. The exit code of `byetex convert` is
 **always 0** when conversion succeeds — even with warnings — so callers should
 inspect the sidecar rather than the exit code.
 
@@ -131,13 +131,13 @@ inspect the sidecar rather than the exit code.
 
 See [`docs/for-agents.md`](docs/for-agents.md). The short version:
 
-1. `bytetex convert input.tex` is non-destructive and idempotent.
+1. `byetex convert input.tex` is non-destructive and idempotent.
 2. Read `input.warnings.json`. Empty means a clean conversion.
 3. Each warning's `suggested_skill` points to a markdown file in `skills/`
    that documents how to resolve that warning category. Reach the skills via
-   `bytetex skills read <name>`, by opening `skills/<name>.md` on disk, or
+   `byetex skills read <name>`, by opening `skills/<name>.md` on disk, or
    over MCP with the `read_skill` tool.
-4. For interactive use, `bytetex serve` exposes the converter and skills as
+4. For interactive use, `byetex serve` exposes the converter and skills as
    MCP tools (`convert`, `convert_file`, `convert_fragment`, `list_skills`,
    `read_skill`).
 
@@ -146,9 +146,9 @@ See [`docs/for-agents.md`](docs/for-agents.md). The short version:
 ```
 ByeTex/
 ├── crates/
-│   ├── bytetex-core/    # parser, IR, emitter, warnings, skills
-│   ├── bytetex-cli/     # `bytetex` binary
-│   └── bytetex-mcp/     # rmcp-backed MCP server
+│   ├── byetex-core/    # parser, IR, emitter, warnings, skills
+│   ├── byetex-cli/     # `byetex` binary
+│   └── byetex-mcp/     # rmcp-backed MCP server
 ├── context/             # LaTeX & Typst reference docs (corpus source)
 ├── skills/              # bundled markdown skills, embedded at build time
 ├── tests/fixtures/      # per-milestone golden test inputs
@@ -169,4 +169,4 @@ the corpus threshold.
 ## License
 
 Dual-licensed under MIT or Apache 2.0. Vendored sources keep their original
-licenses (notably `crates/bytetex-core/vendor/tree-sitter-latex/LICENSE`).
+licenses (notably `crates/byetex-core/vendor/tree-sitter-latex/LICENSE`).

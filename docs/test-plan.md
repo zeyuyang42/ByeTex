@@ -58,16 +58,16 @@ You have three options. Pick **one** — you don't need all three.
 ```bash
 cd ~/Workspace/tools/ByeTex          # adjust path
 git fetch && git checkout v0.2.0     # ensure you're on the tagged commit
-cargo build --release -p bytetex-cli --features mcp
+cargo build --release -p byetex-cli --features mcp
 ```
 
-**Expected**: `target/release/bytetex` exists, ~7 MB.
+**Expected**: `target/release/byetex` exists, ~7 MB.
 
 ```bash
-./target/release/bytetex --version
+./target/release/byetex --version
 ```
 
-**Expected**: `bytetex 0.0.1` (Cargo workspace version — the GitHub tag is what
+**Expected**: `byetex 0.0.1` (Cargo workspace version — the GitHub tag is what
 gates release, not the crate version field).
 
 ### A2. Download from GitHub Releases
@@ -86,35 +86,35 @@ gh run list --workflow=release.yml --repo zeyuyang42/ByeTeX --limit 3
 Once the assets are present, pick yours (macOS arm64 in your case):
 
 ```bash
-mkdir -p /tmp/bytetex-test && cd /tmp/bytetex-test
+mkdir -p /tmp/byetex-test && cd /tmp/byetex-test
 gh release download v0.2.0 --repo zeyuyang42/ByeTeX --pattern '*aarch64-apple-darwin*'
-tar -xzf bytetex-*aarch64-apple-darwin*.tar.gz
-ls bytetex-*aarch64-apple-darwin*/
+tar -xzf byetex-*aarch64-apple-darwin*.tar.gz
+ls byetex-*aarch64-apple-darwin*/
 ```
 
-**Expected**: a directory containing `bytetex` (the binary) and `skills/`.
+**Expected**: a directory containing `byetex` (the binary) and `skills/`.
 
 ```bash
-./bytetex-*aarch64-apple-darwin*/bytetex --version
+./byetex-*aarch64-apple-darwin*/byetex --version
 ```
 
-Set a convenience symlink so the rest of this document's `bytetex` references work:
+Set a convenience symlink so the rest of this document's `byetex` references work:
 
 ```bash
-ln -sf $(pwd)/bytetex-*aarch64-apple-darwin*/bytetex /usr/local/bin/bytetex
-which bytetex
-bytetex --version
+ln -sf $(pwd)/byetex-*aarch64-apple-darwin*/byetex /usr/local/bin/byetex
+which byetex
+byetex --version
 ```
 
 ### A3. `cargo install` from the GitHub repo
 
 ```bash
-cargo install --git https://github.com/zeyuyang42/ByeTeX --tag v0.2.0 bytetex-cli --features mcp
-which bytetex
-bytetex --version
+cargo install --git https://github.com/zeyuyang42/ByeTeX --tag v0.2.0 byetex-cli --features mcp
+which byetex
+byetex --version
 ```
 
-**Expected**: install completes (3–5 min), `bytetex` is on `PATH`.
+**Expected**: install completes (3–5 min), `byetex` is on `PATH`.
 
 ---
 
@@ -125,7 +125,7 @@ fails, something's wrong with the binary itself.
 
 ```bash
 cd ~/Workspace/tools/ByeTex          # repo root, adjust path
-bytetex convert templates/IEEE/conference_101719.tex
+byetex convert templates/IEEE/conference_101719.tex
 ```
 
 **Expected output**:
@@ -192,21 +192,21 @@ etc. — that's the field that lets agents jump to the right source location.
 List the bundled skills:
 
 ```bash
-bytetex skills list
+byetex skills list
 ```
 
 **Expected**: 6 entries, each with name + one-line description:
-- `bytetex-using-warnings-json`
-- `bytetex-tikz-to-typst`
-- `bytetex-custom-macros`
-- `bytetex-unsupported-environment`
-- `bytetex-parse-error`
-- `bytetex-bibliography`
+- `byetex-using-warnings-json`
+- `byetex-tikz-to-typst`
+- `byetex-custom-macros`
+- `byetex-unsupported-environment`
+- `byetex-parse-error`
+- `byetex-bibliography`
 
 Read the entry-point skill:
 
 ```bash
-bytetex skills read bytetex-using-warnings-json | head -30
+byetex skills read byetex-using-warnings-json | head -30
 ```
 
 **Expected**: the markdown frontmatter (`name:` / `description:`) followed by
@@ -256,13 +256,13 @@ For each pick, run ByeTex and inspect:
 SAMPLE="templates/latextemplates/essay/tufte-essay/source"
 MAIN=$(grep -l '\\documentclass' $SAMPLE/*.tex 2>/dev/null | head -1)
 echo "main: $MAIN"
-bytetex convert "$MAIN"
+byetex convert "$MAIN"
 jq 'length' "${MAIN%.tex}.warnings.json"
 typst compile "${MAIN%.tex}.typ" 2>&1 | head -3
 ```
 
 **Expected for each**:
-- `bytetex convert` exits 0 (no panic — this is the floor).
+- `byetex convert` exits 0 (no panic — this is the floor).
 - The `.typ` file exists and is well-formed Typst.
 - Warning count is reasonable: ≤ 5% of `wc -l` on the source for academic
   papers; templates with heavy custom commands may be higher.
@@ -291,7 +291,7 @@ for tex in $(find "$ROOT" -path '*/source/*.tex' -type f 2>/dev/null); do
   grep -q '\\documentclass' "$tex" || continue
   TOTAL=$((TOTAL+1))
   base="${tex%.tex}"
-  out=$(bytetex convert "$tex" 2>&1 || echo "PANIC")
+  out=$(byetex convert "$tex" 2>&1 || echo "PANIC")
   if echo "$out" | grep -q "PANIC"; then
     PANICKED=$((PANICKED+1))
     continue
@@ -354,9 +354,9 @@ yet handle. These are the inputs for the next round of emitter rules.
 If you don't have the corpus yet, fall back to a single paper of your own:
 
 ```bash
-cp ~/path/to/your/paper.tex /tmp/bytetex-test/
-cd /tmp/bytetex-test
-bytetex convert paper.tex
+cp ~/path/to/your/paper.tex /tmp/byetex-test/
+cd /tmp/byetex-test
+byetex convert paper.tex
 jq 'length' paper.warnings.json
 jq '[.[].category.kind] | group_by(.) | map({kind: .[0], count: length}) | sort_by(-.count) | .[0:5]' \
    paper.warnings.json
@@ -378,7 +378,7 @@ This tests the path an AI assistant would use. You need a Claude Code session
 In window 1:
 
 ```bash
-bytetex serve
+byetex serve
 ```
 
 **Expected**: the process blocks (no immediate output). It's now listening on
@@ -393,7 +393,7 @@ printf '%s\n%s\n%s\n' \
   '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"manual","version":"0"}}}' \
   '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
-  | bytetex serve 2>/dev/null
+  | byetex serve 2>/dev/null
 ```
 
 **Expected**: three JSON lines back (one ignored notification echo plus two
@@ -408,7 +408,7 @@ printf '%s\n%s\n%s\n' \
   '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"manual","version":"0"}}}' \
   '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
-  | bytetex serve 2>/dev/null | grep -oE '"name":"(convert|convert_file|convert_fragment|list_skills|read_skill)"' | sort -u
+  | byetex serve 2>/dev/null | grep -oE '"name":"(convert|convert_file|convert_fragment|list_skills|read_skill)"' | sort -u
 ```
 
 **Expected**: all 5 tool names.
@@ -419,7 +419,7 @@ Add the MCP server to Claude Code's config. The mechanism varies by Claude
 Code version; the common form is editing a JSON config file or running:
 
 ```bash
-claude mcp add bytetex bytetex serve
+claude mcp add byetex byetex serve
 ```
 
 Verify the connection from inside Claude Code:
@@ -428,7 +428,7 @@ Verify the connection from inside Claude Code:
 /mcp
 ```
 
-**Expected**: a list of connected servers including `bytetex` with 5 tools.
+**Expected**: a list of connected servers including `byetex` with 5 tools.
 
 ### E4. Drive a real conversion through the agent
 
@@ -441,7 +441,7 @@ echo "agent target: $TARGET"
 
 In Claude Code, ask (substitute the path you printed):
 
-> Using the bytetex MCP server, convert `<TARGET path>` to Typst.
+> Using the byetex MCP server, convert `<TARGET path>` to Typst.
 > Then read the warnings.json and tell me what's there. For each warning
 > category, read the relevant skill and summarize the remediation steps in 1–2
 > sentences each.
@@ -457,7 +457,7 @@ remediation summary should match what's literally in the skill files (no
 hallucination).
 
 **Fail signals**: the agent can't reach the MCP server, the tool calls return
-errors, or the summary contradicts what's in `skills/bytetex-*.md`.
+errors, or the summary contradicts what's in `skills/byetex-*.md`.
 
 ### E5. Have the agent apply fixes end-to-end
 
@@ -486,7 +486,7 @@ Quick spot-checks for known sharp edges. Each should take under a minute.
 Pull the NeurIPS template:
 
 ```bash
-bytetex convert templates/NeurIPS/neurips_paper.tex
+byetex convert templates/NeurIPS/neurips_paper.tex
 typst compile templates/NeurIPS/neurips_paper.typ
 ```
 
@@ -499,7 +499,7 @@ descent equation and the matrix norm formula should render correctly.
 cat > /tmp/verb_test.tex << 'EOF'
 Use \verb|\ref{eq:foo}| inside verbatim, not a real reference.
 EOF
-bytetex convert /tmp/verb_test.tex
+byetex convert /tmp/verb_test.tex
 cat /tmp/verb_test.typ
 ```
 
@@ -510,7 +510,7 @@ a live `@eq:foo` reference. `typst compile` should succeed.
 
 ```bash
 echo "" > /tmp/empty.tex
-bytetex convert /tmp/empty.tex
+byetex convert /tmp/empty.tex
 cat /tmp/empty.typ
 cat /tmp/empty.warnings.json
 ```
@@ -524,11 +524,11 @@ cat > /tmp/broken.tex << 'EOF'
 \section{Missing brace
 The body continues but the brace was never closed.
 EOF
-bytetex convert /tmp/broken.tex
+byetex convert /tmp/broken.tex
 jq '[.[].category.kind] | unique' /tmp/broken.warnings.json
 ```
 
-**Expected**: at least one `parse_error` warning with `suggested_skill: "bytetex-parse-error"`. No panic. The `.typ` is produced (degraded but present).
+**Expected**: at least one `parse_error` warning with `suggested_skill: "byetex-parse-error"`. No panic. The `.typ` is produced (degraded but present).
 
 ---
 
@@ -537,7 +537,7 @@ jq '[.[].category.kind] | unique' /tmp/broken.warnings.json
 If you came through Scenario A2 (downloaded release):
 
 ```bash
-cd /tmp/bytetex-test
+cd /tmp/byetex-test
 gh release view v0.2.0 --repo zeyuyang42/ByeTeX --json assets --jq '.assets[].name'
 ```
 
@@ -581,19 +581,19 @@ manifest `id` so the source is reproducible (rerun the harvester with
 
 ```bash
 # Convert
-bytetex convert input.tex
+byetex convert input.tex
 
 # Inspect warnings
 jq '.' input.warnings.json
 jq '[.[].category.kind] | group_by(.) | map({kind: .[0], count: length})' input.warnings.json
 
 # Skills
-bytetex skills list
-bytetex skills read bytetex-using-warnings-json
+byetex skills list
+byetex skills read byetex-using-warnings-json
 
 # MCP
-bytetex serve                                  # blocks; for clients
-claude mcp add bytetex bytetex serve           # one-time setup
+byetex serve                                  # blocks; for clients
+claude mcp add byetex byetex serve           # one-time setup
 
 # Compile
 typst compile input.typ

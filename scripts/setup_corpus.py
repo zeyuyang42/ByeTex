@@ -2,7 +2,7 @@
 """
 Populate corpus/inhouse/ from the committed tests/inhouse/ source-of-truth.
 
-Run this once before using bytetex + typst against the inhouse templates,
+Run this once before using byetex + typst against the inhouse templates,
 so that generated outputs (.typ, .warnings.json, .pdf) are written inside
 corpus/ and never pollute the committed tests/ tree.
 

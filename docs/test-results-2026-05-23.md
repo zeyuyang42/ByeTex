@@ -12,8 +12,8 @@ filing (see "Findings" at the bottom).
 
 ## Scenario A — Get the binary
 
-**PASS.** Local binary at `target/release/bytetex` (~7 MB) reports
-`bytetex 0.0.1`. A2/A3 install paths not exercised; the binary was built
+**PASS.** Local binary at `target/release/byetex` (~7 MB) reports
+`byetex 0.0.1`. A2/A3 install paths not exercised; the binary was built
 locally from `d48ad6e` immediately before this run.
 
 ## Scenario B — Convert a known-good template
@@ -21,7 +21,7 @@ locally from `d48ad6e` immediately before this run.
 **PASS.**
 
 ```
-$ bytetex convert templates/IEEE/conference_101719.tex
+$ byetex convert templates/IEEE/conference_101719.tex
 wrote templates/IEEE/conference_101719.typ (17 warnings)
 ```
 
@@ -39,8 +39,8 @@ citations rendering correctly.
 **PASS.** Warning histogram dominated by `unsupported_command` (16) plus
 1 `unsupported_environment` — matches documented expectation. Sample
 warning has the documented shape (`range`, `category`, `severity`,
-`message`, `snippet`, `suggested_skill`). `bytetex skills list` returns
-all 6 expected skill names; `bytetex skills read bytetex-using-warnings-json`
+`message`, `snippet`, `suggested_skill`). `byetex skills list` returns
+all 6 expected skill names; `byetex skills read byetex-using-warnings-json`
 emits the documented frontmatter + body.
 
 ## Scenario D1 — Corpus presence
@@ -103,7 +103,7 @@ All five tools are present in `tools/list`: `convert`, `convert_file`,
 `convert_fragment`, `list_skills`, `read_skill`. Initialize succeeds with
 protocol version 2025-03-26.
 
-The test plan's one-liner (`printf … | bytetex serve | grep …`) needs a
+The test plan's one-liner (`printf … | byetex serve | grep …`) needs a
 small change to actually return the tools list — see Finding #4.
 
 ## Scenarios E3–E5 — Agent loop via Claude Code
@@ -113,7 +113,7 @@ ByeTex MCP server. To finish, you'd run in a separate Claude Code
 session:
 
 ```bash
-claude mcp add bytetex /Users/zeyuyang42/Workspace/tools/ByeTex/target/release/bytetex serve
+claude mcp add byetex /Users/zeyuyang42/Workspace/tools/ByeTex/target/release/byetex serve
 ```
 
 Then in that session, ask Claude to follow the prompts in
@@ -125,7 +125,7 @@ Then in that session, ask Claude to follow the prompts in
 **PASS (better than documented).**
 
 ```
-$ bytetex convert templates/NeurIPS/neurips_paper.tex
+$ byetex convert templates/NeurIPS/neurips_paper.tex
 wrote templates/NeurIPS/neurips_paper.typ (1 warning)
 $ typst compile … → 64 KB PDF
 ```
@@ -157,9 +157,9 @@ $ /tmp/ts_latex_probe broken.tex
 ```
 
 The test plan expects "at least one `parse_error` warning with
-`suggested_skill: bytetex-parse-error`". The converter never emits
+`suggested_skill: byetex-parse-error`". The converter never emits
 `Category::ParseError` because `tree.root_node().has_error()` is only
-inspected by `corpus_parse_smoke.rs`, never by `bytetex_core::convert`.
+inspected by `corpus_parse_smoke.rs`, never by `byetex_core::convert`.
 
 See **Finding #3**.
 
@@ -270,12 +270,12 @@ documented escape hatch.
 ### Finding #3 (medium) — converter doesn't emit `Category::ParseError`
 
 The `Category::ParseError` variant exists in the warnings schema and is
-documented in `docs/warnings.schema.json` and the `bytetex-parse-error`
-skill, but no code path in `bytetex_core::convert` ever produces one.
+documented in `docs/warnings.schema.json` and the `byetex-parse-error`
+skill, but no code path in `byetex_core::convert` ever produces one.
 Tree-sitter marks malformed regions as `ERROR` nodes; the emitter just
 copies their source bytes through as text.
 
-**Fix sketch:** in `crates/bytetex-core/src/emit.rs::emit_node`, when
+**Fix sketch:** in `crates/byetex-core/src/emit.rs::emit_node`, when
 `node.kind() == "ERROR"` (or any descendant has `has_error()`), emit a
 `Category::ParseError { tree_sitter_node: "<kind>" }` warning before
 continuing. A small change; maybe 10 lines.
@@ -285,7 +285,7 @@ continuing. A small change; maybe 10 lines.
 The documented one-liner in `docs/test-plan.md` Scenario E2:
 
 ```bash
-printf '…' | bytetex serve … | grep -oE '"name":"…"'
+printf '…' | byetex serve … | grep -oE '"name":"…"'
 ```
 
 closes stdin before the server reads the `tools/list` message, so the
@@ -295,7 +295,7 @@ grep returns nothing for tools other than `initialize`'s response.
 so the server has time to process the queued frames:
 
 ```bash
-( printf '…'; sleep 3 ) | bytetex serve …
+( printf '…'; sleep 3 ) | byetex serve …
 ```
 
 The internal `tests/mcp_smoke.rs` test doesn't hit this because it uses
@@ -336,7 +336,7 @@ gh run view 26332481083 --repo zeyuyang42/ByeTeX --log-failed | grep -i aarch64
   `templates/.../source/` directory (gitignored).
 - For the 32 documents that didn't compile, the warning sidecars are the
   starting point for the per-doc fix path documented in
-  `skills/bytetex-using-warnings-json.md`.
+  `skills/byetex-using-warnings-json.md`.
 
 ## Next steps
 

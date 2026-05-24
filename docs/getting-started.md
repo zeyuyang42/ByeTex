@@ -51,13 +51,13 @@ A converter has three stages. Imagine reading a page of LaTeX with a highlighter
 
 3. **Write the output** — one `.typ` file with the Typst code, plus a `.warnings.json` file listing everything that needed human attention.
 
-The walk lives in `crates/bytetex-core/src/emit.rs` — that's the file with the giant `match node.kind() { ... }` that does the translation. It's like a big lookup table: see this LaTeX shape, emit that Typst shape.
+The walk lives in `crates/byetex-core/src/emit.rs` — that's the file with the giant `match node.kind() { ... }` that does the translation. It's like a big lookup table: see this LaTeX shape, emit that Typst shape.
 
 ---
 
 ## What tree-sitter is (the 30-second version)
 
-Tree-sitter takes a grammar (rules for what LaTeX looks like, written in JavaScript) and generates a parser in C. The generated C file is ~42 MB of state tables — that's why our `crates/bytetex-core/vendor/tree-sitter-latex/src/parser.c` is huge. We compile it into our Rust binary at build time using a small `build.rs` script. So the user just downloads one file (`bytetex`) and it has the whole LaTeX parser inside.
+Tree-sitter takes a grammar (rules for what LaTeX looks like, written in JavaScript) and generates a parser in C. The generated C file is ~42 MB of state tables — that's why our `crates/byetex-core/vendor/tree-sitter-latex/src/parser.c` is huge. We compile it into our Rust binary at build time using a small `build.rs` script. So the user just downloads one file (`byetex`) and it has the whole LaTeX parser inside.
 
 ---
 
@@ -69,7 +69,7 @@ ByeTex/
 ├── README.md                               ← human-facing intro
 │
 ├── crates/                                 ← three Rust libraries
-│   ├── bytetex-core/                       ← the brain
+│   ├── byetex-core/                       ← the brain
 │   │   ├── src/
 │   │   │   ├── lib.rs                      ← public `convert()` function
 │   │   │   ├── parser.rs                   ← wraps tree-sitter
@@ -80,15 +80,15 @@ ByeTex/
 │   │   ├── vendor/tree-sitter-latex/       ← the 42 MB grammar (vendored)
 │   │   └── tests/                          ← unit + integration tests
 │   │
-│   ├── bytetex-cli/                        ← the `bytetex` command-line tool
+│   ├── byetex-cli/                        ← the `byetex` command-line tool
 │   │   └── src/main.rs                     ← subcommands: convert, skills, serve, corpus
 │   │
-│   └── bytetex-mcp/                        ← lets AI agents call ByeTex over a protocol
+│   └── byetex-mcp/                        ← lets AI agents call ByeTex over a protocol
 │       └── src/lib.rs                      ← exposes 5 "tools" over stdio JSON-RPC
 │
 ├── skills/                                 ← markdown how-to files for humans/AIs
-│   ├── bytetex-using-warnings-json.md      ← read this first
-│   ├── bytetex-tikz-to-typst.md            ← how to rewrite a TikZ diagram
+│   ├── byetex-using-warnings-json.md      ← read this first
+│   ├── byetex-tikz-to-typst.md            ← how to rewrite a TikZ diagram
 │   └── ... (4 more)
 │
 ├── docs/
@@ -125,7 +125,7 @@ ByeTex/
 ### 1. Convert a paper
 
 ```bash
-bytetex convert paper.tex
+byetex convert paper.tex
 ```
 
 This writes two files next to the input:
@@ -158,7 +158,7 @@ You might see:
 Each warning has a `suggested_skill` field pointing to a markdown file. Read it:
 
 ```bash
-bytetex skills read bytetex-tikz-to-typst
+byetex skills read byetex-tikz-to-typst
 ```
 
 That tells you how to manually rewrite TikZ diagrams in Typst's CeTZ library. Apply the fix to `paper.typ`, re-compile.
@@ -168,7 +168,7 @@ That tells you how to manually rewrite TikZ diagrams in Typst's CeTZ library. Ap
 Start ByeTex as a server:
 
 ```bash
-bytetex serve
+byetex serve
 ```
 
 Now Claude Code, Cursor, etc. can call five "tools" — `convert`, `convert_file`, `convert_fragment`, `list_skills`, `read_skill` — and the AI uses these to convert your paper, read warnings, look up skills, and patch the `.typ` for you. The same machinery you'd use by hand, but exposed as a protocol.
@@ -179,7 +179,7 @@ If you cloned the repo:
 
 ```bash
 cargo build --release
-# → target/release/bytetex (single binary, ~7 MB)
+# → target/release/byetex (single binary, ~7 MB)
 ```
 
 Run the test suite:
@@ -193,7 +193,7 @@ Try a real template:
 
 ```bash
 python scripts/setup_corpus.py
-./target/release/bytetex convert corpus/inhouse/ieee/conference_101719.tex
+./target/release/byetex convert corpus/inhouse/ieee/conference_101719.tex
 typst compile corpus/inhouse/ieee/conference_101719.typ
 open corpus/inhouse/ieee/conference_101719.pdf
 ```
@@ -204,13 +204,13 @@ That's the IEEE conference paper template — 288 lines of LaTeX become a compil
 
 ## The four key files to read if you want to understand the code
 
-1. **`crates/bytetex-core/src/lib.rs`** (~30 lines) — the public API. Just shows `convert(source) -> (typst, warnings)`. The whole thing.
+1. **`crates/byetex-core/src/lib.rs`** (~30 lines) — the public API. Just shows `convert(source) -> (typst, warnings)`. The whole thing.
 
-2. **`crates/bytetex-core/src/warnings.rs`** (~50 lines) — what a warning *is*. A `Range`, a `Category`, a message, a snippet, a suggested skill name. This shape is locked by a test so it can't drift.
+2. **`crates/byetex-core/src/warnings.rs`** (~50 lines) — what a warning *is*. A `Range`, a `Category`, a message, a snippet, a suggested skill name. This shape is locked by a test so it can't drift.
 
-3. **`crates/bytetex-core/src/emit.rs`** (~1000 lines) — the actual translation logic. Big but pattern-rich. Reading the top-level `emit_node` function tells you everything the converter handles: math containers, section commands, generic commands, environments, etc. Everything else in the file is a helper for one of those.
+3. **`crates/byetex-core/src/emit.rs`** (~1000 lines) — the actual translation logic. Big but pattern-rich. Reading the top-level `emit_node` function tells you everything the converter handles: math containers, section commands, generic commands, environments, etc. Everything else in the file is a helper for one of those.
 
-4. **`crates/bytetex-cli/src/main.rs`** (~250 lines) — the CLI. Just argument parsing (via the `clap` library) and calls into `bytetex-core`. Good first place to land if you want to add a new subcommand.
+4. **`crates/byetex-cli/src/main.rs`** (~250 lines) — the CLI. Just argument parsing (via the `clap` library) and calls into `byetex-core`. Good first place to land if you want to add a new subcommand.
 
 ---
 

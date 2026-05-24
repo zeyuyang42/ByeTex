@@ -5,7 +5,7 @@ ByeTex visual regression test — produces side-by-side composites for agent gra
 For each arXiv paper:
   1. Reads entry .tex from source/00README.json
   2. Downloads the arXiv canonical PDF (or uses the one bundled in the source dir)
-  3. Runs bytetex convert → .typ + .warnings.json
+  3. Runs byetex convert → .typ + .warnings.json
   4. Compiles with typst → typst.pdf
   5. Rasterizes both PDFs with pdftoppm
   6. Stacks pages into a side-by-side composite.png for agent visual grading
@@ -138,23 +138,23 @@ def find_existing_truth_pdf(source_dir: Path) -> Path | None:
 # Pipeline steps
 # ─────────────────────────────────────────────────────────────────────────────
 
-def ensure_bytetex(profile: str) -> Path:
-    """Build bytetex if the release binary doesn't exist yet; return its path."""
-    bin_path = REPO_ROOT / "target" / profile / "bytetex"
+def ensure_byetex(profile: str) -> Path:
+    """Build byetex if the release binary doesn't exist yet; return its path."""
+    bin_path = REPO_ROOT / "target" / profile / "byetex"
     if not bin_path.exists():
         flag = "--release" if profile == "release" else ""
-        cmd = ["cargo", "build", "-p", "bytetex-cli"] + ([flag] if flag else [])
-        print(f"  Building bytetex ({profile}) — this may take a minute ...", flush=True)
+        cmd = ["cargo", "build", "-p", "byetex-cli"] + ([flag] if flag else [])
+        print(f"  Building byetex ({profile}) — this may take a minute ...", flush=True)
         subprocess.run(cmd, cwd=REPO_ROOT, check=True)
     return bin_path
 
 
-def run_bytetex(
-    bytetex_bin: Path, source_dir: Path, toplevel: Path
+def run_byetex(
+    byetex_bin: Path, source_dir: Path, toplevel: Path
 ) -> tuple[Path | None, Path | None]:
-    """Run bytetex convert; return (typ_path, warnings_path) or (None, None)."""
+    """Run byetex convert; return (typ_path, warnings_path) or (None, None)."""
     result = subprocess.run(
-        [str(bytetex_bin), "convert", toplevel.name],
+        [str(byetex_bin), "convert", toplevel.name],
         cwd=source_dir,
         capture_output=True,
         text=True,
@@ -162,7 +162,7 @@ def run_bytetex(
     typ_path = source_dir / (toplevel.stem + ".typ")
     warn_path = source_dir / (toplevel.stem + ".warnings.json")
     if not typ_path.exists() or typ_path.stat().st_size == 0:
-        print(f"  [warn] bytetex produced no .typ output", file=sys.stderr)
+        print(f"  [warn] byetex produced no .typ output", file=sys.stderr)
         if result.stderr:
             print(f"         stderr: {result.stderr[:300]}", file=sys.stderr)
         return None, None
@@ -443,7 +443,7 @@ def build_composite(
 
     # Column headers
     draw.text((PADDING, 6), f"TRUTH  arxiv:{paper_id}", fill=(0, 0, 160))
-    draw.text((PADDING * 2 + cell_w, 6), "TYPST  bytetex", fill=(140, 0, 0))
+    draw.text((PADDING * 2 + cell_w, 6), "TYPST  byetex", fill=(140, 0, 0))
     draw.line([(0, HEADER_H), (total_w, HEADER_H)], fill=(200, 200, 200))
 
     y = HEADER_H + PADDING
@@ -534,7 +534,7 @@ def process_paper(
     arxiv_id: str,
     out_root: Path,
     session: requests.Session,
-    bytetex_bin: Path,
+    byetex_bin: Path,
     args: argparse.Namespace,
 ) -> dict:
     id_safe = arxiv_id.replace("/", "_")
@@ -609,9 +609,9 @@ def process_paper(
         kb = truth_dest.stat().st_size // 1024
         print(f"  truth PDF: downloaded ({kb} KB)", flush=True)
 
-    # 3. Convert with bytetex
-    print(f"  bytetex convert ...", flush=True)
-    typ_path, warn_path = run_bytetex(bytetex_bin, source_dir, toplevel)
+    # 3. Convert with byetex
+    print(f"  byetex convert ...", flush=True)
+    typ_path, warn_path = run_byetex(byetex_bin, source_dir, toplevel)
     if typ_path is None:
         summary["status"] = "convert_failed"
         return summary
@@ -706,11 +706,11 @@ def main() -> None:
     )
     p.add_argument(
         "--release", dest="profile", action="store_const", const="release", default="release",
-        help="build bytetex in release mode (default)",
+        help="build byetex in release mode (default)",
     )
     p.add_argument(
         "--debug", dest="profile", action="store_const", const="debug",
-        help="build bytetex in debug mode (faster build, slower binary)",
+        help="build byetex in debug mode (faster build, slower binary)",
     )
     p.add_argument(
         "--rasterize-dpi", type=int, default=RASTERIZE_DPI, metavar="DPI",
@@ -758,12 +758,12 @@ def main() -> None:
     index = load_index(index_path)
 
     session = make_session(args.user_agent)
-    bytetex_bin = ensure_bytetex(args.profile)
+    byetex_bin = ensure_byetex(args.profile)
 
     for arxiv_id in args.papers:
         print(f"\n=== {arxiv_id} ===", flush=True)
         try:
-            summary = process_paper(arxiv_id, out, session, bytetex_bin, args)
+            summary = process_paper(arxiv_id, out, session, byetex_bin, args)
         except Exception as exc:
             import traceback
             print(f"  [fatal] {exc}", file=sys.stderr)

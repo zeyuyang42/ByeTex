@@ -2,9 +2,9 @@
 
 ## Context
 
-Five compile-blocker bugs were fixed in `crates/bytetex-core/src/emit.rs`
+Five compile-blocker bugs were fixed in `crates/byetex-core/src/emit.rs`
 (see commit message). After the fixes, the five target arXiv papers were re-run
-via `bytetex convert --project` + `typst compile`. The original first errors
+via `byetex convert --project` + `typst compile`. The original first errors
 are gone; the papers now fail on newly-revealed second-order issues. Per the
 policy in the fix plan, new issues are catalogued here rather than fixed in the
 same pass.
