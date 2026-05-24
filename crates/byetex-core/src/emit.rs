@@ -2546,9 +2546,17 @@ impl<'a> Emitter<'a> {
                     // sum followed by a group.
                     let prev_token_dotted = {
                         let s = out.as_str();
+                        // Find the byte index just past the last whitespace
+                        // char. We must advance by the whitespace's UTF-8
+                        // length, not by 1 byte — non-breaking space
+                        // (`\u{a0}`) and other multi-byte whitespace would
+                        // otherwise land in the middle of the char and
+                        // panic on the slice.
                         let last_ws = s
-                            .rfind(|c: char| c.is_whitespace())
-                            .map(|p| p + 1)
+                            .char_indices()
+                            .rev()
+                            .find(|(_, c)| c.is_whitespace())
+                            .map(|(p, c)| p + c.len_utf8())
                             .unwrap_or(0);
                         s[last_ws..].contains('.')
                     };
