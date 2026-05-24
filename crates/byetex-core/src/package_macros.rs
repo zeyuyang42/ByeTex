@@ -1,12 +1,19 @@
-/// Bundled macro expansion tables for common LaTeX packages.
+/// Bundled macro expansion tables for common LaTeX packages, plus the KaTeX
+/// always-on built-in macro table.
 ///
 /// When `\usepackage{physics}` (or `bm`, `stmaryrd`, `mathtools`) is encountered
 /// during the prepass, these seeds are inserted into the emitter's macro table
 /// with `or_insert` so user-defined macros always win.
 ///
-/// Invariant: no seed name may collide with `lookup_math_symbol` — the built-in
-/// math symbol table takes priority at emit time and seeded macros would be silently
-/// shadowed. The unit test `no_seed_collides_with_builtin` enforces this.
+/// `KATEX_BUILTIN` is seeded unconditionally during emitter construction (before
+/// the prepass) with `or_insert`, so prepass user `\newcommand` definitions always
+/// win. Entries mirror LaTeX/amsmath defaults that KaTeX provides without any
+/// `\usepackage`.
+///
+/// Invariant: no seed name in any table may collide with `lookup_math_symbol` —
+/// the built-in math symbol table takes priority at emit time and seeded macros
+/// would be silently shadowed. The unit test `no_seed_collides_with_builtin`
+/// enforces this for all tables.
 
 pub(crate) struct MacroSeed {
     pub params: usize,
@@ -62,6 +69,117 @@ static MATHTOOLS: &[(&str, MacroSeed)] = &[
     (r"\dblcolon", MacroSeed { params: 0, body: r"\mathrel{::}" }),
 ];
 
+/// Always-on macro table — seeded unconditionally during emitter construction
+/// (with `or_insert`). Mirrors LaTeX/amsmath defaults that KaTeX provides
+/// without any `\usepackage`. Entries whose Typst form is a single symbol
+/// token belong in `lookup_math_symbol` instead; these are all multi-token
+/// LaTeX expansions that need to go through `expand_user_macro`.
+///
+/// Source: KaTeX v0.16.11 `src/macros.js`.
+pub(crate) static KATEX_BUILTIN: &[(&str, MacroSeed)] = &[
+    // === amsmath italic Greek capitals (macros.js ~354-363) ===
+    (r"\varGamma",  MacroSeed { params: 0, body: r"\mathit{\Gamma}" }),
+    (r"\varDelta",  MacroSeed { params: 0, body: r"\mathit{\Delta}" }),
+    (r"\varTheta",  MacroSeed { params: 0, body: r"\mathit{\Theta}" }),
+    (r"\varLambda", MacroSeed { params: 0, body: r"\mathit{\Lambda}" }),
+    (r"\varXi",     MacroSeed { params: 0, body: r"\mathit{\Xi}" }),
+    (r"\varPi",     MacroSeed { params: 0, body: r"\mathit{\Pi}" }),
+    (r"\varSigma",  MacroSeed { params: 0, body: r"\mathit{\Sigma}" }),
+    (r"\varUpsilon",MacroSeed { params: 0, body: r"\mathit{\Upsilon}" }),
+    (r"\varPhi",    MacroSeed { params: 0, body: r"\mathit{\Phi}" }),
+    (r"\varPsi",    MacroSeed { params: 0, body: r"\mathit{\Psi}" }),
+    (r"\varOmega",  MacroSeed { params: 0, body: r"\mathit{\Omega}" }),
+
+    // === amsmath/statmath operator-limit macros (macros.js ~748-758, ~894-896) ===
+    // Bodies use \operatorname (not starred) — the * only affects limit
+    // placement in display mode, an acceptable simplification.
+    (r"\limsup",  MacroSeed { params: 0, body: r"\operatorname{lim sup}" }),
+    (r"\liminf",  MacroSeed { params: 0, body: r"\operatorname{lim inf}" }),
+    (r"\injlim",  MacroSeed { params: 0, body: r"\operatorname{inj lim}" }),
+    (r"\projlim", MacroSeed { params: 0, body: r"\operatorname{proj lim}" }),
+    (r"\argmin",  MacroSeed { params: 0, body: r"\operatorname{arg min}" }),
+    (r"\argmax",  MacroSeed { params: 0, body: r"\operatorname{arg max}" }),
+
+    // === blackboard-bold shorthands (texvc, macros.js ~833-836, 866-868) ===
+    // \N, \R, \Z are already in lookup_math_symbol (NN, RR, ZZ) — omitted here.
+    (r"\Bbbk",    MacroSeed { params: 0, body: r"\mathbb{k}" }),
+    (r"\cnums",   MacroSeed { params: 0, body: r"\mathbb{C}" }),
+    (r"\Complex", MacroSeed { params: 0, body: r"\mathbb{C}" }),
+    (r"\natnums", MacroSeed { params: 0, body: r"\mathbb{N}" }),
+    (r"\reals",   MacroSeed { params: 0, body: r"\mathbb{R}" }),
+    (r"\Reals",   MacroSeed { params: 0, body: r"\mathbb{R}" }),
+
+    // === texvc uppercase Greek as upright Roman letters (macros.js ~838-888) ===
+    (r"\Alpha",   MacroSeed { params: 0, body: r"\mathrm{A}" }),
+    (r"\Beta",    MacroSeed { params: 0, body: r"\mathrm{B}" }),
+    (r"\Chi",     MacroSeed { params: 0, body: r"\mathrm{X}" }),
+    (r"\Epsilon", MacroSeed { params: 0, body: r"\mathrm{E}" }),
+    (r"\Eta",     MacroSeed { params: 0, body: r"\mathrm{H}" }),
+    (r"\Iota",    MacroSeed { params: 0, body: r"\mathrm{I}" }),
+    (r"\Kappa",   MacroSeed { params: 0, body: r"\mathrm{K}" }),
+    (r"\Mu",      MacroSeed { params: 0, body: r"\mathrm{M}" }),
+    (r"\Nu",      MacroSeed { params: 0, body: r"\mathrm{N}" }),
+    (r"\Omicron", MacroSeed { params: 0, body: r"\mathrm{O}" }),
+    (r"\Rho",     MacroSeed { params: 0, body: r"\mathrm{P}" }),
+    (r"\Tau",     MacroSeed { params: 0, body: r"\mathrm{T}" }),
+    (r"\Zeta",    MacroSeed { params: 0, body: r"\mathrm{Z}" }),
+
+    // === texvc simple arrow/symbol aliases (macros.js ~825-889) ===
+    (r"\darr",    MacroSeed { params: 0, body: r"\downarrow" }),
+    (r"\dArr",    MacroSeed { params: 0, body: r"\Downarrow" }),
+    (r"\Darr",    MacroSeed { params: 0, body: r"\Downarrow" }),
+    (r"\lang",    MacroSeed { params: 0, body: r"\langle" }),
+    (r"\rang",    MacroSeed { params: 0, body: r"\rangle" }),
+    (r"\uarr",    MacroSeed { params: 0, body: r"\uparrow" }),
+    (r"\uArr",    MacroSeed { params: 0, body: r"\Uparrow" }),
+    (r"\Uarr",    MacroSeed { params: 0, body: r"\Uparrow" }),
+    (r"\larr",    MacroSeed { params: 0, body: r"\leftarrow" }),
+    (r"\lArr",    MacroSeed { params: 0, body: r"\Leftarrow" }),
+    (r"\Larr",    MacroSeed { params: 0, body: r"\Leftarrow" }),
+    (r"\lrarr",   MacroSeed { params: 0, body: r"\leftrightarrow" }),
+    (r"\lrArr",   MacroSeed { params: 0, body: r"\Leftrightarrow" }),
+    (r"\Lrarr",   MacroSeed { params: 0, body: r"\Leftrightarrow" }),
+    (r"\rarr",    MacroSeed { params: 0, body: r"\rightarrow" }),
+    (r"\rArr",    MacroSeed { params: 0, body: r"\Rightarrow" }),
+    (r"\Rarr",    MacroSeed { params: 0, body: r"\Rightarrow" }),
+    (r"\harr",    MacroSeed { params: 0, body: r"\leftrightarrow" }),
+    (r"\hArr",    MacroSeed { params: 0, body: r"\Leftrightarrow" }),
+    (r"\Harr",    MacroSeed { params: 0, body: r"\Leftrightarrow" }),
+    (r"\alef",    MacroSeed { params: 0, body: r"\aleph" }),
+    (r"\alefsym", MacroSeed { params: 0, body: r"\aleph" }),
+    (r"\bull",    MacroSeed { params: 0, body: r"\bullet" }),
+    (r"\clubs",   MacroSeed { params: 0, body: r"\clubsuit" }),
+    (r"\Dagger",  MacroSeed { params: 0, body: r"\ddagger" }),
+    (r"\diamonds",MacroSeed { params: 0, body: r"\diamondsuit" }),
+    (r"\empty",   MacroSeed { params: 0, body: r"\emptyset" }),
+    (r"\exist",   MacroSeed { params: 0, body: r"\exists" }),
+    (r"\hearts",  MacroSeed { params: 0, body: r"\heartsuit" }),
+    (r"\image",   MacroSeed { params: 0, body: r"\Im" }),
+    (r"\infin",   MacroSeed { params: 0, body: r"\infty" }),
+    (r"\isin",    MacroSeed { params: 0, body: r"\in" }),
+    (r"\plusmn",  MacroSeed { params: 0, body: r"\pm" }),
+    (r"\real",    MacroSeed { params: 0, body: r"\Re" }),
+    (r"\sdot",    MacroSeed { params: 0, body: r"\cdot" }),
+    (r"\spades",  MacroSeed { params: 0, body: r"\spadesuit" }),
+    (r"\sub",     MacroSeed { params: 0, body: r"\subset" }),
+    (r"\sube",    MacroSeed { params: 0, body: r"\subseteq" }),
+    (r"\supe",    MacroSeed { params: 0, body: r"\supseteq" }),
+    (r"\thetasym",MacroSeed { params: 0, body: r"\vartheta" }),
+    (r"\weierp",  MacroSeed { params: 0, body: r"\wp" }),
+
+    // === amsmath dots aliases (macros.js ~514-520) ===
+    (r"\dotsb",  MacroSeed { params: 0, body: r"\cdots" }),
+    (r"\dotsm",  MacroSeed { params: 0, body: r"\cdots" }),
+
+    // === colonequals aliases that chain to lookup_math_symbol ===
+    (r"\colonequals", MacroSeed { params: 0, body: r"\coloneqq" }),
+    (r"\equalscolon", MacroSeed { params: 0, body: r"\eqqcolon" }),
+
+    // === braket capitalized forms (macros.js ~903-905); lowercase in PHYSICS ===
+    (r"\Bra", MacroSeed { params: 1, body: r"\left\langle #1 \right|" }),
+    (r"\Ket", MacroSeed { params: 1, body: r"\left| #1 \right\rangle" }),
+];
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -71,6 +189,7 @@ mod tests {
 
     #[test]
     fn no_seed_collides_with_builtin() {
+        // Package macro seeds must not shadow lookup_math_symbol entries.
         for pkg in ALL_PACKAGES {
             if let Some(entries) = package_macros(pkg) {
                 for (name, _) in entries {
@@ -83,6 +202,15 @@ mod tests {
                     );
                 }
             }
+        }
+        // KATEX_BUILTIN entries likewise must not shadow lookup_math_symbol.
+        for (name, _) in KATEX_BUILTIN {
+            assert!(
+                lookup_math_symbol(name).is_none(),
+                "KATEX_BUILTIN seed {:?} collides with lookup_math_symbol — \
+                 move to lookup_math_symbol or remove",
+                name
+            );
         }
     }
 
@@ -102,6 +230,17 @@ mod tests {
                     );
                 }
             }
+        }
+        // KATEX_BUILTIN bodies must also parse without tree-sitter errors.
+        for (name, seed) in KATEX_BUILTIN {
+            let tree = crate::parser::parse(seed.body);
+            let root = tree.root_node();
+            assert!(
+                !root.has_error(),
+                "KATEX_BUILTIN macro {:?} body {:?} fails tree-sitter parse",
+                name,
+                seed.body
+            );
         }
     }
 }

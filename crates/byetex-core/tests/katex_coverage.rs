@@ -1,15 +1,16 @@
-//! KaTeX coverage gap test — Phase 0.
+//! KaTeX coverage gap test — updated through Phase 2.
 //!
 //! Reads `tests/data/katex_extracted.json` (produced by `scripts/extract_katex.py`)
 //! and `tests/data/katex_exclusions.toml`, then asserts that every KaTeX command
 //! is either:
 //!   a) handled by ByeTex's `lookup_math_symbol` or `wrap_for_command_name`, OR
 //!   b) listed in `katex_exclusions.toml` (deferred or permanently excluded), OR
-//!   c) in the `STRUCTURAL_ARMS` constant below (emitted structurally, not via table).
+//!   c) in the `STRUCTURAL_ARMS` constant below (emitted structurally, not via table), OR
+//!   d) seeded as an always-on `KATEX_BUILTIN` macro (Phase 2).
 //!
-//! To add coverage for a command: implement it in emit.rs and remove it from the
-//! exclusions file. To defer a command: add it to the exclusions file with a
-//! reason and optional phase tag.
+//! To add coverage for a command: implement it in emit.rs or package_macros.rs
+//! and remove it from the exclusions file. To defer a command: add it to the
+//! exclusions file with a reason and optional phase tag.
 
 use std::collections::HashSet;
 
@@ -117,6 +118,7 @@ fn katex_coverage_complete() {
         }
         if byetex_core::__test_support::lookup_math_symbol(n).is_none()
             && byetex_core::__test_support::wrap_for_command_name(n).is_none()
+            && !byetex_core::__test_support::is_katex_builtin(n)
         {
             gaps.push(n.clone());
         }
@@ -129,6 +131,7 @@ fn katex_coverage_complete() {
         }
         if byetex_core::__test_support::lookup_math_symbol(n).is_none()
             && byetex_core::__test_support::wrap_for_command_name(n).is_none()
+            && !byetex_core::__test_support::is_katex_builtin(n)
         {
             gaps.push(n.clone());
         }
@@ -141,6 +144,7 @@ fn katex_coverage_complete() {
             }
             if byetex_core::__test_support::lookup_math_symbol(n).is_none()
                 && byetex_core::__test_support::wrap_for_command_name(n).is_none()
+                && !byetex_core::__test_support::is_katex_builtin(n)
             {
                 gaps.push(n.clone());
             }

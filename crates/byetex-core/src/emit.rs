@@ -170,8 +170,21 @@ impl<'a> Emitter<'a> {
         source_name: &'a str,
         base_dir: Option<PathBuf>,
         visited: HashSet<PathBuf>,
-        preseeded_macros: HashMap<String, MacroDef>,
+        mut preseeded_macros: HashMap<String, MacroDef>,
     ) -> Self {
+        // Seed always-on KaTeX built-in macros before the prepass runs.
+        // or_insert ensures preseeded entries (from project-mode harvest) and
+        // later user \newcommand definitions (which use insert) always win.
+        for (name, seed) in crate::package_macros::KATEX_BUILTIN {
+            if lookup_math_symbol(name).is_none() {
+                preseeded_macros
+                    .entry(name.to_string())
+                    .or_insert_with(|| MacroDef {
+                        params: seed.params,
+                        body: seed.body.to_string(),
+                    });
+            }
+        }
         Self {
             out: String::new(),
             warnings: Vec::new(),
