@@ -104,7 +104,15 @@ pub(crate) struct Emitter<'a> {
     /// Populated only when `base_dir` is `Some`. Bubbled up to `ConvertOutput`
     /// by `finish()` so the project layer can copy them to the output dir.
     asset_refs: Vec<crate::AssetRef>,
+    /// Current `\newcommand` expansion depth. A self-referential macro
+    /// (`\newcommand{\foo}{\foo}`) would otherwise recurse without bound
+    /// and overflow the stack. The cap is generous enough for legitimate
+    /// nested expansions but stops adversarial inputs cold.
+    macro_depth: u32,
 }
+
+/// Maximum allowed `\newcommand` expansion depth (see `Emitter::macro_depth`).
+const MAX_MACRO_DEPTH: u32 = 64;
 
 impl<'a> Emitter<'a> {
     /// Constructor variant used by the public `convert()` entry point and by
@@ -136,6 +144,7 @@ impl<'a> Emitter<'a> {
             visited_includes: visited,
             macros: HashMap::new(),
             asset_refs: Vec::new(),
+            macro_depth: 0,
         }
     }
 
@@ -687,11 +696,15 @@ impl<'a> Emitter<'a> {
                 self.out.push('®');
                 node.end_byte()
             }
-            // Deprecated font-switching commands. Drop silently —
-            // Typst's default font handling is sufficient and the
-            // surrounding text already inherits the correct style.
+            // Deprecated font-switching commands. These change the style of
+            // all following text until the group ends — Typst would need a
+            // #strong[…]/#emph[…] scope wrap, which requires end-of-group
+            // tracking we don't yet have. Warn so the caller can see the loss.
             Some("\\bf") | Some("\\sf") | Some("\\rm") | Some("\\it") | Some("\\tt")
-            | Some("\\sl") | Some("\\sc") | Some("\\em") => node.end_byte(),
+            | Some("\\sl") | Some("\\sc") | Some("\\em") => {
+                self.warn_unsupported_command(node);
+                node.end_byte()
+            }
             // Vertical-skip primitives.
             Some("\\smallskip") => {
                 self.out.push_str("#v(0.5em)");
@@ -765,7 +778,8 @@ impl<'a> Emitter<'a> {
                 // These take args we don't translate. Drop silently.
                 node.end_byte()
             }
-            // ACM-specific copyright / metadata; drop silently.
+            // ACM publication-metadata (conference/journal machinery); no visible
+            // author content — drop silently.
             Some("\\setcopyright")
             | Some("\\copyrightyear")
             | Some("\\acmYear")
@@ -775,8 +789,11 @@ impl<'a> Emitter<'a> {
             | Some("\\acmISBN")
             | Some("\\acmPrice")
             | Some("\\acmSubmissionID")
-            | Some("\\affiliation")
-            | Some("\\institution")
+            | Some("\\affiliation") => node.end_byte(),
+            // ACM author-info fields. These carry visible content (institution,
+            // email, ORCID, …) that is currently not emitted. Warn so the caller
+            // can see what was dropped. Phase 3 will capture into metadata.
+            Some("\\institution")
             | Some("\\city")
             | Some("\\country")
             | Some("\\state")
@@ -787,7 +804,10 @@ impl<'a> Emitter<'a> {
             | Some("\\authornote")
             | Some("\\additionalaffiliation")
             | Some("\\ccsdesc")
-            | Some("\\shortauthors") => node.end_byte(),
+            | Some("\\shortauthors") => {
+                self.warn_unsupported_command(node);
+                node.end_byte()
+            }
             // `\keywords{a, b, c}` and `\IEEEkeywords{...}` — capture into the
             // title-block field when the class template wants it; otherwise
             // silently drop.
@@ -804,12 +824,17 @@ impl<'a> Emitter<'a> {
                 }
                 node.end_byte()
             }
-            // IEEEtran-specific.
-            Some("\\IEEEoverridecommandlockouts")
-            | Some("\\IEEEpubid")
+            // IEEEtran-specific — preamble flag, no visible content.
+            Some("\\IEEEoverridecommandlockouts") => node.end_byte(),
+            // IEEEtran commands that carry visible content (page footer, footnote
+            // markers, abstract body, acknowledgement list items). Warn.
+            Some("\\IEEEpubid")
             | Some("\\IEEEauthorrefmark")
             | Some("\\IEEEcompsoctitleabstractindextext")
-            | Some("\\IEEEcompsocthanksitem") => node.end_byte(),
+            | Some("\\IEEEcompsocthanksitem") => {
+                self.warn_unsupported_command(node);
+                node.end_byte()
+            }
             // NeurIPS-specific.
             Some("\\And") | Some("\\AND") | Some("\\PassOptionsToPackage") | Some("\\And ") => {
                 consume_trailing_inline_space(self.src, node.end_byte())
@@ -878,14 +903,17 @@ impl<'a> Emitter<'a> {
                 self.out.push(' ');
                 node.end_byte()
             }
-            // Other TeX-isms that should drop silently:
-            //  \/  italic correction
-            //  \-  discretionary hyphen
-            //  \@  spacing tweak before sentence-ending period
-            //  \~  tilde accent (would translate the following letter; rare)
-            //  \'  \"  \^  accent-on-next-letter; complex; drop for now
-            Some("\\/") | Some("\\-") | Some("\\@") | Some("\\~") | Some("\\'") | Some("\\\"")
-            | Some("\\^") | Some("\\`") => node.end_byte(),
+            // TeX micro-typography primitives — no visible effect in Typst's
+            // layout model (italic correction, discretionary hyphen,
+            // sentence-end tweak). Drop silently.
+            Some("\\/") | Some("\\-") | Some("\\@") => node.end_byte(),
+            // Accent operators applied to the next letter (\'e → é, \"o → ö,
+            // \^a → â, \`e → è, \~n → ñ). These produce wrong output when
+            // silently dropped. Warn for now; Phase 2 will convert to Unicode.
+            Some("\\~") | Some("\\'") | Some("\\\"") | Some("\\^") | Some("\\`") => {
+                self.warn_unsupported_command(node);
+                node.end_byte()
+            }
             // Typographic logos — drop the styling, keep the text.
             Some("\\LaTeX") => self.emit_logo(node, "LaTeX"),
             Some("\\TeX") => self.emit_logo(node, "TeX"),
@@ -1000,10 +1028,9 @@ impl<'a> Emitter<'a> {
                 }
                 node.end_byte()
             }
-            // Font-size directives — drop silently. They're scoped commands
-            // (no argument) that change subsequent text style; Typst's
-            // equivalent would be a #set text(size: ...) wrapper, but that
-            // needs proper grouping tracking we don't yet have.
+            // Font-size directives — unscoped toggles. Typst's equivalent
+            // would be a #text(size: …)[…] wrap but that needs end-of-group
+            // tracking we don't yet have. Warn so the caller can see the loss.
             Some("\\small")
             | Some("\\large")
             | Some("\\Large")
@@ -1013,7 +1040,10 @@ impl<'a> Emitter<'a> {
             | Some("\\normalsize")
             | Some("\\footnotesize")
             | Some("\\scriptsize")
-            | Some("\\tiny") => node.end_byte(),
+            | Some("\\tiny") => {
+                self.warn_unsupported_command(node);
+                node.end_byte()
+            }
             // `\appendix` toggles section-number style to letters; emit as a
             // set rule.
             Some("\\appendix") => {
@@ -1034,9 +1064,13 @@ impl<'a> Emitter<'a> {
                 node.end_byte()
             }
             // `\DeclareMathOperator{\name}{display}` — macro definition for a
-            // new math operator. We don't yet expand custom macros; drop the
-            // definition silently and let any uses of `\name` warn as usual.
-            Some("\\DeclareMathOperator") | Some("\\DeclareMathOperator*") => node.end_byte(),
+            // new math operator. We don't yet register custom operators, so
+            // later uses of \name will warn as unknown. Warn here too so the
+            // caller knows a definition was encountered.
+            Some("\\DeclareMathOperator") | Some("\\DeclareMathOperator*") => {
+                self.warn_unsupported_command(node);
+                node.end_byte()
+            }
             // `\input{file}` / `\include{file}` / `\subfile{file}` — when the
             // caller supplied a base directory, expand inline by parsing and
             // converting the referenced file. Without a base directory, fall
@@ -1089,6 +1123,24 @@ impl<'a> Emitter<'a> {
     /// to the parent's; warnings are merged. If the parameter count
     /// doesn't match, fall back to warn-and-drop.
     fn expand_user_macro(&mut self, node: Node<'_>, name: &str) -> usize {
+        if self.macro_depth >= MAX_MACRO_DEPTH {
+            // Bail out and emit a warning. A self-referential or mutually
+            // recursive `\newcommand` would otherwise overflow the stack.
+            self.warnings.push(Warning {
+                range: range_of(node),
+                category: Category::CustomMacro {
+                    name: name.to_string(),
+                },
+                severity: Severity::Warning,
+                message: format!(
+                    "\\newcommand `{}` expansion exceeded depth {} — aborting expansion (possible recursion)",
+                    name, MAX_MACRO_DEPTH
+                ),
+                snippet: self.src[node.start_byte()..node.end_byte()].to_string(),
+                suggested_skill: None,
+            });
+            return node.end_byte();
+        }
         let macro_def = match self.macros.get(name).cloned() {
             Some(d) => d,
             None => return node.end_byte(),
@@ -1128,12 +1180,12 @@ impl<'a> Emitter<'a> {
             });
             return node.end_byte();
         }
-        // Substitute `#1`..`#N` in the body.
-        let mut expanded = macro_def.body.clone();
-        for (i, arg) in args.iter().enumerate().take(macro_def.params) {
-            let placeholder = format!("#{}", i + 1);
-            expanded = expanded.replace(&placeholder, arg);
-        }
+        // Substitute `#1`..`#N` in the body. We can't naively call
+        // `str::replace("#1", arg)` — that would also rewrite `#10`,
+        // `#11`, ... as `<arg>0`, `<arg>1` for any macro with ≥10
+        // parameters. Walk the body and replace `#<digits>` tokens
+        // greedily instead.
+        let expanded = substitute_macro_args(&macro_def.body, &args[..macro_def.params]);
         // Re-parse and emit. Use a sub-emitter so we don't disturb
         // our `out` cursor management — its output is appended.
         let tree = crate::parser::parse(&expanded);
@@ -1143,6 +1195,7 @@ impl<'a> Emitter<'a> {
             Emitter::with_includes(&expanded, self.source_name, self.base_dir.clone(), visited);
         sub.in_math = self.in_math;
         sub.macros = macros;
+        sub.macro_depth = self.macro_depth + 1;
         sub.emit_root(tree.root_node());
         // Merge child state back.
         self.visited_includes = std::mem::take(&mut sub.visited_includes);
@@ -1158,6 +1211,9 @@ impl<'a> Emitter<'a> {
         let body_out = body_out.trim_end_matches('\n');
         self.out.push_str(body_out);
         self.warnings.append(&mut sub.warnings);
+        // A `\includegraphics` or `\bibliography` reached via a macro body
+        // must still bubble up so the project materialiser copies the file.
+        self.asset_refs.append(&mut sub.asset_refs);
         node.end_byte()
     }
 
@@ -2322,8 +2378,12 @@ impl<'a> Emitter<'a> {
                 j += 1;
             }
             if j == i + 1 {
-                // Single-char backslash escape (e.g. `\%`).
-                j = i + 2;
+                // Single-char backslash escape (e.g. `\%`). The char after
+                // `\` may be non-ASCII (`\é`); advance by UTF-8 length so
+                // `&self.src[i..j]` lands on a char boundary.
+                let after = &self.src[i + 1..];
+                let step = after.chars().next().map(|c| c.len_utf8()).unwrap_or(0);
+                j = i + 1 + step;
             }
             let cmd = &self.src[i..j];
             // Resolution order: math symbol table → user macros → raw.
@@ -2343,11 +2403,16 @@ impl<'a> Emitter<'a> {
                     Emitter::with_includes(&body, self.source_name, self.base_dir.clone(), visited);
                 sub.in_math = true;
                 sub.macros = macros;
+                sub.macro_depth = self.macro_depth + 1;
                 sub.emit_root(tree.root_node());
                 self.visited_includes = std::mem::take(&mut sub.visited_includes);
                 for (k, v) in sub.macros.drain() {
                     self.macros.entry(k).or_insert(v);
                 }
+                // Warnings and asset_refs raised inside the macro body
+                // must propagate to the parent, just like expand_user_macro.
+                self.warnings.append(&mut sub.warnings);
+                self.asset_refs.append(&mut sub.asset_refs);
                 sub.out.trim().to_string()
             } else {
                 cmd.to_string()
@@ -2399,6 +2464,7 @@ impl<'a> Emitter<'a> {
                 self.macros.entry(k).or_insert(v);
             }
             self.warnings.append(&mut sub.warnings);
+            self.asset_refs.append(&mut sub.asset_refs);
             let rendered = sub.out.trim().to_string();
             (j + 1, rendered)
         } else {
@@ -2783,38 +2849,54 @@ impl<'a> Emitter<'a> {
     }
 
     fn emit_bibliography(&mut self, node: Node<'_>) -> usize {
-        let path = extract_bib_path(node, self.src).unwrap_or_default();
-        if path.is_empty() {
+        let paths = extract_bib_paths(node, self.src);
+        if paths.is_empty() {
             self.warn_unsupported_command(node);
             return node.end_byte();
         }
         let style = self.pending_bib_style.take();
         // Convention: append `.bib` if no extension supplied.
-        let path_with_ext = if path.contains('.') {
-            path.clone()
-        } else {
-            format!("{}.bib", path)
-        };
-        // Record the asset ref if the file is reachable on disk.
+        let paths_with_ext: Vec<String> = paths
+            .iter()
+            .map(|p| {
+                if p.contains('.') {
+                    p.clone()
+                } else {
+                    format!("{}.bib", p)
+                }
+            })
+            .collect();
+        // Record an AssetRef for each bib that resolves on disk so the
+        // project materialiser copies every entry, not just the first.
         if let Some(ref base) = self.base_dir.clone() {
-            if let Some(source_path) = probe_bib_on_disk(base, &path) {
-                self.asset_refs.push(crate::AssetRef {
-                    kind: crate::AssetKind::Bibliography,
-                    typst_path: path_with_ext.clone(),
-                    source_path,
-                });
+            for (raw, with_ext) in paths.iter().zip(paths_with_ext.iter()) {
+                if let Some(source_path) = probe_bib_on_disk(base, raw) {
+                    self.asset_refs.push(crate::AssetRef {
+                        kind: crate::AssetKind::Bibliography,
+                        typst_path: with_ext.clone(),
+                        source_path,
+                    });
+                }
             }
         }
         self.ensure_paragraph_break();
         let mapped = style.as_deref().and_then(map_bibliography_style);
-        if let Some(s) = mapped {
-            let _ = write!(
-                self.out,
-                "#bibliography(\"{}\", style: \"{}\")",
-                path_with_ext, s
-            );
+        // Typst's `#bibliography` takes either a single path string or a
+        // tuple of paths. Emit the tuple form when we have multiple.
+        let path_arg = if paths_with_ext.len() == 1 {
+            format!("\"{}\"", paths_with_ext[0])
         } else {
-            let _ = write!(self.out, "#bibliography(\"{}\")", path_with_ext);
+            let joined = paths_with_ext
+                .iter()
+                .map(|p| format!("\"{}\"", p))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("({},)", joined)
+        };
+        if let Some(s) = mapped {
+            let _ = write!(self.out, "#bibliography({}, style: \"{}\")", path_arg, s);
+        } else {
+            let _ = write!(self.out, "#bibliography({})", path_arg);
         }
         node.end_byte()
     }
@@ -2881,32 +2963,52 @@ impl<'a> Emitter<'a> {
         }
         // Record the asset ref if the image exists on disk. The typst_path is
         // whatever path string the Typst source references (used for relocation
-        // by the project layer).
+        // by the project layer). When the file can't be probed, emit a
+        // NeedsManualReview warning so callers know the `image(...)` call in
+        // the Typst body has no matching AssetRef in the project plan.
         if let Some(ref base) = self.base_dir.clone() {
-            if let Some(source_path) = probe_image_on_disk(base, &path) {
-                // Build the typst_path: use the resolved filename so it has an
-                // extension even if the LaTeX source omitted it.
-                let typst_path = if std::path::Path::new(&path).extension().is_some() {
-                    path.clone()
-                } else {
-                    source_path
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .map(|name| {
-                            // Re-join the directory component from the original path.
-                            let dir = std::path::Path::new(&path).parent()
-                                .and_then(|p| p.to_str())
-                                .unwrap_or("");
-                            if dir.is_empty() { name.to_string() }
-                            else { format!("{}/{}", dir, name) }
-                        })
-                        .unwrap_or_else(|| path.clone())
-                };
-                self.asset_refs.push(crate::AssetRef {
-                    kind: crate::AssetKind::Image,
-                    typst_path,
-                    source_path,
-                });
+            match probe_image_on_disk(base, &path) {
+                Some(source_path) => {
+                    // Build the typst_path: use the resolved filename so it has an
+                    // extension even if the LaTeX source omitted it.
+                    let typst_path = if std::path::Path::new(&path).extension().is_some() {
+                        path.clone()
+                    } else {
+                        source_path
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .map(|name| {
+                                // Re-join the directory component from the original path.
+                                let dir = std::path::Path::new(&path).parent()
+                                    .and_then(|p| p.to_str())
+                                    .unwrap_or("");
+                                if dir.is_empty() { name.to_string() }
+                                else { format!("{}/{}", dir, name) }
+                            })
+                            .unwrap_or_else(|| path.clone())
+                    };
+                    self.asset_refs.push(crate::AssetRef {
+                        kind: crate::AssetKind::Image,
+                        typst_path,
+                        source_path,
+                    });
+                }
+                None => {
+                    self.warnings.push(Warning {
+                        range: range_of(node),
+                        category: Category::NeedsManualReview {
+                            reason: format!("image not found relative to base: {}", path),
+                        },
+                        severity: Severity::Warning,
+                        message: format!(
+                            "could not resolve `\\includegraphics{{{}}}` against `{}` — the Typst body still references it, so `typst compile` will fail until the file is provided.",
+                            path,
+                            base.display()
+                        ),
+                        snippet: self.src[node.start_byte()..node.end_byte()].to_string(),
+                        suggested_skill: None,
+                    });
+                }
             }
         }
         let _ = write!(self.out, "image({})", args);
@@ -3455,18 +3557,28 @@ fn extract_label_ref_key_and_end(node: Node<'_>, src: &str) -> Option<(String, u
 /// Extract the path argument from a `bibtex_include` (`\bibliography{x}`) or
 /// `bibstyle_include` (`\bibliographystyle{x}`) node.
 fn extract_bib_path(node: Node<'_>, src: &str) -> Option<String> {
+    extract_bib_paths(node, src).into_iter().next()
+}
+
+/// Collect every comma-separated bib path in a `\bibliography{a,b,c}`
+/// call. The pre-2026-05 helper returned only the first match, so
+/// multi-bib papers silently lost every entry after the first; project
+/// mode then failed to copy those files and `typst compile` died with
+/// `file not found`.
+fn extract_bib_paths(node: Node<'_>, src: &str) -> Vec<String> {
+    let mut out = Vec::new();
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if matches!(child.kind(), "curly_group_path" | "curly_group_path_list") {
             let mut sub = child.walk();
             for grandchild in child.children(&mut sub) {
                 if grandchild.kind() == "path" {
-                    return Some(src[grandchild.start_byte()..grandchild.end_byte()].to_string());
+                    out.push(src[grandchild.start_byte()..grandchild.end_byte()].to_string());
                 }
             }
         }
     }
-    None
+    out
 }
 
 /// Extract the path argument from a `graphics_include` (`\includegraphics{X}`).
@@ -3901,6 +4013,47 @@ fn lookup_math_symbol(name: &str) -> Option<&'static str> {
 ///   brack_group (optional, skipped)  the optional-default form — unsupported
 ///   curly_group                      the macro body
 /// ```
+/// Substitute `#1`..`#N` placeholders in a `\newcommand` body. Walks
+/// the body character-by-character so `#10` doesn't accidentally match
+/// `#1`+`0` and an unmatched `#<digit>` (outside the param range) is
+/// passed through unchanged.
+fn substitute_macro_args(body: &str, args: &[String]) -> String {
+    let mut out = String::with_capacity(body.len());
+    let mut chars = body.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '#' {
+            // Consume a run of digits and look up the parameter index.
+            let mut digits = String::new();
+            while let Some(&d) = chars.peek() {
+                if d.is_ascii_digit() {
+                    digits.push(d);
+                    chars.next();
+                } else {
+                    break;
+                }
+            }
+            if digits.is_empty() {
+                out.push('#');
+            } else if let Ok(idx) = digits.parse::<usize>() {
+                // `\newcommand` parameters are 1-indexed.
+                if idx >= 1 && idx <= args.len() {
+                    out.push_str(&args[idx - 1]);
+                } else {
+                    // No matching arg — keep the placeholder verbatim.
+                    out.push('#');
+                    out.push_str(&digits);
+                }
+            } else {
+                out.push('#');
+                out.push_str(&digits);
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
 ///
 /// Returns `None` when the new command has an optional-default
 /// argument (the form `\newcommand{\name}[1][default]{body}`) — we

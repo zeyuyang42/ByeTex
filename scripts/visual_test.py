@@ -199,6 +199,217 @@ def rasterize_pdf(pdf: Path, prefix: Path, dpi: int) -> list[Path]:
     return pages
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# PDF structural comparison (content gate before visual review)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Words shorter than this are dropped from the Jaccard set — they're
+# typically math-glyph extraction noise (single letters, isolated `e`s
+# from `\epsilon` etc.) rather than real prose tokens.
+MIN_WORD_LEN = 3
+
+# Cap heading lists at this many entries to keep the JSON small and
+# focus heading_recall on the major sections (papers with 50+ subsection
+# headings would otherwise drown the signal).
+MAX_HEADINGS = 40
+
+_HEADING_NUMBERED_RE = re.compile(r"^\s*(\d+(?:\.\d+)*)\.?\s+(.{2,80})$")
+_HEADING_TITLECASE_RE = re.compile(
+    r"^([A-Z][a-zA-Z]+)(?:\s+[A-Z][a-zA-Z]+){0,4}\s*$"
+)
+# Common synonyms: when matching truth headings against typst headings,
+# treat these pairs as interchangeable. Typst's `#bibliography(...)`
+# emits a "Bibliography" heading even when the LaTeX source said
+# `\section{References}`, and similar small renames shouldn't tank
+# heading_recall.
+_HEADING_SYNONYMS = [
+    ("references", "bibliography"),
+    ("acknowledgements", "acknowledgments"),
+    ("supplementary material", "appendix"),
+]
+# Unicode ranges + ASCII operators that almost never appear in a real
+# section heading. If a candidate line contains any of these, it's
+# almost certainly equation text that `pdftotext` lifted out of a
+# display-math block — drop it.
+_MATH_LIKELY_CHARS = set("·×÷≤≥≠≈≪≫±∓∂∇∫∑∏√∞∈∉⊂⊆⊃⊇∪∩→←↔⇒⇔𝔼𝔽𝕃𝕊ℝℂℕℤℚ𝛼𝛽𝛾𝛿𝜀𝜁𝜂𝜃𝜅𝜆𝜇𝜈𝜉𝜋𝜌𝜎𝜏𝜐𝜑𝜒𝜓𝜔𝛤𝛥𝛩𝛬𝛯𝛱𝛴𝛷𝛹𝛺ƒℎ")
+
+
+def extract_pdf_text(pdf: Path) -> str:
+    """Extract layout-preserving text from a PDF via the `pdftotext` CLI.
+
+    Returns the empty string on error rather than raising — a missing
+    or malformed PDF should degrade the structural comparison to "no
+    overlap", not crash the whole run.
+    """
+    try:
+        result = subprocess.run(
+            ["pdftotext", "-layout", str(pdf), "-"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return result.stdout
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        print(f"  [warn] pdftotext failed on {pdf.name}: {e}", file=sys.stderr)
+        return ""
+
+
+def tokenize_words(text: str) -> set[str]:
+    """Return a set of lowercased letter-only tokens, length ≥ MIN_WORD_LEN.
+
+    Math glyphs come through `pdftotext` as a mix of substituted bytes
+    and isolated single characters; restricting to ASCII letters of
+    reasonable length filters those out so Jaccard reflects prose
+    overlap, not equation noise.
+    """
+    return {
+        tok.lower()
+        for tok in re.findall(r"[A-Za-z]{%d,}" % MIN_WORD_LEN, text)
+    }
+
+
+def extract_pdf_headings(text: str) -> list[str]:
+    """Heuristically pull section-heading-like lines out of `pdftotext`
+    output.
+
+    Matches two shapes:
+      - numbered: `1. Introduction`, `2.1 Setup`, `3.2.1 Lemmas`
+      - title-case short line: up to 5 capitalised words, no trailing
+        punctuation (catches unnumbered sections like
+        `Acknowledgments`)
+
+    Returns lowercased, whitespace-collapsed strings, deduped, in
+    document order, capped at MAX_HEADINGS.
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        # Skip lines that look like equation residue: lines containing
+        # the typical math operators or Unicode math glyphs we map to
+        # in Typst (`arrow.r`, greek letters, `±`, `∇`, etc.) almost
+        # never represent a real heading.
+        if any(c in _MATH_LIKELY_CHARS for c in line):
+            continue
+        # Skip lines that are mostly punctuation/digits — equation
+        # snippets often have `+ ( ) − ` with very few letters.
+        letters = sum(1 for c in line if c.isalpha())
+        if letters < max(3, len(line) // 4):
+            continue
+        heading: str | None = None
+        m = _HEADING_NUMBERED_RE.match(line)
+        if m:
+            heading = m.group(2).strip()
+        elif _HEADING_TITLECASE_RE.match(line) and len(line) <= 60:
+            heading = line.strip()
+        if not heading:
+            continue
+        norm = " ".join(heading.lower().split())
+        # Strip a few obvious non-headings that match the patterns by
+        # accident — figure/table captions, "Page N", running headers.
+        if (
+            len(norm) < 3
+            or norm.startswith(("figure ", "table ", "page ", "equation ", "section "))
+            or norm.isdigit()
+        ):
+            continue
+        if norm in seen:
+            continue
+        seen.add(norm)
+        out.append(norm)
+        if len(out) >= MAX_HEADINGS:
+            break
+    return out
+
+
+def _heading_match(a: str, b: str) -> bool:
+    """Two headings match if one substring-contains the other, OR they're
+    on a known synonym pair (`references` ↔ `bibliography` and
+    friends).
+    """
+    if a in b or b in a:
+        return True
+    for x, y in _HEADING_SYNONYMS:
+        if (x in a and y in b) or (y in a and x in b):
+            return True
+    return False
+
+
+def heading_recall(truth: list[str], typst: list[str]) -> float:
+    """Fraction of `truth` headings that have a substring (or synonym)
+    match in `typst`'s heading list (either direction — absorbs minor
+    renaming).
+    """
+    if not truth:
+        return 1.0  # nothing to recall
+    matched = 0
+    for h in truth:
+        for t in typst:
+            if _heading_match(h, t):
+                matched += 1
+                break
+    return matched / len(truth)
+
+
+def pdf_structure_compare(
+    truth_pdf: Path,
+    typst_pdf: Path,
+    truth_pages: int,
+    typst_pages: int,
+    page_min: float,
+    page_max: float,
+    jaccard_min: float,
+    word_recall_min: float,
+    heading_recall_min: float,
+) -> dict:
+    """Compute the structural-similarity dict and gate it against the
+    configured thresholds. See the plan doc for metric definitions.
+    """
+    truth_text = extract_pdf_text(truth_pdf)
+    typst_text = extract_pdf_text(typst_pdf)
+    truth_words = tokenize_words(truth_text)
+    typst_words = tokenize_words(typst_text)
+    intersect = truth_words & typst_words
+    union = truth_words | typst_words
+    word_jaccard = (len(intersect) / len(union)) if union else 0.0
+    word_recall = (len(intersect) / len(truth_words)) if truth_words else 0.0
+
+    truth_headings = extract_pdf_headings(truth_text)
+    typst_headings = extract_pdf_headings(typst_text)
+    h_recall = heading_recall(truth_headings, typst_headings)
+
+    page_ratio = (typst_pages / truth_pages) if truth_pages > 0 else 0.0
+
+    fail_reasons: list[str] = []
+    if not (page_min <= page_ratio <= page_max):
+        fail_reasons.append(
+            f"page_ratio {page_ratio:.2f} outside [{page_min:.2f}, {page_max:.2f}]"
+        )
+    if word_jaccard < jaccard_min:
+        fail_reasons.append(f"word_jaccard {word_jaccard:.2f} < {jaccard_min:.2f}")
+    if word_recall < word_recall_min:
+        fail_reasons.append(f"word_recall {word_recall:.2f} < {word_recall_min:.2f}")
+    if h_recall < heading_recall_min:
+        fail_reasons.append(
+            f"heading_recall {h_recall:.2f} < {heading_recall_min:.2f}"
+        )
+
+    return {
+        "truth_word_count": len(truth_words),
+        "typst_word_count": len(typst_words),
+        "word_jaccard": round(word_jaccard, 3),
+        "word_recall": round(word_recall, 3),
+        "truth_headings": truth_headings,
+        "typst_headings": typst_headings,
+        "heading_recall": round(h_recall, 3),
+        "page_ratio": round(page_ratio, 3),
+        "structure_ok": not fail_reasons,
+        "fail_reasons": fail_reasons,
+    }
+
+
 def build_composite(
     truth_pages: list[Path],
     typst_pages: list[Path],
@@ -426,6 +637,41 @@ def process_paper(
     summary["page_count_diff"] = len(typst_pages) - len(truth_pages)
     print(f"  pages — truth: {len(truth_pages)}, typst: {len(typst_pages)}", flush=True)
 
+    # 5b. PDF structural comparison — gate the visual review on
+    # whether the truth and typst PDFs actually share their main
+    # content. A passing typst compile + similar page count is no
+    # longer enough; we need the body text to overlap with the truth.
+    if not args.no_structure_check:
+        structure = pdf_structure_compare(
+            truth_dest,
+            typst_pdf,
+            len(truth_pages),
+            len(typst_pages),
+            page_min=args.min_page_ratio,
+            page_max=args.max_page_ratio,
+            jaccard_min=args.min_word_jaccard,
+            word_recall_min=args.min_word_recall,
+            heading_recall_min=args.min_heading_recall,
+        )
+        summary["structure"] = structure
+        (out_dir / "structure.json").write_text(
+            json.dumps(structure, indent=2) + "\n"
+        )
+        verdict = "ok" if structure["structure_ok"] else "FAIL"
+        print(
+            f"  structure: jaccard={structure['word_jaccard']:.2f} "
+            f"recall={structure['word_recall']:.2f} "
+            f"headings={structure['heading_recall']:.2f} "
+            f"page_ratio={structure['page_ratio']:.2f} → {verdict}",
+            flush=True,
+        )
+        if not structure["structure_ok"]:
+            for reason in structure["fail_reasons"]:
+                print(f"    fail: {reason}", flush=True)
+            summary["status"] = "structure_failed"
+            # Fall through to build the composite — it's still useful
+            # for diagnosing *why* the structure didn't match.
+
     # 6. Build composite
     print(f"  building composite ...", flush=True)
     build_composite(truth_pages, typst_pages, composite_path, arxiv_id)
@@ -479,6 +725,31 @@ def main() -> None:
         help=f"polite delay between arXiv PDF downloads (default: {ARXIV_MIN_DELAY}s)",
     )
     p.add_argument("--user-agent", default=DEFAULT_UA, metavar="UA")
+    # Structural-comparison gate (runs between rasterize and composite)
+    p.add_argument(
+        "--no-structure-check", action="store_true",
+        help="skip the PDF source-data structural comparison",
+    )
+    p.add_argument(
+        "--min-page-ratio", type=float, default=0.70, metavar="R",
+        help="reject when typst_pages / truth_pages is below this (default: 0.70)",
+    )
+    p.add_argument(
+        "--max-page-ratio", type=float, default=1.30, metavar="R",
+        help="reject when typst_pages / truth_pages is above this (default: 1.30)",
+    )
+    p.add_argument(
+        "--min-word-jaccard", type=float, default=0.55, metavar="X",
+        help="reject when |T ∩ Y| / |T ∪ Y| below this (default: 0.55)",
+    )
+    p.add_argument(
+        "--min-word-recall", type=float, default=0.65, metavar="X",
+        help="reject when |T ∩ Y| / |T| below this (default: 0.65)",
+    )
+    p.add_argument(
+        "--min-heading-recall", type=float, default=0.60, metavar="X",
+        help="reject when fraction of truth headings substring-matched in typst's headings is below this (default: 0.60)",
+    )
     args = p.parse_args()
 
     out = args.out if args.out.is_absolute() else (REPO_ROOT / args.out)
@@ -499,14 +770,19 @@ def main() -> None:
             traceback.print_exc(file=sys.stderr)
             summary = {"id": f"arxiv:{arxiv_id}", "status": "exception", "error": str(exc)}
 
+        structure = summary.get("structure") or {}
         index["papers"][arxiv_id] = {
             "status": summary.get("status", "unknown"),
             "convert_ok": summary.get("convert_ok", False),
             "typst_ok": summary.get("typst_ok", False),
+            "structure_ok": structure.get("structure_ok", False),
             "truth_pages": summary.get("truth_pages", 0),
             "typst_pages": summary.get("typst_pages", 0),
             "page_count_diff": summary.get("page_count_diff"),
             "warnings_total": summary.get("warnings", {}).get("total", 0),
+            "word_jaccard": structure.get("word_jaccard"),
+            "word_recall": structure.get("word_recall"),
+            "heading_recall": structure.get("heading_recall"),
             "composite": str(out / arxiv_id.replace("/", "_") / "composite.png")
                 if summary.get("typst_ok") else None,
         }
@@ -514,7 +790,17 @@ def main() -> None:
         print(f"  → status: {summary.get('status')}", flush=True)
 
     ok_count = sum(1 for v in index["papers"].values() if v["status"] == "ok")
+    structure_ok_count = sum(
+        1 for v in index["papers"].values() if v.get("structure_ok")
+    )
+    typst_ok_count = sum(
+        1 for v in index["papers"].values() if v.get("typst_ok")
+    )
     print(f"\nDone: {ok_count}/{len(args.papers)} fully processed.")
+    print(
+        f"  Stage counts: typst_ok={typst_ok_count} | "
+        f"structure_ok={structure_ok_count} | overall_ok={ok_count}"
+    )
     print(f"Index: {index_path}")
     print("Next: ask the agent to read each composite.png and write tests/visual/report.md")
 

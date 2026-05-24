@@ -162,3 +162,62 @@ fn included_title_propagates_to_parent() {
         out.typst
     );
 }
+
+#[test]
+fn sty_macros_harvested_from_local_package() {
+    // Phase 2: when `\usepackage{X}` resolves to a local `X.sty` in the
+    // source dir, ByeTex should parse it and merge its `\newcommand`
+    // definitions into the macro table. The body then expands those
+    // macros normally.
+    let tmp = TempDir::new().expect("tempdir");
+    fs::write(
+        tmp.path().join("mystyle.sty"),
+        "\\newcommand{\\R}{\\mathbb{R}}\n\\def\\norm#1{\\|#1\\|}\n",
+    )
+    .unwrap();
+    let main = "\\usepackage{mystyle}\n\nWe use $\\R$ and $\\norm{v}$.\n";
+    let out = convert(
+        main,
+        &ConvertOptions {
+            source_name: Some("main.tex".into()),
+            base_dir: Some(tmp.path().to_path_buf()),
+        },
+    );
+    assert!(
+        out.typst.contains("RR") || out.typst.contains("bb(R)"),
+        "expected \\R from local mystyle.sty to expand, got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("||v||"),
+        "expected \\norm{{v}} from local mystyle.sty to expand, got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn sty_in_style_subdirectory_resolves() {
+    // The probe should also find `<pkg>.sty` in a `style/`
+    // subdirectory — a common convention for paper-local macro
+    // packages.
+    let tmp = TempDir::new().expect("tempdir");
+    fs::create_dir_all(tmp.path().join("style")).unwrap();
+    fs::write(
+        tmp.path().join("style").join("paperstyle.sty"),
+        "\\newcommand{\\E}{\\mathbb{E}}\n",
+    )
+    .unwrap();
+    let main = "\\usepackage{paperstyle}\n\n$\\E[X]$\n";
+    let out = convert(
+        main,
+        &ConvertOptions {
+            source_name: Some("main.tex".into()),
+            base_dir: Some(tmp.path().to_path_buf()),
+        },
+    );
+    assert!(
+        out.typst.contains("bb(E)"),
+        "expected style/paperstyle.sty to be discovered, got:\n{}",
+        out.typst
+    );
+}

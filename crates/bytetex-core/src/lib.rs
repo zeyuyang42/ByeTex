@@ -10,10 +10,12 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 
 pub mod parser;
+pub mod project;
 pub mod skills;
 pub mod warnings;
 
 mod class_map;
+mod document;
 mod emit;
 
 pub use warnings::{Category, Range, Severity, Warning};
@@ -32,6 +34,26 @@ pub struct ConvertOptions {
 pub struct ConvertOutput {
     pub typst: String,
     pub warnings: Vec<Warning>,
+    /// Assets (images, bibliography files) that the emitter successfully
+    /// resolved on disk. The project layer uses this list to copy files
+    /// into the output directory. Only populated when `base_dir` is set.
+    pub asset_refs: Vec<AssetRef>,
+}
+
+/// A single asset that the emitter resolved on disk during conversion.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssetRef {
+    pub kind: AssetKind,
+    /// Path string as written in the emitted Typst source (e.g. `"fig/foo.pdf"`).
+    pub typst_path: String,
+    /// Absolute or base-dir-relative path of the asset on the host filesystem.
+    pub source_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AssetKind {
+    Image,
+    Bibliography,
 }
 
 pub fn convert(source: &str, opts: &ConvertOptions) -> ConvertOutput {
@@ -41,6 +63,6 @@ pub fn convert(source: &str, opts: &ConvertOptions) -> ConvertOutput {
     let mut emitter =
         emit::Emitter::with_includes(source, source_name, opts.base_dir.clone(), visited);
     emitter.emit_root(tree.root_node());
-    let (typst, warnings) = emitter.finish();
-    ConvertOutput { typst, warnings }
+    let (typst, warnings, asset_refs) = emitter.finish();
+    ConvertOutput { typst, warnings, asset_refs }
 }

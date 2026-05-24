@@ -59,10 +59,12 @@ fn check_template(rel: &str, budget: usize) {
 //   class-aware template emission (charged-ieee, clean-acmart,
 //   lucky-icml; \IEEEkeywords captured; abstract field captured for
 //   classes that accept it)                                IEEE 16 ACM  0 NeurIPS  1 thesis  0
-// All four templates compile to PDF; ACM and thesis are at 0 warnings.
-// IEEE's residual 16 are IEEE-class-specific commands (IEEEauthorblockN/A,
-// IEEEpubid, etc.) — covered by a future IEEE-specific skill rather than
-// emitter rules.
+//   silent-drop audit: converted previously-silent drops of ACM author-info
+//   fields (\authornote, \email, …) and IEEEtran content commands into
+//   UnsupportedCommand warnings. ACM +3 = \authornote + 2×\email (the
+//   \institution/\city/\country inside \affiliation are consumed by the
+//   \affiliation silent-drop before they reach the dispatcher).
+//                                                          IEEE 16 ACM  3 NeurIPS  1 thesis  0
 
 #[test]
 fn ieee_template_within_budget() {
@@ -71,7 +73,7 @@ fn ieee_template_within_budget() {
 
 #[test]
 fn acm_template_within_budget() {
-    check_template("tests/inhouse/acm/sample-sigconf.tex", 0);
+    check_template("tests/inhouse/acm/sample-sigconf.tex", 3);
 }
 
 #[test]

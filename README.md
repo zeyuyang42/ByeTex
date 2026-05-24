@@ -66,6 +66,34 @@ bytetex corpus harvest --source context/latex-context.md --out tests/corpus/
 bytetex corpus run --dir tests/corpus/
 ```
 
+### Project mode
+
+For real-world LaTeX projects that include figures, bibliography files, and
+`\input` sub-files, use `--project` to produce a self-contained Typst project
+directory that compiles end-to-end:
+
+```bash
+# Convert a LaTeX project.
+bytetex convert paper.tex --project
+# Writes paper.typst-project/ containing:
+#   main.typ          — the converted Typst body
+#   fig/foo.pdf       — asset files copied from the source project
+#   refs.bib          — bibliography copied as-is (Typst reads it natively)
+#   typst.toml        — optional manifest for known document classes
+
+# Specify a custom output directory.
+bytetex convert paper.tex --project --project-out /tmp/my-project
+
+# Skip typst.toml generation.
+bytetex convert paper.tex --project --no-toml
+
+# Overwrite a non-empty output directory.
+bytetex convert paper.tex --project --project-out /tmp/my-project --force
+
+# Compile the result.
+typst compile paper.typst-project/main.typ
+```
+
 ## Output contract
 
 Every `bytetex convert` writes two files next to the input:

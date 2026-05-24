@@ -13,7 +13,7 @@
 
 use std::sync::Arc;
 
-use bytetex_core::{convert, ConvertOptions};
+use bytetex_core::{convert, project::plan_project, ConvertOptions};
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::*,
@@ -50,6 +50,21 @@ pub struct ConvertFragmentParams {
 pub struct ReadSkillParams {
     /// Name as listed by `list_skills` (matches the skill's frontmatter `name`).
     pub name: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct ConvertProjectParams {
+    /// Path to the main `.tex` entry file. Assets and `\input` files are
+    /// resolved relative to this file's parent directory.
+    pub main_tex: String,
+    /// Directory where the Typst project will be written. Created if absent.
+    pub out_dir: String,
+    /// Skip writing `typst.toml` even for known document classes.
+    #[serde(default)]
+    pub no_toml: bool,
+    /// Overwrite a non-empty `out_dir` if it already exists.
+    #[serde(default)]
+    pub force: bool,
 }
 
 #[derive(Clone)]
@@ -163,6 +178,57 @@ impl ByeTexServer {
         )]))
     }
 
+    #[tool(description = "Convert a LaTeX project to a self-contained Typst project directory. \
+                          Reads the main .tex file, copies all referenced assets (images, .bib \
+                          files), and writes main.typ + optionally typst.toml to out_dir. \
+                          Returns the list of written files and any conversion warnings.")]
+    async fn convert_project(
+        &self,
+        Parameters(p): Parameters<ConvertProjectParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let main_tex = std::path::PathBuf::from(&p.main_tex);
+        let out_dir = std::path::PathBuf::from(&p.out_dir);
+        // `Path::parent()` of a bare filename returns Some("") — not None —
+        // so the `unwrap_or` here doesn't fire. Without normalisation the
+        // empty PathBuf disables the path-traversal guard in
+        // materialize_project_mcp (canonicalize fails → guard becomes
+        // starts_with("") which matches every path). Coerce "" → ".".
+        let base_dir = main_tex
+            .parent()
+            .map(|d| {
+                if d.as_os_str().is_empty() {
+                    std::path::PathBuf::from(".")
+                } else {
+                    d.to_path_buf()
+                }
+            })
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
+
+        let plan = plan_project(&main_tex, p.no_toml).map_err(|e| {
+            McpError::internal_error(format!("plan_project: {}", e), None)
+        })?;
+
+        // Materialise the project (path-traversal guard included).
+        let force = p.force;
+        materialize_project_mcp(&plan, &out_dir, &base_dir, force).map_err(|e| {
+            McpError::internal_error(format!("materialize: {}", e), None)
+        })?;
+
+        let mut written: Vec<String> = vec![out_dir.join("main.typ").display().to_string()];
+        for asset in &plan.assets {
+            written.push(out_dir.join(&asset.rel_dest).display().to_string());
+        }
+        if plan.manifest.is_some() {
+            written.push(out_dir.join("typst.toml").display().to_string());
+        }
+
+        let json = serde_json::json!({
+            "written_files": written,
+            "warnings": plan.warnings,
+        });
+        Ok(CallToolResult::success(vec![Content::text(json.to_string())]))
+    }
+
     #[tool(description = "Return the full markdown body of a single skill by name.")]
     async fn read_skill(
         &self,
@@ -210,6 +276,84 @@ impl ServerHandler for ByeTexServer {
             ),
         }
     }
+}
+
+/// Inline materializer used by the MCP `convert_project` tool.
+/// Mirrors the logic in `bytetex-cli/src/project.rs` to avoid a circular dep.
+fn materialize_project_mcp(
+    plan: &bytetex_core::project::ProjectPlan,
+    out_dir: &std::path::Path,
+    base_dir: &std::path::Path,
+    force: bool,
+) -> std::io::Result<()> {
+    if out_dir.exists() {
+        let metadata = std::fs::metadata(out_dir)?;
+        if !metadata.is_dir() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                format!(
+                    "output path `{}` exists and is not a directory",
+                    out_dir.display()
+                ),
+            ));
+        }
+        let is_empty = std::fs::read_dir(out_dir)?.next().is_none();
+        if !is_empty {
+            if !force {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::AlreadyExists,
+                    format!(
+                        "output directory `{}` is not empty; pass force=true to overwrite",
+                        out_dir.display()
+                    ),
+                ));
+            }
+            // Wipe stale files so a re-run with `force=true` doesn't leave
+            // assets from the previous plan in the project.
+            for entry in std::fs::read_dir(out_dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                let ft = entry.file_type()?;
+                if ft.is_dir() && !ft.is_symlink() {
+                    std::fs::remove_dir_all(&path)?;
+                } else {
+                    std::fs::remove_file(&path)?;
+                }
+            }
+        }
+    }
+    std::fs::create_dir_all(out_dir)?;
+    std::fs::write(out_dir.join("main.typ"), &plan.main_typst)?;
+    // If base_dir cannot be canonicalised, surface the error rather than
+    // letting the path-traversal guard silently drop every asset.
+    let canonical_base = base_dir.canonicalize().map_err(|e| {
+        std::io::Error::new(
+            e.kind(),
+            format!(
+                "cannot canonicalise base directory `{}`: {}",
+                base_dir.display(),
+                e
+            ),
+        )
+    })?;
+    for asset in &plan.assets {
+        let canonical_src = match asset.source.canonicalize() {
+            Ok(p) => p,
+            Err(_) => continue, // unreadable at materialise time
+        };
+        if !canonical_src.starts_with(&canonical_base) {
+            continue;
+        }
+        let dest = out_dir.join(&asset.rel_dest);
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::copy(&asset.source, &dest)?;
+    }
+    if let Some(ref manifest) = plan.manifest {
+        std::fs::write(out_dir.join("typst.toml"), manifest)?;
+    }
+    Ok(())
 }
 
 /// Run the server over stdio (the transport every major MCP client speaks).
