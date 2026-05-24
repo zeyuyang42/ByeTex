@@ -526,6 +526,17 @@ impl<'a> Emitter<'a> {
             "inline_formula" => return self.emit_inline_math(node),
             "displayed_equation" => return self.emit_display_math(node),
             "math_environment" => return self.emit_math_environment(node),
+            // Bug #14b: sizing commands as bare token kinds — tree-sitter
+            // gives `\left` and `\right` their own kind strings outside
+            // of a matched `math_delimiter` (which `emit_math_delimiter`
+            // already handles). When `\left` is unmatched (no `\right`
+            // partner) or when the enclosing math span ended up as an
+            // ERROR node, the raw `\left` token leaks through. Drop it
+            // silently; Typst auto-pairs the bare delimiter that follows.
+            "\\left" | "\\right" | "\\middle" | "\\bigl" | "\\Bigl" | "\\biggl"
+            | "\\Biggl" | "\\bigr" | "\\Bigr" | "\\biggr" | "\\Biggr" | "\\bigm"
+            | "\\Bigm" | "\\biggm" | "\\Biggm" | "\\big" | "\\Big" | "\\bigg"
+            | "\\Bigg" => return node.end_byte(),
             // `\left( ... \right)` in math: tree-sitter packages the whole
             // span as a single `math_delimiter` with `left_command`,
             // `left_delimiter`, body, `right_command`, `right_delimiter`
@@ -620,6 +631,23 @@ impl<'a> Emitter<'a> {
                     self.out.push(c);
                     first = false;
                 }
+                // Bug #23: `i0`-style letter+digit identifiers (e.g.
+                // `_{i0}`) become Typst identifier lookups that fail.
+                // Insert a separator between alpha and digit tail so
+                // they parse as separate atoms.
+                if tail.starts_with(|c: char| c.is_ascii_digit()) {
+                    self.out.push(' ');
+                }
+                self.out.push_str(tail);
+                return node.end_byte();
+            }
+            // Bug #23 (single-letter alpha case): even if we don't enter
+            // the splitting branch, an `i0`-style word with a 1-char
+            // alpha prefix needs the same separator before the digit
+            // tail to keep Typst from reading `i0` as an identifier.
+            if !alpha.is_empty() && tail.starts_with(|c: char| c.is_ascii_digit()) {
+                self.out.push_str(alpha);
+                self.out.push(' ');
                 self.out.push_str(tail);
                 return node.end_byte();
             }
@@ -3316,6 +3344,44 @@ impl<'a> Emitter<'a> {
             // spacing around it.
             "\\\\" => {
                 self.out.push('\\');
+                // Bug #20/#21: `\\[1mm]` (math row-break with optional
+                // length) — tree-sitter leaves the `[...]` as sibling
+                // nodes which emit as `\[1mm\]` and trip Typst's
+                // matrix delimiter parser. Consume and drop the
+                // bracket; also append a `\n` so the row break has
+                // the expected separator for downstream matrix/cases
+                // splitting AND for readability. Source-byte peek
+                // follows the pattern from PR #27 / #32.
+                let bytes = self.src.as_bytes();
+                let mut i = node.end_byte();
+                while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                    i += 1;
+                }
+                if i < bytes.len() && bytes[i] == b'[' {
+                    let mut j = i + 1;
+                    let mut depth = 0i32;
+                    while j < bytes.len() {
+                        match bytes[j] {
+                            b'\\' if j + 1 < bytes.len() => {
+                                j += 2;
+                                continue;
+                            }
+                            b'{' => depth += 1,
+                            b'}' => depth -= 1,
+                            b']' if depth == 0 => break,
+                            _ => {}
+                        }
+                        j += 1;
+                    }
+                    if j < bytes.len() && bytes[j] == b']' {
+                        // Replace the consumed range with a single
+                        // newline so the row separator survives.
+                        self.out.push('\n');
+                        let end = j + 1;
+                        self.skip_until = self.skip_until.max(end);
+                        return end;
+                    }
+                }
                 node.end_byte()
             }
             // Thin/medium/thick math spaces.
@@ -4153,14 +4219,27 @@ impl<'a> Emitter<'a> {
         // Cover the truncated-grammar tail (`_objective}`) when the key
         // contains underscores — same as `\label{...}` handling above.
         self.skip_until = self.skip_until.max(end_after_brace);
+        // Bug #24: inside math mode, a bare `@key` is parsed by Typst as
+        // an identifier (`@key:other` → unknown variable `key`). Wrap
+        // the reference in a markup-escape `#ref(<key>)` so the Typst
+        // parser exits math context for the reference itself.
+        let in_math = self.in_math;
         match first_kind.as_deref() {
             Some("\\eqref") => {
                 self.needs_equation_numbering = true;
-                let _ = write!(self.out, "(@{})", key);
+                if in_math {
+                    let _ = write!(self.out, "(#ref(<{}>))", key);
+                } else {
+                    let _ = write!(self.out, "(@{})", key);
+                }
             }
             Some("\\pageref") => {
                 // Typst doesn't have a direct equivalent; warn once and emit `@key`.
-                let _ = write!(self.out, "@{}", key);
+                if in_math {
+                    let _ = write!(self.out, "#ref(<{}>)", key);
+                } else {
+                    let _ = write!(self.out, "@{}", key);
+                }
                 self.warnings.push(Warning {
                     range: range_of(node),
                     category: Category::NeedsManualReview {
@@ -4189,7 +4268,11 @@ impl<'a> Emitter<'a> {
                 {
                     self.needs_heading_numbering = true;
                 }
-                let _ = write!(self.out, "@{}", key);
+                if in_math {
+                    let _ = write!(self.out, "#ref(<{}>)", key);
+                } else {
+                    let _ = write!(self.out, "@{}", key);
+                }
             }
         }
         // Typst labels include `-`, `.`, `:`, etc. If the source has
