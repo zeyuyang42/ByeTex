@@ -2594,36 +2594,97 @@ impl<'a> Emitter<'a> {
         node.end_byte()
     }
 
-    /// `\frac{a}{b}` → `(a) / (b)` per the M3 plan.
+    /// Render one [`BracelessArg`] as a math-mode string. Used by every
+    /// structural math command that supports both `\foo{x}` and `\foo x`
+    /// argument forms.
+    ///
+    /// - `Command(\name)` — look up via `lookup_math_symbol`, fall back
+    ///   to user-macro expansion, fall back to the raw command text.
+    /// - `Group({...})` — render via a sub-emitter in math context.
+    /// - `Char(c)` — pass through as-is.
+    fn render_braceless_math_arg(&mut self, arg: BracelessArg) -> String {
+        match arg {
+            BracelessArg::Command(cmd) => {
+                if let Some(typst) = lookup_math_symbol(&cmd) {
+                    typst.to_string()
+                } else if let Some(macro_def) = self.macros.get(&cmd).cloned() {
+                    self.render_in_sub_emitter(&macro_def.body, true, true)
+                        .trim()
+                        .to_string()
+                } else {
+                    cmd
+                }
+            }
+            BracelessArg::Group(inner_src) => self
+                .render_in_sub_emitter(&inner_src, true, true)
+                .trim()
+                .to_string(),
+            BracelessArg::Char(c) => c,
+        }
+    }
+
+    /// `\frac{a}{b}` → `(a) / (b)`. Also accepts the brace-less form
+    /// `\frac a b` (rare in arXiv but legal LaTeX) by consuming up to
+    /// two trailing tokens via `consume_braceless_arg`. Mixed forms
+    /// like `\frac{a} b` work too — the helper picks up whichever
+    /// brace-less args remain after the curly_group children.
     fn emit_math_frac(&mut self, node: Node<'_>) -> usize {
         let mut cursor = node.walk();
-        let args: Vec<Node<'_>> = node
+        let groups: Vec<Node<'_>> = node
             .children(&mut cursor)
             .filter(|c| c.kind() == "curly_group")
             .collect();
-        if args.len() < 2 {
+        let mut rendered: Vec<String> =
+            groups.iter().map(|g| self.render_math_group(*g)).collect();
+        let mut consumed_end = node.end_byte();
+        while rendered.len() < 2 {
+            match try_consume_math_arg(self.src, consumed_end) {
+                Some((arg, end)) => {
+                    rendered.push(self.render_braceless_math_arg(arg));
+                    consumed_end = end;
+                }
+                None => break,
+            }
+        }
+        if rendered.len() < 2 {
             self.warn_ambiguous_math(node, "\\frac (missing args)");
             return node.end_byte();
         }
-        let num = self.render_math_group(args[0]);
-        let den = self.render_math_group(args[1]);
-        let _ = write!(self.out, "({}) / ({})", num.trim(), den.trim());
-        node.end_byte()
+        if consumed_end > node.end_byte() {
+            self.skip_until = self.skip_until.max(consumed_end);
+        }
+        let _ = write!(self.out, "({}) / ({})", rendered[0].trim(), rendered[1].trim());
+        consumed_end
     }
 
+    /// `\sqrt{x}` → `sqrt(x)`. Also accepts brace-less `\sqrt x` and
+    /// `\sqrt\alpha`. The optional radical index `\sqrt[n]{x}` form
+    /// keeps the existing curly-only path (handled by `first_curly_group`).
     fn emit_math_sqrt(&mut self, node: Node<'_>) -> usize {
-        let arg = first_curly_group(node);
-        match arg {
-            Some(g) => {
-                let inner = self.render_math_group(g);
+        if let Some(g) = first_curly_group(node) {
+            let inner = self.render_math_group(g);
+            self.ensure_math_letter_boundary("sqrt(");
+            let _ = write!(self.out, "sqrt({})", inner.trim());
+            return node.end_byte();
+        }
+        // Brace-less: consume one token from raw source. `try_consume_math_arg`
+        // refuses to gobble math delimiters (`$`, `\)`, `\]`, `}`) so we
+        // don't accidentally eat a closing `$` when the source is malformed.
+        match try_consume_math_arg(self.src, node.end_byte()) {
+            Some((arg, end)) => {
+                let inner = self.render_braceless_math_arg(arg);
+                if end > node.end_byte() {
+                    self.skip_until = self.skip_until.max(end);
+                }
                 self.ensure_math_letter_boundary("sqrt(");
                 let _ = write!(self.out, "sqrt({})", inner.trim());
+                end
             }
             None => {
                 self.warn_ambiguous_math(node, "\\sqrt (missing arg)");
+                node.end_byte()
             }
         }
-        node.end_byte()
     }
 
     /// `\operatorname{X}` → `op("X")` — render the literal name as upright text.
@@ -2668,39 +2729,7 @@ impl<'a> Emitter<'a> {
                 return node.end_byte();
             }
         };
-        let arg_render = match parsed_arg {
-            BracelessArg::Command(cmd) => {
-                // Resolution order: math symbol table → user macros → raw.
-                // Without the macro check, `\widehat\HSIC` (where `\HSIC`
-                // is a `\newcommand` defined in the source) emits the
-                // literal `\HSIC` instead of the expansion.
-                if let Some(typst) = lookup_math_symbol(&cmd) {
-                    typst.to_string()
-                } else if let Some(macro_def) = self.macros.get(&cmd).cloned() {
-                    // Expand: re-parse the macro body and render via a
-                    // sub-emitter inheriting the math context + macro table.
-                    self.render_in_sub_emitter(&macro_def.body, true, true)
-                        .trim()
-                        .to_string()
-                } else {
-                    cmd
-                }
-            }
-            BracelessArg::Group(inner_src) => {
-                // Brace group as the arg: re-parse inner content with the
-                // current math context so nested commands render properly.
-                // `increment_depth = true` so a `\hat{\foo}` chain where
-                // `\foo` recursively expands to more `\hat{\foo}` hits the
-                // MAX_MACRO_DEPTH cap. Previously this branch left the
-                // depth at parent value (the audit's B2 bug), so a
-                // recursive macro reached through a brace-group never
-                // tripped the cap and could overflow the stack.
-                self.render_in_sub_emitter(&inner_src, true, true)
-                    .trim()
-                    .to_string()
-            }
-            BracelessArg::Char(c) => c,
-        };
+        let arg_render = self.render_braceless_math_arg(parsed_arg);
         self.ensure_math_letter_boundary(left);
         self.out.push_str(left);
         self.out.push_str(arg_render.trim());
@@ -2710,21 +2739,36 @@ impl<'a> Emitter<'a> {
         arg_end
     }
 
+    /// `\binom{n}{k}` → `binom(n, k)`. Also accepts brace-less
+    /// `\binom n k` by consuming up to two trailing tokens.
     fn emit_math_binom(&mut self, node: Node<'_>) -> usize {
         let mut cursor = node.walk();
-        let args: Vec<Node<'_>> = node
+        let groups: Vec<Node<'_>> = node
             .children(&mut cursor)
             .filter(|c| c.kind() == "curly_group")
             .collect();
-        if args.len() < 2 {
+        let mut rendered: Vec<String> =
+            groups.iter().map(|g| self.render_math_group(*g)).collect();
+        let mut consumed_end = node.end_byte();
+        while rendered.len() < 2 {
+            match try_consume_math_arg(self.src, consumed_end) {
+                Some((arg, end)) => {
+                    rendered.push(self.render_braceless_math_arg(arg));
+                    consumed_end = end;
+                }
+                None => break,
+            }
+        }
+        if rendered.len() < 2 {
             self.warn_ambiguous_math(node, "\\binom (missing args)");
             return node.end_byte();
         }
-        let n = self.render_math_group(args[0]);
-        let k = self.render_math_group(args[1]);
+        if consumed_end > node.end_byte() {
+            self.skip_until = self.skip_until.max(consumed_end);
+        }
         self.ensure_math_letter_boundary("binom(");
-        let _ = write!(self.out, "binom({}, {})", n.trim(), k.trim());
-        node.end_byte()
+        let _ = write!(self.out, "binom({}, {})", rendered[0].trim(), rendered[1].trim());
+        consumed_end
     }
 
     /// Subscript/superscript: emit the marker, then the argument. Single-char
@@ -4587,6 +4631,38 @@ impl BracelessArg {
 /// `\bar\alpha`, `\mathbf{X}`) and [`Emitter::expand_user_macro`] so
 /// `\newcommand`s called brace-less (`\mat X`, `\rvec\alpha`) work the
 /// same way LaTeX expects.
+/// Math-context wrapper around [`consume_braceless_arg`] that refuses
+/// to consume a math-terminating delimiter (`$`, `\)`, `\]`, or `}`
+/// at the outer level). Used by structural math commands (`\frac`,
+/// `\sqrt`, `\binom`) when filling missing brace-less args: without
+/// this guard, `$\frac{a}$` would greedily eat the closing `$` as the
+/// second argument and break the surrounding math container.
+pub(crate) fn try_consume_math_arg(src: &str, start: usize) -> Option<(BracelessArg, usize)> {
+    let bytes = src.as_bytes();
+    let mut i = start;
+    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    if i >= bytes.len() {
+        return None;
+    }
+    if bytes[i] == b'$' || bytes[i] == b'}' {
+        // Math closer (`$`, `$$`) or surrounding-group closer. Bail.
+        return None;
+    }
+    if bytes[i] == b'\\' && i + 1 < bytes.len() {
+        match bytes[i + 1] {
+            b')' | b']' => return None, // `\)` / `\]` math closers
+            _ => {}
+        }
+        // `\end{...}` — math environment closer.
+        if src[i..].starts_with("\\end{") {
+            return None;
+        }
+    }
+    consume_braceless_arg(src, start)
+}
+
 pub(crate) fn consume_braceless_arg(src: &str, start: usize) -> Option<(BracelessArg, usize)> {
     let bytes = src.as_bytes();
     let mut i = start;
