@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 
-mod project;
+// `materialize_project` lives in byetex-core now; no local module needed.
 
 #[derive(Parser, Debug)]
 #[command(name = "byetex", version, about = "LaTeX -> Typst converter")]
@@ -407,7 +407,7 @@ fn run_convert_project(
     let n_assets = plan.assets.len();
     let has_manifest = plan.manifest.is_some();
 
-    project::materialize_project(&plan, &out_dir, &base_dir, force)
+    byetex_core::project::materialize_project(&plan, &out_dir, &base_dir, force)
         .with_context(|| format!("writing project to {}", out_dir.display()))?;
 
     // Persist warnings as a sidecar so downstream tooling (agent-brief,

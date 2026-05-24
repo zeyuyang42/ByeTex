@@ -191,7 +191,7 @@ impl ByeTexServer {
         // `Path::parent()` of a bare filename returns Some("") — not None —
         // so the `unwrap_or` here doesn't fire. Without normalisation the
         // empty PathBuf disables the path-traversal guard in
-        // materialize_project_mcp (canonicalize fails → guard becomes
+        // materialize_project (canonicalize fails → guard becomes
         // starts_with("") which matches every path). Coerce "" → ".".
         let base_dir = main_tex
             .parent()
@@ -210,9 +210,8 @@ impl ByeTexServer {
 
         // Materialise the project (path-traversal guard included).
         let force = p.force;
-        materialize_project_mcp(&plan, &out_dir, &base_dir, force).map_err(|e| {
-            McpError::internal_error(format!("materialize: {}", e), None)
-        })?;
+        byetex_core::project::materialize_project(&plan, &out_dir, &base_dir, force)
+            .map_err(|e| McpError::internal_error(format!("materialize: {}", e), None))?;
 
         let mut written: Vec<String> = vec![out_dir.join("main.typ").display().to_string()];
         for asset in &plan.assets {
@@ -278,83 +277,11 @@ impl ServerHandler for ByeTexServer {
     }
 }
 
-/// Inline materializer used by the MCP `convert_project` tool.
-/// Mirrors the logic in `byetex-cli/src/project.rs` to avoid a circular dep.
-fn materialize_project_mcp(
-    plan: &byetex_core::project::ProjectPlan,
-    out_dir: &std::path::Path,
-    base_dir: &std::path::Path,
-    force: bool,
-) -> std::io::Result<()> {
-    if out_dir.exists() {
-        let metadata = std::fs::metadata(out_dir)?;
-        if !metadata.is_dir() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::AlreadyExists,
-                format!(
-                    "output path `{}` exists and is not a directory",
-                    out_dir.display()
-                ),
-            ));
-        }
-        let is_empty = std::fs::read_dir(out_dir)?.next().is_none();
-        if !is_empty {
-            if !force {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::AlreadyExists,
-                    format!(
-                        "output directory `{}` is not empty; pass force=true to overwrite",
-                        out_dir.display()
-                    ),
-                ));
-            }
-            // Wipe stale files so a re-run with `force=true` doesn't leave
-            // assets from the previous plan in the project.
-            for entry in std::fs::read_dir(out_dir)? {
-                let entry = entry?;
-                let path = entry.path();
-                let ft = entry.file_type()?;
-                if ft.is_dir() && !ft.is_symlink() {
-                    std::fs::remove_dir_all(&path)?;
-                } else {
-                    std::fs::remove_file(&path)?;
-                }
-            }
-        }
-    }
-    std::fs::create_dir_all(out_dir)?;
-    std::fs::write(out_dir.join("main.typ"), &plan.main_typst)?;
-    // If base_dir cannot be canonicalised, surface the error rather than
-    // letting the path-traversal guard silently drop every asset.
-    let canonical_base = base_dir.canonicalize().map_err(|e| {
-        std::io::Error::new(
-            e.kind(),
-            format!(
-                "cannot canonicalise base directory `{}`: {}",
-                base_dir.display(),
-                e
-            ),
-        )
-    })?;
-    for asset in &plan.assets {
-        let canonical_src = match asset.source.canonicalize() {
-            Ok(p) => p,
-            Err(_) => continue, // unreadable at materialise time
-        };
-        if !canonical_src.starts_with(&canonical_base) {
-            continue;
-        }
-        let dest = out_dir.join(&asset.rel_dest);
-        if let Some(parent) = dest.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::copy(&asset.source, &dest)?;
-    }
-    if let Some(ref manifest) = plan.manifest {
-        std::fs::write(out_dir.join("typst.toml"), manifest)?;
-    }
-    Ok(())
-}
+// `materialize_project` previously lived inline here as a near-duplicate of
+// the CLI's version. Both implementations have moved into
+// `byetex_core::project::materialize_project` to eliminate the drift (the
+// MCP copy used to silently skip unreadable assets; the CLI copy warned).
+// The MCP call site below now delegates to the shared core function.
 
 /// Run the server over stdio (the transport every major MCP client speaks).
 /// Returns once the client disconnects or the process is signalled.
