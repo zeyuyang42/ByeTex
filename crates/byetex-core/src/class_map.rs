@@ -533,13 +533,13 @@ fn parse_one_author(chunk: &str) -> Author {
     let mut email = None;
     let mut affiliation_raw: Option<String> = None;
     let mut orcid = None;
-    let mut footnote = None;
     let mut equal = false;
-    let mut corresponding = false;
 
     // Crude but robust: scan the chunk for `\cmd{...}` patterns and
     // pull each known one out. The leftover name text is what wasn't
-    // claimed.
+    // claimed. `\thanks{...}` is consumed (so it doesn't leak into
+    // the rendered name) but only its hint flags — `equal contribution`
+    // — feed into the Author record.
     for cmd in &[
         "email",
         "affiliation",
@@ -565,10 +565,6 @@ fn parse_one_author(chunk: &str) -> Author {
                             if lower.contains("equal") {
                                 equal = true;
                             }
-                            if lower.contains("corresponding") {
-                                corresponding = true;
-                            }
-                            footnote = Some(Content::Typst(body.clone()));
                         }
                         _ => {}
                     }
@@ -586,8 +582,6 @@ fn parse_one_author(chunk: &str) -> Author {
             .map(|raw| crate::document::Affiliation::from_raw(Content::Typst(raw))),
         orcid,
         equal_contribution: equal,
-        corresponding,
-        footnote,
     }
 }
 
@@ -688,7 +682,6 @@ fn parse_neurips_block(s: &str) -> Vec<Author> {
         let mut email = None;
         let mut affil = None;
         let mut equal = false;
-        let mut footnote = None;
         for (i, line) in lines.iter().enumerate() {
             if i == 0 {
                 // The first line is the name; strip `\thanks{...}`.
@@ -698,7 +691,6 @@ fn parse_neurips_block(s: &str) -> Vec<Author> {
                     if t.to_ascii_lowercase().contains("equal") {
                         equal = true;
                     }
-                    footnote = Some(Content::Typst(t));
                 }
             } else if line.contains('@') {
                 // Email line, often wrapped in `\texttt{...}`.
@@ -723,7 +715,6 @@ fn parse_neurips_block(s: &str) -> Vec<Author> {
             email,
             affiliation: affil,
             equal_contribution: equal,
-            footnote,
             ..Author::default()
         });
     }
@@ -903,7 +894,7 @@ mod tests {
             paper_type: "conference".to_string(),
         };
         let meta = DocumentMetadata {
-            title: Some(Content::Plain("The Title".to_string())),
+            title: Some(Content::Typst("The Title".to_string())),
             authors: parse_authors(&["Alice".to_string()], &c),
             ..Default::default()
         };
