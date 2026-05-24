@@ -84,6 +84,10 @@ fn check_template(rel: &str, budget: usize) {
 //   \AddToHook, \FloatBarrier, \colorlet, \ifthenelse/\fi/\else.
 //   No template budget change (none appear in the 4 templates).
 //                                                          IEEE 13 ACM  6 NeurIPS  1 thesis  2
+//   PR5: NeurIPS checklist \answerYes/No/NA/TODO via KATEX_BUILTIN;
+//   \newcommandx/\newsiamremark/\newsiamthm silent-dropped.
+//   No template budget change (none appear in the 4 templates).
+//                                                          IEEE 13 ACM  6 NeurIPS  1 thesis  2
 
 #[test]
 fn ieee_template_within_budget() {

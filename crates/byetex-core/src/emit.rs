@@ -1107,6 +1107,16 @@ impl<'a> Emitter<'a> {
             | Some("\\else") => {
                 node.end_byte()
             }
+            // `\newcommandx` (xargs package) — tree-sitter sees this as a
+            // generic_command (not new_command_definition) so we cannot harvest
+            // it via extract_newcommand. Silently drop the definition token;
+            // any calls to the undefined macro will warn at expansion time.
+            // `\newsiamremark` (SIAM theorem-like declaration) — same issue:
+            // custom theorem declarations aren't harvested here. Drop silently
+            // so the warning count doesn't inflate on SIAM papers.
+            Some("\\newcommandx") | Some("\\newsiamremark") | Some("\\newsiamthm") => {
+                node.end_byte()
+            }
             // Macro (re)definitions in text mode — warn because the user may
             // have redefined a command that the conversion depends on.
             Some("\\renewcommand") | Some("\\providecommand") => {

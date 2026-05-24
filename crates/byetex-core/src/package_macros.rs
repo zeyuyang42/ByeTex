@@ -205,6 +205,13 @@ pub(crate) static KATEX_BUILTIN: &[(&str, MacroSeed)] = &[
     // `\ensuremath{X}` — wrap content in inline math. The body uses LaTeX
     // dollar delimiters which the child emitter converts to Typst `$...$`.
     (r"\ensuremath", MacroSeed { params: 1, body: r"$#1$" }),
+
+    // === NeurIPS checklist answer macros ===
+    // These appear in NeurIPS checklist papers as fixed labels.
+    (r"\answerYes",  MacroSeed { params: 0, body: r"[Yes]" }),
+    (r"\answerNo",   MacroSeed { params: 0, body: r"[No]" }),
+    (r"\answerNA",   MacroSeed { params: 0, body: r"[NA]" }),
+    (r"\answerTODO", MacroSeed { params: 0, body: r"[TODO]" }),
 ];
 
 #[cfg(test)]
