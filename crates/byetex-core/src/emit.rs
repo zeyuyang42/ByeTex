@@ -804,7 +804,38 @@ impl<'a> Emitter<'a> {
 
     /// Default emission: copy source bytes between sibling children, recursing
     /// into each child. Leaves (no children) emit their full source span.
+    ///
+    /// In math mode, route a `curly_group` through the font-scope-aware
+    /// slice walker so TeX font declarations (`\bf`, `\it`, ...) inside
+    /// `{\bf X}` wrap subsequent siblings in `bold(...)` etc. The
+    /// non-math path is unchanged.
     fn emit_recursive_with_gaps(&mut self, node: Node<'_>) -> usize {
+        if self.in_math && node.kind() == "curly_group" {
+            let mut cursor = node.walk();
+            let children: Vec<Node<'_>> = node.children(&mut cursor).collect();
+            // The opening `{` and closing `}` need to land in the output
+            // so Typst sees a balanced group. Emit them around the
+            // scope-aware walk of the inner nodes.
+            let start_skip = usize::from(matches!(
+                children.first().map(|n| n.kind()),
+                Some("{")
+            ));
+            let end_skip = usize::from(matches!(
+                children.last().map(|n| n.kind()),
+                Some("}")
+            ));
+            let inner_len = children.len().saturating_sub(start_skip + end_skip);
+            if start_skip == 1 {
+                self.out.push('{');
+            }
+            if inner_len > 0 {
+                self.emit_math_node_slice(&children[start_skip..start_skip + inner_len]);
+            }
+            if end_skip == 1 {
+                self.out.push('}');
+            }
+            return node.end_byte();
+        }
         let mut cursor = node.walk();
         let mut last = node.start_byte();
         for child in node.children(&mut cursor) {
@@ -2581,16 +2612,47 @@ impl<'a> Emitter<'a> {
             .children(&mut cursor)
             .filter(|c| !matches!(c.kind(), "$" | "$$" | "\\[" | "\\]" | "\\(" | "\\)"))
             .collect();
+        self.emit_math_node_slice(&body);
+    }
+
+    /// Emit a slice of math child nodes with end-of-group scope
+    /// tracking for TeX font-style declarations (`\bf`, `\it`, `\rm`,
+    /// etc.). On encountering a font declaration, we open the matching
+    /// Typst wrapper (`bold(`, `italic(`, ...), recurse into the
+    /// remaining slice inside the wrapper, then close `)`. The font
+    /// declaration node itself is not emitted. Subsequent font
+    /// declarations nest — `{\bf a \it b}` → `bold(a italic(b))` — a
+    /// partial-fidelity render that keeps both intents visible (LaTeX
+    /// would actually set `b` to bold-italic, not nested italic).
+    ///
+    /// `text` containers are transparent — tree-sitter-latex puts
+    /// adjacent words and commands into a single `text` node, so
+    /// `{a \bf b}` has the `\bf` *inside* a `text` sibling of the
+    /// `{`/`}` braces. We flatten such containers before scanning so
+    /// the declaration is visible at the slice level.
+    fn emit_math_node_slice(&mut self, body: &[Node<'_>]) {
         if body.is_empty() {
             return;
         }
-        let mut last = body[0].start_byte();
-        for child in &body {
+        let flat = flatten_text_children(body);
+        if flat.is_empty() {
+            return;
+        }
+        let mut last = flat[0].start_byte();
+        for (i, child) in flat.iter().enumerate() {
+            if let Some(wrap) = math_font_decl_wrapper(*child, self.src) {
+                self.safe_copy(last, child.start_byte());
+                self.out.push_str(wrap);
+                self.out.push('(');
+                self.emit_math_node_slice(&flat[i + 1..]);
+                self.out.push(')');
+                return;
+            }
             let cs = child.start_byte();
             self.safe_copy(last, cs);
             last = self.emit_node(*child);
         }
-        let end = body.last().unwrap().end_byte();
+        let end = flat.last().unwrap().end_byte();
         self.safe_copy(last, end);
     }
 
@@ -3194,14 +3256,7 @@ impl<'a> Emitter<'a> {
         self.with_sub_buffer(|emitter| {
             let was = emitter.in_math;
             emitter.in_math = true;
-            let mut last = inner[0].start_byte();
-            for child in inner {
-                let cs = child.start_byte();
-                emitter.safe_copy(last, cs);
-                last = emitter.emit_node(*child);
-            }
-            let end = inner.last().unwrap().end_byte();
-            emitter.safe_copy(last, end);
+            emitter.emit_math_node_slice(inner);
             emitter.in_math = was;
         })
     }
@@ -4100,6 +4155,60 @@ fn first_curly_group(node: Node<'_>) -> Option<Node<'_>> {
         .children(&mut cursor)
         .find(|child| child.kind() == "curly_group");
     result
+}
+
+/// Recursively flatten transparent `text` containers in a slice of
+/// math nodes. tree-sitter-latex groups adjacent words and commands
+/// into a single `text` node, hiding nested font declarations from a
+/// shallow sibling scan. Flattening lifts those grandchildren up so a
+/// caller can iterate uniformly.
+fn flatten_text_children<'a>(body: &[Node<'a>]) -> Vec<Node<'a>> {
+    let mut out = Vec::new();
+    for child in body {
+        push_flat(*child, &mut out);
+    }
+    out
+}
+
+fn push_flat<'a>(node: Node<'a>, out: &mut Vec<Node<'a>>) {
+    if node.kind() == "text" {
+        let mut cursor = node.walk();
+        for c in node.children(&mut cursor) {
+            push_flat(c, out);
+        }
+    } else {
+        out.push(node);
+    }
+}
+
+/// If `node` is a TeX font-style declaration (`\bf`, `\it`, `\rm`,
+/// `\sf`, `\tt`, ...), return the Typst math wrapper that approximates
+/// its effect. These commands are *declarations* — they scope from
+/// their position to the end of the enclosing group — so the caller
+/// is expected to wrap subsequent siblings, not the declaration node
+/// itself. Returns `None` for any other node.
+///
+/// We map to the math-mode wrappers that Typst's standard library
+/// provides: `bold(...)`, `italic(...)`, `upright(...)`, `mono(...)`.
+/// Slant/small-caps don't have direct math equivalents — folded onto
+/// `italic`/`upright` to keep a single round-trip output.
+fn math_font_decl_wrapper(node: Node<'_>, src: &str) -> Option<&'static str> {
+    if node.kind() != "generic_command" {
+        return None;
+    }
+    let mut cursor = node.walk();
+    let name_node = node
+        .children(&mut cursor)
+        .find(|c| c.kind() == "command_name")?;
+    let name = src.get(name_node.start_byte()..name_node.end_byte())?;
+    match name {
+        "\\bf" | "\\bfseries" | "\\boldmath" => Some("bold"),
+        "\\it" | "\\itshape" | "\\sl" | "\\slshape" => Some("italic"),
+        "\\rm" | "\\rmfamily" | "\\sc" | "\\scshape" => Some("upright"),
+        "\\sf" | "\\sffamily" => Some("upright"),
+        "\\tt" | "\\ttfamily" => Some("mono"),
+        _ => None,
+    }
 }
 
 /// First child whose kind starts with `curly_group` — matches all the
