@@ -2,10 +2,10 @@
 
 Committed source-of-truth for the four hand-written regression templates.
 Each covers a distinct document class and pattern set; warning budgets are
-locked in `crates/bytetex-core/tests/template_budgets.rs`.
+locked in `crates/byetex-core/tests/template_budgets.rs`.
 
 To use as conversion inputs, run `python scripts/setup_corpus.py` first —
-it copies this tree into `corpus/inhouse/` where the bytetex + typst pipeline
+it copies this tree into `corpus/inhouse/` where the byetex + typst pipeline
 can write generated outputs alongside the source.
 
 ## Templates

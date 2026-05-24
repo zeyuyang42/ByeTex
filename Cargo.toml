@@ -1,9 +1,9 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/bytetex-core",
-    "crates/bytetex-cli",
-    "crates/bytetex-mcp",
+    "crates/byetex-core",
+    "crates/byetex-cli",
+    "crates/byetex-mcp",
 ]
 
 [workspace.package]

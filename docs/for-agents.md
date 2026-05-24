@@ -6,14 +6,14 @@ of a larger workflow.
 
 ## Four invariants
 
-1. **`bytetex convert input.tex` exits 0 on success**, even when warnings are
+1. **`byetex convert input.tex` exits 0 on success**, even when warnings are
    emitted. Inspect the sidecar JSON, not the exit code.
 2. **Warnings live in `<stem>.warnings.json`** next to the `.typ`. The file
    is always written, even if empty (`[]`).
 3. **Skills are reachable in three ways**:
-   - `bytetex skills list` and `bytetex skills read <name>` from the CLI.
+   - `byetex skills list` and `byetex skills read <name>` from the CLI.
    - `skills/<name>.md` files in the release archive (or this repo).
-   - The `list_skills` and `read_skill` MCP tools when running `bytetex serve`.
+   - The `list_skills` and `read_skill` MCP tools when running `byetex serve`.
 4. **The output `.typ` is always written.** Even if some constructs are
    unconvertible, ByeTex emits something — possibly with `#text(red)[\foo]`
    placeholders — and points you at the warning + skill needed to repair it.
@@ -22,12 +22,12 @@ of a larger workflow.
 
 ```bash
 # Download and extract a release tarball (single static binary):
-curl -sSL -o bytetex.tar.gz https://github.com/zeyuyang42/ByeTex/releases/latest/download/bytetex-vX.Y.Z-x86_64-unknown-linux-musl.tar.gz
-tar -xzf bytetex.tar.gz
-cd bytetex-vX.Y.Z-x86_64-unknown-linux-musl
+curl -sSL -o byetex.tar.gz https://github.com/zeyuyang42/ByeTex/releases/latest/download/byetex-vX.Y.Z-x86_64-unknown-linux-musl.tar.gz
+tar -xzf byetex.tar.gz
+cd byetex-vX.Y.Z-x86_64-unknown-linux-musl
 
 # Convert:
-./bytetex convert paper.tex
+./byetex convert paper.tex
 
 # Inspect:
 cat paper.warnings.json | jq '.[].category.kind' | sort | uniq -c
@@ -38,12 +38,12 @@ typst compile paper.typ
 
 ```
    ┌─────────────────┐       ┌─────────────────┐       ┌─────────────────┐
-   │  paper.tex      │──────▶│ bytetex convert │──────▶│  paper.typ      │
+   │  paper.tex      │──────▶│ byetex convert │──────▶│  paper.typ      │
    └─────────────────┘       └─────────────────┘       │  paper.warnings.│
                                       │                │      json       │
                                       ▼                └─────────────────┘
                              ┌─────────────────┐                │
-                             │ bytetex skills  │                │
+                             │ byetex skills  │                │
                              │ read <suggested>│◀───────────────┘
                              └─────────────────┘
                                       │
@@ -54,7 +54,7 @@ typst compile paper.typ
                              typst compile paper.typ
 ```
 
-1. Run `bytetex convert input.tex`.
+1. Run `byetex convert input.tex`.
 2. If `input.warnings.json` is `[]`, you're done — `typst compile` and move
    on.
 3. Otherwise:
@@ -69,7 +69,7 @@ typst compile paper.typ
 For interactive use, the converter speaks MCP over stdio:
 
 ```bash
-./bytetex serve
+./byetex serve
 ```
 
 The five tools exposed:
@@ -119,11 +119,11 @@ These usually come from:
 - `\verb` with unusual delimiters.
 - Custom `\def` that produces unbalanced output.
 
-Read `bytetex skills read bytetex-parse-error` for the full procedure.
+Read `byetex skills read byetex-parse-error` for the full procedure.
 
 ## When ByeTex isn't enough
 
 If too many warnings have `needs_manual_review` and you can't make progress,
 the best escape hatch is to render the original LaTeX fragment to PDF/SVG
 using `pdflatex` or `tectonic`, then `#image("frag.pdf")` from Typst. This is
-documented in `bytetex-unsupported-environment.md`.
+documented in `byetex-unsupported-environment.md`.

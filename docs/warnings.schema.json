@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/zeyuyang42/ByeTex/blob/main/docs/warnings.schema.json",
   "title": "ByeTex warnings.json",
-  "description": "Sidecar file written by `bytetex convert` alongside the output .typ. Each entry describes a region of the input LaTeX that ByeTex could not (or chose not to) translate deterministically.",
+  "description": "Sidecar file written by `byetex convert` alongside the output .typ. Each entry describes a region of the input LaTeX that ByeTex could not (or chose not to) translate deterministically.",
   "type": "array",
   "items": { "$ref": "#/$defs/Warning" },
   "$defs": {

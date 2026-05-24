@@ -7,7 +7,7 @@ Dev-only helper scripts for the ByeTex project. Not part of the Rust build.
 ## setup_corpus.py
 
 Populates `corpus/inhouse/` from the committed `tests/inhouse/` source-of-truth.
-Run this once before using the inhouse templates with bytetex + typst (so that
+Run this once before using the inhouse templates with byetex + typst (so that
 generated outputs go into the gitignored `corpus/` rather than `tests/`).
 
 ```bash
@@ -96,7 +96,7 @@ which permits this kind of research use.
 ## visual_test.py
 
 Runs the visual regression pipeline: for each arXiv paper in `corpus/online/arxiv/`,
-runs `bytetex convert` → `typst compile` → rasterizes both PDFs → builds a
+runs `byetex convert` → `typst compile` → rasterizes both PDFs → builds a
 side-by-side composite PNG for agent visual grading.
 
 ```bash

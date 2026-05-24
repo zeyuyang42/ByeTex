@@ -1,6 +1,6 @@
 # Visual Regression Findings — 2026-05-23
 
-**Test method:** `scripts/visual_test.py` — for each arXiv paper, run `bytetex convert`
+**Test method:** `scripts/visual_test.py` — for each arXiv paper, run `byetex convert`
 → `typst compile` → rasterize both PDFs → **PDF source-data structural
 comparison** (Round 5, see "Structural gate" below) → compare
 side-by-side composite against the canonical arXiv PDF. Agent graded
@@ -52,7 +52,7 @@ Bugs #1–#3 documented in Round 1. Bugs #4–#9 are new findings from Round 2. 
 ## Fix status (2026-05-23 evening)
 
 Bugs #1–#7 are addressed at the converter level. Each fix has unit tests
-under `crates/bytetex-core/tests/`; the wider visual-compile gating moves to
+under `crates/byetex-core/tests/`; the wider visual-compile gating moves to
 the next layer of conversion gaps (matrix/array nesting, `_#` subscripts,
 `\left`/`\right` delimiters, Typst's deprecated `diff` for `\partial`,
 `\mathbb{R}` adjacency, `.bib` resolution) which are *not* the prescriptions
@@ -88,7 +88,7 @@ in this doc.
 ### What happens
 
 Every `\input{file.tex}` and `\include{file.tex}` directive is categorised as
-`needs_manual_review` and silently dropped from the output. bytetex only converts the
+`needs_manual_review` and silently dropped from the output. byetex only converts the
 direct content of the top-level `.tex` file.
 
 Since virtually all real-world arXiv papers split content across multiple files, the
@@ -118,7 +118,7 @@ Paper `arxiv:2605.22557` (math.NA): 28-page truth → 1-page typst (Δ = −27),
 
 ### Fix
 
-**Implement `\input` / `\include` expansion in the converter.** When bytetex encounters
+**Implement `\input` / `\include` expansion in the converter.** When byetex encounters
 an `\input{path}` or `\include{path}` node:
 
 1. Resolve `path` relative to the directory of the currently-processed `.tex` file.
@@ -128,13 +128,13 @@ an `\input{path}` or `\include{path}` node:
 5. Propagate warnings from included files, annotated with the source file path.
 
 **Relevant code to change:**
-- `crates/bytetex-core/src/emit.rs` — the main node-dispatch function where `\input`
+- `crates/byetex-core/src/emit.rs` — the main node-dispatch function where `\input`
   is currently producing a `needs_manual_review` warning. Change the handler to recurse.
-- `crates/bytetex-core/src/lib.rs` — the top-level `convert(source: &str)` signature
+- `crates/byetex-core/src/lib.rs` — the top-level `convert(source: &str)` signature
   currently has no knowledge of the filesystem. To support `\input`, a new entry point
   (or an additional parameter) must supply the base directory path so included files can
   be resolved. Example signature: `convert_file(path: &Path) -> ConversionResult`.
-- `crates/bytetex-cli/src/main.rs` — the `convert` subcommand already receives the
+- `crates/byetex-cli/src/main.rs` — the `convert` subcommand already receives the
   file path; pass it down to the new `convert_file` entry point.
 
 **Verification:** After the fix, re-run:
@@ -151,7 +151,7 @@ respectively). Residual page-count delta will reflect the next tier of conversio
 ### What happens
 
 When converting `\includegraphics[width=\linewidth]{fig.png}` (or `\textwidth`),
-bytetex emits the Typst `image()` call with the LaTeX dimension token verbatim:
+byetex emits the Typst `image()` call with the LaTeX dimension token verbatim:
 
 ```typst
 image("fig.png", width: \linewidth)   // INVALID Typst
@@ -190,7 +190,7 @@ to Typst percentages before emitting:
 | `N\linewidth` (general) | `{N*100}%` |
 | `3cm`, `72pt`, absolute units | keep as-is: `3cm`, `72pt` |
 
-**Relevant code:** `crates/bytetex-core/src/emit.rs` — locate the `\includegraphics`
+**Relevant code:** `crates/byetex-core/src/emit.rs` — locate the `\includegraphics`
 handler; add a dimension-translation step before writing the `width:` argument.
 
 **Verification:** After the fix:
@@ -218,7 +218,7 @@ error: unclosed delimiter
 ```
 
 The LaTeX source likely has `$\sin(0, s_*]$` — an interval with `(` open and `]` close
-(mixed delimiters, valid in math notation). bytetex emits `sin` as a bare identifier
+(mixed delimiters, valid in math notation). byetex emits `sin` as a bare identifier
 inside a Typst math expression, and the `]` closes the outer Typst delimiters prematurely.
 
 Second error in the same file:
@@ -234,8 +234,8 @@ error: unclosed label
 
 1. **`\sin` (and other standard math operators) emitted as bare `sin`:** In Typst math,
    standard operators are written unescaped (`sin`, `cos`, `max`) or with `op("sin")`.
-   bytetex should map `\sin`, `\cos`, `\max`, etc. to their bare Typst equivalents. Check
-   the existing math symbol table in `crates/bytetex-core/src/math.rs` (or equivalent)
+   byetex should map `\sin`, `\cos`, `\max`, etc. to their bare Typst equivalents. Check
+   the existing math symbol table in `crates/byetex-core/src/math.rs` (or equivalent)
    for any gaps in standard operator coverage.
 
 2. **Mixed math delimiters `(a, b]` / `[a, b)`:** These are valid in math notation but
@@ -244,7 +244,7 @@ error: unclosed label
    function which accepts unbalanced delimiter strings. Alternatively, escape as
    `\[` / `\]` in a raw string context.
 
-**Relevant code:** `crates/bytetex-core/src/emit.rs` — math expression emitter;
+**Relevant code:** `crates/byetex-core/src/emit.rs` — math expression emitter;
 the math symbol table (likely in a separate `math_symbols.rs` or similar).
 
 **Verification:**
@@ -288,7 +288,7 @@ error: unknown variable: agger
 
 ### Fix
 
-Add to the math symbol table in `crates/bytetex-core/src/emit.rs` (or `math_symbols.rs`):
+Add to the math symbol table in `crates/byetex-core/src/emit.rs` (or `math_symbols.rs`):
 - `\dagger` → `dagger.op`
 - `\ddagger` → `dagger.double.op`
 - `\star` → `star.op` (if not already present)
@@ -314,7 +314,7 @@ error: unknown variable: tin
 
 In the math tokenizer/emitter, ensure a separator is emitted between a bare letter and a following control sequence. The letter `t` must be emitted before `\in` is processed.
 
-**Relevant code:** `crates/bytetex-core/src/emit.rs` — math expression walker.
+**Relevant code:** `crates/byetex-core/src/emit.rs` — math expression walker.
 
 ---
 
@@ -335,7 +335,7 @@ error: the character `\` is not valid in code
 
 ### Fix
 
-In the command handler, treat `\(` as opening inline math and `\)` as closing it. If nested inside `$...$`, strip them. Relevant code: `crates/bytetex-core/src/emit.rs`.
+In the command handler, treat `\(` as opening inline math and `\)` as closing it. If nested inside `$...$`, strip them. Relevant code: `crates/byetex-core/src/emit.rs`.
 
 ---
 
@@ -357,7 +357,7 @@ error: unclosed delimiter
 
 ### Fix
 
-`\newtheorem` should be classified as `needs_manual_review` and **dropped** (with a warning), not emitted. Relevant code: `crates/bytetex-core/src/emit.rs` — preamble command handler.
+`\newtheorem` should be classified as `needs_manual_review` and **dropped** (with a warning), not emitted. Relevant code: `crates/byetex-core/src/emit.rs` — preamble command handler.
 
 ---
 
@@ -625,7 +625,7 @@ This is the most widespread single compile blocker.
 
 ### Fix
 
-In `crates/bytetex-core/src/emit.rs`, handle `\left` and `\right` as sizing
+In `crates/byetex-core/src/emit.rs`, handle `\left` and `\right` as sizing
 wrappers rather than opaque commands:
 
 - `\left(` + content + `\right)` → `lr("(" + content + ")")` using Typst's
@@ -640,7 +640,7 @@ wrappers rather than opaque commands:
 The simplest safe default: **drop `\left` and `\right` verbatim**, keeping only
 the delimiter character. Typst auto-sizes delimiters in math without hints.
 
-**Relevant code:** `crates/bytetex-core/src/emit.rs` — in the `emit_math_command`
+**Relevant code:** `crates/byetex-core/src/emit.rs` — in the `emit_math_command`
 dispatch (or `emit_generic_command` when inside math context). The node kind for
 `\left(` in tree-sitter-latex is `left_right` or parsed as a sequence of
 `generic_command` + delimiter.
@@ -704,7 +704,7 @@ not trigger identifier fusion:
 \negthickspace → #h(-0.278em)
 ```
 
-**Relevant code:** `crates/bytetex-core/src/emit.rs` — the math symbol table
+**Relevant code:** `crates/byetex-core/src/emit.rs` — the math symbol table
 entries for spacing macros (search for `"thin"` or `"thinspace"` in the symbol
 map initializer).
 
@@ -721,7 +721,7 @@ So `\label{eq:edl_objective}` is parsed as:
 - `\label{eq:edl}` — the label definition, with key `eq:edl`
 - `_objective}` — a subscript on the implicit empty atom, with content `objective`
 
-bytetex lifts the label correctly (`<eq:edl>`), but then encounters the orphaned
+byetex lifts the label correctly (`<eq:edl>`), but then encounters the orphaned
 subscript node and emits it as `""_ob j e c t i v e}` — each letter of `objective`
 becomes a separate Typst math identifier, and the closing `}` is emitted verbatim.
 
@@ -761,7 +761,7 @@ Two possible approaches:
    emitting `<...>` and `@...` labels. Fragile in general but scoped to a
    well-defined syntactic context.
 
-**Relevant code:** `crates/bytetex-core/src/emit.rs`:
+**Relevant code:** `crates/byetex-core/src/emit.rs`:
 - `extract_label_name` (~line 3240) — reads the `label` grandchild; extend to
   also consume a following subscript sibling.
 - The `pending_math_label` logic (~line 257) — where the lifted label is stored.
@@ -810,11 +810,11 @@ pass over the plain-text portions:
 - `*` → `\*` (escaped asterisk)
 - `#` → `\#` (escaped hash, outside of intentional `#function()` calls)
 
-For cells that bytetex already knows contain math (wrapped in `$...$`), no
+For cells that byetex already knows contain math (wrapped in `$...$`), no
 escaping is needed for those regions since `$...$` uses math mode parsing.
 Only the non-math literal text portions need escaping.
 
-**Relevant code:** `crates/bytetex-core/src/emit.rs` — `emit_tabular` and the
+**Relevant code:** `crates/byetex-core/src/emit.rs` — `emit_tabular` and the
 cell-content rendering path it delegates to.
 
 ---
@@ -824,7 +824,7 @@ cell-content rendering path it delegates to.
 ### What happens
 
 `\def\foo{...}`, `\edef\foo{...}`, `\gdef\foo{...}` are TeX primitives for
-macro definition. bytetex already silently drops `\newcommand`, `\renewcommand`,
+macro definition. byetex already silently drops `\newcommand`, `\renewcommand`,
 and `\newtheorem` (Bug #7 fix), but the lower-level TeX primitives are not in
 that drop list. They pass through to the Typst output verbatim, producing a
 backslash character that Typst rejects in markup context.
@@ -841,14 +841,14 @@ The `\d` is a backslash escape, `{^*}` is an unclosed brace group.
 
 Paper `arxiv:2605.22820` (384 occurrences — the highest `\def` density in the corpus):
 The paper uses `\def` extensively for shorthand math macros. All expand to
-LaTeX notation that bytetex cannot evaluate, so dropping them is the correct
+LaTeX notation that byetex cannot evaluate, so dropping them is the correct
 fallback behavior (same as `\newcommand`).
 
 **Scope:** 6/26 papers contain verbatim `\def` in their `.typ` output.
 
 ### Fix
 
-In `crates/bytetex-core/src/emit.rs`, add `\def`, `\edef`, `\gdef`, `\xdef`,
+In `crates/byetex-core/src/emit.rs`, add `\def`, `\edef`, `\gdef`, `\xdef`,
 `\let`, and `\futurelet` to the silent-drop branch alongside `\newcommand` and
 `\newtheorem`. Each should emit a `custom_macro` warning so the user knows the
 definition was dropped and may need to manually substitute call sites.
@@ -885,7 +885,7 @@ these placeholders become the next blocker.
 ### Fix
 
 Change the no-graphics-found code path in `emit_figure` (~line 2118 of
-`crates/bytetex-core/src/emit.rs`) to emit a non-blocking placeholder:
+`crates/byetex-core/src/emit.rs`) to emit a non-blocking placeholder:
 
 ```typst
 rect(width: 100%, height: 4cm, fill: luma(230), stroke: 1pt)
@@ -903,7 +903,7 @@ and the human reviewer can see exactly what needs to be replaced.
 ### What happens
 
 In LaTeX `align` and `gather` environments, `\\[1mm]` means "new row, add
-1 mm of extra vertical space above the next row". bytetex converts the `\\` row
+1 mm of extra vertical space above the next row". byetex converts the `\\` row
 separator to `\` (Typst's align row separator), but the optional length argument
 `[1mm]` is not consumed. The `\[1mm\]` fragment then appears inline in the Typst
 math expression, where `\[` is a character escape that Typst parses as an
@@ -927,7 +927,7 @@ other `.typ` files with math alignment.
 ### Fix
 
 In the `\\` (line-break) handler inside `emit_tabular` or the align-row emitter
-in `crates/bytetex-core/src/emit.rs`, after emitting `\` for the row break,
+in `crates/byetex-core/src/emit.rs`, after emitting `\` for the row break,
 consume and discard the optional `[length]` argument if present. The length is a
 formatting hint that Typst's align does not support; dropping it is the correct
 behavior.
@@ -944,7 +944,7 @@ After each fix, run the visual test to confirm forward progress:
 
 ```bash
 # Verify all 4 inhouse templates still compile (regression guard):
-cargo test -p bytetex-core --test template_budgets
+cargo test -p byetex-core --test template_budgets
 
 # After Bug #14 fix (\left/\right):
 uv run --with requests --with Pillow python scripts/visual_test.py --papers \
