@@ -511,6 +511,29 @@ impl<'a> Emitter<'a> {
                 if let Some((l, r)) = wrap_for_command_name(text) {
                     return self.emit_math_wrap(node, l, r);
                 }
+                // `\text{X}`-family also commonly parses as a bare
+                // command_name with `{X}` attached as an AST sibling
+                // (e.g. deep inside `_{\mathrm{n}_{\text{b}}}`). Route
+                // through the source-byte fallback path so we don't
+                // warn just because the curly group isn't a child.
+                if matches!(
+                    text,
+                    "\\text"
+                        | "\\mathrm"
+                        | "\\textrm"
+                        | "\\mathnormal"
+                        | "\\mbox"
+                        | "\\hbox"
+                        | "\\textnormal"
+                        | "\\texttt"
+                        | "\\textbf"
+                        | "\\textup"
+                        | "\\textit"
+                        | "\\textsc"
+                        | "\\textsl"
+                ) {
+                    return self.emit_math_text_call(node);
+                }
                 // Emit a placeholder rather than leaking raw `\name` into
                 // the Typst output (which would fail to compile).
                 return self.emit_unknown_math_command(node, text);
@@ -2831,17 +2854,29 @@ impl<'a> Emitter<'a> {
             // Typst renders quoted strings as upright text in math context.
             // `\mbox{X}` and `\hbox{X}` are TeX-primitive boxes; in math
             // mode they switch to text mode like `\text` does.
-            "\\text" | "\\mathrm" | "\\textrm" | "\\mathnormal" | "\\mbox" | "\\hbox" => {
-                if let Some(arg) = first_curly_group(node) {
-                    // Take the raw inner source — we want literal text, not
-                    // a recursively-emitted (and possibly mangled) sub-render.
-                    let inner = self
-                        .src
-                        .get(arg.start_byte() + 1..arg.end_byte() - 1)
-                        .unwrap_or("")
-                        .trim();
-                    let _ = write!(self.out, "\"{}\"", inner);
-                }
+            // `\textnormal`/`\texttt`/`\textbf`/`\textup`/`\textit`/
+            // `\textsc`/`\textsl` are LaTeX2e text-style commands that
+            // also occasionally appear inside math; we render them as
+            // the same upright-quoted text (the style attribute is lost
+            // — partial render).
+            "\\text" | "\\mathrm" | "\\textrm" | "\\mathnormal" | "\\mbox" | "\\hbox"
+            | "\\textnormal" | "\\texttt" | "\\textbf" | "\\textup" | "\\textit"
+            | "\\textsc" | "\\textsl" => self.emit_math_text_call(node),
+            // `\smash[t/b]{X}`, `\raisebox{offset}{X}`, `\scalebox{factor}{X}`
+            // — layout/positioning primitives with no Typst equivalent for
+            // the offset, but the inner content should still render. Drop
+            // the positioning args and emit the last curly_group as math.
+            "\\smash" => self.emit_math_layout_inner(node, 0),
+            "\\raisebox" => self.emit_math_layout_inner(node, 1),
+            "\\scalebox" => self.emit_math_layout_inner(node, 1),
+            // `\mathgroup{N}{X}` — TeX font-group hint, two args; the
+            // first is the group code (we drop it), the second is the
+            // content (we emit). Same shape as the layout helpers.
+            "\\mathgroup" => self.emit_math_layout_inner(node, 1),
+            // `\ ` (backslash + space) — LaTeX forced thin/normal
+            // space in math mode. Emit a plain space.
+            "\\ " => {
+                self.out.push(' ');
                 node.end_byte()
             }
             // Math class modifiers (`\mathrel`, `\mathord`, `\mathbin`, etc.)
@@ -2902,7 +2937,11 @@ impl<'a> Emitter<'a> {
             }
             // `\mathbf{X}` → bold math; `\mathbb{X}` → blackboard bold (`bb(X)`).
             "\\mathbf" | "\\bm" | "\\bs" | "\\bold" => self.emit_math_wrap(node, "bold(", ")"),
-            "\\mathbb" | "\\mathbbm" | "\\Bbb" => self.emit_math_wrap(node, "bb(", ")"),
+            // `\mathds` (dsfont) and `\mathbbold` (bbold) — visually
+            // identical to `\mathbb` for the common single-letter use.
+            "\\mathbb" | "\\mathbbm" | "\\Bbb" | "\\mathds" | "\\mathbbold" => {
+                self.emit_math_wrap(node, "bb(", ")")
+            }
             "\\mathcal" => self.emit_math_wrap(node, "cal(", ")"),
             "\\mathfrak" | "\\frak" => self.emit_math_wrap(node, "frak(", ")"),
             "\\mathscr" => self.emit_math_wrap(node, "scr(", ")"),
@@ -3139,6 +3178,164 @@ impl<'a> Emitter<'a> {
     /// attaches the above/below labels via Typst's `attach` mechanism
     /// (`arrow.r^"above"_"below"`). When labels are missing, emits
     /// the bare arrow.
+    /// Render a `\text{X}`-family call in math mode. Emits `"X"` (a
+    /// Typst quoted string that renders as upright text inside math).
+    /// Handles the case where tree-sitter attached the `{X}` as an
+    /// AST sibling rather than a child of the generic_command —
+    /// same source-byte fallback shape PR #27 used for `\xrightarrow`.
+    fn emit_math_text_call(&mut self, node: Node<'_>) -> usize {
+        // First: AST child path.
+        if let Some(arg) = first_curly_group(node) {
+            let inner = self
+                .src
+                .get(arg.start_byte() + 1..arg.end_byte() - 1)
+                .unwrap_or("")
+                .trim();
+            let _ = write!(self.out, "\"{}\"", inner);
+            return node.end_byte();
+        }
+        // Fallback: scan source bytes after node.end_byte() for `{...}`.
+        let bytes = self.src.as_bytes();
+        let mut i = node.end_byte();
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i < bytes.len() && bytes[i] == b'{' {
+            let inner_start = i + 1;
+            let mut j = inner_start;
+            let mut depth = 1i32;
+            while j < bytes.len() {
+                match bytes[j] {
+                    b'\\' if j + 1 < bytes.len() => {
+                        j += 2;
+                        continue;
+                    }
+                    b'{' => depth += 1,
+                    b'}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+                j += 1;
+            }
+            if j < bytes.len() && bytes[j] == b'}' {
+                let inner = self.src[inner_start..j].trim();
+                let _ = write!(self.out, "\"{}\"", inner);
+                let end = j + 1;
+                self.skip_until = self.skip_until.max(end);
+                return end;
+            }
+        }
+        // Truly no argument — emit nothing, no warning. (The old
+        // behaviour did the same; we don't want to inflate warnings on
+        // edge cases.)
+        node.end_byte()
+    }
+
+    /// `\smash{X}`, `\raisebox{offset}{X}`, `\scalebox{factor}{X}`,
+    /// `\mathgroup{N}{X}` — render only the *content* curly_group,
+    /// dropping the positioning args. `content_idx` is the 0-based
+    /// index into the command's curly_group children (0 for `\smash`
+    /// which takes only the content, 1 for the two-arg helpers).
+    /// `\smash` also has an optional `[t]`/`[b]` we silently drop.
+    /// Source-byte sibling fallback handles cases where the curly
+    /// groups land as AST siblings of the generic_command.
+    fn emit_math_layout_inner(&mut self, node: Node<'_>, content_idx: usize) -> usize {
+        // Collect AST-child curly_groups.
+        let mut cursor = node.walk();
+        let mut curlys: Vec<(usize, usize)> = node
+            .children(&mut cursor)
+            .filter(|c| c.kind() == "curly_group")
+            .map(|c| (c.start_byte(), c.end_byte()))
+            .collect();
+        // Also scan source bytes for trailing `[...]` (optional, e.g.
+        // `\smash[t]`) and then `{...}` siblings.
+        let bytes = self.src.as_bytes();
+        let mut i = node.end_byte();
+        // Skip optional `[...]` (no AST capture needed; just advance).
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i < bytes.len() && bytes[i] == b'[' {
+            let mut j = i + 1;
+            let mut depth = 0i32;
+            while j < bytes.len() {
+                match bytes[j] {
+                    b'\\' if j + 1 < bytes.len() => {
+                        j += 2;
+                        continue;
+                    }
+                    b'{' => depth += 1,
+                    b'}' => depth -= 1,
+                    b']' if depth == 0 => break,
+                    _ => {}
+                }
+                j += 1;
+            }
+            if j < bytes.len() && bytes[j] == b']' {
+                i = j + 1;
+            }
+        }
+        // Read any number of `{...}` curly groups.
+        loop {
+            while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                i += 1;
+            }
+            if i >= bytes.len() || bytes[i] != b'{' {
+                break;
+            }
+            let inner_start = i + 1;
+            let mut j = inner_start;
+            let mut depth = 1i32;
+            while j < bytes.len() {
+                match bytes[j] {
+                    b'\\' if j + 1 < bytes.len() => {
+                        j += 2;
+                        continue;
+                    }
+                    b'{' => depth += 1,
+                    b'}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+                j += 1;
+            }
+            if j >= bytes.len() {
+                break;
+            }
+            curlys.push((i, j + 1));
+            i = j + 1;
+        }
+        // Dedup by start_byte (AST + source-byte sets may overlap).
+        curlys.sort_by_key(|c| c.0);
+        curlys.dedup_by_key(|c| c.0);
+
+        let mut consumed = node.end_byte();
+        if let Some((start, end)) = curlys.get(content_idx).copied() {
+            let inner_src = self
+                .src
+                .get(start + 1..end.saturating_sub(1))
+                .unwrap_or("")
+                .to_string();
+            let rendered = self.render_in_sub_emitter(&inner_src, true, true);
+            self.out.push_str(rendered.trim());
+        }
+        if let Some((_, last_end)) = curlys.last().copied() {
+            consumed = consumed.max(last_end);
+        }
+        if consumed > node.end_byte() {
+            self.skip_until = self.skip_until.max(consumed);
+        }
+        consumed
+    }
+
     fn emit_math_extensible_arrow(&mut self, node: Node<'_>, name: &str) -> usize {
         // Map command name → Typst arrow base symbol. The `x` family
         // is the "extensible" form (auto-stretched in LaTeX); Typst's
@@ -4759,6 +4956,22 @@ pub(crate) fn lookup_math_symbol(name: &str) -> Option<&'static str> {
         "\\nless" => "lt.not",
         "\\coloneqq" | "\\coloneq" | "\\defeq" => "colon.eq",
         "\\eqqcolon" | "\\eqcolon" => "eq.colon",
+        // `\vcentcolon` (mathtools): a vertically-centered colon used
+        // in combinations like `\vcentcolon=` to form `:=`. Map to the
+        // plain colon character; users who wanted the full `:=` typed
+        // `\coloneqq` directly.
+        "\\vcentcolon" => "colon",
+        // `\lbrace`/`\rbrace` — alternate names for `\{`/`\}`,
+        // frequent in arXiv math. Emit the escaped brace glyph (Typst
+        // would parse a bare `{` as a group-start syntax). The plain
+        // `\{`/`\}` aliases are handled elsewhere with the same shape.
+        "\\lbrace" => "\\{",
+        "\\rbrace" => "\\}",
+        // `\llbracket` / `\rrbracket` (stmaryrd, mathbb-related):
+        // Iverson-style double square brackets. Typst has dedicated
+        // glyphs.
+        "\\llbracket" => "bracket.l.double",
+        "\\rrbracket" => "bracket.r.double",
         "\\bowtie" => "join",
         "\\to" | "\\rightarrow" => "arrow.r",
         "\\leftarrow" => "arrow.l",
@@ -5678,7 +5891,9 @@ fn extract_def_and_record(
 
 pub(crate) fn wrap_for_command_name(name: &str) -> Option<(&'static str, &'static str)> {
     Some(match name {
-        "\\mathbb" | "\\mathbbm" | "\\Bbb" => ("bb(", ")"),
+        // `\mathds` (dsfont) and `\mathbbold` (bbold) — visually
+        // identical to `\mathbb` for the common single-letter case.
+        "\\mathbb" | "\\mathbbm" | "\\Bbb" | "\\mathds" | "\\mathbbold" => ("bb(", ")"),
         "\\mathcal" => ("cal(", ")"),
         "\\mathfrak" | "\\frak" => ("frak(", ")"),
         "\\mathscr" => ("scr(", ")"),
