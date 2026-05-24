@@ -85,3 +85,18 @@ fn neurips_template_within_budget() {
 fn thesis_template_within_budget() {
     check_template("tests/inhouse/thesis/thesis_skeleton.tex", 0);
 }
+
+#[test]
+fn physics_package_within_budget() {
+    check_template("tests/inhouse/physics/paper.tex", 0);
+}
+
+#[test]
+fn bm_package_within_budget() {
+    check_template("tests/inhouse/bm/paper.tex", 0);
+}
+
+#[test]
+fn stmaryrd_package_within_budget() {
+    check_template("tests/inhouse/stmaryrd/paper.tex", 0);
+}

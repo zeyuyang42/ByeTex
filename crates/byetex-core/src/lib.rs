@@ -17,6 +17,7 @@ pub mod warnings;
 mod class_map;
 mod document;
 mod emit;
+pub(crate) mod package_macros;
 
 pub use warnings::{Category, Range, Severity, Warning};
 
@@ -90,7 +91,9 @@ pub(crate) fn convert_with_macros(
         visited,
         preseeded_macros,
     );
-    emitter.emit_root(tree.root_node());
+    let root = tree.root_node();
+    emitter.prepass_collect(root);
+    emitter.emit_root(root);
     let (typst, warnings, asset_refs, class_metadata) = emitter.finish();
     ConvertOutput { typst, warnings, asset_refs, class_metadata }
 }

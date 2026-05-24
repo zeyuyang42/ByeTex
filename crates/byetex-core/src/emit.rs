@@ -199,6 +199,101 @@ impl<'a> Emitter<'a> {
         let _ = self.emit_node(root);
     }
 
+    /// Walk the entire AST *before* `emit_root`, harvesting ALL macro
+    /// definitions into `self.macros`. This ensures macros used before their
+    /// definition (forward references) are available at emit time.
+    pub(crate) fn prepass_collect(&mut self, root: Node<'_>) {
+        let mut stack: Vec<Node<'_>> = vec![root];
+        while let Some(n) = stack.pop() {
+            match n.kind() {
+                "new_command_definition" => {
+                    // Tree-sitter uses `new_command_definition` for \newcommand,
+                    // \renewcommand, \providecommand, \DeclareMathOperator, etc.
+                    // Dispatch on the first child token to distinguish them.
+                    // Collect kinds into a Vec to avoid borrow-checker issues with
+                    // holding a cursor reference across the match.
+                    let cmd_token = new_command_token_kind(n);
+                    match cmd_token.as_deref() {
+                        Some("\\newcommand") | Some("\\newcommand*") | None => {
+                            if let Some((name, def)) = extract_newcommand(n, self.src) {
+                                self.macros.insert(name, def);
+                            }
+                        }
+                        Some("\\renewcommand") | Some("\\renewcommand*") => {
+                            if let Some((name, def)) = extract_newcommand(n, self.src) {
+                                self.macros.insert(name, def);
+                            }
+                        }
+                        Some("\\providecommand") | Some("\\providecommand*") => {
+                            if let Some((name, def)) = extract_newcommand(n, self.src) {
+                                // \providecommand: no-op if name is already defined
+                                if !self.macros.contains_key(&name)
+                                    && lookup_math_symbol(&name).is_none()
+                                {
+                                    self.macros.insert(name, def);
+                                }
+                            }
+                        }
+                        Some("\\DeclareMathOperator") | Some("\\DeclareMathOperator*") => {
+                            let starred = cmd_token
+                                .as_deref()
+                                .map_or(false, |s| s.ends_with('*'));
+                            if let Some((name, def)) =
+                                extract_declare_math_operator_from_newcmd(n, self.src, starred)
+                            {
+                                self.macros.insert(name, def);
+                            }
+                        }
+                        _ => {
+                            // Other new_command_definition variants — try generic extract
+                            if let Some((name, def)) = extract_newcommand(n, self.src) {
+                                self.macros.insert(name, def);
+                            }
+                        }
+                    }
+                }
+                "old_command_definition" => {
+                    let _ = extract_def_and_record(n, self.src, &mut self.macros);
+                }
+                "generic_command" => {
+                    // generic_command does NOT produce \renewcommand/\providecommand/
+                    // \DeclareMathOperator (those are new_command_definition in tree-sitter).
+                    // Just recurse into children in case there's a nested definition.
+                    let mut cursor = n.walk();
+                    for c in n.children(&mut cursor) {
+                        stack.push(c);
+                    }
+                }
+                "package_include" => {
+                    if let Some(pkg) = extract_package_name(n, self.src) {
+                        // Local .sty first so it beats bundled seeds
+                        self.expand_local_package(&pkg);
+                        // Then seed bundled macros — or_insert loses to any existing entry
+                        if let Some(seeds) = crate::package_macros::package_macros(&pkg) {
+                            for (macro_name, seed) in seeds {
+                                if lookup_math_symbol(macro_name).is_none() {
+                                    self.macros
+                                        .entry(macro_name.to_string())
+                                        .or_insert_with(|| MacroDef {
+                                            params: seed.params,
+                                            body: seed.body.to_string(),
+                                        });
+                                }
+                            }
+                        }
+                    }
+                    // Do NOT recurse into children of package_include
+                }
+                _ => {
+                    let mut cursor = n.walk();
+                    for c in n.children(&mut cursor) {
+                        stack.push(c);
+                    }
+                }
+            }
+        }
+    }
+
     pub(crate) fn finish(
         mut self,
     ) -> (
@@ -574,14 +669,42 @@ impl<'a> Emitter<'a> {
             return node.end_byte();
         }
 
-        // `\newcommand{\name}[N]{body}` — harvest the macro into
-        // `self.macros` so subsequent calls to `\name` get expanded
-        // inline. Falls through to silent-drop after recording.
-        // `theorem_definition` covers `\newtheorem` etc.; counter
-        // declarations are still dropped wholesale.
+        // `\newcommand{\name}[N]{body}` (and related forms) — harvest the macro
+        // into `self.macros` so subsequent calls to `\name` get expanded inline.
+        // Tree-sitter also uses `new_command_definition` for `\renewcommand`,
+        // `\providecommand`, and `\DeclareMathOperator`. The prepass already
+        // seeded them; here we just ensure the table is up to date (emit-order
+        // definitions also need to land for the forward-reference case).
         if node.kind() == "new_command_definition" {
-            if let Some((name, def)) = extract_newcommand(node, self.src) {
-                self.macros.insert(name, def);
+            let cmd_token = new_command_token_kind(node);
+            match cmd_token.as_deref() {
+                Some("\\renewcommand") | Some("\\renewcommand*") => {
+                    // \renewcommand always overwrites.
+                    if let Some((name, def)) = extract_newcommand(node, self.src) {
+                        self.macros.insert(name, def);
+                    }
+                }
+                Some("\\providecommand") | Some("\\providecommand*") => {
+                    // \providecommand: no-op if already defined or is a built-in.
+                    if let Some((name, def)) = extract_newcommand(node, self.src) {
+                        if !self.macros.contains_key(&name)
+                            && lookup_math_symbol(&name).is_none()
+                        {
+                            self.macros.insert(name, def);
+                        }
+                    }
+                }
+                Some("\\DeclareMathOperator") | Some("\\DeclareMathOperator*") => {
+                    // Harvested in prepass_collect with correct \operatorname body.
+                    // Do not re-harvest here — extract_newcommand would give the wrong
+                    // body (just the display text, not \operatorname{...}).
+                }
+                _ => {
+                    // \newcommand (and any other variant) — always overwrites.
+                    if let Some((name, def)) = extract_newcommand(node, self.src) {
+                        self.macros.insert(name, def);
+                    }
+                }
             }
             return node.end_byte();
         }
@@ -1125,12 +1248,10 @@ impl<'a> Emitter<'a> {
                 }
                 node.end_byte()
             }
-            // `\DeclareMathOperator{\name}{display}` — macro definition for a
-            // new math operator. We don't yet register custom operators, so
-            // later uses of \name will warn as unknown. Warn here too so the
-            // caller knows a definition was encountered.
+            // `\DeclareMathOperator{\name}{display}` — harvested in
+            // `prepass_collect`; emit-time uses `expand_user_macro` via the
+            // user-macro fallback. Drop the definition node silently here.
             Some("\\DeclareMathOperator") | Some("\\DeclareMathOperator*") => {
-                self.warn_unsupported_command(node);
                 node.end_byte()
             }
             // `\input{file}` / `\include{file}` / `\subfile{file}` — when the
@@ -3893,7 +4014,7 @@ fn escape_unbalanced_math_brackets(body: &str) -> String {
 /// Translate a LaTeX math command (with the leading backslash) into the
 /// corresponding Typst math fragment. Returns `None` for unknown commands so
 /// callers can decide between structural emission, warning, or pass-through.
-fn lookup_math_symbol(name: &str) -> Option<&'static str> {
+pub(crate) fn lookup_math_symbol(name: &str) -> Option<&'static str> {
     Some(match name {
         // Lowercase Greek
         "\\alpha" => "alpha",
@@ -4276,6 +4397,79 @@ fn extract_newcommand(node: Node<'_>, src: &str) -> Option<(String, MacroDef)> {
     Some((name, MacroDef { params, body }))
 }
 
+/// Return the kind-string of the first child of a `new_command_definition` node
+/// whose kind starts with `\` (e.g. `"\\newcommand"`, `"\\renewcommand"`,
+/// `"\\DeclareMathOperator"`). Returns `None` if no such child exists.
+///
+/// We copy the kind into an owned `String` to avoid keeping a `TreeCursor`
+/// alive across caller logic, which would trigger borrow-checker errors.
+fn new_command_token_kind(node: Node<'_>) -> Option<String> {
+    let mut cursor = node.walk();
+    let mut result = None;
+    for child in node.children(&mut cursor) {
+        if child.kind().starts_with('\\') {
+            result = Some(child.kind().to_string());
+            break;
+        }
+    }
+    result
+}
+
+/// Extract the macro name and body from a `\DeclareMathOperator` node that
+/// tree-sitter has classified as `new_command_definition`.
+///
+/// The node structure is:
+/// ```text
+/// new_command_definition
+///   \DeclareMathOperator          (token)
+///   curly_group_command_name      contains { command_name "\\name" }
+///   curly_group                   the display text, e.g. "{sinc}"
+/// ```
+///
+/// Returns `(macro_name, MacroDef)` where the body is `\operatorname{display}`
+/// (or `\operatorname*{display}` for the starred form).
+fn extract_declare_math_operator_from_newcmd(
+    node: Node<'_>,
+    src: &str,
+    starred: bool,
+) -> Option<(String, MacroDef)> {
+    let mut cursor = node.walk();
+    let mut name: Option<String> = None;
+    let mut display: Option<String> = None;
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "curly_group_command_name" => {
+                let mut inner = child.walk();
+                for c in child.children(&mut inner) {
+                    if c.kind() == "command_name" {
+                        name = Some(src[c.start_byte()..c.end_byte()].to_string());
+                    }
+                }
+            }
+            "curly_group" => {
+                // The display text group (e.g. "{sinc}")
+                if display.is_none() {
+                    let body_src = &src[child.start_byte()..child.end_byte()];
+                    display = Some(if body_src.starts_with('{') && body_src.ends_with('}') {
+                        body_src[1..body_src.len() - 1].to_string()
+                    } else {
+                        body_src.to_string()
+                    });
+                }
+            }
+            _ => {}
+        }
+    }
+    let name = name?;
+    let display = display?;
+    let body = if starred {
+        format!(r"\operatorname*{{{}}}", display)
+    } else {
+        format!(r"\operatorname{{{}}}", display)
+    };
+    Some((name, MacroDef { params: 0, body }))
+}
+
 /// Maps the well-known math wrap commands to their Typst `(left, right)`
 /// delimiter pair. Used by the bare `command_name` branch of
 /// `emit_node` to recover the brace-less form (e.g. `_\mathcal{T}` —
@@ -4607,6 +4801,7 @@ fn is_known_noop_package(name: &str) -> bool {
         // Math / fonts
         "amsmath" | "amssymb" | "amsfonts" | "amsthm" | "amsopn"
         | "mathtools" | "mathrsfs" | "dsfont" | "stmaryrd" | "bm" | "bbm"
+        | "physics"
         | "accents" | "nicefrac" | "siunitx" | "rsfso"
         // Graphics / color / layout
         | "graphicx" | "graphics" | "xcolor" | "color" | "tikz"

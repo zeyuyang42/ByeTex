@@ -723,3 +723,40 @@ fn m3_dotted_symbol_no_function_call() {
         out.typst
     );
 }
+
+// ── Phase: two-pass macro harvest ────────────────────────────────────────────
+
+#[test]
+fn m3_newcommand_use_before_define() {
+    // Macro used before its definition — prepass must collect before emit
+    let src = r"$\R \in \R$
+\newcommand{\R}{\mathbb{R}}
+$\R$";
+    let out = byetex_core::convert(src, &Default::default());
+    assert!(out.warnings.is_empty(), "unexpected warnings: {:?}", out.warnings);
+}
+
+#[test]
+fn m3_renewcommand_overrides_newcommand() {
+    let src = r"\newcommand{\foo}{A}\renewcommand{\foo}{B}x\textbf{\foo}y";
+    let out = byetex_core::convert(src, &Default::default());
+    assert!(out.typst.contains('B'), "expected B in output, got: {}", out.typst);
+    assert!(!out.typst.contains('A'), "unexpected A in output: {}", out.typst);
+}
+
+#[test]
+fn m3_providecommand_respects_existing() {
+    let src = r"\newcommand{\foo}{A}\providecommand{\foo}{B}x\textbf{\foo}y";
+    let out = byetex_core::convert(src, &Default::default());
+    assert!(out.typst.contains('A'), "expected A in output, got: {}", out.typst);
+    assert!(!out.typst.contains('B'), "unexpected B in output: {}", out.typst);
+}
+
+#[test]
+fn m3_declaremathoperator_basic() {
+    let src = "\\DeclareMathOperator{\\sinc}{sinc}\n$\\sinc(x)$";
+    let out = byetex_core::convert(src, &Default::default());
+    assert!(out.warnings.is_empty(), "unexpected warnings: {:?}", out.warnings);
+    // operatorname{sinc} should appear in the output
+    assert!(out.typst.contains("sinc"), "expected sinc in output, got: {}", out.typst);
+}
