@@ -88,6 +88,13 @@ fn check_template(rel: &str, budget: usize) {
 //   \newcommandx/\newsiamremark/\newsiamthm silent-dropped.
 //   No template budget change (none appear in the 4 templates).
 //                                                          IEEE 13 ACM  6 NeurIPS  1 thesis  2
+//   unsupported_environment pass: \newtheorem harvester + theorem_kinds map;
+//   transparent envs (ack, keywords, tcolorbox, IEEEbiography, …); table*,
+//   tblr, wrapfigure, wraptable, algorithm, smallmatrix aliases; theorem_kinds
+//   propagated through \input chains and local .sty files; \newtcolorbox/
+//   \newmdenv harvested as transparent-env sentinel. Corpus: 124 → 0 env
+//   warnings. No template budget change.
+//                                                          IEEE 13 ACM  6 NeurIPS  1 thesis  2
 
 #[test]
 fn ieee_template_within_budget() {
