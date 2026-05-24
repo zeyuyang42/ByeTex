@@ -67,6 +67,9 @@ const STRUCTURAL_ARMS: &[&str] = &[
     "\\bcancel",
     "\\xcancel",
     "\\sout",
+    // misc single-arg wraps
+    "\\emph",
+    "\\mathop",
     // delimiter sizing
     "\\left",
     "\\right",

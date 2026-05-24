@@ -2489,6 +2489,8 @@ impl<'a> Emitter<'a> {
             "\\breve" => self.emit_math_wrap(node, "breve(", ")"),
             "\\mathring" => self.emit_math_wrap(node, "circle(", ")"),
             "\\phantom" => self.emit_math_wrap(node, "hide(", ")"),
+            "\\emph" => self.emit_math_wrap(node, "italic(", ")"),
+            "\\mathop" => self.emit_math_wrap(node, "op(", ")"),
             // `\operatorname{name}` → `op("name")` — upright math text.
             "\\operatorname" => self.emit_math_operatorname(node),
             // Math-mode spacing primitives — drop silently.
@@ -4217,6 +4219,16 @@ pub(crate) fn lookup_math_symbol(name: &str) -> Option<&'static str> {
         "\\log" => "log",
         "\\ln" => "ln",
         "\\exp" => "exp",
+        "\\coth" => "coth",
+        // Standard math operators — Typst renders these upright by name.
+        "\\det" => "det",
+        "\\dim" => "dim",
+        "\\ker" => "ker",
+        "\\arg" => "arg",
+        "\\deg" => "deg",
+        "\\hom" => "hom",
+        "\\Pr" => "Pr",
+        "\\lg" => "lg",
         // Other small bits
         "\\pmod" => "mod",
         "\\bmod" => "mod",

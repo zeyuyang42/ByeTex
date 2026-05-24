@@ -835,134 +835,80 @@ reason = "math mode delimiter, handled separately"
 name = "\\)"
 reason = "math mode delimiter, handled separately"
 [[exclude]]
-name = "\\Pr"
-reason = "TODO phase 4"
-[[exclude]]
 name = "\\above"
-reason = "TODO phase 4"
+reason = "TeX primitive genfrac variant, syntax incompatible with tree-sitter parse"
 [[exclude]]
 name = "\\angl"
-reason = "TODO phase 4"
-[[exclude]]
-name = "\\arcctg"
-reason = "TODO phase 4"
-[[exclude]]
-name = "\\arctg"
-reason = "TODO phase 4"
-[[exclude]]
-name = "\\arg"
-reason = "TODO phase 4"
+reason = "angle notation, no Typst math equivalent"
 [[exclude]]
 name = "\\atop"
-reason = "TODO phase 4"
+reason = "TeX primitive, emits fraction without line, too complex for simple arm"
 [[exclude]]
 name = "\\bf"
-reason = "TODO phase 4"
+reason = "TeX font-switch (no argument), changes all following content — no Typst equivalent"
 [[exclude]]
 name = "\\brace"
-reason = "TODO phase 4"
+reason = "TeX primitive brace fraction variant, rarely used"
 [[exclude]]
 name = "\\brack"
-reason = "TODO phase 4"
+reason = "TeX primitive bracket fraction variant, rarely used"
 [[exclude]]
 name = "\\cal"
-reason = "TODO phase 4"
-[[exclude]]
-name = "\\ch"
-reason = "TODO phase 4"
+reason = "TeX font-switch (no argument) — use mathcal instead"
 [[exclude]]
 name = "\\choose"
-reason = "TODO phase 4"
+reason = "TeX primitive binom variant, no-brace syntax incompatible with tree-sitter"
 [[exclude]]
 name = "\\colorbox"
-reason = "TODO phase 4"
-[[exclude]]
-name = "\\cosec"
-reason = "TODO phase 4"
-[[exclude]]
-name = "\\cotg"
-reason = "TODO phase 4"
-[[exclude]]
-name = "\\coth"
-reason = "TODO phase 4"
-[[exclude]]
-name = "\\ctg"
-reason = "TODO phase 4"
-[[exclude]]
-name = "\\cth"
-reason = "TODO phase 4"
-[[exclude]]
-name = "\\deg"
-reason = "TODO phase 4"
-[[exclude]]
-name = "\\det"
-reason = "TODO phase 4"
-[[exclude]]
-name = "\\dim"
-reason = "TODO phase 4"
-[[exclude]]
-name = "\\emph"
-reason = "TODO phase 4"
+reason = "color box needs text-mode + color support, out of scope"
 [[exclude]]
 name = "\\fbox"
-reason = "TODO phase 4"
+reason = "framed box needs text-mode emit, no simple Typst math equivalent"
 [[exclude]]
 name = "\\fcolorbox"
-reason = "TODO phase 4"
+reason = "colored framed box needs color support, out of scope"
 [[exclude]]
 name = "\\genfrac"
-reason = "TODO phase 4"
+reason = "generic fraction with custom delimiters, needs multi-arg structural emitter"
 [[exclude]]
 name = "\\global"
-reason = "TODO phase 4"
-[[exclude]]
-name = "\\hom"
-reason = "TODO phase 4"
+reason = "TeX assignment primitive, no Typst equivalent"
 [[exclude]]
 name = "\\it"
-reason = "TODO phase 4"
-[[exclude]]
-name = "\\ker"
-reason = "TODO phase 4"
-[[exclude]]
-name = "\\lg"
-reason = "TODO phase 4"
+reason = "TeX font-switch (no argument) — use mathit instead"
 [[exclude]]
 name = "\\long"
-reason = "TODO phase 4"
+reason = "TeX modifier primitive, no Typst equivalent"
 [[exclude]]
 name = "\\mathbin"
-reason = "TODO phase 4"
+reason = "math class command — spacing only, no Typst equivalent, safe to ignore"
 [[exclude]]
 name = "\\mathclose"
-reason = "TODO phase 4"
+reason = "math class command — spacing only, no Typst equivalent, safe to ignore"
 [[exclude]]
 name = "\\mathinner"
-reason = "TODO phase 4"
-[[exclude]]
-name = "\\mathop"
-reason = "TODO phase 4"
+reason = "math class command — spacing only, no Typst equivalent, safe to ignore"
 [[exclude]]
 name = "\\mathopen"
-reason = "TODO phase 4"
+reason = "math class command — spacing only, no Typst equivalent, safe to ignore"
 [[exclude]]
 name = "\\mathord"
-reason = "TODO phase 4"
+reason = "math class command — spacing only, no Typst equivalent, safe to ignore"
 [[exclude]]
 name = "\\mathpunct"
-reason = "TODO phase 4"
+reason = "math class command — spacing only, no Typst equivalent, safe to ignore"
 [[exclude]]
 name = "\\mathrel"
-reason = "TODO phase 4"
+reason = "math class command — spacing only, no Typst equivalent, safe to ignore"
 [[exclude]]
 name = "\\operatorname@"
-reason = "TODO phase 4"
+reason = "KaTeX internal name for operatorname*, handled via operatorname arm"
 [[exclude]]
 name = "\\operatornamewithlimits"
-reason = "TODO phase 4"
+reason = "operatorname with forced limits, handled as operatorname fallback"
 [[exclude]]
 name = "\\over"
-reason = "TODO phase 4"
+reason = "TeX primitive fraction without braces, syntax incompatible with tree-sitter"
 [[exclude]]
 name = "\\overgroup"
 reason = "arc-style accent, no direct Typst shorthand"
@@ -983,100 +929,91 @@ name = "\\overrightharpoon"
 reason = "right-harpoon accent, no direct Typst shorthand"
 [[exclude]]
 name = "\\phase"
-reason = "TODO phase 4"
+reason = "electrical engineering angle symbol, no Typst math equivalent"
 [[exclude]]
 name = "\\rm"
-reason = "TODO phase 4"
+reason = "TeX font-switch (no argument) — use mathrm instead"
 [[exclude]]
 name = "\\sf"
-reason = "TODO phase 4"
-[[exclude]]
-name = "\\sh"
-reason = "TODO phase 4"
+reason = "TeX font-switch (no argument) — use mathsf instead"
 [[exclude]]
 name = "\\textbf"
-reason = "TODO phase 4"
+reason = "text formatting in math; use mathbf for math bold instead"
 [[exclude]]
 name = "\\textit"
-reason = "TODO phase 4"
+reason = "text formatting in math; use mathit for math italic instead"
 [[exclude]]
 name = "\\textmd"
-reason = "TODO phase 4"
+reason = "text medium weight in math, no Typst equivalent"
 [[exclude]]
 name = "\\textnormal"
-reason = "TODO phase 4"
+reason = "normal text in math, use text{...} instead"
 [[exclude]]
 name = "\\textsf"
-reason = "TODO phase 4"
+reason = "sans-serif text in math, use mathsf instead"
 [[exclude]]
 name = "\\texttt"
-reason = "TODO phase 4"
+reason = "monospace text in math, use mathtt instead"
 [[exclude]]
 name = "\\textup"
-reason = "TODO phase 4"
-[[exclude]]
-name = "\\tg"
-reason = "TODO phase 4"
-[[exclude]]
-name = "\\th"
-reason = "TODO phase 4"
+reason = "upright text in math, use mathrm instead"
 [[exclude]]
 name = "\\tt"
-reason = "TODO phase 4"
+reason = "TeX font-switch (no argument) — use mathtt instead"
 [[exclude]]
 name = "\\u220F"
-reason = "TODO phase 4"
+reason = "KaTeX internal unicode codepoint name, covered by product symbol"
 [[exclude]]
 name = "\\u2210"
-reason = "TODO phase 4"
+reason = "KaTeX internal unicode codepoint name, covered by coprod symbol"
 [[exclude]]
 name = "\\u2211"
-reason = "TODO phase 4"
+reason = "KaTeX internal unicode codepoint name, covered by sum symbol"
 [[exclude]]
 name = "\\u222b"
-reason = "TODO phase 4"
+reason = "KaTeX internal unicode codepoint name, covered by int symbol"
 [[exclude]]
 name = "\\u222c"
-reason = "TODO phase 4"
+reason = "KaTeX internal unicode codepoint name, covered by iint symbol"
 [[exclude]]
 name = "\\u222d"
-reason = "TODO phase 4"
+reason = "KaTeX internal unicode codepoint name, covered by iiint symbol"
 [[exclude]]
 name = "\\u222e"
-reason = "TODO phase 4"
+reason = "KaTeX internal unicode codepoint name, covered by oint symbol"
 [[exclude]]
 name = "\\u222f"
-reason = "TODO phase 4"
+reason = "KaTeX internal unicode codepoint name, covered by oiint symbol"
 [[exclude]]
 name = "\\u2230"
-reason = "TODO phase 4"
+reason = "KaTeX internal unicode codepoint name, covered by oiiint symbol"
 [[exclude]]
 name = "\\u22c0"
-reason = "TODO phase 4"
+reason = "KaTeX internal unicode codepoint name, covered by bigwedge"
 [[exclude]]
 name = "\\u22c1"
-reason = "TODO phase 4"
+reason = "KaTeX internal unicode codepoint name, covered by bigvee"
 [[exclude]]
 name = "\\u22c2"
-reason = "TODO phase 4"
+reason = "KaTeX internal unicode codepoint name, covered by bigcap"
 [[exclude]]
 name = "\\u22c3"
-reason = "TODO phase 4"
+reason = "KaTeX internal unicode codepoint name, covered by bigcup"
 [[exclude]]
 name = "\\u2a00"
-reason = "TODO phase 4"
+reason = "KaTeX internal unicode codepoint name, covered by bigodot"
 [[exclude]]
 name = "\\u2a01"
-reason = "TODO phase 4"
+reason = "KaTeX internal unicode codepoint name, covered by bigoplus"
 [[exclude]]
 name = "\\u2a02"
-reason = "TODO phase 4"
+reason = "KaTeX internal unicode codepoint name, covered by bigotimes"
 [[exclude]]
 name = "\\u2a04"
-reason = "TODO phase 4"
+reason = "KaTeX internal unicode codepoint name, covered by biguplus"
 [[exclude]]
 name = "\\u2a06"
-reason = "TODO phase 4"
+reason = "KaTeX internal unicode codepoint name, covered by bigsqcup"
 [[exclude]]
 name = "\\undergroup"
 reason = "under arc accent, needs bottom: true parameter, no simple wrap"
@@ -1097,67 +1034,67 @@ name = "\\utilde"
 reason = "under tilde accent, needs bottom: true parameter, no simple wrap"
 [[exclude]]
 name = "\\xLeftarrow"
-reason = "TODO phase 4"
+reason = "extensible arrow with label, needs multi-arg structural emitter"
 [[exclude]]
 name = "\\xLeftrightarrow"
-reason = "TODO phase 4"
+reason = "extensible arrow with label, needs multi-arg structural emitter"
 [[exclude]]
 name = "\\xRightarrow"
-reason = "TODO phase 4"
+reason = "extensible arrow with label, needs multi-arg structural emitter"
 [[exclude]]
 name = "\\xhookleftarrow"
-reason = "TODO phase 4"
+reason = "extensible arrow with label, needs multi-arg structural emitter"
 [[exclude]]
 name = "\\xhookrightarrow"
-reason = "TODO phase 4"
+reason = "extensible arrow with label, needs multi-arg structural emitter"
 [[exclude]]
 name = "\\xleftarrow"
-reason = "TODO phase 4"
+reason = "extensible arrow with label, needs multi-arg structural emitter"
 [[exclude]]
 name = "\\xleftequilibrium"
-reason = "TODO phase 4"
+reason = "extensible equilibrium arrow, needs multi-arg structural emitter"
 [[exclude]]
 name = "\\xleftharpoondown"
-reason = "TODO phase 4"
+reason = "extensible harpoon arrow, needs multi-arg structural emitter"
 [[exclude]]
 name = "\\xleftharpoonup"
-reason = "TODO phase 4"
+reason = "extensible harpoon arrow, needs multi-arg structural emitter"
 [[exclude]]
 name = "\\xleftrightarrow"
-reason = "TODO phase 4"
+reason = "extensible arrow with label, needs multi-arg structural emitter"
 [[exclude]]
 name = "\\xleftrightharpoons"
-reason = "TODO phase 4"
+reason = "extensible harpoon arrows, needs multi-arg structural emitter"
 [[exclude]]
 name = "\\xlongequal"
-reason = "TODO phase 4"
+reason = "extensible equal sign with label, needs multi-arg structural emitter"
 [[exclude]]
 name = "\\xmapsto"
-reason = "TODO phase 4"
+reason = "extensible mapsto with label, needs multi-arg structural emitter"
 [[exclude]]
 name = "\\xrightarrow"
-reason = "TODO phase 4"
+reason = "extensible arrow with label, needs multi-arg structural emitter"
 [[exclude]]
 name = "\\xrightequilibrium"
-reason = "TODO phase 4"
+reason = "extensible equilibrium arrow, needs multi-arg structural emitter"
 [[exclude]]
 name = "\\xrightharpoondown"
-reason = "TODO phase 4"
+reason = "extensible harpoon arrow, needs multi-arg structural emitter"
 [[exclude]]
 name = "\\xrightharpoonup"
-reason = "TODO phase 4"
+reason = "extensible harpoon arrow, needs multi-arg structural emitter"
 [[exclude]]
 name = "\\xrightleftarrows"
-reason = "TODO phase 4"
+reason = "extensible double arrow, needs multi-arg structural emitter"
 [[exclude]]
 name = "\\xrightleftharpoons"
-reason = "TODO phase 4"
+reason = "extensible harpoon arrows, needs multi-arg structural emitter"
 [[exclude]]
 name = "\\xtofrom"
-reason = "TODO phase 4"
+reason = "extensible to-from arrow, needs multi-arg structural emitter"
 [[exclude]]
 name = "\\xtwoheadleftarrow"
-reason = "TODO phase 4"
+reason = "extensible twohead arrow, needs multi-arg structural emitter"
 [[exclude]]
 name = "\\xtwoheadrightarrow"
-reason = "TODO phase 4"
+reason = "extensible twohead arrow, needs multi-arg structural emitter"

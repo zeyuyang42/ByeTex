@@ -178,6 +178,19 @@ pub(crate) static KATEX_BUILTIN: &[(&str, MacroSeed)] = &[
     // === braket capitalized forms (macros.js ~903-905); lowercase in PHYSICS ===
     (r"\Bra", MacroSeed { params: 1, body: r"\left\langle #1 \right|" }),
     (r"\Ket", MacroSeed { params: 1, body: r"\left| #1 \right\rangle" }),
+
+    // === ISO 80000-2 / regional trig operators (op.js) ===
+    // Typst has no built-in identifier for these; emit via operatorname.
+    (r"\sh",     MacroSeed { params: 0, body: r"\operatorname{sh}" }),
+    (r"\ch",     MacroSeed { params: 0, body: r"\operatorname{ch}" }),
+    (r"\th",     MacroSeed { params: 0, body: r"\operatorname{th}" }),
+    (r"\tg",     MacroSeed { params: 0, body: r"\operatorname{tg}" }),
+    (r"\ctg",    MacroSeed { params: 0, body: r"\operatorname{ctg}" }),
+    (r"\cth",    MacroSeed { params: 0, body: r"\operatorname{cth}" }),
+    (r"\cotg",   MacroSeed { params: 0, body: r"\operatorname{cotg}" }),
+    (r"\cosec",  MacroSeed { params: 0, body: r"\operatorname{cosec}" }),
+    (r"\arctg",  MacroSeed { params: 0, body: r"\operatorname{arctg}" }),
+    (r"\arcctg", MacroSeed { params: 0, body: r"\operatorname{arcctg}" }),
 ];
 
 #[cfg(test)]
