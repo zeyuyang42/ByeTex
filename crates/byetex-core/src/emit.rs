@@ -1064,6 +1064,49 @@ impl<'a> Emitter<'a> {
             | Some("\\bibliographystyle") => {
                 node.end_byte()
             }
+            // Preamble plumbing with no visible rendered effect — drop silently.
+            // • Debug/logging: \typeout writes to the .log; no output.
+            // • Theorem styles: \theoremstyle{plain|definition|…} — Typst theorem
+            //   environments don't have a style parameter in our emission layer.
+            // • cleveref naming: \crefname / \Crefname configure label format only.
+            // • hyperref setup: \hypersetup{key=val,…} — PDF metadata, not content.
+            // • Paragraph layout hints: \enlargethispage, \looseness have no Typst
+            //   equivalent; Typst auto-handles line/page breaking.
+            // • TeX low-level: \endcsname, \expandafter, \makeatletter are TeX
+            //   engine directives that tree-sitter surfaces as generic_command.
+            // • Column formatting: \addlinespace is a booktabs spacing hint; Typst
+            //   table auto-handles row spacing.
+            // • Hook registration: \AddToHook is LaTeX3 machinery with no Typst
+            //   equivalent.
+            // • Float barriers: \FloatBarrier (placeins) forces floats before the
+            //   current point; Typst places figures where #figure() is called.
+            // • Color definitions: \colorlet defines a colour alias; without colortbl
+            //   support the alias is never used, so the definition is inert.
+            // • Conditionals: \ifthenelse/\fi/\else are xcolor/ifthen preamble
+            //   control flow that tree-sitter surfaces as bare generic_commands
+            //   (the contained body is processed separately by tree-sitter's normal
+            //   child walk). Dropping these tokens is safe; the content nodes are
+            //   emitted normally.
+            Some("\\typeout")
+            | Some("\\theoremstyle")
+            | Some("\\crefname")
+            | Some("\\Crefname")
+            | Some("\\hypersetup")
+            | Some("\\enlargethispage")
+            | Some("\\looseness")
+            | Some("\\endcsname")
+            | Some("\\expandafter")
+            | Some("\\makeatletter")
+            | Some("\\makeatother")
+            | Some("\\addlinespace")
+            | Some("\\AddToHook")
+            | Some("\\FloatBarrier")
+            | Some("\\colorlet")
+            | Some("\\ifthenelse")
+            | Some("\\fi")
+            | Some("\\else") => {
+                node.end_byte()
+            }
             // Macro (re)definitions in text mode — warn because the user may
             // have redefined a command that the conversion depends on.
             Some("\\renewcommand") | Some("\\providecommand") => {

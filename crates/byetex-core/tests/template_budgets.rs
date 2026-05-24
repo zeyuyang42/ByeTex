@@ -78,6 +78,12 @@ fn check_template(rel: &str, budget: usize) {
 //   \texorpdfstring/\ensuremath via KATEX_BUILTIN passthroughs.
 //   No template budget change (none of these appear in the 4 templates).
 //                                                          IEEE 13 ACM  6 NeurIPS  1 thesis  2
+//   PR3: preamble silencing allowlist — \typeout, \theoremstyle,
+//   \crefname/\Crefname, \hypersetup, \enlargethispage, \looseness,
+//   \endcsname, \expandafter, \makeatletter/\makeatother, \addlinespace,
+//   \AddToHook, \FloatBarrier, \colorlet, \ifthenelse/\fi/\else.
+//   No template budget change (none appear in the 4 templates).
+//                                                          IEEE 13 ACM  6 NeurIPS  1 thesis  2
 
 #[test]
 fn ieee_template_within_budget() {
