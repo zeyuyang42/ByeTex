@@ -256,9 +256,6 @@ reason = "delimiter handled via text-escape path or structural emit"
 name = "\\lt"
 reason = "delimiter handled via text-escape path or structural emit"
 [[exclude]]
-name = "\\mathring"
-reason = "handled as accent wrapper in emit_math_command"
-[[exclude]]
 name = "\\measuredangle"
 reason = "implemented as angle.arc in Phase 1b"
 [[exclude]]
@@ -838,9 +835,6 @@ reason = "math mode delimiter, handled separately"
 name = "\\)"
 reason = "math mode delimiter, handled separately"
 [[exclude]]
-name = "\\Overrightarrow"
-reason = "TODO phase 4"
-[[exclude]]
 name = "\\Pr"
 reason = "TODO phase 4"
 [[exclude]]
@@ -866,9 +860,6 @@ name = "\\bcancel"
 reason = "TODO phase 4"
 [[exclude]]
 name = "\\bf"
-reason = "TODO phase 4"
-[[exclude]]
-name = "\\bold"
 reason = "TODO phase 4"
 [[exclude]]
 name = "\\brace"
@@ -926,9 +917,6 @@ name = "\\fbox"
 reason = "TODO phase 4"
 [[exclude]]
 name = "\\fcolorbox"
-reason = "TODO phase 4"
-[[exclude]]
-name = "\\frak"
 reason = "TODO phase 4"
 [[exclude]]
 name = "\\genfrac"
@@ -989,28 +977,22 @@ name = "\\overbrace"
 reason = "TODO phase 4"
 [[exclude]]
 name = "\\overgroup"
-reason = "TODO phase 4"
+reason = "arc-style accent, no direct Typst shorthand"
 [[exclude]]
 name = "\\overleftarrow"
-reason = "TODO phase 4"
+reason = "left-arrow accent, needs accent(x, arrow.l) with no simple wrap"
 [[exclude]]
 name = "\\overleftharpoon"
-reason = "TODO phase 4"
+reason = "left-harpoon accent, no direct Typst shorthand"
 [[exclude]]
 name = "\\overleftrightarrow"
-reason = "TODO phase 4"
+reason = "double-headed arrow accent, no direct Typst shorthand"
 [[exclude]]
 name = "\\overlinesegment"
-reason = "TODO phase 4"
-[[exclude]]
-name = "\\overrightarrow"
-reason = "TODO phase 4"
+reason = "linesegment accent, no direct Typst shorthand"
 [[exclude]]
 name = "\\overrightharpoon"
-reason = "TODO phase 4"
-[[exclude]]
-name = "\\phantom"
-reason = "TODO phase 4"
+reason = "right-harpoon accent, no direct Typst shorthand"
 [[exclude]]
 name = "\\phase"
 reason = "TODO phase 4"
@@ -1118,25 +1100,22 @@ name = "\\underbrace"
 reason = "TODO phase 4"
 [[exclude]]
 name = "\\undergroup"
-reason = "TODO phase 4"
+reason = "under arc accent, needs bottom: true parameter, no simple wrap"
 [[exclude]]
 name = "\\underleftarrow"
-reason = "TODO phase 4"
+reason = "under left-arrow accent, needs bottom: true parameter, no simple wrap"
 [[exclude]]
 name = "\\underleftrightarrow"
-reason = "TODO phase 4"
+reason = "under double-headed arrow accent, needs bottom: true parameter, no simple wrap"
 [[exclude]]
 name = "\\underlinesegment"
-reason = "TODO phase 4"
+reason = "under linesegment accent, needs bottom: true parameter, no simple wrap"
 [[exclude]]
 name = "\\underrightarrow"
-reason = "TODO phase 4"
+reason = "under right-arrow accent, needs bottom: true parameter, no simple wrap"
 [[exclude]]
 name = "\\utilde"
-reason = "TODO phase 4"
-[[exclude]]
-name = "\\widecheck"
-reason = "TODO phase 4"
+reason = "under tilde accent, needs bottom: true parameter, no simple wrap"
 [[exclude]]
 name = "\\xLeftarrow"
 reason = "TODO phase 4"

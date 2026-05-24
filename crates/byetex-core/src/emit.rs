@@ -2454,10 +2454,10 @@ impl<'a> Emitter<'a> {
                 node.end_byte()
             }
             // `\mathbf{X}` → bold math; `\mathbb{X}` → blackboard bold (`bb(X)`).
-            "\\mathbf" | "\\bm" | "\\bs" => self.emit_math_wrap(node, "bold(", ")"),
+            "\\mathbf" | "\\bm" | "\\bs" | "\\bold" => self.emit_math_wrap(node, "bold(", ")"),
             "\\mathbb" | "\\mathbbm" | "\\Bbb" => self.emit_math_wrap(node, "bb(", ")"),
             "\\mathcal" => self.emit_math_wrap(node, "cal(", ")"),
-            "\\mathfrak" => self.emit_math_wrap(node, "frak(", ")"),
+            "\\mathfrak" | "\\frak" => self.emit_math_wrap(node, "frak(", ")"),
             "\\mathscr" => self.emit_math_wrap(node, "scr(", ")"),
             "\\mathsf" => self.emit_math_wrap(node, "sans(", ")"),
             "\\mathit" => self.emit_math_wrap(node, "italic(", ")"),
@@ -2468,13 +2468,17 @@ impl<'a> Emitter<'a> {
             "\\underline" => self.emit_math_wrap(node, "underline(", ")"),
             "\\hat" | "\\widehat" => self.emit_math_wrap(node, "hat(", ")"),
             "\\tilde" | "\\widetilde" => self.emit_math_wrap(node, "tilde(", ")"),
-            "\\vec" => self.emit_math_wrap(node, "arrow(", ")"),
+            "\\vec" | "\\overrightarrow" | "\\Overrightarrow" => {
+                self.emit_math_wrap(node, "arrow(", ")")
+            }
             "\\dot" => self.emit_math_wrap(node, "dot(", ")"),
             "\\ddot" => self.emit_math_wrap(node, "dot.double(", ")"),
             "\\acute" => self.emit_math_wrap(node, "acute(", ")"),
             "\\grave" => self.emit_math_wrap(node, "grave(", ")"),
-            "\\check" => self.emit_math_wrap(node, "caron(", ")"),
+            "\\check" | "\\widecheck" => self.emit_math_wrap(node, "caron(", ")"),
             "\\breve" => self.emit_math_wrap(node, "breve(", ")"),
+            "\\mathring" => self.emit_math_wrap(node, "circle(", ")"),
+            "\\phantom" => self.emit_math_wrap(node, "hide(", ")"),
             // `\operatorname{name}` → `op("name")` — upright math text.
             "\\operatorname" => self.emit_math_operatorname(node),
             // Math-mode spacing primitives — drop silently.
@@ -4930,23 +4934,25 @@ pub(crate) fn wrap_for_command_name(name: &str) -> Option<(&'static str, &'stati
     Some(match name {
         "\\mathbb" | "\\mathbbm" | "\\Bbb" => ("bb(", ")"),
         "\\mathcal" => ("cal(", ")"),
-        "\\mathfrak" => ("frak(", ")"),
+        "\\mathfrak" | "\\frak" => ("frak(", ")"),
         "\\mathscr" => ("scr(", ")"),
         "\\mathsf" => ("sans(", ")"),
         "\\mathit" => ("italic(", ")"),
         "\\mathtt" => ("mono(", ")"),
-        "\\mathbf" | "\\bm" | "\\bs" | "\\boldsymbol" | "\\pmb" => ("bold(", ")"),
+        "\\mathbf" | "\\bm" | "\\bs" | "\\boldsymbol" | "\\pmb" | "\\bold" => ("bold(", ")"),
         "\\bar" | "\\overline" => ("overline(", ")"),
         "\\underline" => ("underline(", ")"),
         "\\hat" | "\\widehat" => ("hat(", ")"),
         "\\tilde" | "\\widetilde" => ("tilde(", ")"),
-        "\\vec" => ("arrow(", ")"),
+        "\\vec" | "\\overrightarrow" | "\\Overrightarrow" => ("arrow(", ")"),
         "\\dot" => ("dot(", ")"),
         "\\ddot" => ("dot.double(", ")"),
         "\\acute" => ("acute(", ")"),
         "\\grave" => ("grave(", ")"),
-        "\\check" => ("caron(", ")"),
+        "\\check" | "\\widecheck" => ("caron(", ")"),
         "\\breve" => ("breve(", ")"),
+        "\\mathring" => ("circle(", ")"),
+        "\\phantom" => ("hide(", ")"),
         _ => return None,
     })
 }
