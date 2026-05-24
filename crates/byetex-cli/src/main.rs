@@ -146,11 +146,12 @@ fn main() -> Result<()> {
                 skip: no_brief,
                 no_compile: true, // convert is the fast path — no implicit typst spawn
             };
-            if project {
-                run_convert_project(input, project_out, no_toml, force, brief_opts)
+            let mode = if project {
+                ConvertMode::Project { project_out, no_toml, force }
             } else {
-                run_convert(input, output, brief_opts)
-            }
+                ConvertMode::Flat { output }
+            };
+            run_convert_dispatch(input, mode, brief_opts)
         }
         Command::Skills { action } => run_skills(action),
         #[cfg(feature = "mcp")]
@@ -170,11 +171,12 @@ fn main() -> Result<()> {
                 skip: false,
                 no_compile,
             };
-            if project {
-                run_convert_project(input, project_out, no_toml, force, brief_opts)
+            let mode = if project {
+                ConvertMode::Project { project_out, no_toml, force }
             } else {
-                run_convert(input, None, brief_opts)
-            }
+                ConvertMode::Flat { output: None }
+            };
+            run_convert_dispatch(input, mode, brief_opts)
         }
     }
 }
@@ -345,60 +347,187 @@ fn run_skills(action: SkillsAction) -> Result<()> {
     }
 }
 
-fn run_convert_project(
+/// Which output shape `byetex convert` should produce. Threaded
+/// through the unified dispatcher so file/dir input × flat/project
+/// output is one match arm each rather than three near-duplicate
+/// top-level functions.
+enum ConvertMode {
+    /// Write `<stem>.typ` + `<stem>.warnings.json` next to the input
+    /// (or to `output` when overridden). Assets aren't copied.
+    Flat { output: Option<PathBuf> },
+    /// Write a self-contained `<stem>.typst-project/` directory
+    /// containing `main.typ`, asset copies, `warnings.json`, and an
+    /// optional `typst.toml`.
+    Project {
+        project_out: Option<PathBuf>,
+        no_toml: bool,
+        force: bool,
+    },
+}
+
+/// Resolve `input.parent()` to a usable base directory, mapping empty
+/// or missing parent to `.` so that an entry file passed by bare name
+/// still gets `\input` resolution from the working directory.
+fn base_dir_from_file(input: &std::path::Path) -> PathBuf {
+    input
+        .parent()
+        .map(|p| {
+            if p.as_os_str().is_empty() {
+                PathBuf::from(".")
+            } else {
+                p.to_path_buf()
+            }
+        })
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+/// Unified dispatcher for `byetex convert` and `byetex agent-brief`.
+/// Owns base-dir resolution, stem derivation, sidecar writing, and
+/// brief emission. Replaces three near-duplicate functions
+/// (`run_convert`, `run_convert_dir_flat`, `run_convert_project`)
+/// from earlier revisions.
+fn run_convert_dispatch(input: PathBuf, mode: ConvertMode, brief: BriefOpts) -> Result<()> {
+    let input_is_dir = input.is_dir();
+
+    // Whether to emit `typst.toml`. Flat mode never does (no project
+    // dir to put it in); project mode honours the flag.
+    let no_toml = matches!(&mode, ConvertMode::Flat { .. })
+        || matches!(&mode, ConvertMode::Project { no_toml: true, .. });
+
+    // Plan the conversion. Both modes go through the project planners
+    // so we get `plan.entry_tex` for the brief.
+    let plan = if input_is_dir {
+        byetex_core::project::plan_project_from_dir(&input, no_toml)
+            .with_context(|| format!("planning project from {}", input.display()))?
+    } else {
+        byetex_core::project::plan_project(&input, no_toml)
+            .with_context(|| format!("planning project from {}", input.display()))?
+    };
+
+    // Base directory used by the materialiser's path-traversal guard.
+    let base_dir = if input_is_dir {
+        input.clone()
+    } else {
+        base_dir_from_file(&input)
+    };
+
+    // Filename stem for default output paths. Directory input uses the
+    // dir name; file input uses the file stem.
+    let default_stem = if input_is_dir {
+        input.file_name()
+    } else {
+        input.file_stem()
+    }
+    .and_then(|s| s.to_str())
+    .unwrap_or("project")
+    .to_string();
+
+    // Parent directory for default output placement (next-to-input).
+    let parent_for_outputs = input
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .map(|p| p.to_path_buf());
+
+    match mode {
+        ConvertMode::Flat { output } => {
+            run_flat(input, plan, &default_stem, parent_for_outputs, output, input_is_dir, brief)
+        }
+        ConvertMode::Project { project_out, no_toml: _, force } => run_project(
+            plan,
+            &base_dir,
+            &default_stem,
+            parent_for_outputs,
+            project_out,
+            force,
+            brief,
+        ),
+    }
+}
+
+/// Flat-output arm of the dispatcher: writes `<stem>.typ` +
+/// `<stem>.warnings.json` (+ optional agent_brief.md). Assets are
+/// dropped; the eprintln warns about that when input was a directory.
+fn run_flat(
     input: PathBuf,
+    plan: byetex_core::project::ProjectPlan,
+    default_stem: &str,
+    parent_for_outputs: Option<PathBuf>,
+    output: Option<PathBuf>,
+    input_is_dir: bool,
+    brief: BriefOpts,
+) -> Result<()> {
+    let typst_path = output.unwrap_or_else(|| {
+        if input_is_dir {
+            let name = format!("{}.typ", default_stem);
+            parent_for_outputs
+                .clone()
+                .map(|p| p.join(&name))
+                .unwrap_or_else(|| PathBuf::from(name))
+        } else {
+            input.with_extension("typ")
+        }
+    });
+    let warnings_path = typst_path.with_extension("warnings.json");
+
+    std::fs::write(&typst_path, &plan.main_typst)
+        .with_context(|| format!("writing {}", typst_path.display()))?;
+    let warnings_json =
+        serde_json::to_string_pretty(&plan.warnings).context("serializing warnings to JSON")?;
+    std::fs::write(&warnings_path, warnings_json)
+        .with_context(|| format!("writing {}", warnings_path.display()))?;
+
+    let n_warn = plan.warnings.len();
+    let suffix = if input_is_dir {
+        "; assets NOT copied — use --project for that"
+    } else {
+        ""
+    };
+    eprintln!(
+        "wrote {} ({} warning{}{})",
+        typst_path.display(),
+        n_warn,
+        if n_warn == 1 { "" } else { "s" },
+        suffix,
+    );
+
+    if !brief.skip {
+        let brief_path = typst_path.with_extension("agent_brief.md");
+        let manual_path = typst_path.with_file_name(format!(
+            "{}_manual.typ",
+            typst_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("paper")
+        ));
+        write_agent_brief(BriefInputs {
+            brief_path: &brief_path,
+            source_tex: &plan.entry_tex,
+            typst_path: &typst_path,
+            warnings_path: &warnings_path,
+            manual_path: &manual_path,
+            mode: BriefMode::Flat,
+            no_compile: brief.no_compile,
+        })?;
+    }
+
+    Ok(())
+}
+
+/// Project-output arm of the dispatcher: materialise into
+/// `<stem>.typst-project/` with assets, warnings.json, optional
+/// typst.toml, and the agent brief.
+fn run_project(
+    plan: byetex_core::project::ProjectPlan,
+    base_dir: &std::path::Path,
+    default_stem: &str,
+    parent_for_outputs: Option<PathBuf>,
     project_out: Option<PathBuf>,
-    no_toml: bool,
     force: bool,
     brief: BriefOpts,
 ) -> Result<()> {
-    // Resolve the input shape. When the user passes a directory, ByeTex
-    // detects the entry `.tex` file (`\documentclass`-bearing) and
-    // pre-scans every `.tex`/`.sty`/`.cls` in the tree for macros.
-    // When they pass a file, behaviour is unchanged.
-    let input_is_dir = input.is_dir();
-    let (plan, base_dir, default_out_stem) = if input_is_dir {
-        let plan = byetex_core::project::plan_project_from_dir(&input, no_toml)
-            .with_context(|| format!("planning project from {}", input.display()))?;
-        let stem = input
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("project")
-            .to_string();
-        (plan, input.clone(), stem)
-    } else {
-        let plan = byetex_core::project::plan_project(&input, no_toml)
-            .with_context(|| format!("planning project from {}", input.display()))?;
-        let base_dir = input
-            .parent()
-            .map(|p| {
-                if p.as_os_str().is_empty() {
-                    PathBuf::from(".")
-                } else {
-                    p.to_path_buf()
-                }
-            })
-            .unwrap_or_else(|| PathBuf::from("."));
-        let stem = input
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("project")
-            .to_string();
-        (plan, base_dir, stem)
-    };
-
     let out_dir = project_out.unwrap_or_else(|| {
-        // For dir input the output sits next to the input directory; for
-        // file input it sits next to the file. In both cases use the
-        // stem to name the output: `<stem>.typst-project/`.
-        let parent = if input_is_dir {
-            input.parent().map(|p| p.to_path_buf())
-        } else {
-            input.parent().map(|p| p.to_path_buf())
-        };
-        let name = format!("{}.typst-project", default_out_stem);
-        parent
-            .filter(|p| !p.as_os_str().is_empty())
+        let name = format!("{}.typst-project", default_stem);
+        parent_for_outputs
             .map(|p| p.join(&name))
             .unwrap_or_else(|| PathBuf::from(name))
     });
@@ -407,13 +536,11 @@ fn run_convert_project(
     let n_assets = plan.assets.len();
     let has_manifest = plan.manifest.is_some();
 
-    byetex_core::project::materialize_project(&plan, &out_dir, &base_dir, force)
+    byetex_core::project::materialize_project(&plan, &out_dir, base_dir, force)
         .with_context(|| format!("writing project to {}", out_dir.display()))?;
 
     // Persist warnings as a sidecar so downstream tooling (agent-brief,
-    // skill-driven remediation) can act on them. Without this the project
-    // path was a regression versus `run_convert`, which always writes
-    // `<stem>.warnings.json` next to the .typ.
+    // skill-driven remediation) can act on them.
     let warnings_path = out_dir.join("warnings.json");
     let warnings_json = serde_json::to_string_pretty(&plan.warnings)
         .with_context(|| "serialising warnings")?;
@@ -431,8 +558,6 @@ fn run_convert_project(
     );
 
     if !brief.skip {
-        // Project briefs live INSIDE the typst-project dir, alongside
-        // main.typ. No stem prefix needed — it's a dedicated dir.
         let typst_path = out_dir.join("main.typ");
         let brief_path = out_dir.join("agent_brief.md");
         let manual_path = out_dir.join("main_manual.typ");
@@ -443,136 +568,6 @@ fn run_convert_project(
             warnings_path: &warnings_path,
             manual_path: &manual_path,
             mode: BriefMode::Project,
-            no_compile: brief.no_compile,
-        })?;
-    }
-
-    Ok(())
-}
-
-fn run_convert(input: PathBuf, output: Option<PathBuf>, brief: BriefOpts) -> Result<()> {
-    // When the user hands us a directory, route through the same
-    // entry-detect + macro pre-scan pipeline as project mode but emit
-    // a flat `<dir>.typ` next to the dir instead of a project tree.
-    if input.is_dir() {
-        return run_convert_dir_flat(input, output, brief);
-    }
-
-    let source =
-        std::fs::read_to_string(&input).with_context(|| format!("reading {}", input.display()))?;
-
-    // Resolve `\input{...}` / `\include{...}` relative to the input file's
-    // parent directory. Falls back to "." when the path has no parent so
-    // that an entry file passed by bare name still gets includes resolved
-    // from the working directory.
-    let base_dir = input
-        .parent()
-        .map(|p| {
-            if p.as_os_str().is_empty() {
-                PathBuf::from(".")
-            } else {
-                p.to_path_buf()
-            }
-        })
-        .or_else(|| Some(PathBuf::from(".")));
-
-    let opts = byetex_core::ConvertOptions {
-        source_name: Some(input.display().to_string()),
-        base_dir,
-    };
-    let result = byetex_core::convert(&source, &opts);
-
-    let typst_path = output.unwrap_or_else(|| input.with_extension("typ"));
-    let warnings_path = typst_path.with_extension("warnings.json");
-
-    std::fs::write(&typst_path, &result.typst)
-        .with_context(|| format!("writing {}", typst_path.display()))?;
-
-    let warnings_json =
-        serde_json::to_string_pretty(&result.warnings).context("serializing warnings to JSON")?;
-    std::fs::write(&warnings_path, warnings_json)
-        .with_context(|| format!("writing {}", warnings_path.display()))?;
-
-    eprintln!(
-        "wrote {} ({} warning{})",
-        typst_path.display(),
-        result.warnings.len(),
-        if result.warnings.len() == 1 { "" } else { "s" }
-    );
-
-    if !brief.skip {
-        let brief_path = typst_path.with_extension("agent_brief.md");
-        let manual_path = typst_path.with_file_name(format!(
-            "{}_manual.typ",
-            typst_path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("paper")
-        ));
-        write_agent_brief(BriefInputs {
-            brief_path: &brief_path,
-            source_tex: &input,
-            typst_path: &typst_path,
-            warnings_path: &warnings_path,
-            manual_path: &manual_path,
-            mode: BriefMode::Flat,
-            no_compile: brief.no_compile,
-        })?;
-    }
-
-    Ok(())
-}
-
-/// Non-project conversion when the user hands us a directory. Detects
-/// the entry `.tex` and writes `<dir>.typ` + `<dir>.warnings.json` next
-/// to the dir. Asset files are NOT copied — use `--project` for that.
-fn run_convert_dir_flat(input: PathBuf, output: Option<PathBuf>, brief: BriefOpts) -> Result<()> {
-    let plan = byetex_core::project::plan_project_from_dir(&input, true)
-        .with_context(|| format!("planning project from {}", input.display()))?;
-
-    let stem = input
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("project");
-    let parent = input.parent().filter(|p| !p.as_os_str().is_empty());
-    let typst_path = output.unwrap_or_else(|| {
-        let name = format!("{}.typ", stem);
-        parent
-            .map(|p| p.join(&name))
-            .unwrap_or_else(|| PathBuf::from(name))
-    });
-    let warnings_path = typst_path.with_extension("warnings.json");
-
-    std::fs::write(&typst_path, &plan.main_typst)
-        .with_context(|| format!("writing {}", typst_path.display()))?;
-    let warnings_json =
-        serde_json::to_string_pretty(&plan.warnings).context("serializing warnings to JSON")?;
-    std::fs::write(&warnings_path, warnings_json)
-        .with_context(|| format!("writing {}", warnings_path.display()))?;
-
-    eprintln!(
-        "wrote {} ({} warning{}; assets NOT copied — use --project for that)",
-        typst_path.display(),
-        plan.warnings.len(),
-        if plan.warnings.len() == 1 { "" } else { "s" }
-    );
-
-    if !brief.skip {
-        let brief_path = typst_path.with_extension("agent_brief.md");
-        let manual_path = typst_path.with_file_name(format!(
-            "{}_manual.typ",
-            typst_path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("paper")
-        ));
-        write_agent_brief(BriefInputs {
-            brief_path: &brief_path,
-            source_tex: &plan.entry_tex,
-            typst_path: &typst_path,
-            warnings_path: &warnings_path,
-            manual_path: &manual_path,
-            mode: BriefMode::Flat,
             no_compile: brief.no_compile,
         })?;
     }
