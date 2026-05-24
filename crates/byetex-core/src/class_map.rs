@@ -222,14 +222,47 @@ impl DocClass {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Show-call scaffolding helpers
+// ---------------------------------------------------------------------------
+//
+// Each `*_show_call` builder below emits a Typst `#show: X.with(...)` block.
+// The structural skeleton is identical across templates (header, title slot,
+// authors block, optional abstract slot, optional keywords slot, closer);
+// only the per-author record shape genuinely differs. The helpers in this
+// section absorb the skeleton so each builder reads as just its
+// distinguishing parts.
+
+/// Start a show-call: `#show: <template>.with(\n  title: [<escaped>],\n`.
+fn show_call_open(template_fn: &str, title: &str) -> String {
+    let mut s = String::new();
+    s.push_str(&format!("#show: {}.with(\n", template_fn));
+    s.push_str(&format!("  title: [{}],\n", content_escape(title)));
+    s
+}
+
+/// Emit `  abstract: [<escaped>],\n` when `abstract_` is non-empty.
+fn push_abstract_slot(s: &mut String, abstract_: &str) {
+    if !abstract_.is_empty() {
+        s.push_str(&format!("  abstract: [{}],\n", content_escape(abstract_)));
+    }
+}
+
+/// Emit `  <slot_name>: (<csv as tuple>,),\n` when `csv` is non-empty.
+/// Two slot names are in use: `keywords` (most templates) and `index-terms`
+/// (IEEE). Picking the slot name per-class avoids interpolation surprises.
+fn push_csv_slot(s: &mut String, slot_name: &str, csv: &str) {
+    if !csv.is_empty() {
+        s.push_str(&format!("  {}: ({},),\n", slot_name, quote_csv(csv)));
+    }
+}
+
 /// `charged-ieee` 0.1.4 signature (verified against the cached package):
 ///   ieee(title, authors: array of records, abstract, index-terms, paper-size,
 ///        bibliography, figure-supplement, body)
 /// Author record: `(name, department?, organization?, location?, email?)`.
 fn ieee_show_call(title: &str, authors: &[Author], abstract_: &str, keywords: &str) -> String {
-    let mut s = String::new();
-    s.push_str("#show: ieee.with(\n");
-    s.push_str(&format!("  title: [{}],\n", content_escape(title)));
+    let mut s = show_call_open("ieee", title);
     s.push_str("  authors: (\n");
     for a in authors {
         s.push_str("    (");
@@ -257,12 +290,8 @@ fn ieee_show_call(title: &str, authors: &[Author], abstract_: &str, keywords: &s
         s.push_str("),\n");
     }
     s.push_str("  ),\n");
-    if !abstract_.is_empty() {
-        s.push_str(&format!("  abstract: [{}],\n", content_escape(abstract_)));
-    }
-    if !keywords.is_empty() {
-        s.push_str(&format!("  index-terms: ({},),\n", quote_csv(keywords)));
-    }
+    push_abstract_slot(&mut s, abstract_);
+    push_csv_slot(&mut s, "index-terms", keywords);
     s.push_str(")\n");
     s
 }
@@ -272,9 +301,7 @@ fn ieee_show_call(title: &str, authors: &[Author], abstract_: &str, keywords: &s
 ///          strings, conference: dict, doi, isbn, price, copyright, review, body)
 /// No `abstract` parameter — the abstract goes in the body.
 fn acmart_show_call(title: &str, authors: &[Author], keywords: &str) -> String {
-    let mut s = String::new();
-    s.push_str("#show: acmart.with(\n");
-    s.push_str(&format!("  title: [{}],\n", content_escape(title)));
+    let mut s = show_call_open("acmart", title);
     s.push_str("  authors: (\n");
     for a in authors {
         let aff = a
@@ -292,9 +319,7 @@ fn acmart_show_call(title: &str, authors: &[Author], keywords: &str) -> String {
         ));
     }
     s.push_str("  ),\n");
-    if !keywords.is_empty() {
-        s.push_str(&format!("  keywords: ({},),\n", quote_csv(keywords)));
-    }
+    push_csv_slot(&mut s, "keywords", keywords);
     s.push_str(")\n");
     s
 }
@@ -304,9 +329,7 @@ fn acmart_show_call(title: &str, authors: &[Author], keywords: &str) -> String {
 /// anonymous-override path that would otherwise replace authors when
 /// `accepted: false` (the default).
 fn icml_show_call(title: &str, authors: &[Author], abstract_: &str, keywords: &str) -> String {
-    let mut s = String::new();
-    s.push_str("#show: conf.with(\n");
-    s.push_str(&format!("  title: [{}],\n", content_escape(title)));
+    let mut s = show_call_open("conf", title);
     s.push_str("  authors: (\n");
     s.push_str("    (\n");
     for a in authors {
@@ -322,21 +345,15 @@ fn icml_show_call(title: &str, authors: &[Author], abstract_: &str, keywords: &s
     s.push_str("    ),\n");
     s.push_str("    (:),\n"); // empty affiliations map
     s.push_str("  ),\n");
-    if !abstract_.is_empty() {
-        s.push_str(&format!("  abstract: [{}],\n", content_escape(abstract_)));
-    }
-    if !keywords.is_empty() {
-        s.push_str(&format!("  keywords: ({},),\n", quote_csv(keywords)));
-    }
+    push_abstract_slot(&mut s, abstract_);
+    push_csv_slot(&mut s, "keywords", keywords);
     s.push_str("  accepted: none,\n");
     s.push_str(")\n");
     s
 }
 
 fn revtyp_show_call(title: &str, authors: &[Author]) -> String {
-    let mut s = String::new();
-    s.push_str("#show: revtyp.with(\n");
-    s.push_str(&format!("  title: [{}],\n", content_escape(title)));
+    let mut s = show_call_open("revtyp", title);
     s.push_str("  authors: (\n");
     for a in authors {
         let aff = a
@@ -363,9 +380,7 @@ fn elsearticle_show_call(
     keywords: &str,
     format: Option<&str>,
 ) -> String {
-    let mut s = String::new();
-    s.push_str("#show: elsearticle.with(\n");
-    s.push_str(&format!("  title: [{}],\n", content_escape(title)));
+    let mut s = show_call_open("elsearticle", title);
     s.push_str("  authors: (\n");
     for a in authors {
         s.push_str(&format!(
@@ -374,12 +389,8 @@ fn elsearticle_show_call(
         ));
     }
     s.push_str("  ),\n");
-    if !abstract_.is_empty() {
-        s.push_str(&format!("  abstract: [{}],\n", content_escape(abstract_)));
-    }
-    if !keywords.is_empty() {
-        s.push_str(&format!("  keywords: ({},),\n", quote_csv(keywords)));
-    }
+    push_abstract_slot(&mut s, abstract_);
+    push_csv_slot(&mut s, "keywords", keywords);
     if let Some(fmt) = format {
         s.push_str(&format!("  format: \"{}\",\n", string_escape(fmt)));
     }
@@ -397,9 +408,7 @@ fn arkheion_show_call(
     keywords: &str,
     date: Option<&str>,
 ) -> String {
-    let mut s = String::new();
-    s.push_str("#show: arkheion.with(\n");
-    s.push_str(&format!("  title: [{}],\n", content_escape(title)));
+    let mut s = show_call_open("arkheion", title);
     s.push_str("  authors: (\n");
     for a in authors {
         // For string-literal slots, run raw values through string_escape so
@@ -422,12 +431,8 @@ fn arkheion_show_call(
         ));
     }
     s.push_str("  ),\n");
-    if !abstract_.is_empty() {
-        s.push_str(&format!("  abstract: [{}],\n", content_escape(abstract_)));
-    }
-    if !keywords.is_empty() {
-        s.push_str(&format!("  keywords: ({},),\n", quote_csv(keywords)));
-    }
+    push_abstract_slot(&mut s, abstract_);
+    push_csv_slot(&mut s, "keywords", keywords);
     if let Some(d) = date {
         s.push_str(&format!("  date: \"{}\",\n", string_escape(d)));
     }
@@ -438,9 +443,7 @@ fn arkheion_show_call(
 /// `lncs` 0.1.0 signature: simpler `(title, authors, abstract)` plus
 /// optional affiliation tuple. Single column, sans-serif title block.
 fn lncs_show_call(title: &str, authors: &[Author], abstract_: &str) -> String {
-    let mut s = String::new();
-    s.push_str("#show: lncs.with(\n");
-    s.push_str(&format!("  title: [{}],\n", content_escape(title)));
+    let mut s = show_call_open("lncs", title);
     s.push_str("  authors: (\n");
     for a in authors {
         s.push_str(&format!(
@@ -449,9 +452,7 @@ fn lncs_show_call(title: &str, authors: &[Author], abstract_: &str) -> String {
         ));
     }
     s.push_str("  ),\n");
-    if !abstract_.is_empty() {
-        s.push_str(&format!("  abstract: [{}],\n", content_escape(abstract_)));
-    }
+    push_abstract_slot(&mut s, abstract_);
     s.push_str(")\n");
     s
 }
@@ -533,13 +534,13 @@ fn parse_one_author(chunk: &str) -> Author {
     let mut email = None;
     let mut affiliation_raw: Option<String> = None;
     let mut orcid = None;
-    let mut footnote = None;
     let mut equal = false;
-    let mut corresponding = false;
 
     // Crude but robust: scan the chunk for `\cmd{...}` patterns and
     // pull each known one out. The leftover name text is what wasn't
-    // claimed.
+    // claimed. `\thanks{...}` is consumed (so it doesn't leak into
+    // the rendered name) but only its hint flags — `equal contribution`
+    // — feed into the Author record.
     for cmd in &[
         "email",
         "affiliation",
@@ -565,10 +566,6 @@ fn parse_one_author(chunk: &str) -> Author {
                             if lower.contains("equal") {
                                 equal = true;
                             }
-                            if lower.contains("corresponding") {
-                                corresponding = true;
-                            }
-                            footnote = Some(Content::Typst(body.clone()));
                         }
                         _ => {}
                     }
@@ -586,8 +583,6 @@ fn parse_one_author(chunk: &str) -> Author {
             .map(|raw| crate::document::Affiliation::from_raw(Content::Typst(raw))),
         orcid,
         equal_contribution: equal,
-        corresponding,
-        footnote,
     }
 }
 
@@ -688,7 +683,6 @@ fn parse_neurips_block(s: &str) -> Vec<Author> {
         let mut email = None;
         let mut affil = None;
         let mut equal = false;
-        let mut footnote = None;
         for (i, line) in lines.iter().enumerate() {
             if i == 0 {
                 // The first line is the name; strip `\thanks{...}`.
@@ -698,7 +692,6 @@ fn parse_neurips_block(s: &str) -> Vec<Author> {
                     if t.to_ascii_lowercase().contains("equal") {
                         equal = true;
                     }
-                    footnote = Some(Content::Typst(t));
                 }
             } else if line.contains('@') {
                 // Email line, often wrapped in `\texttt{...}`.
@@ -723,7 +716,6 @@ fn parse_neurips_block(s: &str) -> Vec<Author> {
             email,
             affiliation: affil,
             equal_contribution: equal,
-            footnote,
             ..Author::default()
         });
     }
@@ -903,7 +895,7 @@ mod tests {
             paper_type: "conference".to_string(),
         };
         let meta = DocumentMetadata {
-            title: Some(Content::Plain("The Title".to_string())),
+            title: Some(Content::Typst("The Title".to_string())),
             authors: parse_authors(&["Alice".to_string()], &c),
             ..Default::default()
         };
@@ -971,5 +963,101 @@ mod tests {
         assert!(a.equal_contribution, "expected equal_contribution true");
         assert_eq!(a.email.as_deref(), Some("alice@x.org"));
         assert!(a.name.as_content().trim().starts_with("Alice"));
+    }
+
+    // ------------------------------------------------------------------
+    // Byte-stable show-call snapshots
+    // ------------------------------------------------------------------
+    //
+    // These tests pin the literal `#show: X.with(...)` output of every
+    // class's builder. They protect against silent drift when the
+    // scaffolding helpers (`show_call_open`, `push_abstract_slot`,
+    // `push_csv_slot`) are touched. If you intentionally change the
+    // output, update the expected string here AND verify the new
+    // form parses against the upstream template.
+
+    fn one_author() -> Vec<Author> {
+        vec![Author {
+            name: Content::Typst("Alice".to_string()),
+            ..Default::default()
+        }]
+    }
+
+    #[test]
+    fn snapshot_ieee_minimal() {
+        let s = ieee_show_call("T", &one_author(), "", "");
+        assert_eq!(
+            s,
+            "#show: ieee.with(\n  title: [T],\n  authors: (\n    (name: [Alice]),\n  ),\n)\n"
+        );
+    }
+
+    #[test]
+    fn snapshot_acmart_minimal() {
+        let s = acmart_show_call("T", &one_author(), "");
+        assert_eq!(
+            s,
+            "#show: acmart.with(\n  title: [T],\n  authors: (\n    (name: [Alice], affiliation: [], email: []),\n  ),\n)\n"
+        );
+    }
+
+    #[test]
+    fn snapshot_icml_minimal() {
+        let s = icml_show_call("T", &one_author(), "", "");
+        assert_eq!(
+            s,
+            "#show: conf.with(\n  title: [T],\n  authors: (\n    (\n      (name: \"Alice\", affl: (), email: \"\", equal: false, note: \"\"),\n    ),\n    (:),\n  ),\n  accepted: none,\n)\n"
+        );
+    }
+
+    #[test]
+    fn snapshot_revtyp_minimal() {
+        let s = revtyp_show_call("T", &one_author());
+        assert_eq!(
+            s,
+            "#show: revtyp.with(\n  title: [T],\n  authors: (\n    (name: \"Alice\", affiliation: \"\"),\n  ),\n)\n"
+        );
+    }
+
+    #[test]
+    fn snapshot_elsearticle_minimal() {
+        let s = elsearticle_show_call("T", &one_author(), "", "", None);
+        assert_eq!(
+            s,
+            "#show: elsearticle.with(\n  title: [T],\n  authors: (\n    (name: \"Alice\"),\n  ),\n)\n"
+        );
+    }
+
+    #[test]
+    fn snapshot_arkheion_minimal() {
+        let s = arkheion_show_call("T", &one_author(), "", "", None);
+        assert_eq!(
+            s,
+            "#show: arkheion.with(\n  title: [T],\n  authors: (\n    (name: \"Alice\", email: \"\", affiliation: \"\", orcid: \"\"),\n  ),\n)\n"
+        );
+    }
+
+    #[test]
+    fn snapshot_lncs_minimal() {
+        let s = lncs_show_call("T", &one_author(), "");
+        assert_eq!(
+            s,
+            "#show: lncs.with(\n  title: [T],\n  authors: (\n    (name: \"Alice\"),\n  ),\n)\n"
+        );
+    }
+
+    #[test]
+    fn snapshot_with_abstract_and_keywords() {
+        // Exercise the full slot scaffold on ieee (which uses
+        // `index-terms` not `keywords`) and arkheion (with optional
+        // date + keywords).
+        let ieee = ieee_show_call("T", &one_author(), "An abstract.", "ml, nlp");
+        assert!(ieee.contains("  abstract: [An abstract.],\n"));
+        assert!(ieee.contains("  index-terms: (\"ml\", \"nlp\",),\n"));
+
+        let ark = arkheion_show_call("T", &one_author(), "abs", "kw", Some("2026-05-24"));
+        assert!(ark.contains("  abstract: [abs],\n"));
+        assert!(ark.contains("  keywords: (\"kw\",),\n"));
+        assert!(ark.contains("  date: \"2026-05-24\",\n"));
     }
 }

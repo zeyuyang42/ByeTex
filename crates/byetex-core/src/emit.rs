@@ -73,7 +73,6 @@ pub(crate) struct Emitter<'a> {
     out: String,
     warnings: Vec<Warning>,
     src: &'a str,
-    #[allow(dead_code)]
     source_name: &'a str,
     /// True while emitting the interior of a math container. Affects how
     /// commands (e.g. `\alpha` → `alpha`) and subscripts (`_{x}` → `_(x)`)
@@ -370,6 +369,17 @@ impl<'a> Emitter<'a> {
         if from < to {
             self.out.push_str(&self.src[from..to]);
         }
+    }
+
+    /// Return the inner text of a `curly_group` node (the bytes between
+    /// the outer `{` and `}`), trimmed of surrounding whitespace. Used
+    /// when a caller wants the raw argument text without emitting it
+    /// through the AST walker (e.g. URL extraction, path extraction).
+    fn curly_group_inner_trimmed(&self, group: Node<'_>) -> &'a str {
+        self.src
+            .get(group.start_byte() + 1..group.end_byte() - 1)
+            .unwrap_or("")
+            .trim()
     }
 
     /// Run a child `Emitter` over `src` and merge its side-effects
@@ -1241,19 +1251,11 @@ impl<'a> Emitter<'a> {
                     .filter(|c| c.kind() == "curly_group")
                     .collect();
                 if groups.len() >= 2 {
-                    let url = self
-                        .src
-                        .get(groups[0].start_byte() + 1..groups[0].end_byte() - 1)
-                        .unwrap_or("")
-                        .trim();
+                    let url = self.curly_group_inner_trimmed(groups[0]);
                     let display = self.render_curly_group_content(groups[1]);
                     let _ = write!(self.out, "#link(\"{}\")[{}]", url, display);
                 } else if let Some(arg) = first_curly_group(node) {
-                    let url = self
-                        .src
-                        .get(arg.start_byte() + 1..arg.end_byte() - 1)
-                        .unwrap_or("")
-                        .trim();
+                    let url = self.curly_group_inner_trimmed(arg);
                     let _ = write!(self.out, "#link(\"{}\")", url);
                 }
                 node.end_byte()
@@ -1261,11 +1263,7 @@ impl<'a> Emitter<'a> {
             // `\url{X}` → bare link in Typst.
             Some("\\url") => {
                 if let Some(arg) = first_curly_group(node) {
-                    let url = self
-                        .src
-                        .get(arg.start_byte() + 1..arg.end_byte() - 1)
-                        .unwrap_or("")
-                        .trim();
+                    let url = self.curly_group_inner_trimmed(arg);
                     let _ = write!(self.out, "#link(\"{}\")", url);
                 }
                 node.end_byte()
