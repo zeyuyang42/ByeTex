@@ -1,6 +1,6 @@
 //! Per-template warning budget regression test.
 //!
-//! For every template under `templates/<name>/`, runs `bytetex_core::convert`
+//! For every template under `tests/inhouse/<name>/`, runs `bytetex_core::convert`
 //! on the entry `.tex` and asserts the warning count stays at or below the
 //! recorded budget. The budgets are intentionally tight — a regression
 //! (e.g. a refactor that re-warns on previously-handled commands) trips this
@@ -29,6 +29,7 @@ fn check_template(rel: &str, budget: usize) {
         &source,
         &ConvertOptions {
             source_name: Some(rel.to_string()),
+            ..Default::default()
         },
     );
     let count = out.warnings.len();
@@ -55,27 +56,32 @@ fn check_template(rel: &str, budget: usize) {
 //   post-merge corpus pass (math accents, escapes, footnote, multirow,
 //   href, url, label, font sizes, appendix, more no-op packages, more
 //   transparent envs)                                      IEEE 17 ACM  0 NeurIPS  1 thesis  0
-// All four templates compile to PDF; ACM and thesis are at 0 warnings.
-// IEEE's residual 17 are IEEE-class-specific commands (IEEEauthorblockN/A,
-// IEEEpubid, etc.) — covered by a future IEEE-specific skill rather than
-// emitter rules.
+//   class-aware template emission (charged-ieee, clean-acmart,
+//   lucky-icml; \IEEEkeywords captured; abstract field captured for
+//   classes that accept it)                                IEEE 16 ACM  0 NeurIPS  1 thesis  0
+//   silent-drop audit: converted previously-silent drops of ACM author-info
+//   fields (\authornote, \email, …) and IEEEtran content commands into
+//   UnsupportedCommand warnings. ACM +3 = \authornote + 2×\email (the
+//   \institution/\city/\country inside \affiliation are consumed by the
+//   \affiliation silent-drop before they reach the dispatcher).
+//                                                          IEEE 16 ACM  3 NeurIPS  1 thesis  0
 
 #[test]
 fn ieee_template_within_budget() {
-    check_template("templates/IEEE/conference_101719.tex", 17);
+    check_template("tests/inhouse/ieee/conference_101719.tex", 16);
 }
 
 #[test]
 fn acm_template_within_budget() {
-    check_template("templates/ACM/sample-sigconf.tex", 0);
+    check_template("tests/inhouse/acm/sample-sigconf.tex", 3);
 }
 
 #[test]
 fn neurips_template_within_budget() {
-    check_template("templates/NeurIPS/neurips_paper.tex", 1);
+    check_template("tests/inhouse/neurips/neurips_paper.tex", 1);
 }
 
 #[test]
 fn thesis_template_within_budget() {
-    check_template("templates/thesis/thesis_skeleton.tex", 0);
+    check_template("tests/inhouse/thesis/thesis_skeleton.tex", 0);
 }

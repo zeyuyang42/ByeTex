@@ -25,3 +25,4 @@ mcp = ["dep:bytetex-mcp", "dep:tokio"]
 
 [dev-dependencies]
 serde_json.workspace = true
+tempfile.workspace = true

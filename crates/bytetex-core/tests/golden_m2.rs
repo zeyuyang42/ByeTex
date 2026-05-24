@@ -18,6 +18,7 @@ fn run(rel: &str) -> String {
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {}", path.display(), e));
     let opts = ConvertOptions {
         source_name: Some(rel.to_string()),
+        ..Default::default()
     };
     let out = convert(&source, &opts);
     let warnings_json = serde_json::to_string_pretty(&out.warnings).expect("warnings serialize");
@@ -112,12 +113,12 @@ fn m2_misc_full_article() {
     // v0.2: `\documentclass` is silently dropped (always); `\usepackage` is
     // silently dropped when the package is in the known-noop allowlist
     // (inputenc is). The resulting Typst is clean — no warnings.
-    insta::assert_snapshot!(run("m2_misc/full_article.tex"), @r"
+    insta::assert_snapshot!(run("m2_misc/full_article.tex"), @r#"
     ==== TYPST ====
     = Introduction <sec:intro>
 
     This article demonstrates *several* features at once: _italics_,
-    `monospace`, and section labels.
+    #raw("monospace"), and section labels.
 
     - One.
     - Two.
@@ -128,7 +129,7 @@ fn m2_misc_full_article() {
     We thank the #smallcaps[Authors] for everything.
     ==== WARNINGS ====
     []
-    ");
+    "#);
 }
 
 // ============== M2.3: lists ==============
@@ -176,15 +177,57 @@ fn m2_list_description() {
 // ============== M2.2: inline formatting ==============
 
 #[test]
+fn m2_lone_backtick_in_body_gets_escaped() {
+    // Bug #12 regression: a stray `` ` `` in the body — used by LaTeX as
+    // the left single quote (`` `partial' ``) and sometimes pasted from
+    // markdown-style notes — opened a Typst raw block and failed with
+    // "unclosed raw text". The post-typography pass now escapes lone
+    // backticks. `\texttt{X}` no longer emits backticks (uses `#raw(...)`)
+    // so legitimate raw inlines aren't affected.
+    let src = "He called it `partial' tokens.\n";
+    let out = convert(
+        src,
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        out.typst.contains("\\`partial"),
+        "expected escaped `\\``, got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn m2_texttt_uses_raw_function_form() {
+    // Bug #12 follow-up: `\texttt{X}` now emits `#raw("X")` rather than
+    // backtick-wrapped raw inline, so the surrounding lone-backtick escape
+    // can run without breaking us.
+    let out = convert(
+        "Use \\texttt{convert} please.\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        out.typst.contains("#raw(\"convert\")"),
+        "expected `#raw(\"convert\")`, got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
 fn m2_inline_basic() {
-    insta::assert_snapshot!(run("m2_inline/basic.tex"), @r"
+    insta::assert_snapshot!(run("m2_inline/basic.tex"), @r#"
     ==== TYPST ====
-    A paragraph with _italics_, *bold*, _also italics_, and `monospace` words.
+    A paragraph with _italics_, *bold*, _also italics_, and #raw("monospace") words.
 
     Another with #underline[underlined] and #smallcaps[Small Caps].
     ==== WARNINGS ====
     []
-    ");
+    "#);
 }
 
 #[test]
@@ -201,18 +244,18 @@ fn m2_inline_nested() {
 
 #[test]
 fn m2_inline_in_heading() {
-    insta::assert_snapshot!(run("m2_inline/in_heading.tex"), @r"
+    insta::assert_snapshot!(run("m2_inline/in_heading.tex"), @r#"
     ==== TYPST ====
     = The _Curious_ Case of *Bold*
 
     Body of the section.
 
-    #heading(level: 2, numbering: none)[Heading with `code`]
+    #heading(level: 2, numbering: none)[Heading with #raw("code")]
 
     More body.
     ==== WARNINGS ====
     []
-    ");
+    "#);
 }
 
 #[test]
@@ -236,4 +279,60 @@ fn m2_sections_mixed_body() {
     ==== WARNINGS ====
     []
     ");
+}
+
+// ============== Phase B: TDD red test for Bug #18 ==============
+
+#[test]
+#[ignore = "Bug #18 — pending fix: \\def/\\edef/\\gdef emitted verbatim"]
+fn m2_def_primitives_dropped_silently() {
+    // Bug #18: TeX primitives `\def`, `\edef`, `\gdef`, `\xdef`, `\let` pass
+    // through the emitter verbatim. In Typst the leading backslash is either
+    // a math escape or a syntax error, so the document fails to compile. These
+    // primitives should be silently dropped (same policy as `\newcommand`).
+    let out = convert(
+        "\\def\\foo{bar}\n\\edef\\baz{qux}\n\\gdef\\hello{world}\n\nBody.\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        !out.typst.contains("\\def"),
+        "`\\def` must not appear in output, got:\n{}",
+        out.typst
+    );
+    assert!(
+        !out.typst.contains("\\edef"),
+        "`\\edef` must not appear in output, got:\n{}",
+        out.typst
+    );
+    assert!(
+        !out.typst.contains("\\gdef"),
+        "`\\gdef` must not appear in output, got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("Body."),
+        "body text must be preserved, got:\n{}",
+        out.typst
+    );
+}
+
+// ============== Bug C: math word letter boundary ==============
+
+#[test]
+fn m2_math_word_no_letter_fusion() {
+    // A bare math word following another letter-ending identifier must NOT
+    // fuse with it. E.g. `f dt` contains two words `f` and `dt`; without the
+    // boundary guard the emitter outputs `f d t` with no space between `f` and
+    // `d` (letter fusion). The fix inserts a space so Typst sees `f` and `dt`
+    // (after splitting) as separate identifiers.
+    let out = convert(r"$f \, dt$", &ConvertOptions::default());
+    // `f` must not fuse with the leading `d` of `dt`.
+    assert!(
+        !out.typst.contains("fd"),
+        "expected no letter fusion `fd`, got:\n{}",
+        out.typst
+    );
 }
