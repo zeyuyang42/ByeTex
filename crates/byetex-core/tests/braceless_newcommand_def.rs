@@ -112,12 +112,11 @@ $\baz$
 }
 
 #[test]
-fn braceless_def_with_optional_default_still_bails() {
+fn braceless_def_with_optional_default_expands_via_default() {
     // `\newcommand\foo[1][default]{body}` — optional-default form.
-    // We don't model defaults yet, so `extract_newcommand` returns
-    // None and the call site emits an `ambiguous_math` warning. This
-    // test pins that known limitation so future work doesn't quietly
-    // change it without thought.
+    // Previously bailed; now harvested via the optional_defaults map
+    // on MacroDef. Calling `\foo` (no bracket) substitutes `default`
+    // for `#1`. See newcommand_optional_default.rs for full coverage.
     let src = r"\documentclass{article}
 \newcommand\foo[1][default]{[[#1]]}
 \begin{document}
@@ -129,9 +128,18 @@ $\foo$
         .filter(|m| m.contains("foo"))
         .collect();
     assert!(
-        !amb.is_empty(),
-        "optional-default form must still warn (known limitation); got: {:?}",
-        ambiguous_math_messages(&out)
+        amb.is_empty(),
+        "no ambiguous_math expected for \\foo (now harvested); got: {:?}",
+        amb
+    );
+    // `default` should appear in the output (substituted into `#1`).
+    // Typst math splits multi-letter words char-by-char, so the value
+    // may show up as `d e f a u l t` rather than `default`.
+    let stripped: String = out.typst.chars().filter(|c| !c.is_whitespace()).collect();
+    assert!(
+        stripped.contains("default"),
+        "expected `default` (substituted value) in output; got:\n{}",
+        out.typst
     );
 }
 

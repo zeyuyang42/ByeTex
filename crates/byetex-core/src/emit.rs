@@ -22,12 +22,21 @@ use crate::warnings::{Category, Range, Severity, Warning};
 /// raw LaTeX source between the outer curly braces; expansion inlines
 /// the body at every call site, substituting `#1` / `#2` / … with the
 /// raw source of the call's curly_group arguments before re-parsing.
-#[derive(Debug, Clone)]
+///
+/// `optional_defaults` models LaTeX2e `\newcommand\foo[N][default]` and
+/// the `xargspec` package's `\newcommandx\foo[N][K=default]` form. The
+/// map is keyed by 1-indexed position: position `K` is optional with
+/// the given default string substituted when the call site omits the
+/// `[arg]`. Empty map means all `params` positions are mandatory.
+#[derive(Debug, Clone, Default)]
 pub(crate) struct MacroDef {
     /// Number of `#N` parameters expected. Zero for no-arg macros.
     pub params: usize,
     /// Raw LaTeX body, brace-stripped.
     pub body: String,
+    /// Position -> default-value source. Positions in this map are
+    /// optional at the call site; absent positions are mandatory.
+    pub optional_defaults: HashMap<usize, String>,
 }
 
 /// Walk `source` once and collect every `\newcommand` / `\def`
@@ -50,6 +59,20 @@ pub(crate) fn harvest_macros_from_source(source: &str) -> HashMap<String, MacroD
             "old_command_definition" => {
                 let _ = extract_def_and_record(n, source, &mut out);
             }
+            "generic_command" => {
+                // `\newcommandx` (xargspec) doesn't have a built-in
+                // tree-sitter node — it parses as a generic_command.
+                // Detect it explicitly and harvest the definition.
+                if command_name_text_static(n, source).as_deref() == Some("\\newcommandx") {
+                    if let Some((name, def)) = extract_newcommandx(n, source) {
+                        out.insert(name, def);
+                    }
+                }
+                let mut cursor = n.walk();
+                for c in n.children(&mut cursor) {
+                    stack.push(c);
+                }
+            }
             _ => {
                 let mut cursor = n.walk();
                 for c in n.children(&mut cursor) {
@@ -59,6 +82,21 @@ pub(crate) fn harvest_macros_from_source(source: &str) -> HashMap<String, MacroD
         }
     }
     out
+}
+
+/// Free-function variant of `command_name_text` for use inside
+/// `harvest_macros_from_source` (which has no `Emitter` self). Returns
+/// the source text of the first `command_name` child, or `None`.
+fn command_name_text_static(node: Node<'_>, src: &str) -> Option<String> {
+    let mut cursor = node.walk();
+    let mut result = None;
+    for c in node.children(&mut cursor) {
+        if c.kind() == "command_name" {
+            result = Some(src[c.start_byte()..c.end_byte()].to_string());
+            break;
+        }
+    }
+    result
 }
 
 /// Sentinel character emitted by `push_math_symbol` immediately after a
@@ -185,6 +223,7 @@ impl<'a> Emitter<'a> {
                     .or_insert_with(|| MacroDef {
                         params: seed.params,
                         body: seed.body.to_string(),
+                        optional_defaults: HashMap::new(),
                     });
             }
         }
@@ -274,7 +313,14 @@ impl<'a> Emitter<'a> {
                 "generic_command" => {
                     // generic_command does NOT produce \renewcommand/\providecommand/
                     // \DeclareMathOperator (those are new_command_definition in tree-sitter).
-                    // Just recurse into children in case there's a nested definition.
+                    // BUT `\newcommandx` (xargspec package) parses as generic_command
+                    // because tree-sitter-latex has no built-in keyword for it.
+                    // Harvest it explicitly.
+                    if command_name_text(n, self.src).as_deref() == Some("\\newcommandx") {
+                        if let Some((name, def)) = extract_newcommandx(n, self.src) {
+                            self.macros.insert(name, def);
+                        }
+                    }
                     let mut cursor = n.walk();
                     for c in n.children(&mut cursor) {
                         stack.push(c);
@@ -293,6 +339,7 @@ impl<'a> Emitter<'a> {
                                         .or_insert_with(|| MacroDef {
                                             params: seed.params,
                                             body: seed.body.to_string(),
+                                            optional_defaults: HashMap::new(),
                                         });
                                 }
                             }
@@ -1266,14 +1313,24 @@ impl<'a> Emitter<'a> {
             | Some("\\abstract*") => {
                 node.end_byte()
             }
-            // `\newcommandx` (xargs package) — tree-sitter sees this as a
-            // generic_command (not new_command_definition) so we cannot harvest
-            // it via extract_newcommand. Silently drop the definition token;
-            // any calls to the undefined macro will warn at expansion time.
-            // `\newsiamremark` (SIAM theorem-like declaration) — same issue:
-            // custom theorem declarations aren't harvested here. Drop silently
-            // so the warning count doesn't inflate on SIAM papers.
-            Some("\\newcommandx") | Some("\\newsiamremark") | Some("\\newsiamthm") => {
+            // `\newcommandx` (xargs/xargspec package) parses as a bare
+            // generic_command with only its command_name child; the
+            // `\name[N][K=def]{body}` definition lands as sibling
+            // nodes. Bump `skip_until` past those siblings so we don't
+            // leak the raw definition into the output.
+            Some("\\newcommandx") => {
+                if let Some((_n, def_end)) =
+                    extract_newcommandx_and_end(node, self.src)
+                {
+                    self.skip_until = self.skip_until.max(def_end);
+                    return def_end;
+                }
+                node.end_byte()
+            }
+            // `\newsiamremark`/`\newsiamthm` (SIAM theorem declarations)
+            // — same issue: not harvested. Drop silently so the warning
+            // count doesn't inflate on SIAM papers.
+            Some("\\newsiamremark") | Some("\\newsiamthm") => {
                 node.end_byte()
             }
             // Macro (re)definitions in text mode — warn because the user may
@@ -1682,26 +1739,105 @@ impl<'a> Emitter<'a> {
             Some(d) => d,
             None => return node.end_byte(),
         };
-        // Collect the call's curly_group arguments in order.
+        // Walk the call's children once, collecting brack_groups
+        // (optional args) and curly_groups (mandatory args) in source
+        // order. Both lists feed the per-position resolution below.
         let mut cursor = node.walk();
-        let mut args: Vec<String> = node
-            .children(&mut cursor)
-            .filter(|c| c.kind() == "curly_group")
-            .map(|c| {
-                // Strip the outer `{` and `}` from each arg.
-                self.src
-                    .get(c.start_byte() + 1..c.end_byte() - 1)
-                    .unwrap_or("")
-                    .to_string()
-            })
-            .collect();
+        let mut brack_args: Vec<String> = Vec::new();
+        let mut curly_args: Vec<String> = Vec::new();
+        for c in node.children(&mut cursor) {
+            match c.kind() {
+                "brack_group" => {
+                    brack_args.push(
+                        self.src
+                            .get(c.start_byte() + 1..c.end_byte() - 1)
+                            .unwrap_or("")
+                            .to_string(),
+                    );
+                }
+                "curly_group" => {
+                    curly_args.push(
+                        self.src
+                            .get(c.start_byte() + 1..c.end_byte() - 1)
+                            .unwrap_or("")
+                            .to_string(),
+                    );
+                }
+                _ => {}
+            }
+        }
+        // Source-byte peek for an immediately-following `[optional]` —
+        // tree-sitter sometimes attaches it as an AST sibling rather
+        // than a child of the generic_command. Same pattern PR #27
+        // proved out for `\xrightarrow[g]{f}`.
+        let mut consumed_end = node.end_byte();
+        if !macro_def.optional_defaults.is_empty() && brack_args.is_empty() {
+            let bytes = self.src.as_bytes();
+            let mut i = consumed_end;
+            while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                i += 1;
+            }
+            if i < bytes.len() && bytes[i] == b'[' {
+                let inner_start = i + 1;
+                let mut j = inner_start;
+                let mut depth = 0i32;
+                while j < bytes.len() {
+                    match bytes[j] {
+                        b'\\' if j + 1 < bytes.len() => {
+                            j += 2;
+                            continue;
+                        }
+                        b'{' => depth += 1,
+                        b'}' => depth -= 1,
+                        b']' if depth == 0 => break,
+                        _ => {}
+                    }
+                    j += 1;
+                }
+                if j < bytes.len() && bytes[j] == b']' {
+                    brack_args.push(self.src[inner_start..j].to_string());
+                    consumed_end = j + 1;
+                }
+            }
+        }
+        // Resolve each parameter position from defaults + call args.
+        // Positions in `optional_defaults` consume from brack_args (in
+        // 1-indexed sorted order); other positions consume from
+        // curly_args (in order). Missing brack_args fall back to the
+        // captured default.
+        let mut args: Vec<String> = Vec::with_capacity(macro_def.params);
+        if macro_def.optional_defaults.is_empty() {
+            // Fast path — no optional args, behave exactly as before.
+            args.extend(curly_args.iter().cloned());
+        } else {
+            let mut optional_positions: Vec<usize> =
+                macro_def.optional_defaults.keys().copied().collect();
+            optional_positions.sort();
+            let mut brack_iter = brack_args.iter();
+            let mut curly_iter = curly_args.iter();
+            for pos in 1..=macro_def.params {
+                if optional_positions.binary_search(&pos).is_ok() {
+                    match brack_iter.next() {
+                        Some(v) => args.push(v.clone()),
+                        None => args.push(
+                            macro_def
+                                .optional_defaults
+                                .get(&pos)
+                                .cloned()
+                                .unwrap_or_default(),
+                        ),
+                    }
+                } else if let Some(v) = curly_iter.next() {
+                    args.push(v.clone());
+                }
+            }
+        }
         // If the call site has fewer curly_groups than the macro expects,
         // try LaTeX's brace-less calling convention: read the next N
         // tokens from the raw source (`\name`, `{group}`, or one char).
         // Real arXiv papers heavily rely on this — `$\mat X$`, `\vec a`,
         // `\rvec \alpha`. Without it every such call site is dropped with
         // a `custom_macro` warning.
-        let mut consumed_end = node.end_byte();
         while args.len() < macro_def.params {
             match consume_braceless_arg(self.src, consumed_end) {
                 Some((arg, end)) => {
@@ -2866,6 +3002,44 @@ impl<'a> Emitter<'a> {
             // rendering effect; the tag itself was handled by `\tag` (or
             // wasn't emitted at all in our model). Silent drop.
             "\\raisetag" => node.end_byte(),
+            // TeX control-flow primitives. These leak into math when a
+            // user macro body (e.g. \pdata, \traceD) uses \ifthenelse /
+            // \ifstrempty / etc. and we expand it inline. We can't
+            // actually evaluate the condition at conversion time, so
+            // pick a sensible branch and partial-render. Honest about
+            // the loss but compiles cleanly.
+            //
+            // `\ifthenelse{cond}{true}{false}` → emit `{true}`; the
+            // condition tested at TeX time is usually "interesting
+            // case" vs "fallback" and the true branch is the richer
+            // form in the bodies we see in 2605.22765 and 2605.22159.
+            "\\ifthenelse" => self.emit_math_then_branch(node, 1),
+            // `\ifstrempty{x}{empty}{nonempty}` → emit `{nonempty}`;
+            // most call sites pass a non-empty `x`. Same rationale.
+            "\\ifstrempty" => self.emit_math_then_branch(node, 2),
+            // `\notempty[default]{value}` (xargspec): when value is
+            // non-empty, returns value; else default. Emit value.
+            "\\notempty" => {
+                let mut cursor = node.walk();
+                let curlys: Vec<Node<'_>> = node
+                    .children(&mut cursor)
+                    .filter(|c| c.kind() == "curly_group")
+                    .collect();
+                if let Some(arg) = curlys.first() {
+                    let inner = self.render_math_group(*arg);
+                    self.out.push_str(inner.trim());
+                }
+                node.end_byte()
+            }
+            // Bare conditionals / expansion primitives — drop silently.
+            // Their arguments are AST siblings that get emitted by the
+            // normal walker. Without this drop, every body that uses
+            // TeX conditionals warns once per primitive token.
+            "\\relax" | "\\expandafter" | "\\fi" | "\\else" | "\\ifx" | "\\if"
+            | "\\ifdim" | "\\ifnum" | "\\ifdefined" | "\\ifcsname" | "\\ifpdf"
+            | "\\ifxetex" | "\\ifluatex" | "\\detokenize" | "\\noexpand"
+            | "\\unexpanded" | "\\csname" | "\\endcsname" | "\\protect"
+            | "\\equal" => node.end_byte(),
             // `\xrightarrow[below]{above}` — extensible right arrow with
             // optional labels. Typst's `arrow.r` is the base symbol;
             // attaching labels needs `attach(arrow.r, t: ..., b: ...)`.
@@ -3139,6 +3313,82 @@ impl<'a> Emitter<'a> {
     /// attaches the above/below labels via Typst's `attach` mechanism
     /// (`arrow.r^"above"_"below"`). When labels are missing, emits
     /// the bare arrow.
+    /// Emit a chosen `curly_group` branch of a TeX conditional like
+    /// `\ifthenelse{cond}{true}{false}` (with the cond eaten by
+    /// whatever wrapper `\equal{a}{b}` produces — we drop that
+    /// silently). `branch_idx` is the 0-based index into the
+    /// command's curly_group children. Source-byte scanning also
+    /// picks up curly_groups that tree-sitter attached as AST
+    /// siblings, so `skip_until` is advanced past them too.
+    fn emit_math_then_branch(&mut self, node: Node<'_>, branch_idx: usize) -> usize {
+        // Collect curly_group children (AST level).
+        let mut cursor = node.walk();
+        let mut curlys: Vec<(usize, usize)> = node
+            .children(&mut cursor)
+            .filter(|c| c.kind() == "curly_group")
+            .map(|c| (c.start_byte(), c.end_byte()))
+            .collect();
+        // Source-byte sibling fallback: scan after node.end_byte()
+        // for additional `{...}` groups we want to skip past.
+        let bytes = self.src.as_bytes();
+        let mut cursor_b = node.end_byte();
+        loop {
+            while cursor_b < bytes.len() && bytes[cursor_b].is_ascii_whitespace() {
+                cursor_b += 1;
+            }
+            if cursor_b >= bytes.len() || bytes[cursor_b] != b'{' {
+                break;
+            }
+            let inner_start = cursor_b + 1;
+            let mut j = inner_start;
+            let mut depth = 1i32;
+            while j < bytes.len() {
+                match bytes[j] {
+                    b'\\' if j + 1 < bytes.len() => {
+                        j += 2;
+                        continue;
+                    }
+                    b'{' => depth += 1,
+                    b'}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+                j += 1;
+            }
+            if j >= bytes.len() {
+                break;
+            }
+            curlys.push((cursor_b, j + 1));
+            cursor_b = j + 1;
+        }
+        // Dedup by start byte (AST + source-byte sets may overlap).
+        curlys.sort_by_key(|c| c.0);
+        curlys.dedup_by_key(|c| c.0);
+
+        let mut consumed = node.end_byte();
+        if let Some((start, end)) = curlys.get(branch_idx).copied() {
+            let inner_src = self
+                .src
+                .get(start + 1..end.saturating_sub(1))
+                .unwrap_or("")
+                .to_string();
+            let rendered = self.render_in_sub_emitter(&inner_src, true, true);
+            self.out.push_str(rendered.trim());
+        }
+        // Skip past all curly_groups we saw via source-byte scan.
+        if let Some((_, last_end)) = curlys.last().copied() {
+            consumed = consumed.max(last_end);
+        }
+        if consumed > node.end_byte() {
+            self.skip_until = self.skip_until.max(consumed);
+        }
+        consumed
+    }
+
     fn emit_math_extensible_arrow(&mut self, node: Node<'_>, name: &str) -> usize {
         // Map command name → Typst arrow base symbol. The `x` family
         // is the "extensible" form (auto-stretched in LaTeX); Typst's
@@ -5411,7 +5661,7 @@ fn extract_newcommand(node: Node<'_>, src: &str) -> Option<(String, MacroDef)> {
     let mut name: Option<String> = None;
     let mut params: usize = 0;
     let mut body_group: Option<Node<'_>> = None;
-    let mut brack_groups: usize = 0;
+    let mut optional_default: Option<String> = None;
     // Track whether we've seen the declaration child yet. The
     // brace-less form has a `command_name` as the declaration field,
     // but the body of the macro is also a curly group, and the AST
@@ -5447,19 +5697,21 @@ fn extract_newcommand(node: Node<'_>, src: &str) -> Option<(String, MacroDef)> {
                     }
                 }
             }
-            "brack_group" => {
-                // Optional-default form — bail. We'd need to honour the
-                // default in the placeholder substitution; defer.
-                brack_groups += 1;
+            "brack_group" if optional_default.is_none() && params > 0 => {
+                // LaTeX2e `\newcommand\foo[N][default]{body}` form:
+                // position 1 is optional with this default. Capture
+                // the raw bytes between `[` and `]`, including an
+                // empty default (`[]` — common, e.g. `\traceD[1][]`
+                // means "1 arg, defaults to empty string").
+                let start = child.start_byte() + 1;
+                let end = child.end_byte().saturating_sub(1);
+                optional_default = Some(src.get(start..end).unwrap_or("").to_string());
             }
             "curly_group" if body_group.is_none() => {
                 body_group = Some(child);
             }
             _ => {}
         }
-    }
-    if brack_groups > 0 {
-        return None;
     }
     let name = name?;
     let body_node = body_group?;
@@ -5468,7 +5720,212 @@ fn extract_newcommand(node: Node<'_>, src: &str) -> Option<(String, MacroDef)> {
         .get(body_node.start_byte() + 1..body_node.end_byte() - 1)
         .unwrap_or("")
         .to_string();
-    Some((name, MacroDef { params, body }))
+    let mut optional_defaults = HashMap::new();
+    if let Some(default) = optional_default {
+        // LaTeX2e: position 1 is the optional position when a default
+        // is given. Positions 2..=N remain mandatory.
+        optional_defaults.insert(1, default);
+    }
+    Some((
+        name,
+        MacroDef {
+            params,
+            body,
+            optional_defaults,
+        },
+    ))
+}
+
+/// Extract a `\newcommandx\name[N][K=default, ...]{body}` definition.
+/// `\newcommandx` is from the `xparse`/`xargspec` LaTeX packages and
+/// extends `\newcommand` with positionally-keyed optional defaults:
+/// `[K=default]` makes position K optional with the given default.
+/// Multiple positions can be specified, comma-separated.
+///
+/// tree-sitter-latex parses `\newcommandx` as a *bare* generic_command
+/// containing just the `\newcommandx` command_name token — the new
+/// macro name, the brackets, and the body all end up as *sibling*
+/// nodes of the generic_command, not children. So we can't walk the
+/// AST: we scan the raw source bytes forward from `node.end_byte()`
+/// to find the pieces.
+///
+/// Returns `None` if the source doesn't parse cleanly as a
+/// `\newcommandx` definition.
+fn extract_newcommandx(node: Node<'_>, src: &str) -> Option<(String, MacroDef)> {
+    extract_newcommandx_and_end(node, src).map(|(def, _end)| def)
+}
+
+/// Variant that also returns the source byte position immediately
+/// after the closing `}` of the body. The emit-time dispatcher uses
+/// this to bump `skip_until` so the sibling AST nodes carrying the
+/// definition's bracket/body fragments don't leak into the output.
+fn extract_newcommandx_and_end(
+    node: Node<'_>,
+    src: &str,
+) -> Option<((String, MacroDef), usize)> {
+    let bytes = src.as_bytes();
+    let mut i = node.end_byte();
+
+    // Skip whitespace, then expect `\name`.
+    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    if i >= bytes.len() || bytes[i] != b'\\' {
+        return None;
+    }
+    let name_start = i;
+    i += 1;
+    while i < bytes.len() && (bytes[i].is_ascii_alphabetic() || bytes[i] == b'@') {
+        i += 1;
+    }
+    let name = src.get(name_start..i)?.to_string();
+    if name.len() < 2 {
+        return None;
+    }
+
+    // Helper: skip whitespace and read a `[...]` bracket group with
+    // brace-aware nesting. Returns `(inner, end_after_closing_bracket)`
+    // when found, `None` otherwise.
+    fn read_brack(bytes: &[u8], src: &str, mut i: usize) -> Option<(String, usize)> {
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i >= bytes.len() || bytes[i] != b'[' {
+            return None;
+        }
+        let inner_start = i + 1;
+        let mut j = inner_start;
+        let mut depth = 0i32;
+        while j < bytes.len() {
+            match bytes[j] {
+                b'\\' if j + 1 < bytes.len() => {
+                    j += 2;
+                    continue;
+                }
+                b'{' => depth += 1,
+                b'}' => depth -= 1,
+                b']' if depth == 0 => break,
+                _ => {}
+            }
+            j += 1;
+        }
+        if j >= bytes.len() {
+            return None;
+        }
+        Some((src[inner_start..j].to_string(), j + 1))
+    }
+
+    // Helper: skip whitespace and read a `{...}` curly group. Returns
+    // `(inner, end_after_closing_brace)`.
+    fn read_curly(bytes: &[u8], src: &str, mut i: usize) -> Option<(String, usize)> {
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i >= bytes.len() || bytes[i] != b'{' {
+            return None;
+        }
+        let inner_start = i + 1;
+        let mut j = inner_start;
+        let mut depth = 1i32;
+        while j < bytes.len() {
+            match bytes[j] {
+                b'\\' if j + 1 < bytes.len() => {
+                    j += 2;
+                    continue;
+                }
+                b'{' => depth += 1,
+                b'}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                _ => {}
+            }
+            j += 1;
+        }
+        if j >= bytes.len() {
+            return None;
+        }
+        Some((src[inner_start..j].to_string(), j + 1))
+    }
+
+    // Optional `[N]` for arity.
+    let mut params = 0usize;
+    let mut defaults_src: Option<String> = None;
+    if let Some((inner, after)) = read_brack(bytes, src, i) {
+        if let Ok(n) = inner.trim().parse::<usize>() {
+            params = n;
+            i = after;
+            // A second optional `[K=def, ...]` for default values.
+            if let Some((defs, after2)) = read_brack(bytes, src, i) {
+                defaults_src = Some(defs);
+                i = after2;
+            }
+        }
+    }
+
+    // Mandatory `{body}`.
+    let (body, end_after_body) = read_curly(bytes, src, i)?;
+
+    // Parse the K=default entries (brace-aware split on top-level
+    // commas, then split each entry on the first `=`).
+    let mut optional_defaults: HashMap<usize, String> = HashMap::new();
+    if let Some(defs) = defaults_src {
+        for entry in split_xargspec_defaults(&defs) {
+            if let Some((k, v)) = entry.split_once('=') {
+                if let Ok(pos) = k.trim().parse::<usize>() {
+                    optional_defaults.insert(pos, v.trim().to_string());
+                }
+            }
+        }
+    }
+
+    Some((
+        (
+            name,
+            MacroDef {
+                params,
+                body,
+                optional_defaults,
+            },
+        ),
+        end_after_body,
+    ))
+}
+
+/// Brace-aware split of an xargspec defaults string like
+/// `1=, 3={a, b}, 4=foo` into entries `["1=", "3={a, b}", "4=foo"]`.
+/// Top-level commas separate entries; commas inside `{...}` are kept.
+fn split_xargspec_defaults(s: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let bytes = s.as_bytes();
+    let mut start = 0usize;
+    let mut depth = 0i32;
+    let mut i = 0usize;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' if i + 1 < bytes.len() => {
+                i += 2;
+                continue;
+            }
+            b'{' => depth += 1,
+            b'}' => depth -= 1,
+            b',' if depth == 0 => {
+                out.push(s[start..i].trim().to_string());
+                start = i + 1;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    if start < bytes.len() {
+        let tail = s[start..].trim();
+        if !tail.is_empty() {
+            out.push(tail.to_string());
+        }
+    }
+    out
 }
 
 /// Return the kind-string of the first child of a `new_command_definition` node
@@ -5541,7 +5998,14 @@ fn extract_declare_math_operator_from_newcmd(
     } else {
         format!(r"\operatorname{{{}}}", display)
     };
-    Some((name, MacroDef { params: 0, body }))
+    Some((
+        name,
+        MacroDef {
+            params: 0,
+            body,
+            optional_defaults: HashMap::new(),
+        },
+    ))
 }
 
 /// Maps the well-known math wrap commands to their Typst `(left, right)`
@@ -5665,7 +6129,14 @@ fn extract_def_and_record(
                 depth -= 1;
                 if depth == 0 {
                     let body = src[inner_start..j].to_string();
-                    macros.insert(name, MacroDef { params, body });
+                    macros.insert(
+                        name,
+                        MacroDef {
+                            params,
+                            body,
+                            optional_defaults: HashMap::new(),
+                        },
+                    );
                     return Some(j + 1);
                 }
             }
