@@ -1231,7 +1231,12 @@ impl<'a> Emitter<'a> {
                 self.emit_inline_unwrap(node)
             }
             // Forced line break: Typst uses `\` followed by whitespace.
-            Some("\\\\") => {
+            // `\tabularnewline` is a LaTeX synonym for `\\` inside tabular
+            // environments — handled the same way. Real arXiv papers use
+            // it (28 occurrences on 2605.22507 alone) to avoid the
+            // overloading ambiguity of `\\` at the end of optional-arg
+            // brackets.
+            Some("\\\\") | Some("\\tabularnewline") => {
                 if !self.out.ends_with(' ') && !self.out.ends_with('\n') {
                     self.out.push(' ');
                 }
