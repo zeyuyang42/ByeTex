@@ -229,7 +229,7 @@ impl DocClass {
 fn ieee_show_call(title: &str, authors: &[Author], abstract_: &str, keywords: &str) -> String {
     let mut s = String::new();
     s.push_str("#show: ieee.with(\n");
-    s.push_str(&format!("  title: [{}],\n", title));
+    s.push_str(&format!("  title: [{}],\n", content_escape(title)));
     s.push_str("  authors: (\n");
     for a in authors {
         s.push_str("    (");
@@ -258,7 +258,7 @@ fn ieee_show_call(title: &str, authors: &[Author], abstract_: &str, keywords: &s
     }
     s.push_str("  ),\n");
     if !abstract_.is_empty() {
-        s.push_str(&format!("  abstract: [{}],\n", abstract_));
+        s.push_str(&format!("  abstract: [{}],\n", content_escape(abstract_)));
     }
     if !keywords.is_empty() {
         s.push_str(&format!("  index-terms: ({},),\n", quote_csv(keywords)));
@@ -274,7 +274,7 @@ fn ieee_show_call(title: &str, authors: &[Author], abstract_: &str, keywords: &s
 fn acmart_show_call(title: &str, authors: &[Author], keywords: &str) -> String {
     let mut s = String::new();
     s.push_str("#show: acmart.with(\n");
-    s.push_str(&format!("  title: [{}],\n", title));
+    s.push_str(&format!("  title: [{}],\n", content_escape(title)));
     s.push_str("  authors: (\n");
     for a in authors {
         let aff = a
@@ -306,7 +306,7 @@ fn acmart_show_call(title: &str, authors: &[Author], keywords: &str) -> String {
 fn icml_show_call(title: &str, authors: &[Author], abstract_: &str, keywords: &str) -> String {
     let mut s = String::new();
     s.push_str("#show: conf.with(\n");
-    s.push_str(&format!("  title: [{}],\n", title));
+    s.push_str(&format!("  title: [{}],\n", content_escape(title)));
     s.push_str("  authors: (\n");
     s.push_str("    (\n");
     for a in authors {
@@ -323,7 +323,7 @@ fn icml_show_call(title: &str, authors: &[Author], abstract_: &str, keywords: &s
     s.push_str("    (:),\n"); // empty affiliations map
     s.push_str("  ),\n");
     if !abstract_.is_empty() {
-        s.push_str(&format!("  abstract: [{}],\n", abstract_));
+        s.push_str(&format!("  abstract: [{}],\n", content_escape(abstract_)));
     }
     if !keywords.is_empty() {
         s.push_str(&format!("  keywords: ({},),\n", quote_csv(keywords)));
@@ -336,7 +336,7 @@ fn icml_show_call(title: &str, authors: &[Author], abstract_: &str, keywords: &s
 fn revtyp_show_call(title: &str, authors: &[Author]) -> String {
     let mut s = String::new();
     s.push_str("#show: revtyp.with(\n");
-    s.push_str(&format!("  title: [{}],\n", title));
+    s.push_str(&format!("  title: [{}],\n", content_escape(title)));
     s.push_str("  authors: (\n");
     for a in authors {
         let aff = a
@@ -365,7 +365,7 @@ fn elsearticle_show_call(
 ) -> String {
     let mut s = String::new();
     s.push_str("#show: elsearticle.with(\n");
-    s.push_str(&format!("  title: [{}],\n", title));
+    s.push_str(&format!("  title: [{}],\n", content_escape(title)));
     s.push_str("  authors: (\n");
     for a in authors {
         s.push_str(&format!(
@@ -375,7 +375,7 @@ fn elsearticle_show_call(
     }
     s.push_str("  ),\n");
     if !abstract_.is_empty() {
-        s.push_str(&format!("  abstract: [{}],\n", abstract_));
+        s.push_str(&format!("  abstract: [{}],\n", content_escape(abstract_)));
     }
     if !keywords.is_empty() {
         s.push_str(&format!("  keywords: ({},),\n", quote_csv(keywords)));
@@ -399,7 +399,7 @@ fn arkheion_show_call(
 ) -> String {
     let mut s = String::new();
     s.push_str("#show: arkheion.with(\n");
-    s.push_str(&format!("  title: [{}],\n", title));
+    s.push_str(&format!("  title: [{}],\n", content_escape(title)));
     s.push_str("  authors: (\n");
     for a in authors {
         // For string-literal slots, run raw values through string_escape so
@@ -423,7 +423,7 @@ fn arkheion_show_call(
     }
     s.push_str("  ),\n");
     if !abstract_.is_empty() {
-        s.push_str(&format!("  abstract: [{}],\n", abstract_));
+        s.push_str(&format!("  abstract: [{}],\n", content_escape(abstract_)));
     }
     if !keywords.is_empty() {
         s.push_str(&format!("  keywords: ({},),\n", quote_csv(keywords)));
@@ -440,7 +440,7 @@ fn arkheion_show_call(
 fn lncs_show_call(title: &str, authors: &[Author], abstract_: &str) -> String {
     let mut s = String::new();
     s.push_str("#show: lncs.with(\n");
-    s.push_str(&format!("  title: [{}],\n", title));
+    s.push_str(&format!("  title: [{}],\n", content_escape(title)));
     s.push_str("  authors: (\n");
     for a in authors {
         s.push_str(&format!(
@@ -450,7 +450,7 @@ fn lncs_show_call(title: &str, authors: &[Author], abstract_: &str) -> String {
     }
     s.push_str("  ),\n");
     if !abstract_.is_empty() {
-        s.push_str(&format!("  abstract: [{}],\n", abstract_));
+        s.push_str(&format!("  abstract: [{}],\n", content_escape(abstract_)));
     }
     s.push_str(")\n");
     s
