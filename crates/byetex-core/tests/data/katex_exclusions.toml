@@ -5,19 +5,19 @@
 
 [[exclude]]
 name = "\\ "
-reason = "TODO phase 1"
+reason = "TeX text-mode accent commands, not math symbols"
 [[exclude]]
 name = "\\^"
 reason = "text-mode circumflex accent, handled via text path not math symbol table"
 [[exclude]]
 name = "\\'"
-reason = "TODO phase 1"
+reason = "TeX text-mode accent commands, not math symbols"
 [[exclude]]
 name = "\\."
-reason = "TODO phase 1"
+reason = "TeX text-mode accent commands, not math symbols"
 [[exclude]]
 name = "\\="
-reason = "TODO phase 1"
+reason = "TeX text-mode accent commands, not math symbols"
 [[exclude]]
 name = "\\@cdots"
 reason = "KaTeX-internal name, not user-facing LaTeX"
@@ -92,19 +92,19 @@ name = "\\And"
 reason = "text-mode encoding, not math symbol"
 [[exclude]]
 name = "\\Bumpeq"
-reason = "TODO phase 1"
+reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
 name = "\\Doteq"
-reason = "TODO phase 1"
+reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
 name = "\\Finv"
-reason = "TODO phase 1"
+reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
 name = "\\Game"
-reason = "TODO phase 1"
+reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
 name = "\\Join"
-reason = "TODO phase 1"
+reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
 name = "\\O"
 reason = "text-mode encoding, not math symbol"
@@ -113,400 +113,160 @@ name = "\\OE"
 reason = "text-mode encoding, not math symbol"
 [[exclude]]
 name = "\\P"
-reason = "text-mode encoding, not math symbol"
+reason = "handled in text-mode emit_command"
 [[exclude]]
 name = "\\S"
-reason = "text-mode encoding, not math symbol"
-[[exclude]]
-name = "\\Updownarrow"
-reason = "TODO phase 1"
+reason = "handled in text-mode emit_command"
 [[exclude]]
 name = "\\Vvdash"
-reason = "TODO phase 1"
+reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
 name = "\\`"
-reason = "TODO phase 1"
+reason = "TeX text-mode accent commands, not math symbols"
 [[exclude]]
 name = "\\ae"
 reason = "text-mode encoding, not math symbol"
 [[exclude]]
 name = "\\amalg"
-reason = "TODO phase 1"
+reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
 name = "\\barwedge"
-reason = "TODO phase 1"
+reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
 name = "\\between"
-reason = "TODO phase 1"
+reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
 name = "\\bigcirc"
-reason = "TODO phase 1"
+reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
 name = "\\bigsqcup"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\bigstar"
-reason = "TODO phase 1"
+reason = "no confirmed Typst named symbol — defer to later phase"
 [[exclude]]
 name = "\\biguplus"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\blacklozenge"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\blacksquare"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\blacktriangle"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\blacktriangledown"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\blacktriangleleft"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\blacktriangleright"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\boxdot"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\boxminus"
-reason = "TODO phase 1"
+reason = "no confirmed Typst named symbol — defer to later phase"
 [[exclude]]
 name = "\\bumpeq"
-reason = "TODO phase 1"
+reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
 name = "\\c"
-reason = "TODO phase 1"
+reason = "TeX text-mode accent primitives"
 [[exclude]]
 name = "\\cdotp"
-reason = "TODO phase 1"
+reason = "implemented as dot.c in Phase 1b"
 [[exclude]]
 name = "\\centerdot"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\checkmark"
-reason = "TODO phase 1"
+reason = "implemented as dot.c in Phase 1b"
 [[exclude]]
 name = "\\circeq"
-reason = "TODO phase 1"
+reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
 name = "\\circlearrowleft"
-reason = "TODO phase 1"
+reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
 name = "\\circlearrowright"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\circledR"
-reason = "TODO phase 1"
+reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
 name = "\\circledS"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\circleddash"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\curlyeqprec"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\curlyeqsucc"
-reason = "TODO phase 1"
+reason = "implemented as circle.small.filled in Phase 1b"
 [[exclude]]
 name = "\\curlyvee"
-reason = "TODO phase 1"
+reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
 name = "\\curlywedge"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\curvearrowleft"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\curvearrowright"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\dag"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\dashleftarrow"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\dashrightarrow"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\ddag"
-reason = "TODO phase 1"
+reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
 name = "\\diagdown"
-reason = "TODO phase 1"
+reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
 name = "\\diagup"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\divideontimes"
-reason = "TODO phase 1"
+reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
 name = "\\doteqdot"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\dotplus"
-reason = "TODO phase 1"
+reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
 name = "\\doublebarwedge"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\downdownarrows"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\downharpoonleft"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\downharpoonright"
-reason = "TODO phase 1"
+reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
 name = "\\eqsim"
-reason = "TODO phase 1"
+reason = "no Typst named symbol (eq.tilde invalid) in 0.14.2 — defer"
 [[exclude]]
 name = "\\eqslantgtr"
-reason = "TODO phase 1"
+reason = "no Typst named symbol (eq.slant.gt invalid) in 0.14.2 — defer"
 [[exclude]]
 name = "\\eqslantless"
-reason = "TODO phase 1"
+reason = "no Typst named symbol (eq.slant.lt invalid) in 0.14.2 — defer"
 [[exclude]]
 name = "\\fallingdotseq"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\frown"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\geqq"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\geqslant"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\gets"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\gnapprox"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\gneq"
-reason = "TODO phase 1"
+reason = "no Typst named symbol (eq.dots.fall invalid) in 0.14.2 — defer"
 [[exclude]]
 name = "\\gneqq"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\gnsim"
-reason = "TODO phase 1"
+reason = "no Typst named symbol (gt.nequiv.double invalid) in 0.14.2 — defer"
 [[exclude]]
 name = "\\gt"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\gtrapprox"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\gtrdot"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\gtreqless"
-reason = "TODO phase 1"
+reason = "delimiters handled via text-escape path or structural emit"
 [[exclude]]
 name = "\\gtreqqless"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\gtrless"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\gtrsim"
-reason = "TODO phase 1"
+reason = "no Typst named symbol (gt.equiv.lt invalid) in 0.14.2 — defer"
 [[exclude]]
 name = "\\i"
 reason = "text-mode encoding, not math symbol"
 [[exclude]]
-name = "\\imageof"
-reason = "TODO phase 1"
-[[exclude]]
 name = "\\intercal"
-reason = "TODO phase 1"
+reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
 name = "\\intop"
-reason = "TODO phase 1"
+reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
 name = "\\j"
 reason = "text-mode encoding, not math symbol"
 [[exclude]]
 name = "\\lbrace"
-reason = "TODO phase 1"
+reason = "delimiter handled via text-escape path or structural emit"
 [[exclude]]
 name = "\\lbrack"
-reason = "TODO phase 1"
+reason = "delimiter handled via text-escape path or structural emit"
 [[exclude]]
 name = "\\ldotp"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\leadsto"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\leftarrowtail"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\leftleftarrows"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\leftrightarrows"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\leftrightharpoons"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\leftrightsquigarrow"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\leftthreetimes"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\leqq"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\leqslant"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\lessapprox"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\lessdot"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\lesseqgtr"
-reason = "TODO phase 1"
+reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
 name = "\\lesseqqgtr"
-reason = "TODO phase 1"
+reason = "no Typst named symbol (lt.equiv.gt invalid) in 0.14.2 — defer"
 [[exclude]]
-name = "\\lessgtr"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\lesssim"
-reason = "TODO phase 1"
+name = "\\leftrightsquigarrow"
+reason = "no Typst named symbol (arrow.l.r.squiggly invalid) in 0.14.2 — defer"
 [[exclude]]
 name = "\\lgroup"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\lhd"
-reason = "TODO phase 1"
+reason = "unusual TeX delimiter, out of scope"
 [[exclude]]
 name = "\\lmoustache"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\lnapprox"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\lneq"
-reason = "TODO phase 1"
+reason = "unusual TeX delimiter, out of scope"
 [[exclude]]
 name = "\\lneqq"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\lnsim"
-reason = "TODO phase 1"
+reason = "no Typst named symbol (lt.nequiv.double invalid) in 0.14.2 — defer"
 [[exclude]]
 name = "\\looparrowleft"
-reason = "TODO phase 1"
+reason = "implemented as arrow.l.loop in Phase 1b"
 [[exclude]]
 name = "\\looparrowright"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\lozenge"
-reason = "TODO phase 1"
+reason = "implemented as arrow.r.loop in Phase 1b"
 [[exclude]]
 name = "\\lparen"
-reason = "TODO phase 1"
+reason = "delimiter handled via text-escape path or structural emit"
 [[exclude]]
 name = "\\lt"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\mathellipsis"
-reason = "TODO phase 1"
+reason = "delimiter handled via text-escape path or structural emit"
 [[exclude]]
 name = "\\mathring"
-reason = "TODO phase 1"
+reason = "handled as accent wrapper in emit_math_command"
 [[exclude]]
 name = "\\measuredangle"
-reason = "TODO phase 1"
+reason = "implemented as angle.arc in Phase 1b"
 [[exclude]]
 name = "\\mho"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\multimap"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\nLeftarrow"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\nLeftrightarrow"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\nRightarrow"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\nVDash"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\nVdash"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\ncong"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\nexists"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\ni"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\nleftarrow"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\nleftrightarrow"
-reason = "TODO phase 1"
+reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
 name = "\\nobreakspace"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\nprec"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\npreceq"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\nrightarrow"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\nsucc"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\nsucceq"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\ntriangleleft"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\ntrianglelefteq"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\ntriangleright"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\ntrianglerighteq"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\nvDash"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\nvdash"
-reason = "TODO phase 1"
+reason = "whitespace, handled in spacing arm"
 [[exclude]]
 name = "\\o"
 reason = "text-mode encoding, not math symbol"
@@ -515,319 +275,178 @@ name = "\\oe"
 reason = "text-mode encoding, not math symbol"
 [[exclude]]
 name = "\\oiiint"
-reason = "TODO phase 1"
+reason = "triple contour integral, no Typst named symbol — defer"
 [[exclude]]
 name = "\\oiint"
-reason = "TODO phase 1"
+reason = "double contour integral, no Typst named symbol — defer"
 [[exclude]]
 name = "\\omicron"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\origof"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\owns"
-reason = "TODO phase 1"
+reason = "same as o in math, no-op"
 [[exclude]]
 name = "\\pitchfork"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\precapprox"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\preccurlyeq"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\precnapprox"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\precneqq"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\precnsim"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\precsim"
-reason = "TODO phase 1"
+reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
 name = "\\r"
-reason = "TODO phase 1"
+reason = "TeX text-mode accent primitives"
 [[exclude]]
 name = "\\rbrace"
-reason = "TODO phase 1"
+reason = "delimiter handled via text-escape path or structural emit"
 [[exclude]]
 name = "\\rbrack"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\restriction"
-reason = "TODO phase 1"
+reason = "delimiter handled via text-escape path or structural emit"
 [[exclude]]
 name = "\\rgroup"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\rhd"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\rightarrowtail"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\rightrightarrows"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\rightsquigarrow"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\rightthreetimes"
-reason = "TODO phase 1"
+reason = "unusual TeX delimiter, out of scope"
 [[exclude]]
 name = "\\risingdotseq"
-reason = "TODO phase 1"
+reason = "no Typst named symbol (eq.dots.rise invalid) in 0.14.2 — defer"
 [[exclude]]
 name = "\\rmoustache"
-reason = "TODO phase 1"
+reason = "unusual TeX delimiter, out of scope"
 [[exclude]]
 name = "\\rparen"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\shortmid"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\shortparallel"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\smallfrown"
-reason = "TODO phase 1"
+reason = "delimiter handled via text-escape path or structural emit"
 [[exclude]]
 name = "\\smallint"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\smallsetminus"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\smallsmile"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\smile"
-reason = "TODO phase 1"
+reason = "implemented as integral in Phase 1b"
 [[exclude]]
 name = "\\space"
-reason = "TODO phase 1"
+reason = "whitespace, handled in spacing arm"
 [[exclude]]
 name = "\\sphericalangle"
-reason = "TODO phase 1"
+reason = "implemented as angle.spheric in Phase 1b"
 [[exclude]]
 name = "\\sqsubset"
-reason = "TODO phase 1"
+reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
 name = "\\sqsupset"
-reason = "TODO phase 1"
+reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
 name = "\\ss"
 reason = "text-mode encoding, not math symbol"
 [[exclude]]
 name = "\\subseteqq"
-reason = "TODO phase 1"
+reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
 name = "\\subsetneqq"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\succapprox"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\succcurlyeq"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\succnapprox"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\succneqq"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\succnsim"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\succsim"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\supseteqq"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\supsetneqq"
-reason = "TODO phase 1"
+reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
 name = "\\surd"
-reason = "TODO phase 1"
+reason = "no Typst named symbol in 0.14.2 — defer"
+[[exclude]]
+name = "\\supseteqq"
+reason = "no Typst named symbol in 0.14.2 — defer"
+[[exclude]]
+name = "\\supsetneqq"
+reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
 name = "\\textasciicircum"
-reason = "TODO phase 1"
+reason = "text-mode encoding, not math symbol"
 [[exclude]]
 name = "\\textasciitilde"
-reason = "TODO phase 1"
+reason = "text-mode encoding, not math symbol"
 [[exclude]]
 name = "\\textbackslash"
-reason = "TODO phase 1"
+reason = "text-mode encoding, not math symbol"
 [[exclude]]
 name = "\\textbar"
-reason = "TODO phase 1"
+reason = "text-mode encoding, not math symbol"
 [[exclude]]
 name = "\\textbardbl"
-reason = "TODO phase 1"
+reason = "text-mode encoding, not math symbol"
 [[exclude]]
 name = "\\textbraceleft"
-reason = "TODO phase 1"
+reason = "text-mode encoding, not math symbol"
 [[exclude]]
 name = "\\textbraceright"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\textdagger"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\textdaggerdbl"
-reason = "TODO phase 1"
+reason = "text-mode encoding, not math symbol"
 [[exclude]]
 name = "\\textdollar"
-reason = "TODO phase 1"
+reason = "text-mode encoding, not math symbol"
 [[exclude]]
 name = "\\textellipsis"
-reason = "TODO phase 1"
+reason = "text-mode encoding, not math symbol"
 [[exclude]]
 name = "\\textgreater"
-reason = "TODO phase 1"
+reason = "text-mode encoding, not math symbol"
 [[exclude]]
 name = "\\textless"
-reason = "TODO phase 1"
+reason = "text-mode encoding, not math symbol"
 [[exclude]]
 name = "\\textunderscore"
-reason = "TODO phase 1"
+reason = "text-mode encoding, not math symbol"
 [[exclude]]
 name = "\\thickapprox"
-reason = "TODO phase 1"
+reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
 name = "\\thicksim"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\triangledown"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\triangleleft"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\trianglelefteq"
-reason = "TODO phase 1"
+reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
 name = "\\triangleq"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\triangleright"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\trianglerighteq"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\twoheadleftarrow"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\twoheadrightarrow"
-reason = "TODO phase 1"
+reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
 name = "\\u"
-reason = "TODO phase 1"
+reason = "TeX text-mode accent primitives"
 [[exclude]]
 name = "\\u00f0"
-reason = "TODO phase 1"
+reason = "KaTeX unicode escape, not user-facing LaTeX command"
 [[exclude]]
 name = "\\u0131"
-reason = "TODO phase 1"
+reason = "KaTeX unicode escape, not user-facing LaTeX command"
 [[exclude]]
 name = "\\u0237"
-reason = "TODO phase 1"
+reason = "KaTeX unicode escape, not user-facing LaTeX command"
 [[exclude]]
 name = "\\u0391"
-reason = "TODO phase 1"
+reason = "KaTeX unicode escape, not user-facing LaTeX command"
 [[exclude]]
 name = "\\u0392"
-reason = "TODO phase 1"
+reason = "KaTeX unicode escape, not user-facing LaTeX command"
 [[exclude]]
 name = "\\u0395"
-reason = "TODO phase 1"
+reason = "KaTeX unicode escape, not user-facing LaTeX command"
 [[exclude]]
 name = "\\u0396"
-reason = "TODO phase 1"
+reason = "KaTeX unicode escape, not user-facing LaTeX command"
 [[exclude]]
 name = "\\u0397"
-reason = "TODO phase 1"
+reason = "KaTeX unicode escape, not user-facing LaTeX command"
 [[exclude]]
 name = "\\u0399"
-reason = "TODO phase 1"
+reason = "KaTeX unicode escape, not user-facing LaTeX command"
 [[exclude]]
 name = "\\u039A"
-reason = "TODO phase 1"
+reason = "KaTeX unicode escape, not user-facing LaTeX command"
 [[exclude]]
 name = "\\u039C"
-reason = "TODO phase 1"
+reason = "KaTeX unicode escape, not user-facing LaTeX command"
 [[exclude]]
 name = "\\u039D"
-reason = "TODO phase 1"
+reason = "KaTeX unicode escape, not user-facing LaTeX command"
 [[exclude]]
 name = "\\u039F"
-reason = "TODO phase 1"
+reason = "KaTeX unicode escape, not user-facing LaTeX command"
 [[exclude]]
 name = "\\u03A1"
-reason = "TODO phase 1"
+reason = "KaTeX unicode escape, not user-facing LaTeX command"
 [[exclude]]
 name = "\\u03A4"
-reason = "TODO phase 1"
+reason = "KaTeX unicode escape, not user-facing LaTeX command"
 [[exclude]]
 name = "\\u03A7"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\unlhd"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\unrhd"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\upharpoonleft"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\upharpoonright"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\upuparrows"
-reason = "TODO phase 1"
+reason = "KaTeX unicode escape, not user-facing LaTeX command"
 [[exclude]]
 name = "\\v"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\varnothing"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\varpropto"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\vartriangle"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\vartriangleleft"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\vartriangleright"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\varvdots"
-reason = "TODO phase 1"
+reason = "TeX text-mode accent primitives"
 [[exclude]]
 name = "\\veebar"
-reason = "TODO phase 1"
+reason = "no Typst named symbol (or.excl invalid) in 0.14.2 — defer"
 [[exclude]]
 name = "\\wp"
-reason = "TODO phase 1"
-[[exclude]]
-name = "\\yen"
-reason = "TODO phase 1"
+reason = "no Typst named symbol (weierp not found) in 0.14.2 — defer"
 [[exclude]]
 name = "\\~"
-reason = "TODO phase 1"
+reason = "TeX text-mode accent commands, not math symbols"
 [[exclude]]
 name = "\\>"
 reason = "TODO phase 2"
