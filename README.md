@@ -47,7 +47,13 @@ cargo install --git https://github.com/zeyuyang42/ByeTex byetex-cli --features m
 ## CLI
 
 ```bash
-# Convert a LaTeX document.
+# Convert a LaTeX project FOLDER (recommended for real papers).
+# Auto-detects the entry .tex (the one with \documentclass), pre-scans
+# every .tex/.sty/.cls in the tree for \newcommand/\def, then converts.
+byetex convert ./paper-source
+# Writes paper-source.typ and paper-source.warnings.json next to the dir.
+
+# Convert a single LaTeX document.
 byetex convert paper.tex
 # Writes paper.typ and paper.warnings.json.
 
@@ -70,19 +76,26 @@ byetex corpus run --dir tests/corpus/
 
 For real-world LaTeX projects that include figures, bibliography files, and
 `\input` sub-files, use `--project` to produce a self-contained Typst project
-directory that compiles end-to-end:
+directory that compiles end-to-end. The input can be either the entry `.tex`
+file or the project folder; for arXiv tarballs, point at the unpacked folder
+and ByeTex picks the entry plus harvests all sibling `.sty`/`.cls` macros
+before converting:
 
 ```bash
-# Convert a LaTeX project.
-byetex convert paper.tex --project
-# Writes paper.typst-project/ containing:
+# Recommended: pass the unpacked arXiv folder.
+byetex convert ./paper-source --project
+# Writes paper-source.typst-project/ containing:
 #   main.typ          — the converted Typst body
 #   fig/foo.pdf       — asset files copied from the source project
 #   refs.bib          — bibliography copied as-is (Typst reads it natively)
 #   typst.toml        — optional manifest for known document classes
+#   warnings.json     — structured warnings sidecar
+
+# Or, if you already know the entry file, pass it directly.
+byetex convert paper.tex --project
 
 # Specify a custom output directory.
-byetex convert paper.tex --project --project-out /tmp/my-project
+byetex convert ./paper-source --project --project-out /tmp/my-project
 
 # Skip typst.toml generation.
 byetex convert paper.tex --project --no-toml

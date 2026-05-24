@@ -63,11 +63,33 @@ pub enum AssetKind {
 }
 
 pub fn convert(source: &str, opts: &ConvertOptions) -> ConvertOutput {
+    convert_with_macros(source, opts, HashMap::new())
+}
+
+/// Internal variant of [`convert`] that lets the project layer pre-seed
+/// the emitter's `\newcommand` table before parsing. Used by
+/// [`project::plan_project_from_dir`] to make project-wide macro
+/// definitions visible no matter which file declares them and whether
+/// the entry file reaches them via `\input`.
+///
+/// Not public: macro records are an internal crate detail. Callers
+/// outside the crate use `plan_project_from_dir` which constructs the
+/// table for them.
+pub(crate) fn convert_with_macros(
+    source: &str,
+    opts: &ConvertOptions,
+    preseeded_macros: HashMap<String, emit::MacroDef>,
+) -> ConvertOutput {
     let tree = parser::parse(source);
     let source_name = opts.source_name.as_deref().unwrap_or("<input>");
     let visited: HashSet<PathBuf> = HashSet::new();
-    let mut emitter =
-        emit::Emitter::with_includes(source, source_name, opts.base_dir.clone(), visited);
+    let mut emitter = emit::Emitter::with_includes_and_macros(
+        source,
+        source_name,
+        opts.base_dir.clone(),
+        visited,
+        preseeded_macros,
+    );
     emitter.emit_root(tree.root_node());
     let (typst, warnings, asset_refs, class_metadata) = emitter.finish();
     ConvertOutput { typst, warnings, asset_refs, class_metadata }
