@@ -65,6 +65,10 @@ fn check_template(rel: &str, budget: usize) {
 //   \institution/\city/\country inside \affiliation are consumed by the
 //   \affiliation silent-drop before they reach the dispatcher).
 //                                                          IEEE 16 ACM  3 NeurIPS  1 thesis  0
+//   silent-drop-to-DropOnly audit: \acmConference and 2×\affiliation
+//   now emit DropOnly warnings in ACM template (+3); \tableofcontents
+//   and \listoffigures now emit DropOnly warnings in thesis (+2).
+//                                                          IEEE 16 ACM  6 NeurIPS  1 thesis  2
 
 #[test]
 fn ieee_template_within_budget() {
@@ -73,7 +77,7 @@ fn ieee_template_within_budget() {
 
 #[test]
 fn acm_template_within_budget() {
-    check_template("tests/inhouse/acm/sample-sigconf.tex", 3);
+    check_template("tests/inhouse/acm/sample-sigconf.tex", 6);
 }
 
 #[test]
@@ -83,7 +87,7 @@ fn neurips_template_within_budget() {
 
 #[test]
 fn thesis_template_within_budget() {
-    check_template("tests/inhouse/thesis/thesis_skeleton.tex", 0);
+    check_template("tests/inhouse/thesis/thesis_skeleton.tex", 2);
 }
 
 #[test]

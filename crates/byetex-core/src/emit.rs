@@ -990,26 +990,36 @@ impl<'a> Emitter<'a> {
             | Some("\\enspace")
             | Some("\\thinspace")
             | Some("\\linebreak")
-            | Some("\\pagebreak")
+                if !self.in_math =>
+            {
+                consume_trailing_inline_space(self.src, node.end_byte())
+            }
+            // Forced page breaks — Typst's pagination is automatic; warn so the
+            // user knows their explicit layout intent was not preserved.
+            Some("\\pagebreak")
             | Some("\\nopagebreak")
             | Some("\\newpage")
             | Some("\\clearpage")
             | Some("\\cleardoublepage")
                 if !self.in_math =>
             {
+                self.warn_silently_dropped(node);
                 consume_trailing_inline_space(self.src, node.end_byte())
             }
-            // Layout-only directives.
+            // Layout-only alignment directives — warn so the user knows their
+            // alignment intent was not preserved.
             Some("\\centering")
             | Some("\\raggedright")
             | Some("\\raggedleft")
             | Some("\\justify")
             | Some("\\flushleft")
-            | Some("\\flushright") => consume_trailing_inline_space(self.src, node.end_byte()),
-            // Float/figure placement specifiers + page-style controls.
+            | Some("\\flushright") => {
+                self.warn_silently_dropped(node);
+                consume_trailing_inline_space(self.src, node.end_byte())
+            }
+            // Float/figure placement specifiers + page-style controls. These are
+            // inert in Typst and carry no visible content — drop silently.
             Some("\\setcounter")
-            | Some("\\renewcommand")
-            | Some("\\providecommand")
             | Some("\\pagestyle")
             | Some("\\thispagestyle")
             | Some("\\pagenumbering")
@@ -1020,21 +1030,31 @@ impl<'a> Emitter<'a> {
             | Some("\\addtolength")
             | Some("\\settowidth")
             | Some("\\bibliographystyle") => {
-                // These take args we don't translate. Drop silently.
                 node.end_byte()
             }
-            // ACM publication-metadata (conference/journal machinery); no visible
-            // author content — drop silently.
-            Some("\\setcopyright")
-            | Some("\\copyrightyear")
-            | Some("\\acmYear")
-            | Some("\\acmConference")
+            // Macro (re)definitions in text mode — warn because the user may
+            // have redefined a command that the conversion depends on.
+            Some("\\renewcommand") | Some("\\providecommand") => {
+                self.warn_silently_dropped(node);
+                node.end_byte()
+            }
+            // ACM publication-metadata (display-only administrative fields) —
+            // no visible author content, drop silently.
+            Some("\\setcopyright") | Some("\\copyrightyear") | Some("\\acmYear") => {
+                node.end_byte()
+            }
+            // ACM fields that carry real visible content in the published paper —
+            // warn so the user knows they were not rendered.
+            Some("\\acmConference")
             | Some("\\acmBooktitle")
             | Some("\\acmDOI")
             | Some("\\acmISBN")
             | Some("\\acmPrice")
             | Some("\\acmSubmissionID")
-            | Some("\\affiliation") => node.end_byte(),
+            | Some("\\affiliation") => {
+                self.warn_silently_dropped(node);
+                node.end_byte()
+            }
             // ACM author-info fields. Capture into class_metadata so callers
             // and class templates can access the values, and warn so the user
             // knows these fields are not yet fully rendered.
@@ -1061,8 +1081,8 @@ impl<'a> Emitter<'a> {
                 node.end_byte()
             }
             // `\keywords{a, b, c}` and `\IEEEkeywords{...}` — capture into the
-            // title-block field when the class template wants it; otherwise
-            // silently drop.
+            // title-block field when the class template wants it; otherwise warn
+            // so the user knows the keyword list was lost.
             Some("\\keywords") | Some("\\IEEEkeywords") => {
                 if self.detected_class.import_line().is_some() {
                     if let Some(arg) = first_curly_like(node) {
@@ -1073,6 +1093,8 @@ impl<'a> Emitter<'a> {
                             .filter(|k| !k.is_empty())
                             .collect();
                     }
+                } else {
+                    self.warn_silently_dropped(node);
                 }
                 node.end_byte()
             }
@@ -1091,12 +1113,16 @@ impl<'a> Emitter<'a> {
             Some("\\And") | Some("\\AND") | Some("\\PassOptionsToPackage") | Some("\\And ") => {
                 consume_trailing_inline_space(self.src, node.end_byte())
             }
-            // Tables-of-contents et al. — drop, will be re-added with Typst syntax later if needed.
+            // Tables-of-contents et al. — Typst equivalents not yet emitted; warn
+            // so the user knows these structural sections were not preserved.
             Some("\\tableofcontents")
             | Some("\\listoffigures")
             | Some("\\listoftables")
             | Some("\\printbibliography")
-            | Some("\\printindex") => consume_trailing_inline_space(self.src, node.end_byte()),
+            | Some("\\printindex") => {
+                self.warn_silently_dropped(node);
+                consume_trailing_inline_space(self.src, node.end_byte())
+            }
             // `\multicolumn{n}{spec}{content}` → `table.cell(colspan: n)[content]`.
             // The surrounding emit_tabular's body splitter will treat the whole
             // thing as one cell, which is the intended outcome.
@@ -2543,9 +2569,27 @@ impl<'a> Emitter<'a> {
             // Math-mode spacing primitives — drop silently.
             "\\hspace" | "\\vspace" | "\\!" | "\\linebreak" | "\\nobreak" => node.end_byte(),
             // `\tag{...}` adds LaTeX equation labels for presentation only;
-            // Typst handles equation numbering itself. Drop the command and its
-            // curly-group argument (the generic_command node covers both).
-            "\\tag" => node.end_byte(),
+            // Typst handles equation numbering itself. Warn so the user knows
+            // their custom label text was not preserved.
+            "\\tag" => {
+                self.warn_silently_dropped(node);
+                node.end_byte()
+            }
+            // `\not` is a prefix slash-overlay (e.g. `\not =` → `≠`).
+            // Typst's cancel(...) takes an argument, so the bare prefix form
+            // can't be mechanically translated. Warn rather than silently
+            // dropping the negation, which would produce incorrect math.
+            "\\not" => {
+                self.warn_silently_dropped(node);
+                node.end_byte()
+            }
+            // Math style switches — Typst determines display/inline style from
+            // the equation context; these per-expression overrides have no
+            // direct equivalent. Warn so the user is aware.
+            "\\displaystyle" | "\\textstyle" | "\\scriptstyle" | "\\scriptscriptstyle" => {
+                self.warn_silently_dropped(node);
+                node.end_byte()
+            }
             // Row break inside math envs. We emit just `\`; the source's
             // surrounding whitespace (gap-copied by the parent) takes care of
             // spacing around it.
@@ -3647,6 +3691,22 @@ impl<'a> Emitter<'a> {
             suggested_skill: None,
         });
     }
+
+    fn warn_silently_dropped(&mut self, node: Node<'_>) {
+        let snippet = self.src[node.start_byte()..node.end_byte()].to_string();
+        let name = command_name_of(&snippet);
+        self.warnings.push(Warning {
+            range: range_of(node),
+            category: Category::DropOnly { name: name.clone() },
+            severity: Severity::Warning,
+            message: format!(
+                "`{name}` has no Typst equivalent and was dropped; \
+                 the rendered output may differ from the LaTeX original"
+            ),
+            snippet,
+            suggested_skill: None,
+        });
+    }
 }
 
 fn is_comment(kind: &str) -> bool {
@@ -4261,11 +4321,9 @@ pub(crate) fn lookup_math_symbol(name: &str) -> Option<&'static str> {
         "\\clubsuit" => "♣",
         "\\spadesuit" => "♠",
         "\\heartsuit" => "♥",
-        // `\not` as a slash overlay — Typst's `cancel(...)` is the
-        // closest match but takes an argument; for the bare-prefix
-        // form (`\not =`) drop the prefix and let the `=` render
-        // unmodified.
-        "\\not" => "",
+        // `\not` is handled by an explicit arm in emit_math_command that
+        // emits a DropOnly warning; it must not appear here or push_math_symbol
+        // would silently swallow it via the empty-string early-return.
         // Trig and log functions — Typst recognises these by name in math.
         "\\sin" => "sin",
         "\\cos" => "cos",
@@ -4345,12 +4403,10 @@ pub(crate) fn lookup_math_symbol(name: &str) -> Option<&'static str> {
         // explicit force is a no-op. Drop the command name itself; if
         // left in, `\limits` was emitted as the literal word and the
         // subscript that followed became an unknown symbol modifier.
-        "\\limits"
-        | "\\nolimits"
-        | "\\displaystyle"
-        | "\\textstyle"
-        | "\\scriptstyle"
-        | "\\scriptscriptstyle" => "",
+        "\\limits" | "\\nolimits" => "",
+        // `\displaystyle` / `\textstyle` / `\scriptstyle` /
+        // `\scriptscriptstyle` are handled by explicit warning arms in
+        // emit_math_command; they must not appear here.
         // Math escapes for ASCII chars. Keep the leading backslash so Typst
         // treats them as math escapes — emitting the bare character would
         // trigger Typst's own special handling: `#` opens code context,

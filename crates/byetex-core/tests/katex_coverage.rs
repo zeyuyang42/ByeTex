@@ -81,6 +81,12 @@ const STRUCTURAL_ARMS: &[&str] = &[
     "\\linebreak",
     "\\nobreak",
     "\\tag",
+    // warn-on-drop arms (emit_math_command issues DropOnly warning then skips)
+    "\\not",
+    "\\displaystyle",
+    "\\textstyle",
+    "\\scriptstyle",
+    "\\scriptscriptstyle",
 ];
 
 #[derive(serde::Deserialize)]

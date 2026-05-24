@@ -691,17 +691,25 @@ fn m3_eqref_wraps_in_parens() {
     );
 }
 
-// ============== Bug A: \tag silently dropped ==============
+// ============== Bug A: \tag now emits DropOnly warning ==============
 
 #[test]
 fn m3_tag_silently_dropped() {
-    insta::assert_snapshot!(run_str(r"\begin{equation}
+    let out = convert(
+        r"\begin{equation}
 x = y \tag{Dual LP}
-\end{equation}"), @r"
-    ==== TYPST ====
-    $ x = y $==== WARNINGS ====
-    []
-    ");
+\end{equation}",
+        &ConvertOptions::default(),
+    );
+    // Typst output is unchanged — \tag carries no renderable math content.
+    assert!(out.typst.contains("x = y"), "typst: {}", out.typst);
+    // A DropOnly warning is now emitted so the user knows their label was lost.
+    assert_eq!(out.warnings.len(), 1, "expected one warning, got: {:?}", out.warnings);
+    assert!(
+        matches!(&out.warnings[0].category, byetex_core::Category::DropOnly { name } if name == "\\tag"),
+        "expected DropOnly {{name: \\tag}}, got: {:?}",
+        out.warnings[0].category
+    );
 }
 
 // ============== Bug E: dotted symbol before ( ==============
