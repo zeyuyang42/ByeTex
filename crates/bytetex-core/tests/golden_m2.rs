@@ -280,3 +280,59 @@ fn m2_sections_mixed_body() {
     []
     ");
 }
+
+// ============== Phase B: TDD red test for Bug #18 ==============
+
+#[test]
+#[ignore = "Bug #18 — pending fix: \\def/\\edef/\\gdef emitted verbatim"]
+fn m2_def_primitives_dropped_silently() {
+    // Bug #18: TeX primitives `\def`, `\edef`, `\gdef`, `\xdef`, `\let` pass
+    // through the emitter verbatim. In Typst the leading backslash is either
+    // a math escape or a syntax error, so the document fails to compile. These
+    // primitives should be silently dropped (same policy as `\newcommand`).
+    let out = convert(
+        "\\def\\foo{bar}\n\\edef\\baz{qux}\n\\gdef\\hello{world}\n\nBody.\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        !out.typst.contains("\\def"),
+        "`\\def` must not appear in output, got:\n{}",
+        out.typst
+    );
+    assert!(
+        !out.typst.contains("\\edef"),
+        "`\\edef` must not appear in output, got:\n{}",
+        out.typst
+    );
+    assert!(
+        !out.typst.contains("\\gdef"),
+        "`\\gdef` must not appear in output, got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("Body."),
+        "body text must be preserved, got:\n{}",
+        out.typst
+    );
+}
+
+// ============== Bug C: math word letter boundary ==============
+
+#[test]
+fn m2_math_word_no_letter_fusion() {
+    // A bare math word following another letter-ending identifier must NOT
+    // fuse with it. E.g. `f dt` contains two words `f` and `dt`; without the
+    // boundary guard the emitter outputs `f d t` with no space between `f` and
+    // `d` (letter fusion). The fix inserts a space so Typst sees `f` and `dt`
+    // (after splitting) as separate identifiers.
+    let out = convert(r"$f \, dt$", &ConvertOptions::default());
+    // `f` must not fuse with the leading `d` of `dt`.
+    assert!(
+        !out.typst.contains("fd"),
+        "expected no letter fusion `fd`, got:\n{}",
+        out.typst
+    );
+}

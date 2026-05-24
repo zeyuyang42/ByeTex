@@ -175,3 +175,169 @@ fn m4_bibliography() {
     []
     "#);
 }
+
+// ============== Phase B: TDD red tests for Bugs #17, #19 ==============
+
+#[test]
+#[ignore = "Bug #17 — pending fix: unescaped _/*/#  in tabular cell content"]
+fn m4_tabular_cell_escapes_markup_chars() {
+    // Bug #17: `_sla`, `*bold`, `#hash` in table cells open unclosed italic /
+    // bold / code-context markup in Typst. Cell content in `[...]` must have
+    // these markup-active characters escaped with a backslash.
+    let src = "\\begin{tabular}{cc}\n_sla & *bold \\\\\n\\#hash & plain\n\\end{tabular}\n";
+    let out = convert(
+        src,
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        !out.typst.contains("[_sla]"),
+        "raw `[_sla]` must not appear; `_` should be escaped, got:\n{}",
+        out.typst
+    );
+    assert!(
+        !out.typst.contains("[*bold]"),
+        "raw `[*bold]` must not appear; `*` should be escaped, got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("\\_sla") || out.typst.contains("[\\_sla]"),
+        "expected escaped `\\_sla`, got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+#[ignore = "Bug #19 — pending fix: image(\"???\") placeholder fails typst compile"]
+fn m4_figure_without_includegraphics_uses_compileable_placeholder() {
+    // Bug #19: when a `\begin{figure}` has no `\includegraphics`, the emitter
+    // produces `image("???")`. Typst aborts because the file `???` does not
+    // exist. The fix should emit a compileable placeholder such as
+    // `rect(width: 100%, height: 4cm, fill: luma(230))`.
+    let src = "\\begin{figure}\n\\caption{X}\n\\end{figure}\n";
+    let out = convert(
+        src,
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        !out.typst.contains("image(\"???\")"),
+        "broken placeholder `image(\"???\")` must not appear, got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("rect(") || out.typst.contains("// missing"),
+        "expected compileable placeholder (`rect(` or comment), got:\n{}",
+        out.typst
+    );
+}
+
+// ============== Phase D: under-tested emitters — tabular variants, nested figure ==============
+
+#[test]
+fn m4_tabular_star_with_width_argument() {
+    // `tabular*` is a width-specified tabular; the width argument must be
+    // consumed (not emitted verbatim). The column spec and cells should
+    // render identically to a plain `tabular`.
+    let src = "\\begin{tabular*}{0.9\\textwidth}{lcr}\na & b & c\n\\end{tabular*}\n";
+    let out = convert(
+        src,
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        out.typst.contains("columns: 3"),
+        "expected `columns: 3`, got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("left") && out.typst.contains("center") && out.typst.contains("right"),
+        "expected lcr alignment in output, got:\n{}",
+        out.typst
+    );
+    assert!(
+        !out.typst.contains("tabular*"),
+        "raw `tabular*` must not appear in output, got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn m4_figure_wrapping_tabular_emits_inner_table() {
+    // A `figure` environment containing a `tabular` should produce a
+    // `#figure(table(...), caption: [...])` — the inner table must be emitted,
+    // not silently dropped.
+    let src = "\\begin{figure}\n\\begin{tabular}{cc}\n1 & 2\n\\end{tabular}\n\\caption{X}\n\\end{figure}\n";
+    let out = convert(
+        src,
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        out.typst.contains("table("),
+        "expected `table(` inside figure, got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("caption:"),
+        "expected `caption:` in figure, got:\n{}",
+        out.typst
+    );
+}
+
+// ============== Bug B: nested math env no extra $ ==============
+
+#[test]
+fn m4_nested_math_env_no_extra_dollar() {
+    // A math_environment that tree-sitter parses under an outer $...$
+    // must NOT open a fresh `$ ... $` — that would close the outer math.
+    let out = convert(
+        "$\\Phi_{\\theta_t}(z(x,t))$",
+        &ConvertOptions::default(),
+    );
+    let typst = &out.typst;
+    // Count `$` signs: an opening $ and a closing $ is the minimum (2 total).
+    // A spurious nested $ would give 4+.
+    let dollar_count = typst.chars().filter(|&c| c == '$').count();
+    assert!(
+        dollar_count <= 2,
+        "expected at most 2 dollar signs for inline math, got {}:\n{}",
+        dollar_count,
+        typst
+    );
+}
+
+// ============== Bug D: unknown in-math command → valid placeholder ==============
+
+#[test]
+fn m4_unknown_math_command_no_raw_backslash() {
+    // An unrecognised command inside math must NOT emit raw `\name` (which
+    // Typst would error on) — instead emit a `"name"` string placeholder.
+    let out = convert(r"$\diamT$", &ConvertOptions::default());
+    assert!(
+        !out.typst.contains('\\'),
+        "expected no raw backslash in math output, got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains('"'),
+        "expected quoted placeholder in math output, got:\n{}",
+        out.typst
+    );
+    // Must produce at least one ambiguous_math warning.
+    assert!(
+        out.warnings.iter().any(|w| {
+            serde_json::to_string(&w.category).unwrap_or_default().contains("ambiguous_math")
+        }),
+        "expected ambiguous_math warning, got:\n{:?}",
+        out.warnings
+    );
+}

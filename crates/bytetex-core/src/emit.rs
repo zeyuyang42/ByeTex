@@ -8,14 +8,35 @@
 //!   Inline formatting + lists come in subsequent M2 sub-tasks; this file is
 //!   structured around a dispatch-by-kind pattern so each batch is additive.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
 use tree_sitter::Node;
 
 use crate::class_map::DocClass;
+use crate::document::{Content, DocumentMetadata};
 use crate::warnings::{Category, Range, Severity, Warning};
+
+/// A `\newcommand` definition harvested from the input. `body` is the
+/// raw LaTeX source between the outer curly braces; expansion inlines
+/// the body at every call site, substituting `#1` / `#2` / … with the
+/// raw source of the call's curly_group arguments before re-parsing.
+#[derive(Debug, Clone)]
+pub(crate) struct MacroDef {
+    /// Number of `#N` parameters expected. Zero for no-arg macros.
+    pub params: usize,
+    /// Raw LaTeX body, brace-stripped.
+    pub body: String,
+}
+
+/// Sentinel character emitted by `push_math_symbol` immediately after a
+/// multi-character math identifier so that `collapse_math_spaces` can
+/// later decide whether to insert a real separator (when the next char
+/// would fuse — letter or digit) or drop it (when Typst already breaks
+/// — `_`, `^`, `,`, `(`, `)`). Chosen as U+0017 ETB which has no
+/// legitimate use in either LaTeX source or rendered Typst.
+const MATH_WORD_BOUNDARY: char = '\u{17}';
 
 pub(crate) struct Emitter<'a> {
     out: String,
@@ -47,15 +68,17 @@ pub(crate) struct Emitter<'a> {
     /// `\verb|...|` handler, since the tree-sitter grammar does not model
     /// verb delimiters and would otherwise re-emit the inner tokens.
     skip_until: usize,
-    /// Title-block accumulators. `\title{X}`, `\author{X}`, `\date{X}` store
-    /// rendered content here; `\maketitle` flushes them into a centered block
-    /// at the document head. If `\maketitle` never appears but `pending_title`
-    /// is set, the block is flushed in `finish()`.
-    pending_title: Option<String>,
-    pending_authors: Vec<String>,
-    pending_date: Option<String>,
-    pending_abstract: Option<String>,
-    pending_keywords: Option<String>,
+    /// Structured title-block + metadata accumulated during the AST walk.
+    /// `\title{X}`, `\author{X}`, `\date{X}`, `\begin{abstract}…\end{abstract}`,
+    /// `\keywords{X}` etc. populate this. Per-class extractors in
+    /// `class_map.rs` post-process raw `\author{...}` strings into
+    /// structured `Author` records (with affiliation, email, orcid).
+    metadata: DocumentMetadata,
+    /// Raw author strings (one per `\author{...}` call) captured as the
+    /// AST walks. Converted to structured `metadata.authors` records in
+    /// `finish()`, where the per-class parser runs after the class
+    /// detection and `\input` expansion have completed.
+    raw_authors: Vec<String>,
     /// LaTeX document class detected from `\documentclass[opts]{class}` and
     /// refined by `\usepackage{...}` calls. Drives the Typst Universe template
     /// import emitted in `finish()`.
@@ -71,6 +94,16 @@ pub(crate) struct Emitter<'a> {
     /// recursing and is left in the set so a sibling include of the same
     /// file is treated as a duplicate (warn) rather than an infinite loop.
     visited_includes: HashSet<PathBuf>,
+    /// `\newcommand` definitions harvested as we walk the source. Each
+    /// matching call site is later expanded inline by re-parsing the
+    /// substituted body. Out-of-scope forms (`\def`, `\providecommand`,
+    /// optional-default `\newcommand[1][default]`) are not entered into
+    /// this map.
+    macros: HashMap<String, MacroDef>,
+    /// Assets (images, bib files) resolved on disk during this emit pass.
+    /// Populated only when `base_dir` is `Some`. Bubbled up to `ConvertOutput`
+    /// by `finish()` so the project layer can copy them to the output dir.
+    asset_refs: Vec<crate::AssetRef>,
 }
 
 impl<'a> Emitter<'a> {
@@ -96,14 +129,13 @@ impl<'a> Emitter<'a> {
             needs_equation_numbering: false,
             pending_bibitem_key: None,
             skip_until: 0,
-            pending_title: None,
-            pending_authors: Vec::new(),
-            pending_date: None,
-            pending_abstract: None,
-            pending_keywords: None,
+            metadata: DocumentMetadata::default(),
+            raw_authors: Vec::new(),
             detected_class: DocClass::Unknown,
             base_dir,
             visited_includes: visited,
+            macros: HashMap::new(),
+            asset_refs: Vec::new(),
         }
     }
 
@@ -111,7 +143,7 @@ impl<'a> Emitter<'a> {
         let _ = self.emit_node(root);
     }
 
-    pub(crate) fn finish(mut self) -> (String, Vec<Warning>) {
+    pub(crate) fn finish(mut self) -> (String, Vec<Warning>, Vec<crate::AssetRef>) {
         // If `\documentclass` mapped to a known Typst Universe template,
         // prepend the `#import` + `#show:` pair so the converted PDF gets
         // that class's full visual identity (columns, font, headings, title
@@ -121,7 +153,7 @@ impl<'a> Emitter<'a> {
             let body = std::mem::take(&mut self.out);
             self.out.push_str(&p);
             self.out.push_str(&body);
-        } else if self.pending_title.is_some() || !self.pending_authors.is_empty() {
+        } else if !self.metadata.is_title_block_empty() || !self.raw_authors.is_empty() {
             // Pre-pend rather than append: insert at the start of `out` so the
             // title block lives at the top of the document.
             let body = std::mem::take(&mut self.out);
@@ -151,7 +183,7 @@ impl<'a> Emitter<'a> {
         // Done as a final string pass so we don't have to wrangle token-level
         // detection for adjacent `-` / backtick / apostrophe runs.
         self.out = post_process_typography(&self.out);
-        (self.out, self.warnings)
+        (self.out, self.warnings, self.asset_refs)
     }
 
     /// Push `src[from..to]` to the output, but only when the range is valid.
@@ -168,8 +200,35 @@ impl<'a> Emitter<'a> {
     fn emit_node(&mut self, node: Node<'_>) -> usize {
         // Skip nodes that fall inside a region already consumed (e.g. by the
         // `\verb|...|` handler, which slurps tokens the grammar parsed as if
-        // they were live LaTeX).
+        // they were live LaTeX, or by emit_math_wrap consuming a
+        // brace-less arg).
         if node.start_byte() < self.skip_until {
+            // Partial overlap: the head of this node is already
+            // emitted, but the tail still needs to come out. Two
+            // cases:
+            //   - leaf (no children): emit the tail bytes verbatim.
+            //   - has children: recurse — each child either falls
+            //     fully before skip_until (re-checks and skips), or
+            //     fully after (emits normally), or straddles
+            //     (recursive partial-skip).
+            if self.skip_until < node.end_byte() {
+                if node.child_count() == 0 {
+                    self.safe_copy(self.skip_until, node.end_byte());
+                    return node.end_byte();
+                }
+                let mut cursor = node.walk();
+                let kids: Vec<Node<'_>> = node.children(&mut cursor).collect();
+                let mut last = self.skip_until.max(node.start_byte());
+                for child in &kids {
+                    let cs = child.start_byte();
+                    if cs >= last {
+                        self.safe_copy(last, cs);
+                    }
+                    last = self.emit_node(*child);
+                }
+                self.safe_copy(last, node.end_byte());
+                return node.end_byte();
+            }
             return self.skip_until.max(node.end_byte());
         }
 
@@ -188,6 +247,12 @@ impl<'a> Emitter<'a> {
             "inline_formula" => return self.emit_inline_math(node),
             "displayed_equation" => return self.emit_display_math(node),
             "math_environment" => return self.emit_math_environment(node),
+            // `\left( ... \right)` in math: tree-sitter packages the whole
+            // span as a single `math_delimiter` with `left_command`,
+            // `left_delimiter`, body, `right_command`, `right_delimiter`
+            // fields. Emit the delimiters directly and recurse into the
+            // body — Typst auto-pairs the symbols.
+            "math_delimiter" if self.in_math => return self.emit_math_delimiter(node),
             "subscript" if self.in_math => return self.emit_subscript(node, "_"),
             "superscript" if self.in_math => return self.emit_subscript(node, "^"),
             // `\text{X}` inside math — the grammar tags this as `text_mode`.
@@ -213,6 +278,16 @@ impl<'a> Emitter<'a> {
                     self.push_math_symbol(typst);
                     return node.end_byte();
                 }
+                // A bare wrap command (e.g. `_\mathcal{T}` parses with
+                // `\mathcal` as just a `command_name`, dropping the
+                // `{T}` to a sibling). Use the brace-less wrap helper
+                // to consume the next source token directly.
+                if let Some((l, r)) = wrap_for_command_name(text) {
+                    return self.emit_math_wrap(node, l, r);
+                }
+                // Emit a placeholder rather than leaking raw `\name` into
+                // the Typst output (which would fail to compile).
+                return self.emit_unknown_math_command(node, text);
             }
             _ => {}
         }
@@ -224,17 +299,32 @@ impl<'a> Emitter<'a> {
         // function name.
         if self.in_math && node.kind() == "word" {
             let text = &self.src[node.start_byte()..node.end_byte()];
-            if should_split_math_word(text) {
+            // tree-sitter-latex sometimes appends trailing punctuation (`.`, `!`,
+            // `?`) to the word token (e.g. `dt.` is one node, not `dt` + `.`).
+            // Split at the first non-alphabetic char to get the identifier prefix.
+            let alpha_end = text.find(|c: char| !c.is_ascii_alphabetic()).unwrap_or(text.len());
+            let alpha = &text[..alpha_end];
+            let tail = &text[alpha_end..];
+            // Guard: keep the preceding identifier from fusing with this word's
+            // first letter (e.g. `t` + `dt` → `tdt`). The helper is a no-op
+            // when the previous output char is not a letter.
+            self.ensure_math_letter_boundary(text);
+            if should_split_math_word(alpha) {
                 let mut first = true;
-                for c in text.chars() {
+                for c in alpha.chars() {
                     if !first {
                         self.out.push(' ');
                     }
                     self.out.push(c);
                     first = false;
                 }
+                self.out.push_str(tail);
                 return node.end_byte();
             }
+            // Non-split path: we own the write so the default walker below
+            // doesn't double-emit the same bytes.
+            self.out.push_str(text);
+            return node.end_byte();
         }
 
         // Sectioning: \section, \subsection, ...; starred forms preserved.
@@ -255,8 +345,14 @@ impl<'a> Emitter<'a> {
         // Inside math, `\label{...}` is silently lifted out and attached to
         // the enclosing math container as a Typst `<label>`.
         if self.in_math && node.kind() == "label_definition" {
-            if let Some(l) = extract_label_name(node, self.src) {
+            if let Some((l, end)) = extract_label_name_and_end(node, self.src) {
                 self.pending_math_label = Some(l);
+                // tree-sitter-latex truncates the label key at `_` and
+                // leaks the rest into the surrounding text. Skip past
+                // the real closing brace so we don't re-emit the
+                // leaked `_objective}` etc.
+                self.skip_until = self.skip_until.max(end);
+                return end;
             }
             return node.end_byte();
         }
@@ -271,8 +367,10 @@ impl<'a> Emitter<'a> {
             // Orphan `\label{X}` outside any section/equation/figure — emit
             // the Typst label syntax so subsequent `@X` references resolve.
             "label_definition" => {
-                if let Some(key) = extract_label_name(node, self.src) {
+                if let Some((key, end)) = extract_label_name_and_end(node, self.src) {
                     let _ = write!(self.out, " <{}>", key);
+                    self.skip_until = self.skip_until.max(end);
+                    return end;
                 }
                 return node.end_byte();
             }
@@ -344,7 +442,8 @@ impl<'a> Emitter<'a> {
             }
             "title_declaration" => {
                 if let Some(arg) = first_curly_group(node) {
-                    self.pending_title = Some(self.render_curly_group_content(arg));
+                    self.metadata.title =
+                        Some(Content::Typst(self.render_curly_group_content(arg)));
                 }
                 return node.end_byte();
             }
@@ -352,7 +451,7 @@ impl<'a> Emitter<'a> {
                 // The grammar uses `curly_group_author_list` for the author arg.
                 if let Some(arg) = first_curly_like(node) {
                     let rendered = self.render_curly_group_content(arg);
-                    self.pending_authors.push(rendered);
+                    self.raw_authors.push(rendered);
                 }
                 return node.end_byte();
             }
@@ -384,6 +483,14 @@ impl<'a> Emitter<'a> {
                 self.detected_class =
                     std::mem::replace(&mut self.detected_class, DocClass::Unknown)
                         .refine_from_package(&pkg);
+                // BEFORE the noop-list check: if a local `<pkg>.sty`
+                // (or `.cls`) sits in the source directory, parse it
+                // for `\newcommand` / `\def` and merge the macros
+                // into `self.macros`. This means an
+                // `\usepackage{neurips_2026}` whose `.sty` lives next
+                // to the paper contributes its `\acksection`, etc.
+                // System packages (no local file) are unaffected.
+                self.expand_local_package(&pkg);
                 if is_known_noop_package(&pkg) {
                     return node.end_byte();
                 }
@@ -403,17 +510,31 @@ impl<'a> Emitter<'a> {
             return node.end_byte();
         }
 
-        // Macro / theorem / counter definitions — drop silently. We don't
-        // expand `\newcommand` bodies (v0.2 non-goal) but the *definition*
-        // itself shouldn't show up as a warning every time. `theorem_definition`
-        // covers `\newtheorem` / `\newtheorem*` / `\declaretheorem(*)` (the
-        // tree-sitter-latex grammar dedicates a node kind to them) — leaving
-        // it unhandled previously emitted the source verbatim and broke the
-        // compile with a backslash-in-code error.
-        if matches!(
-            node.kind(),
-            "new_command_definition" | "counter_declaration" | "theorem_definition"
-        ) {
+        // `\newcommand{\name}[N]{body}` — harvest the macro into
+        // `self.macros` so subsequent calls to `\name` get expanded
+        // inline. Falls through to silent-drop after recording.
+        // `theorem_definition` covers `\newtheorem` etc.; counter
+        // declarations are still dropped wholesale.
+        if node.kind() == "new_command_definition" {
+            if let Some((name, def)) = extract_newcommand(node, self.src) {
+                self.macros.insert(name, def);
+            }
+            return node.end_byte();
+        }
+        // `\def\name<params>{body}` is `old_command_definition`. The
+        // tree-sitter grammar packages just `\def\name` as the node;
+        // the params placeholders and the body curly_group land as
+        // SIBLINGS in the parent. Harvest the full definition by
+        // scanning source bytes, and skip past the body so it
+        // doesn't leak into the output as raw text.
+        if node.kind() == "old_command_definition" {
+            if let Some(end) = extract_def_and_record(node, self.src, &mut self.macros) {
+                self.skip_until = self.skip_until.max(end);
+                return end;
+            }
+            return node.end_byte();
+        }
+        if matches!(node.kind(), "counter_declaration" | "theorem_definition") {
             return node.end_byte();
         }
 
@@ -528,18 +649,80 @@ impl<'a> Emitter<'a> {
             // table emission (Typst auto-styles rules). Drop silently.
             Some("\\hline") | Some("\\toprule") | Some("\\midrule") | Some("\\bottomrule")
             | Some("\\cmidrule") => node.end_byte(),
+            // Sizing-delimiter commands escaping their math container —
+            // tree-sitter constructs a `math_delimiter` only when the
+            // matching pair is present; when one half is missing the
+            // bare `\left` / `\right` ends up here in text mode. Drop
+            // silently so the literal backslash doesn't leak into the
+            // Typst output.
+            Some("\\left") | Some("\\right") | Some("\\middle") | Some("\\bigl")
+            | Some("\\Bigl") | Some("\\biggl") | Some("\\Biggl") | Some("\\bigr")
+            | Some("\\Bigr") | Some("\\biggr") | Some("\\Biggr") | Some("\\bigm")
+            | Some("\\Bigm") | Some("\\biggm") | Some("\\Biggm") | Some("\\big")
+            | Some("\\Big") | Some("\\bigg") | Some("\\Bigg") => node.end_byte(),
+            // `\xspace` (from the xspace package) auto-inserts a space
+            // when not followed by punctuation. Typst already
+            // separates command-following-letter via whitespace, so
+            // dropping the call is invisible. Same for `\notag`,
+            // `\nonumber` outside math (rare but seen).
+            Some("\\xspace")
+            | Some("\\notag")
+            | Some("\\nonumber")
+            | Some("\\protect")
+            | Some("\\ignorespaces") => node.end_byte(),
+            // Common text-mode symbols.
+            Some("\\S") => {
+                self.out.push('§');
+                node.end_byte()
+            }
+            Some("\\P") => {
+                self.out.push('¶');
+                node.end_byte()
+            }
+            Some("\\copyright") => {
+                self.out.push('©');
+                node.end_byte()
+            }
+            Some("\\textregistered") => {
+                self.out.push('®');
+                node.end_byte()
+            }
+            // Deprecated font-switching commands. Drop silently —
+            // Typst's default font handling is sufficient and the
+            // surrounding text already inherits the correct style.
+            Some("\\bf") | Some("\\sf") | Some("\\rm") | Some("\\it") | Some("\\tt")
+            | Some("\\sl") | Some("\\sc") | Some("\\em") => node.end_byte(),
+            // Vertical-skip primitives.
+            Some("\\smallskip") => {
+                self.out.push_str("#v(0.5em)");
+                node.end_byte()
+            }
+            Some("\\medskip") => {
+                self.out.push_str("#v(1em)");
+                node.end_byte()
+            }
+            Some("\\bigskip") => {
+                self.out.push_str("#v(1.5em)");
+                node.end_byte()
+            }
+            // Horizontal-fill.
+            Some("\\hfill") | Some("\\hfil") => {
+                self.out.push_str("#h(1fr)");
+                node.end_byte()
+            }
+            Some("\\centerline") => self.emit_inline_wrap(node, "#align(center)[", "]"),
             // Text-mode super/subscript wrappers.
             Some("\\textsuperscript") => self.emit_inline_wrap(node, "#super[", "]"),
             Some("\\textsubscript") => self.emit_inline_wrap(node, "#sub[", "]"),
             // Spacing primitives with no Typst equivalent — drop silently.
+            // (`\smallskip`/`\medskip`/`\bigskip` are handled above with
+            // explicit `#v(...)` emission and take precedence over this
+            // catch-all.)
             Some("\\kern")
             | Some("\\vspace")
             | Some("\\hspace")
             | Some("\\vspace*")
             | Some("\\hspace*")
-            | Some("\\smallskip")
-            | Some("\\medskip")
-            | Some("\\bigskip")
             | Some("\\quad")
             | Some("\\qquad")
             | Some("\\,")
@@ -612,7 +795,11 @@ impl<'a> Emitter<'a> {
                 if self.detected_class.import_line().is_some() {
                     if let Some(arg) = first_curly_like(node) {
                         let rendered = self.render_curly_group_content(arg);
-                        self.pending_keywords = Some(rendered);
+                        self.metadata.keywords = rendered
+                            .split(',')
+                            .map(|k| k.trim().to_string())
+                            .filter(|k| !k.is_empty())
+                            .collect();
                     }
                 }
                 node.end_byte()
@@ -711,20 +898,21 @@ impl<'a> Emitter<'a> {
             // \maketitle is never called the block is flushed in `finish()`.
             Some("\\title") => {
                 if let Some(arg) = first_curly_group(node) {
-                    self.pending_title = Some(self.render_curly_group_content(arg));
+                    self.metadata.title =
+                        Some(Content::Typst(self.render_curly_group_content(arg)));
                 }
                 node.end_byte()
             }
             Some("\\author") => {
                 if let Some(arg) = first_curly_group(node) {
                     let rendered = self.render_curly_group_content(arg);
-                    self.pending_authors.push(rendered);
+                    self.raw_authors.push(rendered);
                 }
                 node.end_byte()
             }
             Some("\\date") => {
                 if let Some(arg) = first_curly_group(node) {
-                    self.pending_date = Some(self.render_curly_group_content(arg));
+                    self.metadata.date = Some(self.render_curly_group_content(arg));
                 }
                 node.end_byte()
             }
@@ -877,10 +1065,100 @@ impl<'a> Emitter<'a> {
                 node.end_byte()
             }
             _ => {
+                // Last-chance: maybe this is a `\newcommand` we
+                // harvested earlier. Expand it inline and let the
+                // re-parse pick up nested commands.
+                if let Some(n) = name.as_deref() {
+                    if self.macros.contains_key(n) {
+                        return self.expand_user_macro(node, n);
+                    }
+                }
                 self.warn_unsupported_command(node);
                 node.end_byte()
             }
         }
+    }
+
+    /// Expand a user-defined `\newcommand` at its call site.
+    ///
+    /// Reads the macro's stored body, substitutes `#1`..`#N` placeholders
+    /// with the raw source of each `curly_group` argument of the call,
+    /// re-parses the resulting LaTeX with `parser::parse`, and emits it
+    /// via a child `Emitter` that inherits the parent's math context,
+    /// macro table, and `base_dir`. The child's body output is appended
+    /// to the parent's; warnings are merged. If the parameter count
+    /// doesn't match, fall back to warn-and-drop.
+    fn expand_user_macro(&mut self, node: Node<'_>, name: &str) -> usize {
+        let macro_def = match self.macros.get(name).cloned() {
+            Some(d) => d,
+            None => return node.end_byte(),
+        };
+        // Collect the call's curly_group arguments in order.
+        let mut cursor = node.walk();
+        let args: Vec<String> = node
+            .children(&mut cursor)
+            .filter(|c| c.kind() == "curly_group")
+            .map(|c| {
+                // Strip the outer `{` and `}` from each arg.
+                self.src
+                    .get(c.start_byte() + 1..c.end_byte() - 1)
+                    .unwrap_or("")
+                    .to_string()
+            })
+            .collect();
+        if args.len() < macro_def.params {
+            // Not enough arguments — emit a warning and drop the call.
+            // The body might reference `#N` placeholders that we can't
+            // resolve. Leaving the source unmodified would let the raw
+            // `\name` text bleed into the Typst output.
+            self.warnings.push(Warning {
+                range: range_of(node),
+                category: Category::CustomMacro {
+                    name: name.to_string(),
+                },
+                severity: Severity::Warning,
+                message: format!(
+                    "\\newcommand call `{}` expected {} arg(s), found {}",
+                    name,
+                    macro_def.params,
+                    args.len()
+                ),
+                snippet: self.src[node.start_byte()..node.end_byte()].to_string(),
+                suggested_skill: None,
+            });
+            return node.end_byte();
+        }
+        // Substitute `#1`..`#N` in the body.
+        let mut expanded = macro_def.body.clone();
+        for (i, arg) in args.iter().enumerate().take(macro_def.params) {
+            let placeholder = format!("#{}", i + 1);
+            expanded = expanded.replace(&placeholder, arg);
+        }
+        // Re-parse and emit. Use a sub-emitter so we don't disturb
+        // our `out` cursor management — its output is appended.
+        let tree = crate::parser::parse(&expanded);
+        let visited = std::mem::take(&mut self.visited_includes);
+        let macros = self.macros.clone();
+        let mut sub =
+            Emitter::with_includes(&expanded, self.source_name, self.base_dir.clone(), visited);
+        sub.in_math = self.in_math;
+        sub.macros = macros;
+        sub.emit_root(tree.root_node());
+        // Merge child state back.
+        self.visited_includes = std::mem::take(&mut sub.visited_includes);
+        // The macro's expansion may have defined additional macros
+        // (rare but allowed). Pull those back to the parent.
+        for (k, v) in sub.macros.drain() {
+            self.macros.entry(k).or_insert(v);
+        }
+        let body_out = sub.out;
+        // Trim the trailing newline the child may have added if the
+        // body is a one-liner; otherwise math expansions get
+        // unwanted line breaks.
+        let body_out = body_out.trim_end_matches('\n');
+        self.out.push_str(body_out);
+        self.warnings.append(&mut sub.warnings);
+        node.end_byte()
     }
 
     /// Expand a `\input{...}` / `\include{...}` directive inline.
@@ -899,6 +1177,64 @@ impl<'a> Emitter<'a> {
     ///
     /// Returns true when the include resolved and was expanded; false when
     /// the resolution failed (a more specific warning has been pushed).
+    /// Try to read `<pkg>.sty` (or `<pkg>.cls`) sitting next to the
+    /// paper's source files and harvest any `\newcommand` / `\def`
+    /// definitions into `self.macros`. Subsequent calls to those
+    /// macros in the body get expanded by `expand_user_macro`.
+    ///
+    /// Silent no-op when no local file is found (system packages like
+    /// `amsmath`, `tikz`, `geometry`) — the caller still falls back
+    /// to the no-op-allowlist drop. Failures inside the sub-parse
+    /// are absorbed (a malformed `.sty` shouldn't bring down the
+    /// parent conversion).
+    fn expand_local_package(&mut self, pkg: &str) {
+        let base_dir = match self.base_dir.clone() {
+            Some(b) => b,
+            None => return,
+        };
+        let resolved = match resolve_package_path(&base_dir, pkg) {
+            Some(p) => p,
+            None => return,
+        };
+        let canonical = resolved.canonicalize().unwrap_or_else(|_| resolved.clone());
+        if !self.visited_includes.insert(canonical.clone()) {
+            return; // already harvested on this chain
+        }
+        let source = match std::fs::read_to_string(&resolved) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        // Walk the file's AST looking for `new_command_definition`
+        // and `old_command_definition` nodes; harvest each one's
+        // definition into a fresh map, then merge.
+        let tree = crate::parser::parse(&source);
+        let mut harvested: HashMap<String, MacroDef> = HashMap::new();
+        let root = tree.root_node();
+        let mut stack: Vec<Node<'_>> = vec![root];
+        while let Some(n) = stack.pop() {
+            match n.kind() {
+                "new_command_definition" => {
+                    if let Some((name, def)) = extract_newcommand(n, &source) {
+                        harvested.insert(name, def);
+                    }
+                }
+                "old_command_definition" => {
+                    let _ = extract_def_and_record(n, &source, &mut harvested);
+                }
+                _ => {
+                    let mut cursor = n.walk();
+                    for c in n.children(&mut cursor) {
+                        stack.push(c);
+                    }
+                }
+            }
+        }
+        // Merge into self.macros, parent-wins.
+        for (k, v) in harvested {
+            self.macros.entry(k).or_insert(v);
+        }
+    }
+
     fn expand_latex_include(&mut self, node: Node<'_>) -> bool {
         let base_dir = match self.base_dir.clone() {
             Some(b) => b,
@@ -978,22 +1314,14 @@ impl<'a> Emitter<'a> {
         }
         self.out.push_str(&sub.out);
         self.warnings.append(&mut sub.warnings);
+        self.asset_refs.append(&mut sub.asset_refs);
         self.needs_heading_numbering |= sub.needs_heading_numbering;
         self.needs_equation_numbering |= sub.needs_equation_numbering;
-        if self.pending_title.is_none() {
-            self.pending_title = sub.pending_title.take();
-        }
-        if self.pending_authors.is_empty() {
-            self.pending_authors.append(&mut sub.pending_authors);
-        }
-        if self.pending_date.is_none() {
-            self.pending_date = sub.pending_date.take();
-        }
-        if self.pending_abstract.is_none() {
-            self.pending_abstract = sub.pending_abstract.take();
-        }
-        if self.pending_keywords.is_none() {
-            self.pending_keywords = sub.pending_keywords.take();
+        // Merge the included file's metadata into the parent, parent
+        // taking priority for fields it already owns.
+        self.metadata.merge_from(&mut sub.metadata);
+        if self.raw_authors.is_empty() {
+            self.raw_authors.append(&mut sub.raw_authors);
         }
         if matches!(self.detected_class, DocClass::Unknown) {
             self.detected_class = std::mem::replace(&mut sub.detected_class, DocClass::Unknown);
@@ -1025,28 +1353,51 @@ impl<'a> Emitter<'a> {
 
     /// Emit the centered Typst title block from any captured \title/\author/\date.
     fn flush_title_block(&mut self) {
-        if self.pending_title.is_none() && self.pending_authors.is_empty() {
+        // Promote any raw author strings to structured records first,
+        // so the fallback path renders the same set of authors that the
+        // template path would have used.
+        self.materialize_authors();
+        if self.metadata.is_title_block_empty() {
             return;
         }
         self.ensure_paragraph_break();
         self.out.push_str("#align(center)[\n");
-        if let Some(title) = self.pending_title.take() {
+        if let Some(title) = self.metadata.title.take() {
             let _ = writeln!(
                 self.out,
                 "  #text(size: 1.5em, weight: \"bold\")[{}]",
-                title
+                title.as_content()
             );
         }
-        if !self.pending_authors.is_empty() {
+        if !self.metadata.authors.is_empty() {
             self.out.push_str("  #v(0.6em)\n  ");
-            let authors = std::mem::take(&mut self.pending_authors);
-            self.out.push_str(&authors.join(", "));
+            let names: Vec<String> = self
+                .metadata
+                .authors
+                .iter()
+                .map(|a| a.name.as_content().to_string())
+                .collect();
+            self.out.push_str(&names.join(", "));
             self.out.push('\n');
+            self.metadata.authors.clear();
         }
-        if let Some(date) = self.pending_date.take() {
+        if let Some(date) = self.metadata.date.take() {
             let _ = write!(self.out, "  #v(0.4em)\n  {}\n", date);
         }
         self.out.push_str("]\n\n");
+    }
+
+    /// Convert the raw `\author{...}` strings collected during the AST
+    /// walk into structured `Author` records by running the per-class
+    /// parser from `class_map.rs`. Idempotent — calling it twice is a
+    /// no-op.
+    fn materialize_authors(&mut self) {
+        if self.raw_authors.is_empty() {
+            return;
+        }
+        let raw = std::mem::take(&mut self.raw_authors);
+        let mut parsed = crate::class_map::parse_authors(&raw, &self.detected_class);
+        self.metadata.authors.append(&mut parsed);
     }
 
     /// Find the first `curly_group` child of `node` and render its inner
@@ -1102,9 +1453,10 @@ impl<'a> Emitter<'a> {
             // template accepts an `abstract:` parameter (IEEE, NeurIPS).
             // For acmart and unknown classes the abstract stays inline.
             Some("abstract") => {
-                if self.detected_class.wants_abstract_field() && self.pending_abstract.is_none() {
+                if self.detected_class.wants_abstract_field() && self.metadata.r#abstract.is_none()
+                {
                     let body = self.render_env_body_to_string(node);
-                    self.pending_abstract = Some(body.trim().to_string());
+                    self.metadata.r#abstract = Some(Content::Typst(body.trim().to_string()));
                     node.end_byte()
                 } else {
                     self.emit_environment_body(node)
@@ -1112,9 +1464,15 @@ impl<'a> Emitter<'a> {
             }
             // IEEEtran's keywords env. Same capture-or-drop dance as abstract.
             Some("IEEEkeywords") => {
-                if self.detected_class.import_line().is_some() && self.pending_keywords.is_none() {
+                if self.detected_class.import_line().is_some() && self.metadata.keywords.is_empty()
+                {
                     let body = self.render_env_body_to_string(node);
-                    self.pending_keywords = Some(body.trim().to_string());
+                    self.metadata.keywords = body
+                        .trim()
+                        .split(',')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect();
                     node.end_byte()
                 } else {
                     self.emit_environment_body(node)
@@ -1133,6 +1491,11 @@ impl<'a> Emitter<'a> {
             // `cases` env produces piecewise display.
             Some("cases") => self.emit_cases_env(node),
             // M4: tables and figure floats.
+            // `array` is dispatched specially: when nested inside a math
+            // container (`align*`, `gather`, `\left\{...\right\}`, etc.)
+            // it should render as Typst `cases(...)`, not as a `#table(...)`
+            // (which is text-mode-only and breaks the surrounding `$...$`).
+            Some("array") if self.in_math => self.emit_array_in_math(node),
             Some("tabular") | Some("tabular*") | Some("array") => self.emit_tabular(node),
             Some("figure") | Some("figure*") | Some("table") => self.emit_figure(node),
             // IEEE/thebibliography style: emit each \bibitem as a labeled
@@ -1282,13 +1645,17 @@ impl<'a> Emitter<'a> {
     /// centered title block).
     fn build_template_preamble(&mut self) -> Option<String> {
         let import_line = self.detected_class.import_line()?;
-        let title = self.pending_title.take().unwrap_or_default();
-        let authors = std::mem::take(&mut self.pending_authors);
-        let abstract_ = self.pending_abstract.take().unwrap_or_default();
-        let keywords = self.pending_keywords.take().unwrap_or_default();
-        let show_call = self
-            .detected_class
-            .show_call(&title, &authors, &abstract_, &keywords)?;
+        // Run the class-aware author parser now that detection has
+        // settled (it may have been refined by a `\usepackage{neurips_*}`).
+        self.materialize_authors();
+        // Bare-bones documents (no title, no authors) skip the template
+        // preamble. Emitting an empty `arkheion.with(title: [], authors:
+        // ())` block would force a blank title page and trip the
+        // template's required-field assertions.
+        if self.metadata.is_title_block_empty() {
+            return None;
+        }
+        let show_call = self.detected_class.show_call(&self.metadata)?;
         let mut s = String::new();
         s.push_str(import_line);
         s.push('\n');
@@ -1444,12 +1811,35 @@ impl<'a> Emitter<'a> {
     /// LaTeX tokenizer treats the `\` as a word boundary. Typst reads
     /// adjacent letters as a single identifier, so `t` + `in` collapses to
     /// the unknown variable `tin`. Inserting a space recovers the boundary.
+    ///
+    /// Symbols that contain a `.` (e.g. `arrow.r`, `dots.h`, `chevron.l`)
+    /// get an additional *trailing* space: Typst treats `arrow.r0` as
+    /// `arrow.r` with an unknown `0` modifier, so we need to break the
+    /// `0` (or letter) away from the dotted suffix on the right too.
     fn push_math_symbol(&mut self, typst: &str) {
         if typst.is_empty() {
             return;
         }
         self.ensure_math_letter_boundary(typst);
         self.out.push_str(typst);
+        // For multi-character symbols whose last character could fuse
+        // with a following alphanumeric (`approx22`, `dot.c y`,
+        // `arrow.r0`), drop a `MATH_WORD_BOUNDARY` sentinel here. The
+        // sentinel is rewritten at the math container's exit:
+        //
+        //   sentinel followed by `_`/`^`/punct/`(` → drop (no separator
+        //   needed; Typst already token-breaks at those).
+        //   sentinel followed by anything else (letter/digit/end of
+        //   buffer) → replace with a single ASCII space so the two
+        //   identifiers stay separate.
+        let multi_char_letterish = typst.chars().count() > 1
+            && typst
+                .chars()
+                .last()
+                .is_some_and(|c| c.is_ascii_alphanumeric());
+        if multi_char_letterish {
+            self.out.push(MATH_WORD_BOUNDARY);
+        }
     }
 
     /// Insert a single space into `self.out` when needed to keep a letter
@@ -1476,12 +1866,98 @@ impl<'a> Emitter<'a> {
     /// have been escaped as `\[` / `\]`. Balanced pairs are left as-is. See
     /// [`escape_unbalanced_math_brackets`] for the rationale.
     fn balance_math_brackets(&mut self, body_start: usize) {
+        if body_start > self.out.len() {
+            return;
+        }
         let body_len = self.out.len() - body_start;
         let escaped = escape_unbalanced_math_brackets(&self.out[body_start..]);
         if escaped.len() != body_len {
             self.out.truncate(body_start);
             self.out.push_str(&escaped);
         }
+    }
+
+    /// Collapse runs of two or more ASCII spaces in the in-progress math
+    /// body to a single space. `push_math_symbol` appends a trailing space
+    /// to multi-character word-like symbols (`approx`, `dot.c`, `arrow.r`)
+    /// so they don't fuse with a following digit or letter; when the source
+    /// already had whitespace between the LaTeX command and the next token,
+    /// the two spaces collide. Math rendering treats `a  b` and `a b`
+    /// identically, so collapsing keeps the output tidy and avoids
+    /// snapshot churn.
+    /// Resolve `MATH_WORD_BOUNDARY` sentinels that `push_math_symbol`
+    /// dropped into the in-progress math body. Each sentinel becomes a
+    /// space when the following character would fuse with the preceding
+    /// math identifier (`approx` + `22` → `approx 22`), and is dropped
+    /// otherwise (`sum` + `_` → `sum_`).
+    fn collapse_math_spaces(&mut self, body_start: usize) {
+        // Guard: the surrounding math-container emitters sometimes pop
+        // trailing whitespace from `self.out` before calling us. If
+        // they popped past `body_start` the slice would panic; treat
+        // that as "body empty, nothing to do".
+        if body_start > self.out.len() {
+            return;
+        }
+        let body = &self.out[body_start..];
+        if !body.contains(MATH_WORD_BOUNDARY) && !body.contains("  ") && !body.ends_with(' ') {
+            return;
+        }
+        let mut out = String::with_capacity(body.len());
+        let chars: Vec<char> = body.chars().collect();
+        let mut i = 0;
+        while i < chars.len() {
+            let c = chars[i];
+            if c == MATH_WORD_BOUNDARY {
+                // Look ahead at the next non-sentinel character.
+                let mut j = i + 1;
+                while j < chars.len() && chars[j] == MATH_WORD_BOUNDARY {
+                    j += 1;
+                }
+                if let Some(&next) = chars.get(j) {
+                    // For dotted symbols (e.g. `arrow.r`, `dots.h`) a following
+                    // `(` would be parsed by Typst as a function-call argument,
+                    // turning the symbol into an unknown function. Emit a space to
+                    // break the call syntax. Non-dotted symbols (`sum`, `int`, …)
+                    // are fine: Typst already tokenises `sum(` as subscript-less
+                    // sum followed by a group.
+                    let prev_token_dotted = {
+                        let s = out.as_str();
+                        let last_ws = s
+                            .rfind(|c: char| c.is_whitespace())
+                            .map(|p| p + 1)
+                            .unwrap_or(0);
+                        s[last_ws..].contains('.')
+                    };
+                    // Only `(` can make Typst interpret the dotted symbol as a
+                    // function call (e.g. `arrow.r(` → function call). `)`, `,`
+                    // and other punct are fine without a separator.
+                    let next_is_call_open = next == '(';
+                    if next.is_ascii_alphanumeric() || (prev_token_dotted && next_is_call_open) {
+                        out.push(' ');
+                    }
+                    // else: drop the sentinel — Typst already tokenizes
+                    // at `_`, `^`, `(`, `)`, `,`, etc.
+                }
+                i = j;
+                continue;
+            }
+            // Collapse runs of ASCII spaces to one.
+            if c == ' ' {
+                out.push(' ');
+                i += 1;
+                while i < chars.len() && chars[i] == ' ' {
+                    i += 1;
+                }
+                continue;
+            }
+            out.push(c);
+            i += 1;
+        }
+        while out.ends_with(' ') {
+            out.pop();
+        }
+        self.out.truncate(body_start);
+        self.out.push_str(&out);
     }
 
     fn emit_inline_math(&mut self, node: Node<'_>) -> usize {
@@ -1491,6 +1967,7 @@ impl<'a> Emitter<'a> {
         self.in_math = true;
         self.emit_math_children(node);
         self.in_math = was;
+        self.collapse_math_spaces(body_start);
         self.balance_math_brackets(body_start);
         self.out.push('$');
         node.end_byte()
@@ -1506,10 +1983,12 @@ impl<'a> Emitter<'a> {
         self.emit_math_children(node);
         self.in_math = was;
         // Trim trailing whitespace we accumulated inside (newlines from layout) so
-        // the closing `$` follows directly after the content.
-        while self.out.ends_with(' ') || self.out.ends_with('\n') {
+        // the closing `$` follows directly after the content. Guard against
+        // popping past body_start when the math body is empty.
+        while self.out.len() > body_start && (self.out.ends_with(' ') || self.out.ends_with('\n')) {
             self.out.pop();
         }
+        self.collapse_math_spaces(body_start);
         self.balance_math_brackets(body_start);
         self.out.push_str(" $");
         node.end_byte()
@@ -1519,7 +1998,42 @@ impl<'a> Emitter<'a> {
     /// as `math_environment` (distinct from `generic_environment`). We treat
     /// numbered/unnumbered forms the same and let Typst handle numbering.
     fn emit_math_environment(&mut self, node: Node<'_>) -> usize {
-        let _env_name = environment_name(node, self.src).unwrap_or_default();
+        let env_name = environment_name(node, self.src).unwrap_or_default();
+        // `array` parses as a math_environment in tree-sitter-latex (not
+        // as a generic_environment). When we hit one and we're already
+        // inside another math container, render via the
+        // `array → cases(...)` helper instead of opening a new `$...$`
+        // block (which would break the parent math). The dispatcher in
+        // emit_generic_environment never sees this node — it's all on
+        // the math path.
+        if env_name == "array" && self.in_math {
+            return self.emit_array_in_math(node);
+        }
+        // Guard: if we are already inside a math container (e.g. a math_environment
+        // nested under an outer `$...$`), do NOT open a fresh `$ ... $`. Opening a
+        // new `$` would close the outer math in Typst's parser, leaving the outer
+        // closing `$` dangling. Instead, just inline the body children.
+        if self.in_math {
+            let prev_label = self.pending_math_label.take();
+            let mut cursor = node.walk();
+            let body: Vec<Node<'_>> = node
+                .children(&mut cursor)
+                .filter(|c| !matches!(c.kind(), "begin" | "end"))
+                .collect();
+            if !body.is_empty() {
+                let mut last = body[0].start_byte();
+                for child in &body {
+                    self.safe_copy(last, child.start_byte());
+                    last = self.emit_node(*child);
+                }
+                self.safe_copy(last, body.last().unwrap().end_byte());
+            }
+            if let Some(l) = self.pending_math_label.take() {
+                let _ = write!(self.out, " <{}>", l);
+            }
+            self.pending_math_label = prev_label;
+            return node.end_byte();
+        }
         self.ensure_paragraph_break();
         self.out.push_str("$ ");
         let body_start = self.out.len();
@@ -1545,9 +2059,10 @@ impl<'a> Emitter<'a> {
         }
 
         self.in_math = was;
-        while self.out.ends_with(' ') || self.out.ends_with('\n') {
+        while self.out.len() > body_start && (self.out.ends_with(' ') || self.out.ends_with('\n')) {
             self.out.pop();
         }
+        self.collapse_math_spaces(body_start);
         self.balance_math_brackets(body_start);
         self.out.push_str(" $");
         if let Some(l) = self.pending_math_label.take() {
@@ -1559,6 +2074,47 @@ impl<'a> Emitter<'a> {
 
     /// Skip the math delimiters (`$`, `$$`, `\[`, `\]`) and emit interior
     /// children with the usual gap-copy mechanism.
+    /// `\left<L> ... \right<R>` in math. tree-sitter packages the whole
+    /// span as a `math_delimiter` node. We emit just the delimiter pair
+    /// plus the body — Typst auto-pairs balanced delimiters and provides
+    /// `lr(...)` for explicit stretching that we don't need here. Drop
+    /// the `\left` / `\right` commands themselves (they'd otherwise leak
+    /// into the output as literal `\left(`/`\right)` and Typst would
+    /// read `\l` as the math escape for `l`, leaving `eft(` dangling).
+    /// `\left.` and `\right.` (no-display delimiters in LaTeX) are
+    /// emitted as empty so the body still pairs.
+    fn emit_math_delimiter(&mut self, node: Node<'_>) -> usize {
+        let mut cursor = node.walk();
+        let children: Vec<Node<'_>> = node.children(&mut cursor).collect();
+        for child in children {
+            let kind = child.kind();
+            // Skip the size commands themselves.
+            if matches!(
+                kind,
+                "\\left"
+                    | "\\right"
+                    | "\\bigl"
+                    | "\\Bigl"
+                    | "\\biggl"
+                    | "\\Biggl"
+                    | "\\bigr"
+                    | "\\Bigr"
+                    | "\\biggr"
+                    | "\\Biggr"
+                    | "\\middle"
+            ) {
+                continue;
+            }
+            // `.` is LaTeX's "invisible delimiter" — drop.
+            let text = &self.src[child.start_byte()..child.end_byte()];
+            if text == "." {
+                continue;
+            }
+            self.emit_node(child);
+        }
+        node.end_byte()
+    }
+
     fn emit_math_children(&mut self, node: Node<'_>) {
         let mut cursor = node.walk();
         let body: Vec<Node<'_>> = node
@@ -1615,12 +2171,14 @@ impl<'a> Emitter<'a> {
             }
             // `\mathbf{X}` → bold math; `\mathbb{X}` → blackboard bold (`bb(X)`).
             "\\mathbf" | "\\bm" | "\\bs" => self.emit_math_wrap(node, "bold(", ")"),
-            "\\mathbb" | "\\mathbbm" => self.emit_math_wrap(node, "bb(", ")"),
+            "\\mathbb" | "\\mathbbm" | "\\Bbb" => self.emit_math_wrap(node, "bb(", ")"),
             "\\mathcal" => self.emit_math_wrap(node, "cal(", ")"),
             "\\mathfrak" => self.emit_math_wrap(node, "frak(", ")"),
+            "\\mathscr" => self.emit_math_wrap(node, "scr(", ")"),
             "\\mathsf" => self.emit_math_wrap(node, "sans(", ")"),
             "\\mathit" => self.emit_math_wrap(node, "italic(", ")"),
             "\\mathtt" => self.emit_math_wrap(node, "mono(", ")"),
+            "\\boldsymbol" | "\\pmb" => self.emit_math_wrap(node, "bold(", ")"),
             // Math accents
             "\\bar" | "\\overline" => self.emit_math_wrap(node, "overline(", ")"),
             "\\underline" => self.emit_math_wrap(node, "underline(", ")"),
@@ -1637,6 +2195,10 @@ impl<'a> Emitter<'a> {
             "\\operatorname" => self.emit_math_operatorname(node),
             // Math-mode spacing primitives — drop silently.
             "\\hspace" | "\\vspace" | "\\!" | "\\linebreak" | "\\nobreak" => node.end_byte(),
+            // `\tag{...}` adds LaTeX equation labels for presentation only;
+            // Typst handles equation numbering itself. Drop the command and its
+            // curly-group argument (the generic_command node covers both).
+            "\\tag" => node.end_byte(),
             // Row break inside math envs. We emit just `\`; the source's
             // surrounding whitespace (gap-copied by the parent) takes care of
             // spacing around it.
@@ -1657,15 +2219,23 @@ impl<'a> Emitter<'a> {
                 self.out.push_str("med");
                 node.end_byte()
             }
-            _ => {
-                self.warn_ambiguous_math(node, n);
-                // Inside math, Typst accepts `"text"` as a literal text node.
-                // Strip the leading backslash for readability.
-                let display = n.strip_prefix('\\').unwrap_or(n);
-                let _ = write!(self.out, " \"{}\" ", display);
-                node.end_byte()
-            }
+            _ => self.emit_unknown_math_command(node, n),
         }
+    }
+
+    /// Fallback for an unrecognised command inside math. Emits a Typst
+    /// string-literal placeholder (`"name"`) so the output stays valid, and
+    /// records an `ambiguous_math` warning. Both the `command_name` walker
+    /// arm and `emit_math_command`'s catch-all delegate here so the two paths
+    /// cannot drift apart.
+    fn emit_unknown_math_command(&mut self, node: Node<'_>, name: &str) -> usize {
+        if self.macros.contains_key(name) {
+            return self.expand_user_macro(node, name);
+        }
+        self.warn_ambiguous_math(node, name);
+        let display = name.strip_prefix('\\').unwrap_or(name);
+        let _ = write!(self.out, " \"{}\" ", display);
+        node.end_byte()
     }
 
     /// `\frac{a}{b}` → `(a) / (b)` per the M3 plan.
@@ -1726,10 +2296,131 @@ impl<'a> Emitter<'a> {
             self.out.push_str(left);
             self.out.push_str(inner.trim());
             self.out.push_str(right);
-        } else {
-            self.warn_ambiguous_math(node, "missing argument");
+            return node.end_byte();
         }
-        node.end_byte()
+        // Brace-less form — LaTeX permits `\hat x`, `\mathcal A`,
+        // `\bar\alpha` etc. The argument is the next non-whitespace
+        // token in the source; tree-sitter parses it as a sibling of
+        // this command, not a child. Consume it directly from the
+        // source bytes and mark the range as already-emitted via
+        // `skip_until` so the parent walker doesn't re-emit the
+        // token as plain text.
+        let bytes = self.src.as_bytes();
+        let mut i = node.end_byte();
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i >= bytes.len() {
+            self.warn_ambiguous_math(node, "missing argument");
+            return node.end_byte();
+        }
+        let (arg_end, arg_render) = if bytes[i] == b'\\' && i + 1 < bytes.len() {
+            // `\alpha`, `\beta`, ... — look up via the math symbol
+            // table so the wrap emits `hat(alpha)` not `hat(\alpha)`.
+            let mut j = i + 1;
+            while j < bytes.len() && bytes[j].is_ascii_alphabetic() {
+                j += 1;
+            }
+            if j == i + 1 {
+                // Single-char backslash escape (e.g. `\%`).
+                j = i + 2;
+            }
+            let cmd = &self.src[i..j];
+            // Resolution order: math symbol table → user macros → raw.
+            // Without the macro check, `\widehat\HSIC` (where `\HSIC`
+            // is a `\newcommand` defined in the source) emits the
+            // literal `\HSIC` instead of the expansion.
+            let rendered = if let Some(typst) = lookup_math_symbol(cmd) {
+                typst.to_string()
+            } else if let Some(macro_def) = self.macros.get(cmd).cloned() {
+                // Expand: re-parse the macro body and render via a
+                // sub-emitter inheriting the math context + macro table.
+                let body = macro_def.body.clone();
+                let tree = crate::parser::parse(&body);
+                let visited = std::mem::take(&mut self.visited_includes);
+                let macros = self.macros.clone();
+                let mut sub =
+                    Emitter::with_includes(&body, self.source_name, self.base_dir.clone(), visited);
+                sub.in_math = true;
+                sub.macros = macros;
+                sub.emit_root(tree.root_node());
+                self.visited_includes = std::mem::take(&mut sub.visited_includes);
+                for (k, v) in sub.macros.drain() {
+                    self.macros.entry(k).or_insert(v);
+                }
+                sub.out.trim().to_string()
+            } else {
+                cmd.to_string()
+            };
+            (j, rendered)
+        } else if bytes[i] == b'{' {
+            // Brace group as the arg: tree-sitter dropped the curly
+            // group because `\hat` / `\mathcal` etc. were parsed as
+            // bare `command_name` (no `generic_command` parent that
+            // would attach the curly_group as a child). Find the
+            // matching `}` by balancing depth on raw bytes, then
+            // re-parse the inner content with the current math
+            // context so nested commands render properly.
+            let inner_start = i + 1;
+            let mut depth = 1i32;
+            let mut j = inner_start;
+            while j < bytes.len() {
+                match bytes[j] {
+                    b'\\' if j + 1 < bytes.len() => {
+                        j += 2;
+                        continue;
+                    }
+                    b'{' => depth += 1,
+                    b'}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+                j += 1;
+            }
+            if j >= bytes.len() {
+                self.warn_ambiguous_math(node, "unbalanced argument braces");
+                return node.end_byte();
+            }
+            let inner_src = &self.src[inner_start..j];
+            let tree = crate::parser::parse(inner_src);
+            let visited = std::mem::take(&mut self.visited_includes);
+            let macros = self.macros.clone();
+            let mut sub =
+                Emitter::with_includes(inner_src, self.source_name, self.base_dir.clone(), visited);
+            sub.in_math = true;
+            sub.macros = macros;
+            sub.emit_root(tree.root_node());
+            self.visited_includes = std::mem::take(&mut sub.visited_includes);
+            for (k, v) in sub.macros.drain() {
+                self.macros.entry(k).or_insert(v);
+            }
+            self.warnings.append(&mut sub.warnings);
+            let rendered = sub.out.trim().to_string();
+            (j + 1, rendered)
+        } else {
+            // Single character — letter, digit, punctuation, or one
+            // codepoint of a multi-byte UTF-8 sequence.
+            let rest = &self.src[i..];
+            let c = match rest.chars().next() {
+                Some(c) => c,
+                None => {
+                    self.warn_ambiguous_math(node, "missing argument");
+                    return node.end_byte();
+                }
+            };
+            (i + c.len_utf8(), c.to_string())
+        };
+        self.ensure_math_letter_boundary(left);
+        self.out.push_str(left);
+        self.out.push_str(arg_render.trim());
+        self.out.push_str(right);
+        // Mark the consumed argument range as already-emitted.
+        self.skip_until = self.skip_until.max(arg_end);
+        arg_end
     }
 
     fn emit_math_binom(&mut self, node: Node<'_>) -> usize {
@@ -1768,7 +2459,22 @@ impl<'a> Emitter<'a> {
                 let inner = self.render_math_group(*arg);
                 let _ = write!(self.out, "({})", inner.trim());
             } else {
-                let _ = self.emit_node(*arg);
+                // Render the arg into a scratch buffer so we can decide
+                // whether to wrap. Typst parses `_cal(T)` as `_c · al(T)`
+                // (the `c` is the subscript, the rest is a separate
+                // expression); we need `_(cal(T))` to keep the whole
+                // wrap as the subscript group. Wrap whenever the
+                // rendered text would otherwise parse as more than a
+                // single token.
+                let rendered = self.with_sub_buffer(|emitter| {
+                    let _ = emitter.emit_node(*arg);
+                });
+                let trimmed = rendered.trim();
+                if needs_subscript_parens(trimmed) {
+                    let _ = write!(self.out, "({})", trimmed);
+                } else {
+                    self.out.push_str(trimmed);
+                }
             }
         }
         node.end_byte()
@@ -1850,7 +2556,14 @@ impl<'a> Emitter<'a> {
         node.end_byte()
     }
 
-    /// `\begin{cases} ... \end{cases}` → `cases(... ; ... ; ...)`.
+    /// `\begin{cases} ... \end{cases}` → `cases(...)`. Each LaTeX row maps
+    /// to one Typst cases argument. Rows are separated in the source by
+    /// `\\`, and inside each row the value and condition are separated by
+    /// `&` (e.g. `value & condition \\`). Typst's `cases()` only takes a
+    /// list of expressions, so we collapse the row's value and condition
+    /// with a `quad` space between them, then wrap the entire row in a
+    /// math grouping construct that preserves nested commas — without it,
+    /// commas inside `\max\{a, 0\}` are read as cases separators.
     fn emit_cases_env(&mut self, node: Node<'_>) -> usize {
         let was = self.in_math;
         self.in_math = true;
@@ -1873,9 +2586,79 @@ impl<'a> Emitter<'a> {
                 emitter.safe_copy(last, end);
             })
         };
-        let rows: Vec<&str> = body_str.split(" \\").map(|r| r.trim()).collect();
-        let _ = write!(self.out, "cases({})", rows.join("; "));
+        // Row break in LaTeX cases is `\\`. The render walker emitted that
+        // as ` \` (trailing space then backslash) at the end of each line,
+        // matching the source convention. Split on it.
+        let rows: Vec<String> = body_str
+            .split(" \\")
+            .map(|r| {
+                let r = r.trim();
+                // Inside a row, `&` separates value from condition.
+                // Replace with ` quad ` (an em of horizontal space) and
+                // wrap the row in `lr(...)` so internal commas are
+                // preserved as content, not parsed as cases separators.
+                let row = r.replace('&', " quad ");
+                // `lr(...)` accepts arbitrary content; the leading and
+                // trailing single-char delim positions don't matter when
+                // the content already pairs. Use empty fences to keep the
+                // grouping invisible.
+                format!("[{}]", row)
+            })
+            .filter(|r| r != "[]")
+            .collect();
+        let _ = write!(self.out, "cases({})", rows.join(", "));
         self.in_math = was;
+        node.end_byte()
+    }
+
+    /// `\begin{array}{cols} ... \end{array}` when nested inside a math
+    /// container (the only reasonable Typst rendering for math-mode
+    /// arrays). The dispatcher routes here when `self.in_math == true`;
+    /// the text-mode `array` case still goes through `emit_tabular`.
+    ///
+    /// LaTeX `array` envs differ from `cases` only in the column
+    /// specifier — `cases` is implicitly `{ll}`, array exposes it.
+    /// For two-column arrays (the common piecewise form) the output
+    /// is identical to `cases`. For wider arrays we collapse all
+    /// cells with `quad` and let cases render them as one stacked
+    /// expression per row.
+    fn emit_array_in_math(&mut self, node: Node<'_>) -> usize {
+        // Skip the column-spec curly_group (the first one); body
+        // children are the rest.
+        let mut cursor = node.walk();
+        let body: Vec<Node<'_>> = node
+            .children(&mut cursor)
+            .filter(|c| !matches!(c.kind(), "begin" | "end" | "curly_group"))
+            .collect();
+        let body_str = if body.is_empty() {
+            String::new()
+        } else {
+            self.with_sub_buffer(|emitter| {
+                let mut last = body[0].start_byte();
+                for child in &body {
+                    let cs = child.start_byte();
+                    emitter.safe_copy(last, cs);
+                    last = emitter.emit_node(*child);
+                }
+                let end = body.last().unwrap().end_byte();
+                emitter.safe_copy(last, end);
+            })
+        };
+        // Rows are split on the rendered row-break (` \` from the
+        // emit_math_command `\\` handler) — same as emit_cases_env.
+        let rows: Vec<String> = body_str
+            .split(" \\")
+            .map(|r| {
+                let r = r.trim();
+                // Cells: `&` separator gets collapsed to `quad`. Wrap
+                // the whole row in `[content]` so internal commas
+                // don't get read as cases() argument separators.
+                let row = r.replace('&', " quad ");
+                format!("[{}]", row)
+            })
+            .filter(|r| r != "[]")
+            .collect();
+        let _ = write!(self.out, "cases({})", rows.join(", "));
         node.end_byte()
     }
 
@@ -1930,11 +2713,20 @@ impl<'a> Emitter<'a> {
             .children(&mut cursor)
             .next()
             .map(|c| c.kind().to_string());
-        let key = extract_label_ref_key(node, self.src).unwrap_or_default();
+        let (key, end_after_brace) = match extract_label_ref_key_and_end(node, self.src) {
+            Some(x) => x,
+            None => {
+                self.warn_unsupported_command(node);
+                return node.end_byte();
+            }
+        };
         if key.is_empty() {
             self.warn_unsupported_command(node);
             return node.end_byte();
         }
+        // Cover the truncated-grammar tail (`_objective}`) when the key
+        // contains underscores — same as `\label{...}` handling above.
+        self.skip_until = self.skip_until.max(end_after_brace);
         match first_kind.as_deref() {
             Some("\\eqref") => {
                 self.needs_equation_numbering = true;
@@ -2003,6 +2795,16 @@ impl<'a> Emitter<'a> {
         } else {
             format!("{}.bib", path)
         };
+        // Record the asset ref if the file is reachable on disk.
+        if let Some(ref base) = self.base_dir.clone() {
+            if let Some(source_path) = probe_bib_on_disk(base, &path) {
+                self.asset_refs.push(crate::AssetRef {
+                    kind: crate::AssetKind::Bibliography,
+                    typst_path: path_with_ext.clone(),
+                    source_path,
+                });
+            }
+        }
         self.ensure_paragraph_break();
         let mapped = style.as_deref().and_then(map_bibliography_style);
         if let Some(s) = mapped {
@@ -2035,6 +2837,37 @@ impl<'a> Emitter<'a> {
 
     fn emit_graphics_include(&mut self, node: Node<'_>) -> usize {
         let path = extract_graphics_path(node, self.src).unwrap_or_default();
+        // Typst supports PNG/JPG/GIF/SVG and PDF (>=0.10), but NOT EPS or
+        // PS — many older arxiv preprints ship `.eps` figures. Emit a
+        // labelled placeholder rect rather than a hard image() call so
+        // the rest of the document compiles. Same fallback for `.ps`
+        // and `.tikz`-style includes that masquerade as graphics.
+        let lower = path.to_ascii_lowercase();
+        if lower.ends_with(".eps")
+            || lower.ends_with(".ps")
+            || lower.ends_with(".tikz")
+            || lower.ends_with(".pgf")
+        {
+            self.warnings.push(Warning {
+                range: range_of(node),
+                category: Category::NeedsManualReview {
+                    reason: format!("unsupported image format: {}", path),
+                },
+                severity: Severity::Warning,
+                message: format!(
+                    "Typst cannot render `{}` — emitting a placeholder. Convert the asset to PDF, PNG, or SVG and rerun.",
+                    path
+                ),
+                snippet: self.src[node.start_byte()..node.end_byte()].to_string(),
+                suggested_skill: None,
+            });
+            let _ = write!(
+                self.out,
+                "rect(width: 60%, height: 4em, stroke: 0.5pt, fill: luma(240))[#align(center + horizon)[`{}`]]",
+                path
+            );
+            return node.end_byte();
+        }
         let opts = extract_graphics_options(node, self.src);
         let mut args = format!("\"{}\"", path);
         if let Some(width) = opts.iter().find(|(k, _)| k == "width") {
@@ -2045,6 +2878,36 @@ impl<'a> Emitter<'a> {
         if let Some(height) = opts.iter().find(|(k, _)| k == "height") {
             let v = normalize_graphics_length(&height.1);
             args.push_str(&format!(", height: {}", v));
+        }
+        // Record the asset ref if the image exists on disk. The typst_path is
+        // whatever path string the Typst source references (used for relocation
+        // by the project layer).
+        if let Some(ref base) = self.base_dir.clone() {
+            if let Some(source_path) = probe_image_on_disk(base, &path) {
+                // Build the typst_path: use the resolved filename so it has an
+                // extension even if the LaTeX source omitted it.
+                let typst_path = if std::path::Path::new(&path).extension().is_some() {
+                    path.clone()
+                } else {
+                    source_path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .map(|name| {
+                            // Re-join the directory component from the original path.
+                            let dir = std::path::Path::new(&path).parent()
+                                .and_then(|p| p.to_str())
+                                .unwrap_or("");
+                            if dir.is_empty() { name.to_string() }
+                            else { format!("{}/{}", dir, name) }
+                        })
+                        .unwrap_or_else(|| path.clone())
+                };
+                self.asset_refs.push(crate::AssetRef {
+                    kind: crate::AssetKind::Image,
+                    typst_path,
+                    source_path,
+                });
+            }
         }
         let _ = write!(self.out, "image({})", args);
         node.end_byte()
@@ -2114,7 +2977,12 @@ impl<'a> Emitter<'a> {
                 snippet: self.src[node.start_byte()..node.end_byte()].to_string(),
                 suggested_skill: None,
             });
-            "image(\"???\")".to_string()
+            // No image / tabular and no other recoverable body —
+            // emit a placeholder rect that compiles without referring
+            // to a missing file. The labelled rect plays the same
+            // role as the EPS fallback in emit_graphics_include.
+            "rect(width: 60%, height: 4em, stroke: 0.5pt, fill: luma(240))[#align(center + horizon)[(figure)]]"
+                .to_string()
         };
 
         self.ensure_paragraph_break();
@@ -2136,8 +3004,23 @@ impl<'a> Emitter<'a> {
     /// `\begin{tabular}{lcr} a & b \\ c & d \end{tabular}` →
     /// `#table(columns: 3, align: (left, center, right), [a], [b], [c], [d])`.
     fn emit_tabular(&mut self, node: Node<'_>) -> usize {
-        // Column spec is the first `curly_group` child of the env.
-        let col_spec = first_curly_group(node)
+        // Column spec is the first `curly_group` child of the env —
+        // except for `tabular*` / `tabularx` which take a width
+        // argument first; in that case the column spec is the SECOND
+        // curly group.
+        let env = environment_name(node, self.src).unwrap_or_default();
+        let needs_skip = matches!(env.as_str(), "tabular*" | "tabularx" | "tabulary");
+        let mut cursor = node.walk();
+        let curly_groups: Vec<Node<'_>> = node
+            .children(&mut cursor)
+            .filter(|c| c.kind() == "curly_group")
+            .collect();
+        let spec_node = if needs_skip {
+            curly_groups.get(1).copied()
+        } else {
+            curly_groups.first().copied()
+        };
+        let col_spec = spec_node
             .map(|g| self.src[g.start_byte() + 1..g.end_byte() - 1].to_string())
             .unwrap_or_default();
         let (count, aligns) = parse_column_spec(&col_spec);
@@ -2213,7 +3096,7 @@ impl<'a> Emitter<'a> {
                 if cell.starts_with("table.cell(") {
                     self.out.push_str(cell);
                 } else {
-                    let _ = write!(self.out, "[{}]", cell);
+                    let _ = write!(self.out, "[{}]", escape_text_cell(cell));
                 }
                 emitted_any = true;
                 idx += 1;
@@ -2528,18 +3411,43 @@ fn extract_citation_keys(node: Node<'_>, src: &str) -> Vec<String> {
     keys
 }
 
-/// Extract the key from a `label_reference` node (`\ref{x}`, `\eqref{x}`).
-fn extract_label_ref_key(node: Node<'_>, src: &str) -> Option<String> {
+/// Extract the key from a `label_reference` node (`\ref{x}`, `\eqref{x}`)
+/// plus the byte offset just past the closing `}` so callers can
+/// `skip_until` over the part of the source tree-sitter dropped when
+/// the key contains underscores (same bug as `extract_label_name`).
+fn extract_label_ref_key_and_end(node: Node<'_>, src: &str) -> Option<(String, usize)> {
+    let bytes = src.as_bytes();
     let mut cursor = node.walk();
+    let mut open: Option<usize> = None;
     for child in node.children(&mut cursor) {
-        if child.kind() == "curly_group_label_list" || child.kind() == "curly_group_label" {
-            let mut sub = child.walk();
-            for grandchild in child.children(&mut sub) {
-                if grandchild.kind() == "label" {
-                    return Some(src[grandchild.start_byte()..grandchild.end_byte()].to_string());
+        if matches!(child.kind(), "curly_group_label_list" | "curly_group_label") {
+            open = Some(child.start_byte());
+            break;
+        }
+    }
+    let open = open?;
+    if bytes.get(open) != Some(&b'{') {
+        return None;
+    }
+    let mut depth = 1i32;
+    let mut i = open + 1;
+    let start = i;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' if i + 1 < bytes.len() => {
+                i += 2;
+                continue;
+            }
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some((normalize_label_key(&src[start..i]), i + 1));
                 }
             }
+            _ => {}
         }
+        i += 1;
     }
     None
 }
@@ -2760,8 +3668,16 @@ fn lookup_math_symbol(name: &str) -> Option<&'static str> {
         "\\neq" | "\\ne" => "!=",
         "\\equiv" => "equiv",
         "\\approx" => "approx",
-        "\\sim" => "tilde",
+        "\\sim" => "tilde.op",
+        "\\simeq" => "tilde.eq",
+        "\\cong" => "tilde.equiv",
+        "\\asymp" => "≍",
         "\\propto" => "prop",
+        "\\ngeq" | "\\ngtr" => "gt.eq.not",
+        "\\nleq" | "\\nless" => "lt.eq.not",
+        "\\coloneqq" | "\\coloneq" | "\\defeq" => "colon.eq",
+        "\\eqqcolon" | "\\eqcolon" => "eq.colon",
+        "\\bowtie" => "join",
         "\\to" | "\\rightarrow" => "arrow.r",
         "\\leftarrow" => "arrow.l",
         "\\leftrightarrow" => "arrow.l.r",
@@ -2769,10 +3685,35 @@ fn lookup_math_symbol(name: &str) -> Option<&'static str> {
         "\\Leftarrow" => "arrow.l.double",
         "\\Leftrightarrow" => "arrow.l.r.double",
         "\\mapsto" => "arrow.r.bar",
+        "\\hookrightarrow" => "arrow.r.hook",
+        "\\hookleftarrow" => "arrow.l.hook",
+        "\\uparrow" => "arrow.t",
+        "\\downarrow" => "arrow.b",
+        "\\updownarrow" => "arrow.t.b",
+        "\\Uparrow" => "arrow.t.double",
+        "\\Downarrow" => "arrow.b.double",
         "\\circ" => "circle.small",
         "\\bullet" => "bullet",
         "\\star" => "star.op",
         "\\ast" => "ast",
+        // Circled / boxed operators
+        "\\otimes" => "times.circle",
+        "\\oplus" => "plus.circle",
+        "\\ominus" => "minus.circle",
+        "\\odot" => "dot.circle",
+        "\\oslash" => "slash.circle",
+        "\\boxtimes" => "times.square",
+        "\\boxplus" => "plus.square",
+        // Geometric / order
+        "\\Box" | "\\square" => "square",
+        "\\diamond" | "\\Diamond" | "\\diamondsuit" => "diamond",
+        "\\triangle" | "\\bigtriangleup" => "triangle",
+        "\\bigtriangledown" => "triangle.b",
+        "\\angle" => "angle",
+        "\\perp" => "perp",
+        "\\parallel" => "parallel",
+        "\\top" => "top",
+        "\\bot" => "bot",
         // Sets and logic
         "\\in" => "in",
         "\\notin" => "in.not",
@@ -2820,11 +3761,35 @@ fn lookup_math_symbol(name: &str) -> Option<&'static str> {
         "\\cdots" => "dots.c",
         "\\vdots" => "dots.v",
         "\\ddots" => "dots.down",
-        "\\angle" => "angle",
         "\\degree" => "degree",
         "\\dagger" => "dagger",
         "\\ddagger" => "dagger.double",
         "\\prime" => "prime",
+        "\\Re" => "Re",
+        "\\Im" => "Im",
+        // `\notag` / `\nonumber` suppress equation numbering. Typst
+        // doesn't number untagged equations either, so drop silently.
+        "\\notag" | "\\nonumber" => "",
+        // `\colon` is the typed colon glyph in amsmath; in Typst math
+        // a plain `:` renders identically.
+        "\\colon" => ":",
+        "\\aleph" => "alef",
+        "\\beth" => "bet",
+        "\\gimel" => "gimel",
+        "\\imath" => "dotless.i",
+        "\\jmath" => "dotless.j",
+        "\\backslash" => "backslash",
+        "\\flat" => "♭",
+        "\\sharp" => "♯",
+        "\\natural" => "♮",
+        "\\clubsuit" => "♣",
+        "\\spadesuit" => "♠",
+        "\\heartsuit" => "♥",
+        // `\not` as a slash overlay — Typst's `cancel(...)` is the
+        // closest match but takes an argument; for the bare-prefix
+        // form (`\not =`) drop the prefix and let the `=` render
+        // unmodified.
+        "\\not" => "",
         // Trig and log functions — Typst recognises these by name in math.
         "\\sin" => "sin",
         "\\cos" => "cos",
@@ -2860,13 +3825,46 @@ fn lookup_math_symbol(name: &str) -> Option<&'static str> {
         "\\rceil" => "ceil.r",
         "\\lfloor" => "floor.l",
         "\\rfloor" => "floor.r",
-        // Math spacing
+        // Math spacing — LaTeX positive-space commands. Typst's `thin`,
+        // `med`, `thick`, `quad` are the equivalent named symbols. Without
+        // these the bare LaTeX command name leaked into the output and
+        // fused with the next identifier (`\thinspace` adjacent to `d`
+        // would produce the unknown variable `thinspaced`).
         "\\qquad" => "quad quad",
         "\\quad" => "quad",
+        "\\," | "\\thinspace" => "thin",
+        "\\:" | "\\medspace" => "med",
+        "\\;" | "\\thickspace" => "thick",
+        // Negative spacing — Typst has no direct named equivalent. Drop;
+        // the visual difference at the call sites is sub-em.
+        "\\!" | "\\negthinspace" | "\\negmedspace" | "\\negthickspace" => "",
         // Delimiter-size commands (Typst auto-sizes via `lr(...)`); drop.
         "\\big" | "\\Big" | "\\bigg" | "\\Bigg" | "\\bigl" | "\\Bigl" | "\\biggl" | "\\Biggl"
         | "\\bigr" | "\\Bigr" | "\\biggr" | "\\Biggr" | "\\bigm" | "\\Bigm" | "\\biggm"
         | "\\Biggm" => "",
+        // `\left` / `\right` in math — Typst's math grammar auto-pairs
+        // `(`, `[`, `\{` style delimiters and provides `lr(...)` for
+        // explicit stretching. Dropping the command keeps the following
+        // delimiter character (which is emitted as its own node) intact.
+        // Previously `\left(V-G\right)` leaked into the output as raw
+        // `\left(V-G\right)`, and Typst read `\l` as the math escape for
+        // `l`, leaving the unknown identifier `eft(...)`.
+        "\\left" | "\\right" => "",
+        // `\middle` is the same pattern for mid-fence stretching; no
+        // Typst equivalent for the bare form, so drop and let the
+        // following delimiter render literally.
+        "\\middle" => "",
+        // Operator-display modifiers — Typst always places sub/super
+        // in display position for `lim`, `sum`, `int`, etc., so the
+        // explicit force is a no-op. Drop the command name itself; if
+        // left in, `\limits` was emitted as the literal word and the
+        // subscript that followed became an unknown symbol modifier.
+        "\\limits"
+        | "\\nolimits"
+        | "\\displaystyle"
+        | "\\textstyle"
+        | "\\scriptstyle"
+        | "\\scriptscriptstyle" => "",
         // Math escapes for ASCII chars. Keep the leading backslash so Typst
         // treats them as math escapes — emitting the bare character would
         // trigger Typst's own special handling: `#` opens code context,
@@ -2882,7 +3880,9 @@ fn lookup_math_symbol(name: &str) -> Option<&'static str> {
         "\\{" => "\\{",
         "\\}" => "\\}",
         // Bold variants
-        "\\boldsymbol" | "\\pmb" => "bold",
+        // `\\boldsymbol` / `\\pmb` are handled as wraps in
+        // `emit_math_command`; keeping a symbol-table entry would mask
+        // the wrap dispatch by returning early.
         // Common math fonts not handled by emit_math_wrap
         _ => return None,
     })
@@ -2890,6 +3890,228 @@ fn lookup_math_symbol(name: &str) -> Option<&'static str> {
 
 /// Extract the class name and option list from a `class_include` node.
 /// `\documentclass[opt1,opt2]{class}` → (Some("class"), ["opt1", "opt2"]).
+/// Pull `(\name, MacroDef)` out of a `new_command_definition` node.
+/// AST shape (`\newcommand{\name}[N]{body}`):
+///
+/// ```text
+/// new_command_definition
+///   \newcommand                      (literal)
+///   curly_group_command_name         contains `{ command_name "\\name" }`
+///   brack_group_argc (optional)      contains `[ argc "N" ]`
+///   brack_group (optional, skipped)  the optional-default form — unsupported
+///   curly_group                      the macro body
+/// ```
+///
+/// Returns `None` when the new command has an optional-default
+/// argument (the form `\newcommand{\name}[1][default]{body}`) — we
+/// don't model defaults yet, so let those fall through to silent drop.
+fn extract_newcommand(node: Node<'_>, src: &str) -> Option<(String, MacroDef)> {
+    let mut cursor = node.walk();
+    let mut name: Option<String> = None;
+    let mut params: usize = 0;
+    let mut body_group: Option<Node<'_>> = None;
+    let mut brack_groups: usize = 0;
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "curly_group_command_name" => {
+                let mut sub = child.walk();
+                for gc in child.children(&mut sub) {
+                    if gc.kind() == "command_name" {
+                        name = Some(src[gc.start_byte()..gc.end_byte()].to_string());
+                    }
+                }
+            }
+            "brack_group_argc" => {
+                let mut sub = child.walk();
+                for gc in child.children(&mut sub) {
+                    if gc.kind() == "argc" {
+                        if let Ok(n) = src[gc.start_byte()..gc.end_byte()].parse::<usize>() {
+                            params = n;
+                        }
+                    }
+                }
+            }
+            "brack_group" => {
+                // Optional-default form — bail. We'd need to honour the
+                // default in the placeholder substitution; defer.
+                brack_groups += 1;
+            }
+            "curly_group" if body_group.is_none() => {
+                body_group = Some(child);
+            }
+            _ => {}
+        }
+    }
+    if brack_groups > 0 {
+        return None;
+    }
+    let name = name?;
+    let body_node = body_group?;
+    // Strip the outer `{` and `}` to leave the body source.
+    let body = src
+        .get(body_node.start_byte() + 1..body_node.end_byte() - 1)
+        .unwrap_or("")
+        .to_string();
+    Some((name, MacroDef { params, body }))
+}
+
+/// Maps the well-known math wrap commands to their Typst `(left, right)`
+/// delimiter pair. Used by the bare `command_name` branch of
+/// `emit_node` to recover the brace-less form (e.g. `_\mathcal{T}` —
+/// tree-sitter parses the `{T}` as a sibling of the enclosing
+/// subscript, so the command_name itself reaches us without a child).
+/// Decide whether a Typst math-mode subscript/superscript argument
+/// needs an explicit `(...)` wrapper. A single token (one letter or
+/// digit, optionally with one trailing `prime`-style suffix) parses
+/// correctly as `_x` / `^x`; anything more compound (function call,
+/// space-separated tokens, multi-char identifier) needs `_(...)`
+/// because `_cal(T)` reads as `_c · al(T)`.
+/// Escape the handful of ASCII characters that have special meaning
+/// inside a Typst `[...]` content block but commonly appear unescaped
+/// in table cells / caption text: `_` opens italic, `*` opens bold,
+/// `#` opens code context, `<` opens labels, `@` opens references.
+/// Already-escaped `\_` / `\*` / etc. are left alone so this is
+/// idempotent. We don't touch `[`, `]`, `{`, `}` here — the caller
+/// already balances those, and over-escaping breaks the surrounding
+/// content block.
+fn escape_text_cell(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => {
+                // Preserve any backslash-escape verbatim — `\_` etc.
+                out.push('\\');
+                if let Some(&next) = chars.peek() {
+                    out.push(next);
+                    chars.next();
+                }
+            }
+            '_' | '*' | '#' | '@' | '<' | '`' => {
+                out.push('\\');
+                out.push(c);
+            }
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+fn needs_subscript_parens(rendered: &str) -> bool {
+    if rendered.is_empty() {
+        return false;
+    }
+    // Already explicitly parenthesised — leave alone.
+    if rendered.starts_with('(') && rendered.ends_with(')') {
+        return false;
+    }
+    // A single character (letter or digit) is safe as-is.
+    if rendered.chars().count() == 1 {
+        return false;
+    }
+    // Single escaped char (`\#`, `\&`, `\,`) is safe.
+    if rendered.starts_with('\\') && rendered.chars().count() <= 2 {
+        return false;
+    }
+    true
+}
+
+/// Harvest a `\def\name<params>{body}` definition by scanning raw
+/// source bytes from the end of the `old_command_definition` node
+/// forward. Tree-sitter packages only `\def\name` as the node; the
+/// `#1` placeholders and the body `{...}` are emitted as siblings,
+/// so we have to find them ourselves.
+///
+/// Returns the byte offset just past the closing `}` of the body
+/// (callers set `skip_until` here so the body bytes aren't re-emitted
+/// as raw text). Returns `None` when the syntax can't be parsed —
+/// the caller falls back to drop-without-harvest in that case.
+fn extract_def_and_record(
+    node: Node<'_>,
+    src: &str,
+    macros: &mut HashMap<String, MacroDef>,
+) -> Option<usize> {
+    // Pull the `\name` from the command_name child.
+    let mut cursor = node.walk();
+    let name = node
+        .children(&mut cursor)
+        .find(|c| c.kind() == "command_name")
+        .map(|c| src[c.start_byte()..c.end_byte()].to_string())?;
+    let bytes = src.as_bytes();
+    let mut i = node.end_byte();
+    // Count `#1`..`#9` placeholders before the body.
+    let mut params: usize = 0;
+    while i < bytes.len() {
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i + 1 < bytes.len() && bytes[i] == b'#' && bytes[i + 1].is_ascii_digit() {
+            let n = (bytes[i + 1] - b'0') as usize;
+            if n > params {
+                params = n;
+            }
+            i += 2;
+        } else {
+            break;
+        }
+    }
+    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    if bytes.get(i) != Some(&b'{') {
+        return None;
+    }
+    // Balance braces to find the body's closing `}`.
+    let inner_start = i + 1;
+    let mut depth = 1i32;
+    let mut j = inner_start;
+    while j < bytes.len() {
+        match bytes[j] {
+            b'\\' if j + 1 < bytes.len() => {
+                j += 2;
+                continue;
+            }
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    let body = src[inner_start..j].to_string();
+                    macros.insert(name, MacroDef { params, body });
+                    return Some(j + 1);
+                }
+            }
+            _ => {}
+        }
+        j += 1;
+    }
+    None
+}
+
+fn wrap_for_command_name(name: &str) -> Option<(&'static str, &'static str)> {
+    Some(match name {
+        "\\mathbb" | "\\mathbbm" | "\\Bbb" => ("bb(", ")"),
+        "\\mathcal" => ("cal(", ")"),
+        "\\mathfrak" => ("frak(", ")"),
+        "\\mathscr" => ("scr(", ")"),
+        "\\mathsf" => ("sans(", ")"),
+        "\\mathit" => ("italic(", ")"),
+        "\\mathtt" => ("mono(", ")"),
+        "\\mathbf" | "\\bm" | "\\bs" | "\\boldsymbol" | "\\pmb" => ("bold(", ")"),
+        "\\bar" | "\\overline" => ("overline(", ")"),
+        "\\underline" => ("underline(", ")"),
+        "\\hat" | "\\widehat" => ("hat(", ")"),
+        "\\tilde" | "\\widetilde" => ("tilde(", ")"),
+        "\\vec" => ("arrow(", ")"),
+        "\\dot" => ("dot(", ")"),
+        "\\ddot" => ("dot.double(", ")"),
+        "\\acute" => ("acute(", ")"),
+        "\\grave" => ("grave(", ")"),
+        "\\check" => ("caron(", ")"),
+        "\\breve" => ("breve(", ")"),
+        _ => return None,
+    })
+}
+
 fn extract_class_and_options(node: Node<'_>, src: &str) -> (Option<String>, Vec<String>) {
     let mut class: Option<String> = None;
     let mut opts: Vec<String> = Vec::new();
@@ -2962,6 +4184,41 @@ fn extract_latex_include_path(node: Node<'_>, src: &str) -> Option<String> {
 /// Resolve an `\input{rel}` style path against `base`. LaTeX accepts both
 /// `\input{foo}` (no extension; the `.tex` is implicit) and `\input{foo.tex}`
 /// — try the literal first, then the `.tex`-appended form.
+/// Probe the base directory for an image asset with the given stem/path.
+/// Tries the path as-is first; if it has no extension, probes common formats.
+/// Returns the resolved path on disk, or `None` if nothing is found.
+fn probe_image_on_disk(base: &Path, path: &str) -> Option<PathBuf> {
+    let direct = base.join(path);
+    if direct.is_file() {
+        return Some(direct);
+    }
+    if std::path::Path::new(path).extension().is_none() {
+        for ext in &["pdf", "png", "jpg", "jpeg", "svg", "gif"] {
+            let candidate = base.join(format!("{}.{}", path, ext));
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+/// Probe the base directory for a BibTeX file. Appends `.bib` if the stem has
+/// no extension. Returns the resolved path on disk, or `None`.
+fn probe_bib_on_disk(base: &Path, path: &str) -> Option<PathBuf> {
+    let direct = base.join(path);
+    if direct.is_file() {
+        return Some(direct);
+    }
+    if !path.contains('.') {
+        let with_ext = base.join(format!("{}.bib", path));
+        if with_ext.is_file() {
+            return Some(with_ext);
+        }
+    }
+    None
+}
+
 fn resolve_input_path(base: &Path, raw: &str) -> Option<PathBuf> {
     let raw = raw.trim();
     if raw.is_empty() {
@@ -2975,6 +4232,28 @@ fn resolve_input_path(base: &Path, raw: &str) -> Option<PathBuf> {
         let with_ext = base.join(format!("{}.tex", raw));
         if with_ext.is_file() {
             return Some(with_ext);
+        }
+    }
+    None
+}
+
+/// Resolve a `\usepackage{X}` reference to a local `X.sty` or `X.cls`
+/// file. Probes the base directory and common style subdirectories
+/// (`style/`, `macros/`, `tex/`, `sty/`). Returns `None` when the
+/// package is a system package (no local file), in which case the
+/// caller falls back to the no-op allowlist / warn-and-drop path.
+fn resolve_package_path(base: &Path, pkg: &str) -> Option<PathBuf> {
+    let pkg = pkg.trim();
+    if pkg.is_empty() {
+        return None;
+    }
+    let candidates = ["", "style/", "macros/", "tex/", "sty/"];
+    for sub in &candidates {
+        for ext in &[".sty", ".cls"] {
+            let p = base.join(format!("{}{}{}", sub, pkg, ext));
+            if p.is_file() {
+                return Some(p);
+            }
         }
     }
     None
@@ -3238,17 +4517,77 @@ fn environment_name(env: Node<'_>, src: &str) -> Option<String> {
 
 /// Extract the label key from a `label_definition` node like `\label{sec:foo}`.
 fn extract_label_name(node: Node<'_>, src: &str) -> Option<String> {
+    extract_label_name_and_end(node, src).map(|(n, _)| n)
+}
+
+/// Same as `extract_label_name`, but also returns the byte offset
+/// immediately past the closing `}` of the label argument. The caller
+/// uses that offset to set `skip_until` so the leaked tail (when
+/// tree-sitter truncates the label at `_`) isn't re-emitted as
+/// stray math content.
+fn extract_label_name_and_end(node: Node<'_>, src: &str) -> Option<(String, usize)> {
+    // tree-sitter-latex stops the `label` token at the first `_`, which
+    // means `\label{eq:edl_objective}` parses with `label = "eq:edl"`
+    // plus a synthesized closing brace and the rest of the name
+    // (`_objective}`) leaks into the parent text as a subscript +
+    // word + ERROR `}`. Recovering the full name reliably means
+    // ignoring the truncated grammar token and scanning the raw
+    // source bytes for the brace span instead.
+    let bytes = src.as_bytes();
     let mut cursor = node.walk();
+    let mut open: Option<usize> = None;
     for child in node.children(&mut cursor) {
         if child.kind() == "curly_group_label" {
-            // The `label` token is the key without the braces.
-            let mut sub = child.walk();
-            for grandchild in child.children(&mut sub) {
-                if grandchild.kind() == "label" {
-                    return Some(src[grandchild.start_byte()..grandchild.end_byte()].to_string());
-                }
-            }
+            open = Some(child.start_byte());
+            break;
         }
     }
+    let open = open?;
+    if bytes.get(open) != Some(&b'{') {
+        return None;
+    }
+    let mut depth = 1i32;
+    let mut i = open + 1;
+    let start = i;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' if i + 1 < bytes.len() => {
+                i += 2;
+                continue;
+            }
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some((normalize_label_key(&src[start..i]), i + 1));
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
     None
+}
+
+/// Normalise a LaTeX label key to a form Typst accepts as a `<...>`
+/// label name. Typst labels can't contain whitespace; collapse runs
+/// of internal whitespace to a single hyphen.
+fn normalize_label_key(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    let mut prev_was_dash = false;
+    for c in raw.chars() {
+        if c.is_whitespace() {
+            if !prev_was_dash && !out.is_empty() {
+                out.push('-');
+                prev_was_dash = true;
+            }
+        } else {
+            out.push(c);
+            prev_was_dash = false;
+        }
+    }
+    while out.ends_with('-') {
+        out.pop();
+    }
+    out
 }

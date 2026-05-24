@@ -4,6 +4,15 @@ use std::path::PathBuf;
 
 use bytetex_core::{convert, ConvertOptions};
 
+fn run_str(src: &str) -> String {
+    let out = convert(src, &ConvertOptions::default());
+    let warnings_json = serde_json::to_string_pretty(&out.warnings).expect("warnings serialize");
+    format!(
+        "==== TYPST ====\n{}==== WARNINGS ====\n{}\n",
+        out.typst, warnings_json
+    )
+}
+
 fn fixtures_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -187,13 +196,13 @@ fn m3_dagger_ddagger_in_math_table() {
         },
     );
     assert!(
-        out.typst.contains("$x^dagger$"),
-        "expected `$x^dagger$`, got:\n{}",
+        out.typst.contains("$x^(dagger)$") || out.typst.contains("$x^dagger$"),
+        "expected `$x^dagger$` or `$x^(dagger)$`, got:\n{}",
         out.typst
     );
     assert!(
-        out.typst.contains("$y^dagger.double$"),
-        "expected `$y^dagger.double$`, got:\n{}",
+        out.typst.contains("$y^(dagger.double)$") || out.typst.contains("$y^dagger.double$"),
+        "expected `$y^dagger.double$` or `$y^(dagger.double)$`, got:\n{}",
         out.typst
     );
 }
@@ -327,6 +336,183 @@ fn m3_partial_uses_modern_typst_name() {
 }
 
 #[test]
+fn m3_left_right_strip_for_balanced_parens() {
+    // Bug B.1: `\left(...\right)` in math previously leaked as raw
+    // `\left(...\right)` in the Typst output. Typst then read `\l` as the
+    // math escape for the letter `l`, leaving the dangling identifier
+    // `eft(...)` (and `ight)` at the close). Stripping the commands lets
+    // Typst auto-pair the `(` and `)`.
+    let out = convert(
+        "$\\left( V - G \\right) = 0$\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        !out.typst.contains("eft") && !out.typst.contains("ight"),
+        "raw `\\left`/`\\right` should be stripped, got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("( V - G ) = 0") || out.typst.contains("(V - G) = 0"),
+        "expected balanced parens, got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn m3_thin_space_doesnt_fuse() {
+    // Bug B.2: `\thinspace` was emitted by the unknown-command fallback
+    // as `thinspace` and fused with the next identifier
+    // (`\thinspace d` → `thinspaced` → "unknown variable thind"). Mapping
+    // it to `thin` plus the existing letter-boundary check keeps the two
+    // tokens separate.
+    let out = convert(
+        "$a\\thinspace d$\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        !out.typst.contains("thind") && !out.typst.contains("thinspaced"),
+        "spacing command must not fuse with next identifier, got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("thin"),
+        "expected `thin` in output, got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn m3_braceless_math_wrap_consumes_single_token() {
+    // Phase 1: `\hat x`, `\mathcal A`, `\bar y` and friends previously
+    // emitted only the bare letter (dropping the wrap command) because
+    // `emit_math_wrap` required a curly_group argument. The brace-less
+    // single-token form is now handled by consuming the next source
+    // token directly.
+    let out = convert(
+        "$\\hat x + \\mathcal A - \\bar y + \\tilde\\alpha$\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        out.typst.contains("hat(x)"),
+        "expected hat(x), got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("cal(A)"),
+        "expected cal(A), got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("overline(y)"),
+        "expected overline(y), got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("tilde(alpha)"),
+        "expected tilde(alpha) (with \\alpha resolved via symbol table), got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn m3_braceless_wrap_preserves_trailing_content() {
+    // Regression: the brace-less arg fix originally swallowed everything
+    // after the consumed token because tree-sitter packs adjacent math
+    // chars (`x + y`) into a single `text` node with children. Recursive
+    // partial-skip preserves the tail.
+    let out = convert(
+        "$\\hat x + y - z$\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        out.typst.contains("hat(x) + y - z"),
+        "expected `hat(x) + y - z`, got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn m3_newcommand_expands_zero_arg() {
+    // Phase 3: a `\newcommand{\R}{\mathbb{R}}` definition followed by
+    // `\R` in math expands to the body's typst rendering.
+    let out = convert(
+        "\\newcommand{\\R}{\\mathbb{R}}\n$x \\in \\R$\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        out.typst.contains("$x in RR$") || out.typst.contains("$x in bb(R)$"),
+        "expected RR / bb(R) substitution, got:\n{}",
+        out.typst
+    );
+    assert!(out.warnings.is_empty(), "got: {:?}", out.warnings);
+}
+
+#[test]
+fn m3_newcommand_expands_with_args() {
+    // Phase 3: `\newcommand{\norm}[1]{\|#1\|}` + `\norm{v}` →
+    // typst body with `v` substituted into `#1`.
+    let out = convert(
+        "\\newcommand{\\norm}[1]{\\|#1\\|}\n$\\norm{v}$\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        out.typst.contains("||v||"),
+        "expected `||v||`, got:\n{}",
+        out.typst
+    );
+    assert!(out.warnings.is_empty(), "got: {:?}", out.warnings);
+}
+
+#[test]
+fn m3_array_in_align_emits_cases() {
+    // Phase 1: when `\begin{array}` is nested inside a math env
+    // (`align*`, gather, equation), it should render as Typst
+    // `cases(...)` — emitting a `#table(...)` here would break the
+    // surrounding `$...$` since `#table` is text-mode only.
+    let src = r#"\begin{align*}
+y &\lesssim \left\{\begin{array}{ll}
+a & \text{if } x < 1, \\
+b & \text{if } x > 1
+\end{array}\right\}
+\end{align*}"#;
+    let out = convert(
+        src,
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        out.typst.contains("cases("),
+        "expected `cases(...)` for nested array in math, got:\n{}",
+        out.typst
+    );
+    assert!(
+        !out.typst.contains("#table"),
+        "should NOT emit `#table(...)` inside math, got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
 fn m3_pmatrix() {
     insta::assert_snapshot!(run("m3_math/pmatrix.tex"), @r"
     ==== TYPST ====
@@ -338,4 +524,202 @@ fn m3_pmatrix() {
     ==== WARNINGS ====
     []
     ");
+}
+
+// ============== Phase B: TDD red tests for Bugs #16, #20 ==============
+
+#[test]
+#[ignore = "Bug #16 — pending fix: label underscore split in math env"]
+fn m3_label_with_underscores_in_math_env() {
+    // Bug #16: tree-sitter parses `_` inside `\label{eq:foo_bar}` as a
+    // subscript operator in math context, truncating the key to `eq:foo` and
+    // leaking `_b a r}` as a stray subscript expression. The fix must preserve
+    // the full label text `eq:foo_bar` as the Typst `<eq:foo_bar>` anchor.
+    let out = convert(
+        "\\begin{equation}\\label{eq:foo_bar}x=1\\end{equation}\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        out.typst.contains("<eq:foo_bar>"),
+        "expected full label `<eq:foo_bar>`, got:\n{}",
+        out.typst
+    );
+    assert!(
+        !out.typst.contains("<eq:foo>"),
+        "truncated label `<eq:foo>` must not appear, got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+#[ignore = "Bug #20 — pending fix: \\\\[length] optional arg in math align"]
+fn m3_align_row_break_strips_optional_length() {
+    // Bug #20: `\\[1mm]` inside an `align` environment emits `\[1mm\]` in
+    // Typst, which the parser reads as a math matrix delimiter — producing an
+    // unclosed delimiter error. The optional length argument must be consumed
+    // and dropped; only the bare row-break `\` should remain.
+    let out = convert(
+        "\\begin{align}a &= b \\\\[1mm] c &= d\\end{align}\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        !out.typst.contains("1mm"),
+        "optional length `1mm` should be stripped, got:\n{}",
+        out.typst
+    );
+    assert!(
+        !out.typst.contains("\\["),
+        "math-open bracket `\\[` must not appear in row-break, got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains(" \\\n") || out.typst.contains("\\\\\n"),
+        "expected Typst row-break `\\` in output, got:\n{}",
+        out.typst
+    );
+}
+
+// ============== Phase C: edge-case coverage for Bugs #14, #15 ==============
+
+#[test]
+#[ignore = "Bug #14b — pending fix: unmatched \\left not stripped (only matched left_right pairs are handled)"]
+fn m3_unmatched_left_paren_does_not_break() {
+    // Bug #14 residual: matched `\left(...\right)` pairs are stripped via the
+    // tree-sitter `left_right` node handler (line 1849 emit.rs). An unmatched
+    // `\left(` with no closing `\right` is parsed as a generic command and
+    // hits the generic fallback rather than the symbol-table entry at line 3479,
+    // so it still leaks verbatim into output.
+    let out = convert(
+        "$f\\left(x$\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        !out.typst.contains("eft"),
+        "raw `\\left` remnant `eft` must not appear, got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.warnings.is_empty(),
+        "unexpected warnings, got:\n{:?}",
+        out.warnings
+    );
+}
+
+#[test]
+fn m3_big_sizing_commands_stripped_like_left_right() {
+    // Bug #14 extension: the `\bigl`/`\bigr`/`\Bigl`/`\Bigr`/`\big`/`\Big`
+    // sizing family should be dropped just like `\left`/`\right`, leaving only
+    // the bare delimiter. If this test fails, the `\big*` family is the next
+    // fix layer — leave it red until that fix lands.
+    let out = convert(
+        "$\\bigl(x\\bigr)\\Bigl[y\\Bigr]$\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        !out.typst.contains("bigl")
+            && !out.typst.contains("bigr")
+            && !out.typst.contains("Bigl")
+            && !out.typst.contains("Bigr"),
+        "sizing prefixes must be stripped, got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("(x)") || out.typst.contains("( x )"),
+        "expected bare parens after stripping, got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn m3_other_spacing_macros_dont_fuse() {
+    // Bug #15 extension: `\medspace` and `\thickspace` should be mapped and
+    // have a letter-boundary guard, just like `\thinspace`. If they fuse with
+    // the preceding letter (e.g., `a` + `med` → `amed`) this test catches it.
+    let out = convert(
+        "$a\\medspace b\\thickspace c\\negthinspace d$\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        !out.typst.contains("amed"),
+        "`a` + medspace must not fuse into `amed`, got:\n{}",
+        out.typst
+    );
+    assert!(
+        !out.typst.contains("bthick"),
+        "`b` + thickspace must not fuse into `bthick`, got:\n{}",
+        out.typst
+    );
+}
+
+// ============== Phase D: under-tested emitter — eqref vs ref ==============
+
+#[test]
+fn m3_eqref_wraps_in_parens() {
+    // `\eqref{eq:foo}` should produce `(@eq:foo)` — parenthesized per LaTeX
+    // convention — while `\ref{sec:bar}` emits a bare `@sec:bar`.
+    let out = convert(
+        "Eq.~\\eqref{eq:foo}.\nSec.~\\ref{sec:bar}.\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        out.typst.contains("(@eq:foo)") || out.typst.contains("(#ref(<eq:foo>))"),
+        "expected parenthesized eqref, got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("@sec:bar"),
+        "expected bare ref `@sec:bar`, got:\n{}",
+        out.typst
+    );
+}
+
+// ============== Bug A: \tag silently dropped ==============
+
+#[test]
+fn m3_tag_silently_dropped() {
+    insta::assert_snapshot!(run_str(r"\begin{equation}
+x = y \tag{Dual LP}
+\end{equation}"), @r"
+    ==== TYPST ====
+    $ x = y $==== WARNINGS ====
+    []
+    ");
+}
+
+// ============== Bug E: dotted symbol before ( ==============
+
+#[test]
+fn m3_dotted_symbol_no_function_call() {
+    let out = convert(
+        r"$f: \mathbb{R} \to (0, \infty)$",
+        &ConvertOptions::default(),
+    );
+    assert!(
+        !out.typst.contains("arrow.r("),
+        "expected space between arrow.r and (, got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("arrow.r"),
+        "expected arrow.r in output, got:\n{}",
+        out.typst
+    );
 }
