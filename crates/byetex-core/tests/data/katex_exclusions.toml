@@ -503,7 +503,7 @@ name = "\\blueE"
 reason = "Khan Academy textcolor macro, requires color support, defer"
 [[exclude]]
 name = "\\boxed"
-reason = "Phase 4.5 structural command (enclose.ts), defer"
+reason = "needs custom emitter to wrap math in text-mode box, no simple Typst analog"
 [[exclude]]
 name = "\\bra"
 reason = "covered by physics package seed (PHYSICS table), skip"
@@ -856,9 +856,6 @@ reason = "TODO phase 4"
 name = "\\atop"
 reason = "TODO phase 4"
 [[exclude]]
-name = "\\bcancel"
-reason = "TODO phase 4"
-[[exclude]]
 name = "\\bf"
 reason = "TODO phase 4"
 [[exclude]]
@@ -869,9 +866,6 @@ name = "\\brack"
 reason = "TODO phase 4"
 [[exclude]]
 name = "\\cal"
-reason = "TODO phase 4"
-[[exclude]]
-name = "\\cancel"
 reason = "TODO phase 4"
 [[exclude]]
 name = "\\ch"
@@ -896,9 +890,6 @@ name = "\\ctg"
 reason = "TODO phase 4"
 [[exclude]]
 name = "\\cth"
-reason = "TODO phase 4"
-[[exclude]]
-name = "\\dbinom"
 reason = "TODO phase 4"
 [[exclude]]
 name = "\\deg"
@@ -973,9 +964,6 @@ reason = "TODO phase 4"
 name = "\\over"
 reason = "TODO phase 4"
 [[exclude]]
-name = "\\overbrace"
-reason = "TODO phase 4"
-[[exclude]]
 name = "\\overgroup"
 reason = "arc-style accent, no direct Typst shorthand"
 [[exclude]]
@@ -1004,12 +992,6 @@ name = "\\sf"
 reason = "TODO phase 4"
 [[exclude]]
 name = "\\sh"
-reason = "TODO phase 4"
-[[exclude]]
-name = "\\sout"
-reason = "TODO phase 4"
-[[exclude]]
-name = "\\tbinom"
 reason = "TODO phase 4"
 [[exclude]]
 name = "\\textbf"
@@ -1096,9 +1078,6 @@ reason = "TODO phase 4"
 name = "\\u2a06"
 reason = "TODO phase 4"
 [[exclude]]
-name = "\\underbrace"
-reason = "TODO phase 4"
-[[exclude]]
 name = "\\undergroup"
 reason = "under arc accent, needs bottom: true parameter, no simple wrap"
 [[exclude]]
@@ -1124,9 +1103,6 @@ name = "\\xLeftrightarrow"
 reason = "TODO phase 4"
 [[exclude]]
 name = "\\xRightarrow"
-reason = "TODO phase 4"
-[[exclude]]
-name = "\\xcancel"
 reason = "TODO phase 4"
 [[exclude]]
 name = "\\xhookleftarrow"

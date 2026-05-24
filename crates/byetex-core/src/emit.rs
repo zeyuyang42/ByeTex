@@ -2435,9 +2435,19 @@ impl<'a> Emitter<'a> {
             return node.end_byte();
         }
         match n {
-            "\\frac" => self.emit_math_frac(node),
+            "\\frac" | "\\tfrac" | "\\dfrac" | "\\cfrac" => self.emit_math_frac(node),
             "\\sqrt" => self.emit_math_sqrt(node),
-            "\\binom" => self.emit_math_binom(node),
+            "\\binom" | "\\dbinom" | "\\tbinom" => self.emit_math_binom(node),
+            // Horizontal braces: `\overbrace{x}` → `overbrace(x)`.
+            // If the user writes `\overbrace{x}^{text}`, the `^{text}` becomes a
+            // Typst superscript on the overbrace call, which is correct.
+            "\\overbrace" => self.emit_math_wrap(node, "overbrace(", ")"),
+            "\\underbrace" => self.emit_math_wrap(node, "underbrace(", ")"),
+            // Enclosures
+            "\\cancel" => self.emit_math_wrap(node, "cancel(", ")"),
+            "\\bcancel" => self.emit_math_wrap(node, "cancel(inverted: true, ", ")"),
+            "\\xcancel" => self.emit_math_wrap(node, "cancel(cross: true, ", ")"),
+            "\\sout" => self.emit_math_wrap(node, "strike(", ")"),
             // `\text{X}` and `\mathrm{X}` switch to upright text inside math.
             // Typst renders quoted strings as upright text in math context.
             "\\text" | "\\mathrm" | "\\textrm" | "\\mathnormal" => {
@@ -4953,6 +4963,9 @@ pub(crate) fn wrap_for_command_name(name: &str) -> Option<(&'static str, &'stati
         "\\breve" => ("breve(", ")"),
         "\\mathring" => ("circle(", ")"),
         "\\phantom" => ("hide(", ")"),
+        "\\overbrace" => ("overbrace(", ")"),
+        "\\underbrace" => ("underbrace(", ")"),
+        "\\cancel" => ("cancel(", ")"),
         _ => return None,
     })
 }

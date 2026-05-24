@@ -17,18 +17,23 @@ use std::collections::HashSet;
 /// Names that ByeTex's emit_math_command handles structurally (not via lookup_math_symbol
 /// or wrap_for_command_name). These are not flagged as gaps.
 const STRUCTURAL_ARMS: &[&str] = &[
+    // frac family
     "\\frac",
     "\\tfrac",
     "\\dfrac",
     "\\cfrac",
     "\\sqrt",
+    // binom family
     "\\binom",
+    "\\dbinom",
+    "\\tbinom",
     "\\operatorname",
     "\\operatorname*",
     "\\text",
     "\\mathrm",
     "\\textrm",
     "\\mathnormal",
+    // font wraps
     "\\mathbf",
     "\\mathbb",
     "\\mathcal",
@@ -39,6 +44,7 @@ const STRUCTURAL_ARMS: &[&str] = &[
     "\\mathtt",
     "\\boldsymbol",
     "\\pmb",
+    // accent wraps
     "\\bar",
     "\\overline",
     "\\underline",
@@ -53,9 +59,19 @@ const STRUCTURAL_ARMS: &[&str] = &[
     "\\grave",
     "\\check",
     "\\breve",
+    // horizontal braces
+    "\\overbrace",
+    "\\underbrace",
+    // enclosures
+    "\\cancel",
+    "\\bcancel",
+    "\\xcancel",
+    "\\sout",
+    // delimiter sizing
     "\\left",
     "\\right",
     "\\middle",
+    // spacing / suppressed
     "\\hspace",
     "\\vspace",
     "\\!",
