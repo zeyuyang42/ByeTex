@@ -151,6 +151,33 @@ $\matuul H$
 }
 
 #[test]
+fn brace_group_recursion_capped_by_depth() {
+    // A user macro that recursively reaches through a math-wrap
+    // brace-group (`\hat{\rec}`). Pre-fix, the Group branch of
+    // `emit_math_wrap` created a sub-emitter without bumping
+    // `macro_depth`, so the recursion cap was never reached and the
+    // stack overflowed. After the fix the cap fires and a
+    // CustomMacro warning is emitted.
+    let src = r"\documentclass{article}
+\newcommand{\rec}{\hat{\rec}}
+\begin{document}
+$\rec$
+\end{document}";
+    let out = convert_str(src);
+    // The conversion must complete (no stack overflow) and emit a
+    // warning identifying the runaway macro.
+    let recursion_warn = out.warnings.iter().any(|w| match &w.category {
+        Category::CustomMacro { name } => name == "\\rec" && w.message.contains("depth"),
+        _ => false,
+    });
+    assert!(
+        recursion_warn,
+        "expected a CustomMacro depth-cap warning for \\rec; got: {:?}",
+        out.warnings
+    );
+}
+
+#[test]
 fn missing_arg_still_warns() {
     // EOF immediately after a 1-arg macro call: keep the existing
     // "expected 1 arg(s), found 0" warning. Regression guard so the
