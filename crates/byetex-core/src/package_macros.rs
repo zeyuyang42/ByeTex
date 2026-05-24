@@ -58,8 +58,10 @@ static BM: &[(&str, MacroSeed)] = &[
 ];
 
 static STMARYRD: &[(&str, MacroSeed)] = &[
-    (r"\llbracket", MacroSeed { params: 0, body: r"[\![" }),
-    (r"\rrbracket", MacroSeed { params: 0, body: r"]\!]" }),
+    // `\llbracket` / `\rrbracket` are now built into the math symbol
+    // table (mapping to `bracket.l.double` / `bracket.r.double`).
+    // Built-in lookup precedes package seeds so the entries here were
+    // redundant; removed to keep the no-collision invariant.
     (r"\Mapsto",    MacroSeed { params: 0, body: r"\Rightarrow\!\!" }),
 ];
 
