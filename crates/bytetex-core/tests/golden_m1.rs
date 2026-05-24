@@ -8,6 +8,7 @@ use std::path::PathBuf;
 
 use bytetex_core::{convert, ConvertOptions};
 
+
 fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -93,4 +94,57 @@ fn m1_with_comments() {
     ==== WARNINGS ====
     []
     ");
+}
+
+// ============ Text accent commands (Phase 2 of the silent-drop audit) ============
+
+#[test]
+fn m1_accent_brace_forms() {
+    // Common braced accent forms → precomposed Unicode codepoints.
+    // Uses r#"..."# because the input contains \" (diaeresis) which
+    // would otherwise terminate a plain r"..." raw string.
+    let out = convert(r#"\'{e} \`{a} \"{o} \^{i} \~{n}"#, &ConvertOptions::default());
+    assert_eq!(out.typst.trim(), "é à ö î ñ");
+    assert!(out.warnings.is_empty(), "unexpected warnings: {:?}", out.warnings);
+}
+
+#[test]
+fn m1_accent_bare_forms() {
+    // Bare form: the letter follows the command directly without braces.
+    let out = convert(r"caf\'e", &ConvertOptions::default());
+    assert_eq!(out.typst.trim(), "café");
+    assert!(out.warnings.is_empty(), "unexpected warnings: {:?}", out.warnings);
+}
+
+#[test]
+fn m1_accent_uppercase() {
+    let out = convert(r#"\'{A} \"{O} \`{E}"#, &ConvertOptions::default());
+    assert_eq!(out.typst.trim(), "Á Ö È");
+    assert!(out.warnings.is_empty(), "unexpected warnings: {:?}", out.warnings);
+}
+
+// ============ ACM metadata capture (Phase 3 of the silent-drop audit) ============
+
+#[test]
+fn m1_acm_email_captured_in_metadata() {
+    let src = r"\email{alice@example.edu}";
+    let out = convert(src, &ConvertOptions::default());
+    assert_eq!(
+        out.class_metadata.get("email").map(String::as_str),
+        Some("alice@example.edu"),
+        "expected email in class_metadata, got: {:?}",
+        out.class_metadata
+    );
+}
+
+#[test]
+fn m1_acm_authornote_captured_in_metadata() {
+    let src = r"\authornote{Both authors contributed equally.}";
+    let out = convert(src, &ConvertOptions::default());
+    assert_eq!(
+        out.class_metadata.get("authornote").map(String::as_str),
+        Some("Both authors contributed equally."),
+        "expected authornote in class_metadata, got: {:?}",
+        out.class_metadata
+    );
 }

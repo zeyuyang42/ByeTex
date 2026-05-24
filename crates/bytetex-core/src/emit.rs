@@ -152,7 +152,14 @@ impl<'a> Emitter<'a> {
         let _ = self.emit_node(root);
     }
 
-    pub(crate) fn finish(mut self) -> (String, Vec<Warning>, Vec<crate::AssetRef>) {
+    pub(crate) fn finish(
+        mut self,
+    ) -> (
+        String,
+        Vec<Warning>,
+        Vec<crate::AssetRef>,
+        std::collections::HashMap<String, String>,
+    ) {
         // If `\documentclass` mapped to a known Typst Universe template,
         // prepend the `#import` + `#show:` pair so the converted PDF gets
         // that class's full visual identity (columns, font, headings, title
@@ -192,7 +199,8 @@ impl<'a> Emitter<'a> {
         // Done as a final string pass so we don't have to wrangle token-level
         // detection for adjacent `-` / backtick / apostrophe runs.
         self.out = post_process_typography(&self.out);
-        (self.out, self.warnings, self.asset_refs)
+        let class_metadata = self.metadata.class_metadata;
+        (self.out, self.warnings, self.asset_refs, class_metadata)
     }
 
     /// Push `src[from..to]` to the output, but only when the range is valid.
@@ -790,9 +798,9 @@ impl<'a> Emitter<'a> {
             | Some("\\acmPrice")
             | Some("\\acmSubmissionID")
             | Some("\\affiliation") => node.end_byte(),
-            // ACM author-info fields. These carry visible content (institution,
-            // email, ORCID, …) that is currently not emitted. Warn so the caller
-            // can see what was dropped. Phase 3 will capture into metadata.
+            // ACM author-info fields. Capture into class_metadata so callers
+            // and class templates can access the values, and warn so the user
+            // knows these fields are not yet fully rendered.
             Some("\\institution")
             | Some("\\city")
             | Some("\\country")
@@ -805,6 +813,13 @@ impl<'a> Emitter<'a> {
             | Some("\\additionalaffiliation")
             | Some("\\ccsdesc")
             | Some("\\shortauthors") => {
+                if let Some(key) = command_name_text(node, self.src) {
+                    let field = key.trim_start_matches('\\').to_string();
+                    if let Some(arg) = first_curly_like(node) {
+                        let content = self.render_curly_group_content(arg);
+                        self.metadata.class_metadata.entry(field).or_insert(content);
+                    }
+                }
                 self.warn_unsupported_command(node);
                 node.end_byte()
             }
@@ -907,13 +922,13 @@ impl<'a> Emitter<'a> {
             // layout model (italic correction, discretionary hyphen,
             // sentence-end tweak). Drop silently.
             Some("\\/") | Some("\\-") | Some("\\@") => node.end_byte(),
-            // Accent operators applied to the next letter (\'e → é, \"o → ö,
-            // \^a → â, \`e → è, \~n → ñ). These produce wrong output when
-            // silently dropped. Warn for now; Phase 2 will convert to Unicode.
-            Some("\\~") | Some("\\'") | Some("\\\"") | Some("\\^") | Some("\\`") => {
-                self.warn_unsupported_command(node);
-                node.end_byte()
-            }
+            // Accent operators: map to precomposed Unicode (\'e → é, \"o → ö,
+            // \^a → â, \`e → è, \~n → ñ).
+            Some("\\'") => self.emit_text_accent(node, '\''),
+            Some("\\\"") => self.emit_text_accent(node, '"'),
+            Some("\\^") => self.emit_text_accent(node, '^'),
+            Some("\\`") => self.emit_text_accent(node, '`'),
+            Some("\\~") => self.emit_text_accent(node, '~'),
             // Typographic logos — drop the styling, keep the text.
             Some("\\LaTeX") => self.emit_logo(node, "LaTeX"),
             Some("\\TeX") => self.emit_logo(node, "TeX"),
@@ -2284,6 +2299,37 @@ impl<'a> Emitter<'a> {
     /// records an `ambiguous_math` warning. Both the `command_name` walker
     /// arm and `emit_math_command`'s catch-all delegate here so the two paths
     /// cannot drift apart.
+    /// Emit a LaTeX text accent (`\'`, `\"`, `\^`, `` \` ``, `\~`) as the
+    /// correct Unicode character.
+    ///
+    /// - Brace form `\'{e}`: the curly_group child provides the letter.
+    /// - Bare form `\'e`: the first source byte after the command node is the
+    ///   letter; it is consumed via `skip_until` so the parent walker doesn't
+    ///   re-emit it.
+    fn emit_text_accent(&mut self, node: Node<'_>, accent: char) -> usize {
+        // Brace form: curly_group child.
+        if let Some(group) = first_curly_group(node) {
+            let inner = &self.src[group.start_byte() + 1..group.end_byte() - 1];
+            if let Some(letter) = inner.chars().next() {
+                let rest = &inner[letter.len_utf8()..];
+                self.out.push_str(&apply_text_accent(accent, letter));
+                self.out.push_str(rest);
+                return node.end_byte();
+            }
+            // Empty braces — emit nothing.
+            return node.end_byte();
+        }
+        // Bare form: peek at the next byte in source.
+        let rest = &self.src[node.end_byte()..];
+        if let Some(letter) = rest.chars().next() {
+            let new_end = node.end_byte() + letter.len_utf8();
+            self.out.push_str(&apply_text_accent(accent, letter));
+            self.skip_until = self.skip_until.max(new_end);
+            return new_end;
+        }
+        node.end_byte()
+    }
+
     fn emit_unknown_math_command(&mut self, node: Node<'_>, name: &str) -> usize {
         if self.macros.contains_key(name) {
             return self.expand_user_macro(node, name);
@@ -3476,6 +3522,81 @@ fn first_curly_like(node: Node<'_>) -> Option<Node<'_>> {
 fn needs_empty_base(out: &str) -> bool {
     let trimmed = out.trim_end_matches([' ', '\t']);
     trimmed.ends_with('$') || trimmed.ends_with("$ ")
+}
+
+/// Map a LaTeX text accent + base letter to the precomposed Unicode codepoint.
+///
+/// `accent` is the accent character: `'\''` acute, '`' grave, `'"'` diaeresis,
+/// `'^'` circumflex, `'~'` tilde. Returns a `String` so the combining-mark
+/// fallback path (two code points) is representable.
+fn apply_text_accent(accent: char, letter: char) -> String {
+    let precomposed: Option<char> = match (accent, letter) {
+        // Acute (')
+        ('\'', 'a') => Some('á'), ('\'', 'A') => Some('Á'),
+        ('\'', 'e') => Some('é'), ('\'', 'E') => Some('É'),
+        ('\'', 'i') => Some('í'), ('\'', 'I') => Some('Í'),
+        ('\'', 'o') => Some('ó'), ('\'', 'O') => Some('Ó'),
+        ('\'', 'u') => Some('ú'), ('\'', 'U') => Some('Ú'),
+        ('\'', 'y') => Some('ý'), ('\'', 'Y') => Some('Ý'),
+        ('\'', 'n') => Some('ń'), ('\'', 'N') => Some('Ń'),
+        ('\'', 'c') => Some('ć'), ('\'', 'C') => Some('Ć'),
+        ('\'', 's') => Some('ś'), ('\'', 'S') => Some('Ś'),
+        ('\'', 'z') => Some('ź'), ('\'', 'Z') => Some('Ź'),
+        ('\'', 'l') => Some('ĺ'), ('\'', 'L') => Some('Ĺ'),
+        ('\'', 'r') => Some('ŕ'), ('\'', 'R') => Some('Ŕ'),
+        // Grave (`)
+        ('`', 'a') => Some('à'), ('`', 'A') => Some('À'),
+        ('`', 'e') => Some('è'), ('`', 'E') => Some('È'),
+        ('`', 'i') => Some('ì'), ('`', 'I') => Some('Ì'),
+        ('`', 'o') => Some('ò'), ('`', 'O') => Some('Ò'),
+        ('`', 'u') => Some('ù'), ('`', 'U') => Some('Ù'),
+        ('`', 'n') => Some('ǹ'), ('`', 'N') => Some('Ǹ'),
+        // Diaeresis (")
+        ('"', 'a') => Some('ä'), ('"', 'A') => Some('Ä'),
+        ('"', 'e') => Some('ë'), ('"', 'E') => Some('Ë'),
+        ('"', 'i') => Some('ï'), ('"', 'I') => Some('Ï'),
+        ('"', 'o') => Some('ö'), ('"', 'O') => Some('Ö'),
+        ('"', 'u') => Some('ü'), ('"', 'U') => Some('Ü'),
+        ('"', 'y') => Some('ÿ'), ('"', 'Y') => Some('Ÿ'),
+        // Circumflex (^)
+        ('^', 'a') => Some('â'), ('^', 'A') => Some('Â'),
+        ('^', 'e') => Some('ê'), ('^', 'E') => Some('Ê'),
+        ('^', 'i') => Some('î'), ('^', 'I') => Some('Î'),
+        ('^', 'o') => Some('ô'), ('^', 'O') => Some('Ô'),
+        ('^', 'u') => Some('û'), ('^', 'U') => Some('Û'),
+        ('^', 'c') => Some('ĉ'), ('^', 'C') => Some('Ĉ'),
+        ('^', 'g') => Some('ĝ'), ('^', 'G') => Some('Ĝ'),
+        ('^', 'h') => Some('ĥ'), ('^', 'H') => Some('Ĥ'),
+        ('^', 'j') => Some('ĵ'), ('^', 'J') => Some('Ĵ'),
+        ('^', 's') => Some('ŝ'), ('^', 'S') => Some('Ŝ'),
+        ('^', 'w') => Some('ŵ'), ('^', 'W') => Some('Ŵ'),
+        ('^', 'y') => Some('ŷ'), ('^', 'Y') => Some('Ŷ'),
+        // Tilde (~)
+        ('~', 'a') => Some('ã'), ('~', 'A') => Some('Ã'),
+        ('~', 'e') => Some('ẽ'), ('~', 'E') => Some('Ẽ'),
+        ('~', 'i') => Some('ĩ'), ('~', 'I') => Some('Ĩ'),
+        ('~', 'n') => Some('ñ'), ('~', 'N') => Some('Ñ'),
+        ('~', 'o') => Some('õ'), ('~', 'O') => Some('Õ'),
+        ('~', 'u') => Some('ũ'), ('~', 'U') => Some('Ũ'),
+        _ => None,
+    };
+    if let Some(c) = precomposed {
+        return c.to_string();
+    }
+    // Combining-mark fallback: letter + Unicode combining diacritic.
+    let combining: Option<char> = match accent {
+        '\'' => Some('\u{0301}'),
+        '`' => Some('\u{0300}'),
+        '"' => Some('\u{0308}'),
+        '^' => Some('\u{0302}'),
+        '~' => Some('\u{0303}'),
+        _ => None,
+    };
+    let mut s = letter.to_string();
+    if let Some(m) = combining {
+        s.push(m);
+    }
+    s
 }
 
 /// If `kind` is a token that's literal in LaTeX text mode but markup in
