@@ -2626,7 +2626,9 @@ impl<'a> Emitter<'a> {
             "\\sout" => self.emit_math_wrap(node, "strike(", ")"),
             // `\text{X}` and `\mathrm{X}` switch to upright text inside math.
             // Typst renders quoted strings as upright text in math context.
-            "\\text" | "\\mathrm" | "\\textrm" | "\\mathnormal" => {
+            // `\mbox{X}` and `\hbox{X}` are TeX-primitive boxes; in math
+            // mode they switch to text mode like `\text` does.
+            "\\text" | "\\mathrm" | "\\textrm" | "\\mathnormal" | "\\mbox" | "\\hbox" => {
                 if let Some(arg) = first_curly_group(node) {
                     // Take the raw inner source — we want literal text, not
                     // a recursively-emitted (and possibly mangled) sub-render.
@@ -2636,6 +2638,62 @@ impl<'a> Emitter<'a> {
                         .unwrap_or("")
                         .trim();
                     let _ = write!(self.out, "\"{}\"", inner);
+                }
+                node.end_byte()
+            }
+            // Math class modifiers (`\mathrel`, `\mathord`, `\mathbin`, etc.)
+            // tell LaTeX "treat the argument as a relation/atom/binary-op for
+            // spacing purposes". Typst auto-spaces math, so the class hint is
+            // effectively a no-op for rendering — just unwrap and emit the
+            // content as math.
+            "\\mathrel" | "\\mathord" | "\\mathbin" | "\\mathopen" | "\\mathclose"
+            | "\\mathpunct" | "\\mathinner" => {
+                if let Some(arg) = first_curly_group(node) {
+                    let inner = self.render_math_group(arg);
+                    self.out.push_str(inner.trim());
+                }
+                node.end_byte()
+            }
+            // `\nicefrac{a}{b}` — slanted inline fraction. Typst renders
+            // a slash-separated form well; render `(a) / (b)` like \frac
+            // but with the understanding that the Typst output isn't
+            // visually identical (no slanting).
+            "\\nicefrac" => self.emit_math_frac(node),
+            // `\raisetag{N}` — pure equation-tag positioning. No visible
+            // rendering effect; the tag itself was handled by `\tag` (or
+            // wasn't emitted at all in our model). Silent drop.
+            "\\raisetag" => node.end_byte(),
+            // `\xrightarrow[below]{above}` — extensible right arrow with
+            // optional labels. Typst's `arrow.r` is the base symbol;
+            // attaching labels needs `attach(arrow.r, t: ..., b: ...)`.
+            // Render with labels when present; fall back to bare arrow
+            // when not.
+            "\\xrightarrow" | "\\xleftarrow" | "\\xLeftarrow" | "\\xRightarrow"
+            | "\\xLeftrightarrow" | "\\xleftrightarrow" | "\\xmapsto" | "\\xhookleftarrow"
+            | "\\xhookrightarrow" | "\\xtwoheadleftarrow" | "\\xtwoheadrightarrow"
+            | "\\xleftharpoondown" | "\\xleftharpoonup" | "\\xrightharpoondown"
+            | "\\xrightharpoonup" => self.emit_math_extensible_arrow(node, n),
+            // `\substack{a\\b\\c}` — multi-line subscript content used
+            // inside `\sum_{...}` / `\max_{...}` etc. Render the lines
+            // joined with Typst paragraph separator (`#h(0pt)\` doesn't
+            // work in math; the cleanest equivalent is just space-
+            // separated). The actual multi-line layout would need
+            // `attach` machinery; this is a partial render that keeps
+            // the math compiling.
+            "\\substack" => {
+                if let Some(arg) = first_curly_group(node) {
+                    let inner = self
+                        .src
+                        .get(arg.start_byte() + 1..arg.end_byte() - 1)
+                        .unwrap_or("")
+                        .trim();
+                    // Replace `\\` (row break) with `,` so the result
+                    // is a comma-separated list — readable but flat.
+                    let flattened = inner.replace("\\\\", ", ");
+                    // Re-render the flattened source through a math
+                    // sub-emitter so symbols still translate.
+                    let rendered = self.render_in_sub_emitter(&flattened, true, true);
+                    self.out.push_str(rendered.trim());
                 }
                 node.end_byte()
             }
@@ -2870,6 +2928,141 @@ impl<'a> Emitter<'a> {
             self.warn_ambiguous_math(node, "\\operatorname (missing arg)");
         }
         node.end_byte()
+    }
+
+    /// Render an extensible arrow command (`\xrightarrow{above}`,
+    /// `\xleftarrow[below]{above}`, etc.). Maps the command name to
+    /// Typst's `arrow.r` / `arrow.l` / `arrow.r.long` / etc. and
+    /// attaches the above/below labels via Typst's `attach` mechanism
+    /// (`arrow.r^"above"_"below"`). When labels are missing, emits
+    /// the bare arrow.
+    fn emit_math_extensible_arrow(&mut self, node: Node<'_>, name: &str) -> usize {
+        // Map command name → Typst arrow base symbol. The `x` family
+        // is the "extensible" form (auto-stretched in LaTeX); Typst's
+        // base arrow already auto-stretches when annotated, so we
+        // just emit the base.
+        let arrow = match name {
+            "\\xrightarrow" => "arrow.r",
+            "\\xleftarrow" => "arrow.l",
+            "\\xLeftarrow" => "arrow.l.double",
+            "\\xRightarrow" => "arrow.r.double",
+            "\\xLeftrightarrow" => "arrow.l.r.double",
+            "\\xleftrightarrow" => "arrow.l.r",
+            "\\xmapsto" => "arrow.r.bar",
+            "\\xhookleftarrow" => "arrow.l.hook",
+            "\\xhookrightarrow" => "arrow.r.hook",
+            "\\xtwoheadleftarrow" => "arrow.l.twohead",
+            "\\xtwoheadrightarrow" => "arrow.r.twohead",
+            "\\xleftharpoondown" => "harpoon.lb",
+            "\\xleftharpoonup" => "harpoon.lt",
+            "\\xrightharpoondown" => "harpoon.rb",
+            "\\xrightharpoonup" => "harpoon.rt",
+            _ => "arrow.r",
+        };
+        // Collect optional [below] and the mandatory {above}. They can
+        // be AST children OR siblings depending on tree-sitter's parse
+        // — `\xrightarrow{f}` typically has the `{f}` as a child of
+        // the generic_command, while `\xrightarrow[g]{f}` sometimes
+        // ends up with both as siblings of a bare `command_name`. Try
+        // children first, then peek raw source.
+        let mut cursor = node.walk();
+        let mut below: Option<String> = None;
+        let mut above: Option<String> = None;
+        for child in node.children(&mut cursor) {
+            match child.kind() {
+                "brack_group" if below.is_none() => {
+                    let inner_start = child.start_byte() + 1;
+                    let inner_end = child.end_byte().saturating_sub(1);
+                    below = Some(self.src.get(inner_start..inner_end).unwrap_or("").to_string());
+                }
+                "curly_group" if above.is_none() => {
+                    let inner_start = child.start_byte() + 1;
+                    let inner_end = child.end_byte().saturating_sub(1);
+                    above = Some(self.src.get(inner_start..inner_end).unwrap_or("").to_string());
+                }
+                _ => {}
+            }
+        }
+        // Source-byte fallback: scan after node.end_byte() for
+        // `[below]` and `{above}` we missed as AST siblings.
+        let mut consumed_end = node.end_byte();
+        let bytes = self.src.as_bytes();
+        let mut cursor_bytes = consumed_end;
+        // Skip whitespace.
+        while cursor_bytes < bytes.len() && bytes[cursor_bytes].is_ascii_whitespace() {
+            cursor_bytes += 1;
+        }
+        // Optional `[below]`.
+        if below.is_none() && cursor_bytes < bytes.len() && bytes[cursor_bytes] == b'[' {
+            let inner_start = cursor_bytes + 1;
+            let mut j = inner_start;
+            let mut depth = 0i32;
+            while j < bytes.len() {
+                match bytes[j] {
+                    b'\\' if j + 1 < bytes.len() => {
+                        j += 2;
+                        continue;
+                    }
+                    b'{' => depth += 1,
+                    b'}' => depth -= 1,
+                    b']' if depth == 0 => break,
+                    _ => {}
+                }
+                j += 1;
+            }
+            if j < bytes.len() && bytes[j] == b']' {
+                below = Some(self.src[inner_start..j].to_string());
+                cursor_bytes = j + 1;
+                consumed_end = cursor_bytes;
+                while cursor_bytes < bytes.len() && bytes[cursor_bytes].is_ascii_whitespace() {
+                    cursor_bytes += 1;
+                }
+            }
+        }
+        // Mandatory `{above}`.
+        if above.is_none() && cursor_bytes < bytes.len() && bytes[cursor_bytes] == b'{' {
+            let inner_start = cursor_bytes + 1;
+            let mut j = inner_start;
+            let mut depth = 1i32;
+            while j < bytes.len() {
+                match bytes[j] {
+                    b'\\' if j + 1 < bytes.len() => {
+                        j += 2;
+                        continue;
+                    }
+                    b'{' => depth += 1,
+                    b'}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+                j += 1;
+            }
+            if j < bytes.len() && bytes[j] == b'}' {
+                above = Some(self.src[inner_start..j].to_string());
+                consumed_end = j + 1;
+            }
+        }
+        self.ensure_math_letter_boundary(arrow);
+        self.out.push_str(arrow);
+        // Render labels in math context so contained symbols translate.
+        if let Some(a) = above {
+            let rendered = self.render_in_sub_emitter(&a, true, true);
+            let _ = write!(self.out, "^({})", rendered.trim());
+        }
+        if let Some(b) = below {
+            let rendered = self.render_in_sub_emitter(&b, true, true);
+            let _ = write!(self.out, "_({})", rendered.trim());
+        }
+        // Mark source-byte-consumed labels as already-emitted so the
+        // AST walker doesn't re-emit them as raw text.
+        if consumed_end > node.end_byte() {
+            self.skip_until = self.skip_until.max(consumed_end);
+        }
+        consumed_end
     }
 
     /// Wrap the first curly_group argument in a Typst math function call:
