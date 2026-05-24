@@ -138,6 +138,176 @@ fn braceless_user_macros_dont_warn() {
 }
 
 #[test]
+fn brief_emitted_for_file_flat() {
+    let dir = tmpdir("brief-file-flat");
+    let entry = dir.join("paper.tex");
+    fs::write(
+        &entry,
+        "\\documentclass{article}\n\\begin{document}\nhi\n\\end{document}\n",
+    )
+    .unwrap();
+
+    let status = Command::new(binary_path())
+        .arg("convert")
+        .arg(&entry)
+        .status()
+        .expect("running byetex");
+    assert!(status.success(), "byetex exited with {:?}", status);
+
+    let brief = entry.with_extension("agent_brief.md");
+    assert!(brief.is_file(), "brief missing at {}", brief.display());
+    let body = fs::read_to_string(&brief).unwrap();
+    // Relative paths only — same dir, no `../`.
+    assert!(body.contains("`paper.typ`"), "brief body:\n{}", body);
+    assert!(body.contains("`paper.tex`"), "brief body:\n{}", body);
+    assert!(body.contains("`paper_manual.typ`"), "brief body:\n{}", body);
+    // Flat-mode label appears in the title.
+    assert!(body.contains("(flat mode)"), "brief body:\n{}", body);
+}
+
+#[test]
+fn brief_emitted_for_dir_flat() {
+    let project = tmpdir("brief-dir-flat");
+    write(
+        &project,
+        "main.tex",
+        "\\documentclass{article}\n\\begin{document}\nhi\n\\end{document}\n",
+    );
+
+    let status = Command::new(binary_path())
+        .arg("convert")
+        .arg(&project)
+        .status()
+        .expect("running byetex");
+    assert!(status.success(), "byetex exited with {:?}", status);
+
+    let dir_name = project.file_name().unwrap().to_str().unwrap();
+    let parent = project.parent().unwrap();
+    let brief = parent.join(format!("{}.agent_brief.md", dir_name));
+    assert!(brief.is_file(), "brief missing at {}", brief.display());
+    let body = fs::read_to_string(&brief).unwrap();
+    // Source `.tex` lives inside the project dir → brief references it
+    // via a relative path that goes INTO the dir.
+    assert!(
+        body.contains(&format!("`{}/main.tex`", dir_name)),
+        "brief should reference the detected entry by relative path; body:\n{}",
+        body
+    );
+    assert!(body.contains("(flat mode)"), "brief body:\n{}", body);
+}
+
+#[test]
+fn brief_emitted_for_project() {
+    let project = tmpdir("brief-project");
+    write(
+        &project,
+        "main.tex",
+        "\\documentclass{article}\n\\begin{document}\nhi\n\\end{document}\n",
+    );
+
+    let out_dir = project.with_extension("typst-project");
+    let _ = fs::remove_dir_all(&out_dir);
+
+    let status = Command::new(binary_path())
+        .arg("convert")
+        .arg(&project)
+        .arg("--project")
+        .arg("--project-out")
+        .arg(&out_dir)
+        .arg("--no-toml")
+        .status()
+        .expect("running byetex");
+    assert!(status.success(), "byetex exited with {:?}", status);
+
+    let brief = out_dir.join("agent_brief.md");
+    assert!(brief.is_file(), "brief missing at {}", brief.display());
+    let body = fs::read_to_string(&brief).unwrap();
+    // Inside the project dir → typst output is `main.typ` (no path prefix).
+    assert!(body.contains("`main.typ`"), "brief body:\n{}", body);
+    assert!(body.contains("`main_manual.typ`"), "brief body:\n{}", body);
+    assert!(body.contains("(project mode)"), "brief body:\n{}", body);
+}
+
+#[test]
+fn no_brief_opt_out_suppresses_emission() {
+    let dir = tmpdir("brief-opt-out");
+    let entry = dir.join("paper.tex");
+    fs::write(
+        &entry,
+        "\\documentclass{article}\n\\begin{document}\nhi\n\\end{document}\n",
+    )
+    .unwrap();
+
+    let status = Command::new(binary_path())
+        .arg("convert")
+        .arg(&entry)
+        .arg("--no-brief")
+        .status()
+        .expect("running byetex");
+    assert!(status.success());
+
+    // Other artifacts still appear; only the brief is suppressed.
+    assert!(entry.with_extension("typ").is_file());
+    let brief = entry.with_extension("agent_brief.md");
+    assert!(
+        !brief.exists(),
+        "--no-brief should suppress {}",
+        brief.display()
+    );
+}
+
+#[test]
+fn brief_paths_are_relative_to_brief_dir() {
+    let dir = tmpdir("brief-relative-paths");
+    let entry = dir.join("paper.tex");
+    fs::write(
+        &entry,
+        "\\documentclass{article}\n\\begin{document}\nhi\n\\end{document}\n",
+    )
+    .unwrap();
+
+    let status = Command::new(binary_path())
+        .arg("convert")
+        .arg(&entry)
+        .status()
+        .expect("running byetex");
+    assert!(status.success());
+
+    let brief = entry.with_extension("agent_brief.md");
+    let body = fs::read_to_string(&brief).unwrap();
+
+    // Pull the bullet lines and check they don't carry an absolute prefix.
+    // (Unix-only — the path-prefix check uses '/'. The test crate is
+    // gated to Unix by the line below.)
+    #[cfg(unix)]
+    {
+        for needle in &[
+            "**Typst output**:",
+            "**Source** `.tex`:",
+            "**Warnings sidecar**:",
+            "**Suggested patched output**:",
+        ] {
+            let line = body
+                .lines()
+                .find(|l| l.contains(needle))
+                .unwrap_or_else(|| panic!("missing line `{}` in brief:\n{}", needle, body));
+            // Extract the backtick-quoted path on that line.
+            let path = line
+                .split('`')
+                .nth(1)
+                .unwrap_or_else(|| panic!("no path on line: {}", line));
+            assert!(
+                !path.starts_with('/'),
+                "`{}` should be relative; got `{}` on line: {}",
+                needle,
+                path,
+                line
+            );
+        }
+    }
+}
+
+#[test]
 fn cli_convert_dir_without_project_writes_flat_typ() {
     let project = tmpdir("convert-flat-dir");
     write(
