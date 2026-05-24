@@ -2161,7 +2161,23 @@ impl<'a> Emitter<'a> {
         // `#11`, ... as `<arg>0`, `<arg>1` for any macro with ≥10
         // parameters. Walk the body and replace `#<digits>` tokens
         // greedily instead.
-        let expanded = substitute_macro_args(&macro_def.body, &args[..macro_def.params]);
+        let mut expanded = substitute_macro_args(&macro_def.body, &args[..macro_def.params]);
+        // If the call site provided MORE curly_group args than the
+        // macro declares (`params`), append the excess to the body
+        // before re-parsing. This handles macros whose body ends in a
+        // dangling command — e.g. `\newcommand{\conj}{\overline}` then
+        // called as `$\conj{z}$`. The substituted body alone is just
+        // `\overline` (which would emit "missing argument"); the
+        // caller's `{z}` is real LaTeX that LaTeX would flow into
+        // `\overline`'s arg position. Splice it in so the sub-emitter
+        // sees `\overline {z}` and renders correctly.
+        if args.len() > macro_def.params {
+            for extra in &args[macro_def.params..] {
+                expanded.push('{');
+                expanded.push_str(extra);
+                expanded.push('}');
+            }
+        }
         // Re-parse and emit. Use a sub-emitter so we don't disturb
         // our `out` cursor management — its output is appended.
         // `increment_depth = true` so a self-referential macro
