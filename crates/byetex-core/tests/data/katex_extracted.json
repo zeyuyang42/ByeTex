@@ -1,0 +1,5579 @@
+{
+  "katex_version": "v0.16.11",
+  "extracted_at": "2026-05-24",
+  "symbols": [
+    {
+      "name": "\\equiv",
+      "unicode": "≡",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\prec",
+      "unicode": "≺",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\succ",
+      "unicode": "≻",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\sim",
+      "unicode": "∼",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\perp",
+      "unicode": "⊥",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\preceq",
+      "unicode": "⪯",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\succeq",
+      "unicode": "⪰",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\simeq",
+      "unicode": "≃",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\mid",
+      "unicode": "∣",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\ll",
+      "unicode": "≪",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\gg",
+      "unicode": "≫",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\asymp",
+      "unicode": "≍",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\parallel",
+      "unicode": "∥",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\bowtie",
+      "unicode": "⋈",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\smile",
+      "unicode": "⌣",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\sqsubseteq",
+      "unicode": "⊑",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\sqsupseteq",
+      "unicode": "⊒",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\doteq",
+      "unicode": "≐",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\frown",
+      "unicode": "⌢",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\ni",
+      "unicode": "∋",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\propto",
+      "unicode": "∝",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\vdash",
+      "unicode": "⊢",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\dashv",
+      "unicode": "⊣",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\owns",
+      "unicode": "∋",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\ldotp",
+      "unicode": ".",
+      "group": "punct",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\cdotp",
+      "unicode": "⋅",
+      "group": "punct",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\#",
+      "unicode": "#",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\#",
+      "unicode": "#",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\&",
+      "unicode": "&",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\&",
+      "unicode": "&",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\aleph",
+      "unicode": "ℵ",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\forall",
+      "unicode": "∀",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\hbar",
+      "unicode": "ℏ",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\exists",
+      "unicode": "∃",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\nabla",
+      "unicode": "∇",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\flat",
+      "unicode": "♭",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\ell",
+      "unicode": "ℓ",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\natural",
+      "unicode": "♮",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\clubsuit",
+      "unicode": "♣",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\wp",
+      "unicode": "℘",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\sharp",
+      "unicode": "♯",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\diamondsuit",
+      "unicode": "♢",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\Re",
+      "unicode": "ℜ",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\heartsuit",
+      "unicode": "♡",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\Im",
+      "unicode": "ℑ",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\spadesuit",
+      "unicode": "♠",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\S",
+      "unicode": "§",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\S",
+      "unicode": "§",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\P",
+      "unicode": "¶",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\P",
+      "unicode": "¶",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\dag",
+      "unicode": "†",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\dag",
+      "unicode": "†",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\textdagger",
+      "unicode": "†",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\ddag",
+      "unicode": "‡",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\ddag",
+      "unicode": "‡",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\textdaggerdbl",
+      "unicode": "‡",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\rmoustache",
+      "unicode": "⎱",
+      "group": "close",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\lmoustache",
+      "unicode": "⎰",
+      "group": "open",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\rgroup",
+      "unicode": "⟯",
+      "group": "close",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\lgroup",
+      "unicode": "⟮",
+      "group": "open",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\mp",
+      "unicode": "∓",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\ominus",
+      "unicode": "⊖",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\uplus",
+      "unicode": "⊎",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\sqcap",
+      "unicode": "⊓",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\ast",
+      "unicode": "∗",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\sqcup",
+      "unicode": "⊔",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\bigcirc",
+      "unicode": "◯",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\bullet",
+      "unicode": "∙",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\ddagger",
+      "unicode": "‡",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\wr",
+      "unicode": "≀",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\amalg",
+      "unicode": "⨿",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\And",
+      "unicode": "&",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\longleftarrow",
+      "unicode": "⟵",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\Leftarrow",
+      "unicode": "⇐",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\Longleftarrow",
+      "unicode": "⟸",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\longrightarrow",
+      "unicode": "⟶",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\Rightarrow",
+      "unicode": "⇒",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\Longrightarrow",
+      "unicode": "⟹",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\leftrightarrow",
+      "unicode": "↔",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\longleftrightarrow",
+      "unicode": "⟷",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\Leftrightarrow",
+      "unicode": "⇔",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\Longleftrightarrow",
+      "unicode": "⟺",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\mapsto",
+      "unicode": "↦",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\longmapsto",
+      "unicode": "⟼",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\nearrow",
+      "unicode": "↗",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\hookleftarrow",
+      "unicode": "↩",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\hookrightarrow",
+      "unicode": "↪",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\searrow",
+      "unicode": "↘",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\leftharpoonup",
+      "unicode": "↼",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\rightharpoonup",
+      "unicode": "⇀",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\swarrow",
+      "unicode": "↙",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\leftharpoondown",
+      "unicode": "↽",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\rightharpoondown",
+      "unicode": "⇁",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\nwarrow",
+      "unicode": "↖",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\rightleftharpoons",
+      "unicode": "⇌",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\nless",
+      "unicode": "≮",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\@nleqslant",
+      "unicode": "",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\@nleqq",
+      "unicode": "",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\lneq",
+      "unicode": "⪇",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\lneqq",
+      "unicode": "≨",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\@lvertneqq",
+      "unicode": "",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\lnsim",
+      "unicode": "⋦",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\lnapprox",
+      "unicode": "⪉",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\nprec",
+      "unicode": "⊀",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\npreceq",
+      "unicode": "⋠",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\precnsim",
+      "unicode": "⋨",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\precnapprox",
+      "unicode": "⪹",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\nsim",
+      "unicode": "≁",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\@nshortmid",
+      "unicode": "",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\nmid",
+      "unicode": "∤",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\nvdash",
+      "unicode": "⊬",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\nvDash",
+      "unicode": "⊭",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\ntriangleleft",
+      "unicode": "⋪",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\ntrianglelefteq",
+      "unicode": "⋬",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\subsetneq",
+      "unicode": "⊊",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\@varsubsetneq",
+      "unicode": "",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\subsetneqq",
+      "unicode": "⫋",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\@varsubsetneqq",
+      "unicode": "",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\ngtr",
+      "unicode": "≯",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\@ngeqslant",
+      "unicode": "",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\@ngeqq",
+      "unicode": "",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\gneq",
+      "unicode": "⪈",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\gneqq",
+      "unicode": "≩",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\@gvertneqq",
+      "unicode": "",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\gnsim",
+      "unicode": "⋧",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\gnapprox",
+      "unicode": "⪊",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\nsucc",
+      "unicode": "⊁",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\nsucceq",
+      "unicode": "⋡",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\succnsim",
+      "unicode": "⋩",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\succnapprox",
+      "unicode": "⪺",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\ncong",
+      "unicode": "≆",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\@nshortparallel",
+      "unicode": "",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\nparallel",
+      "unicode": "∦",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\nVDash",
+      "unicode": "⊯",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\ntriangleright",
+      "unicode": "⋫",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\ntrianglerighteq",
+      "unicode": "⋭",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\@nsupseteqq",
+      "unicode": "",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\supsetneq",
+      "unicode": "⊋",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\@varsupsetneq",
+      "unicode": "",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\supsetneqq",
+      "unicode": "⫌",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\@varsupsetneqq",
+      "unicode": "",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\nVdash",
+      "unicode": "⊮",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\precneqq",
+      "unicode": "⪵",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\succneqq",
+      "unicode": "⪶",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\@nsubseteqq",
+      "unicode": "",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\unlhd",
+      "unicode": "⊴",
+      "group": "bin",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\unrhd",
+      "unicode": "⊵",
+      "group": "bin",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\nleftarrow",
+      "unicode": "↚",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\nrightarrow",
+      "unicode": "↛",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\nLeftarrow",
+      "unicode": "⇍",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\nRightarrow",
+      "unicode": "⇏",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\nleftrightarrow",
+      "unicode": "↮",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\nLeftrightarrow",
+      "unicode": "⇎",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\vartriangle",
+      "unicode": "△",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\hslash",
+      "unicode": "ℏ",
+      "group": "textord",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\triangledown",
+      "unicode": "▽",
+      "group": "textord",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\lozenge",
+      "unicode": "◊",
+      "group": "textord",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\circledS",
+      "unicode": "Ⓢ",
+      "group": "textord",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\circledR",
+      "unicode": "®",
+      "group": "textord",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\circledR",
+      "unicode": "®",
+      "group": "textord",
+      "mode": "text",
+      "font": "ams"
+    },
+    {
+      "name": "\\measuredangle",
+      "unicode": "∡",
+      "group": "textord",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\nexists",
+      "unicode": "∄",
+      "group": "textord",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\mho",
+      "unicode": "℧",
+      "group": "textord",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\Finv",
+      "unicode": "Ⅎ",
+      "group": "textord",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\Game",
+      "unicode": "⅁",
+      "group": "textord",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\backprime",
+      "unicode": "‵",
+      "group": "textord",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\blacktriangle",
+      "unicode": "▲",
+      "group": "textord",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\blacktriangledown",
+      "unicode": "▼",
+      "group": "textord",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\blacksquare",
+      "unicode": "■",
+      "group": "textord",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\blacklozenge",
+      "unicode": "⧫",
+      "group": "textord",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\bigstar",
+      "unicode": "★",
+      "group": "textord",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\sphericalangle",
+      "unicode": "∢",
+      "group": "textord",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\complement",
+      "unicode": "∁",
+      "group": "textord",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\u00f0",
+      "unicode": "ð",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\diagup",
+      "unicode": "╱",
+      "group": "textord",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\diagdown",
+      "unicode": "╲",
+      "group": "textord",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\square",
+      "unicode": "□",
+      "group": "textord",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\Box",
+      "unicode": "□",
+      "group": "textord",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\Diamond",
+      "unicode": "◊",
+      "group": "textord",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\yen",
+      "unicode": "¥",
+      "group": "textord",
+      "mode": "text",
+      "font": "ams"
+    },
+    {
+      "name": "\\checkmark",
+      "unicode": "✓",
+      "group": "textord",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\checkmark",
+      "unicode": "✓",
+      "group": "textord",
+      "mode": "text",
+      "font": "ams"
+    },
+    {
+      "name": "\\beth",
+      "unicode": "ℶ",
+      "group": "textord",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\daleth",
+      "unicode": "ℸ",
+      "group": "textord",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\gimel",
+      "unicode": "ℷ",
+      "group": "textord",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\digamma",
+      "unicode": "ϝ",
+      "group": "textord",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\varkappa",
+      "unicode": "ϰ",
+      "group": "textord",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\@ulcorner",
+      "unicode": "┌",
+      "group": "open",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\@urcorner",
+      "unicode": "┐",
+      "group": "close",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\@llcorner",
+      "unicode": "└",
+      "group": "open",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\@lrcorner",
+      "unicode": "┘",
+      "group": "close",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\leqq",
+      "unicode": "≦",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\leqslant",
+      "unicode": "⩽",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\eqslantless",
+      "unicode": "⪕",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\lesssim",
+      "unicode": "≲",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\lessapprox",
+      "unicode": "⪅",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\approxeq",
+      "unicode": "≊",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\lessdot",
+      "unicode": "⋖",
+      "group": "bin",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\lll",
+      "unicode": "⋘",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\lessgtr",
+      "unicode": "≶",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\lesseqgtr",
+      "unicode": "⋚",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\lesseqqgtr",
+      "unicode": "⪋",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\doteqdot",
+      "unicode": "≑",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\risingdotseq",
+      "unicode": "≓",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\fallingdotseq",
+      "unicode": "≒",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\backsim",
+      "unicode": "∽",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\backsimeq",
+      "unicode": "⋍",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\subseteqq",
+      "unicode": "⫅",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\Subset",
+      "unicode": "⋐",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\sqsubset",
+      "unicode": "⊏",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\preccurlyeq",
+      "unicode": "≼",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\curlyeqprec",
+      "unicode": "⋞",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\precsim",
+      "unicode": "≾",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\precapprox",
+      "unicode": "⪷",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\vartriangleleft",
+      "unicode": "⊲",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\trianglelefteq",
+      "unicode": "⊴",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\vDash",
+      "unicode": "⊨",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\Vvdash",
+      "unicode": "⊪",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\smallsmile",
+      "unicode": "⌣",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\smallfrown",
+      "unicode": "⌢",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\bumpeq",
+      "unicode": "≏",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\Bumpeq",
+      "unicode": "≎",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\geqq",
+      "unicode": "≧",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\geqslant",
+      "unicode": "⩾",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\eqslantgtr",
+      "unicode": "⪖",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\gtrsim",
+      "unicode": "≳",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\gtrapprox",
+      "unicode": "⪆",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\gtrdot",
+      "unicode": "⋗",
+      "group": "bin",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\ggg",
+      "unicode": "⋙",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\gtrless",
+      "unicode": "≷",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\gtreqless",
+      "unicode": "⋛",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\gtreqqless",
+      "unicode": "⪌",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\eqcirc",
+      "unicode": "≖",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\circeq",
+      "unicode": "≗",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\triangleq",
+      "unicode": "≜",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\thicksim",
+      "unicode": "∼",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\thickapprox",
+      "unicode": "≈",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\supseteqq",
+      "unicode": "⫆",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\Supset",
+      "unicode": "⋑",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\sqsupset",
+      "unicode": "⊐",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\succcurlyeq",
+      "unicode": "≽",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\curlyeqsucc",
+      "unicode": "⋟",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\succsim",
+      "unicode": "≿",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\succapprox",
+      "unicode": "⪸",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\vartriangleright",
+      "unicode": "⊳",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\trianglerighteq",
+      "unicode": "⊵",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\Vdash",
+      "unicode": "⊩",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\shortmid",
+      "unicode": "∣",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\shortparallel",
+      "unicode": "∥",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\between",
+      "unicode": "≬",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\pitchfork",
+      "unicode": "⋔",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\varpropto",
+      "unicode": "∝",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\blacktriangleleft",
+      "unicode": "◀",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\therefore",
+      "unicode": "∴",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\backepsilon",
+      "unicode": "∍",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\blacktriangleright",
+      "unicode": "▶",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\because",
+      "unicode": "∵",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\llless",
+      "unicode": "⋘",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\gggtr",
+      "unicode": "⋙",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\lhd",
+      "unicode": "⊲",
+      "group": "bin",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\rhd",
+      "unicode": "⊳",
+      "group": "bin",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\eqsim",
+      "unicode": "≂",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\Join",
+      "unicode": "⋈",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\Doteq",
+      "unicode": "≑",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\dotplus",
+      "unicode": "∔",
+      "group": "bin",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\smallsetminus",
+      "unicode": "∖",
+      "group": "bin",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\Cap",
+      "unicode": "⋒",
+      "group": "bin",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\Cup",
+      "unicode": "⋓",
+      "group": "bin",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\doublebarwedge",
+      "unicode": "⩞",
+      "group": "bin",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\boxminus",
+      "unicode": "⊟",
+      "group": "bin",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\boxplus",
+      "unicode": "⊞",
+      "group": "bin",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\divideontimes",
+      "unicode": "⋇",
+      "group": "bin",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\ltimes",
+      "unicode": "⋉",
+      "group": "bin",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\rtimes",
+      "unicode": "⋊",
+      "group": "bin",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\leftthreetimes",
+      "unicode": "⋋",
+      "group": "bin",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\rightthreetimes",
+      "unicode": "⋌",
+      "group": "bin",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\curlywedge",
+      "unicode": "⋏",
+      "group": "bin",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\curlyvee",
+      "unicode": "⋎",
+      "group": "bin",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\circleddash",
+      "unicode": "⊝",
+      "group": "bin",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\circledast",
+      "unicode": "⊛",
+      "group": "bin",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\centerdot",
+      "unicode": "⋅",
+      "group": "bin",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\intercal",
+      "unicode": "⊺",
+      "group": "bin",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\doublecap",
+      "unicode": "⋒",
+      "group": "bin",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\doublecup",
+      "unicode": "⋓",
+      "group": "bin",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\boxtimes",
+      "unicode": "⊠",
+      "group": "bin",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\dashrightarrow",
+      "unicode": "⇢",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\dashleftarrow",
+      "unicode": "⇠",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\leftleftarrows",
+      "unicode": "⇇",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\leftrightarrows",
+      "unicode": "⇆",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\Lleftarrow",
+      "unicode": "⇚",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\twoheadleftarrow",
+      "unicode": "↞",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\leftarrowtail",
+      "unicode": "↢",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\looparrowleft",
+      "unicode": "↫",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\leftrightharpoons",
+      "unicode": "⇋",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\curvearrowleft",
+      "unicode": "↶",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\circlearrowleft",
+      "unicode": "↺",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\Lsh",
+      "unicode": "↰",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\upuparrows",
+      "unicode": "⇈",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\upharpoonleft",
+      "unicode": "↿",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\downharpoonleft",
+      "unicode": "⇃",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\origof",
+      "unicode": "⊶",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\imageof",
+      "unicode": "⊷",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\multimap",
+      "unicode": "⊸",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\leftrightsquigarrow",
+      "unicode": "↭",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\rightrightarrows",
+      "unicode": "⇉",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\rightleftarrows",
+      "unicode": "⇄",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\twoheadrightarrow",
+      "unicode": "↠",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\rightarrowtail",
+      "unicode": "↣",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\looparrowright",
+      "unicode": "↬",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\curvearrowright",
+      "unicode": "↷",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\circlearrowright",
+      "unicode": "↻",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\Rsh",
+      "unicode": "↱",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\downdownarrows",
+      "unicode": "⇊",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\upharpoonright",
+      "unicode": "↾",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\downharpoonright",
+      "unicode": "⇂",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\rightsquigarrow",
+      "unicode": "⇝",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\leadsto",
+      "unicode": "⇝",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\Rrightarrow",
+      "unicode": "⇛",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\restriction",
+      "unicode": "↾",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\$",
+      "unicode": "$",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\$",
+      "unicode": "$",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\textdollar",
+      "unicode": "$",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\%",
+      "unicode": "%",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\%",
+      "unicode": "%",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\_",
+      "unicode": "_",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\_",
+      "unicode": "_",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\textunderscore",
+      "unicode": "_",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\angle",
+      "unicode": "∠",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\infty",
+      "unicode": "∞",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\prime",
+      "unicode": "′",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\triangle",
+      "unicode": "△",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\Gamma",
+      "unicode": "Γ",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\Delta",
+      "unicode": "Δ",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\Theta",
+      "unicode": "Θ",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\Lambda",
+      "unicode": "Λ",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\Xi",
+      "unicode": "Ξ",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\Pi",
+      "unicode": "Π",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\Sigma",
+      "unicode": "Σ",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\Upsilon",
+      "unicode": "Υ",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\Phi",
+      "unicode": "Φ",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\Psi",
+      "unicode": "Ψ",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\Omega",
+      "unicode": "Ω",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\u0391",
+      "unicode": "A",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\u0392",
+      "unicode": "B",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\u0395",
+      "unicode": "E",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\u0396",
+      "unicode": "Z",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\u0397",
+      "unicode": "H",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\u0399",
+      "unicode": "I",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\u039A",
+      "unicode": "K",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\u039C",
+      "unicode": "M",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\u039D",
+      "unicode": "N",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\u039F",
+      "unicode": "O",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\u03A1",
+      "unicode": "P",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\u03A4",
+      "unicode": "T",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\u03A7",
+      "unicode": "X",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\neg",
+      "unicode": "¬",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\lnot",
+      "unicode": "¬",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\top",
+      "unicode": "⊤",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\bot",
+      "unicode": "⊥",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\emptyset",
+      "unicode": "∅",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\varnothing",
+      "unicode": "∅",
+      "group": "textord",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\alpha",
+      "unicode": "α",
+      "group": "mathord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\beta",
+      "unicode": "β",
+      "group": "mathord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\gamma",
+      "unicode": "γ",
+      "group": "mathord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\delta",
+      "unicode": "δ",
+      "group": "mathord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\epsilon",
+      "unicode": "ϵ",
+      "group": "mathord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\zeta",
+      "unicode": "ζ",
+      "group": "mathord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\eta",
+      "unicode": "η",
+      "group": "mathord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\theta",
+      "unicode": "θ",
+      "group": "mathord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\iota",
+      "unicode": "ι",
+      "group": "mathord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\kappa",
+      "unicode": "κ",
+      "group": "mathord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\lambda",
+      "unicode": "λ",
+      "group": "mathord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\mu",
+      "unicode": "μ",
+      "group": "mathord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\nu",
+      "unicode": "ν",
+      "group": "mathord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\xi",
+      "unicode": "ξ",
+      "group": "mathord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\omicron",
+      "unicode": "ο",
+      "group": "mathord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\pi",
+      "unicode": "π",
+      "group": "mathord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\rho",
+      "unicode": "ρ",
+      "group": "mathord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\sigma",
+      "unicode": "σ",
+      "group": "mathord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\tau",
+      "unicode": "τ",
+      "group": "mathord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\upsilon",
+      "unicode": "υ",
+      "group": "mathord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\phi",
+      "unicode": "ϕ",
+      "group": "mathord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\chi",
+      "unicode": "χ",
+      "group": "mathord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\psi",
+      "unicode": "ψ",
+      "group": "mathord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\omega",
+      "unicode": "ω",
+      "group": "mathord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\varepsilon",
+      "unicode": "ε",
+      "group": "mathord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\vartheta",
+      "unicode": "ϑ",
+      "group": "mathord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\varpi",
+      "unicode": "ϖ",
+      "group": "mathord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\varrho",
+      "unicode": "ϱ",
+      "group": "mathord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\varsigma",
+      "unicode": "ς",
+      "group": "mathord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\varphi",
+      "unicode": "φ",
+      "group": "mathord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\cdot",
+      "unicode": "⋅",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\circ",
+      "unicode": "∘",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\div",
+      "unicode": "÷",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\pm",
+      "unicode": "±",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\times",
+      "unicode": "×",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\cap",
+      "unicode": "∩",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\cup",
+      "unicode": "∪",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\setminus",
+      "unicode": "∖",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\land",
+      "unicode": "∧",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\lor",
+      "unicode": "∨",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\wedge",
+      "unicode": "∧",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\vee",
+      "unicode": "∨",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\surd",
+      "unicode": "√",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\langle",
+      "unicode": "⟨",
+      "group": "open",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\lvert",
+      "unicode": "∣",
+      "group": "open",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\lVert",
+      "unicode": "∥",
+      "group": "open",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\rangle",
+      "unicode": "⟩",
+      "group": "close",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\rvert",
+      "unicode": "∣",
+      "group": "close",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\rVert",
+      "unicode": "∥",
+      "group": "close",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\approx",
+      "unicode": "≈",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\cong",
+      "unicode": "≅",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\ge",
+      "unicode": "≥",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\geq",
+      "unicode": "≥",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\gets",
+      "unicode": "←",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\gt",
+      "unicode": ">",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\in",
+      "unicode": "∈",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\@not",
+      "unicode": "",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\subset",
+      "unicode": "⊂",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\supset",
+      "unicode": "⊃",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\subseteq",
+      "unicode": "⊆",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\supseteq",
+      "unicode": "⊇",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\nsubseteq",
+      "unicode": "⊈",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\nsupseteq",
+      "unicode": "⊉",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\models",
+      "unicode": "⊨",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\leftarrow",
+      "unicode": "←",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\le",
+      "unicode": "≤",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\leq",
+      "unicode": "≤",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\lt",
+      "unicode": "<",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\rightarrow",
+      "unicode": "→",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\to",
+      "unicode": "→",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\ngeq",
+      "unicode": "≱",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\nleq",
+      "unicode": "≰",
+      "group": "rel",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\ ",
+      "unicode": " ",
+      "group": "spacing",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\space",
+      "unicode": " ",
+      "group": "spacing",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\nobreakspace",
+      "unicode": " ",
+      "group": "spacing",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\ ",
+      "unicode": " ",
+      "group": "spacing",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\space",
+      "unicode": " ",
+      "group": "spacing",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\nobreakspace",
+      "unicode": " ",
+      "group": "spacing",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\barwedge",
+      "unicode": "⊼",
+      "group": "bin",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\veebar",
+      "unicode": "⊻",
+      "group": "bin",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\odot",
+      "unicode": "⊙",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\oplus",
+      "unicode": "⊕",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\otimes",
+      "unicode": "⊗",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\partial",
+      "unicode": "∂",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\oslash",
+      "unicode": "⊘",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\circledcirc",
+      "unicode": "⊚",
+      "group": "bin",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\boxdot",
+      "unicode": "⊡",
+      "group": "bin",
+      "mode": "math",
+      "font": "ams"
+    },
+    {
+      "name": "\\bigtriangleup",
+      "unicode": "△",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\bigtriangledown",
+      "unicode": "▽",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\dagger",
+      "unicode": "†",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\diamond",
+      "unicode": "⋄",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\star",
+      "unicode": "⋆",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\triangleleft",
+      "unicode": "◃",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\triangleright",
+      "unicode": "▹",
+      "group": "bin",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\{",
+      "unicode": "{",
+      "group": "open",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\{",
+      "unicode": "{",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\textbraceleft",
+      "unicode": "{",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\}",
+      "unicode": "}",
+      "group": "close",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\}",
+      "unicode": "}",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\textbraceright",
+      "unicode": "}",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\lbrace",
+      "unicode": "{",
+      "group": "open",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\rbrace",
+      "unicode": "}",
+      "group": "close",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\lbrack",
+      "unicode": "[",
+      "group": "open",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\lbrack",
+      "unicode": "[",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\rbrack",
+      "unicode": "]",
+      "group": "close",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\rbrack",
+      "unicode": "]",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\lparen",
+      "unicode": "(",
+      "group": "open",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\rparen",
+      "unicode": ")",
+      "group": "close",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\textless",
+      "unicode": "<",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\textgreater",
+      "unicode": ">",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\lfloor",
+      "unicode": "⌊",
+      "group": "open",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\rfloor",
+      "unicode": "⌋",
+      "group": "close",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\lceil",
+      "unicode": "⌈",
+      "group": "open",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\rceil",
+      "unicode": "⌉",
+      "group": "close",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\backslash",
+      "unicode": "\\\\",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\vert",
+      "unicode": "∣",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\textbar",
+      "unicode": "|",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\|",
+      "unicode": "∥",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\Vert",
+      "unicode": "∥",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\textbardbl",
+      "unicode": "∥",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\textasciitilde",
+      "unicode": "~",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\textbackslash",
+      "unicode": "\\\\",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\textasciicircum",
+      "unicode": "^",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\uparrow",
+      "unicode": "↑",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\Uparrow",
+      "unicode": "⇑",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\downarrow",
+      "unicode": "↓",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\Downarrow",
+      "unicode": "⇓",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\updownarrow",
+      "unicode": "↕",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\Updownarrow",
+      "unicode": "⇕",
+      "group": "rel",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\coprod",
+      "unicode": "∐",
+      "group": "op-token",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\bigvee",
+      "unicode": "⋁",
+      "group": "op-token",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\bigwedge",
+      "unicode": "⋀",
+      "group": "op-token",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\biguplus",
+      "unicode": "⨄",
+      "group": "op-token",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\bigcap",
+      "unicode": "⋂",
+      "group": "op-token",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\bigcup",
+      "unicode": "⋃",
+      "group": "op-token",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\int",
+      "unicode": "∫",
+      "group": "op-token",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\intop",
+      "unicode": "∫",
+      "group": "op-token",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\iint",
+      "unicode": "∬",
+      "group": "op-token",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\iiint",
+      "unicode": "∭",
+      "group": "op-token",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\prod",
+      "unicode": "∏",
+      "group": "op-token",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\sum",
+      "unicode": "∑",
+      "group": "op-token",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\bigotimes",
+      "unicode": "⨂",
+      "group": "op-token",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\bigoplus",
+      "unicode": "⨁",
+      "group": "op-token",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\bigodot",
+      "unicode": "⨀",
+      "group": "op-token",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\oint",
+      "unicode": "∮",
+      "group": "op-token",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\oiint",
+      "unicode": "∯",
+      "group": "op-token",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\oiiint",
+      "unicode": "∰",
+      "group": "op-token",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\bigsqcup",
+      "unicode": "⨆",
+      "group": "op-token",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\smallint",
+      "unicode": "∫",
+      "group": "op-token",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\textellipsis",
+      "unicode": "…",
+      "group": "inner",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\mathellipsis",
+      "unicode": "…",
+      "group": "inner",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\ldots",
+      "unicode": "…",
+      "group": "inner",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\ldots",
+      "unicode": "…",
+      "group": "inner",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\@cdots",
+      "unicode": "⋯",
+      "group": "inner",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\ddots",
+      "unicode": "⋱",
+      "group": "inner",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\varvdots",
+      "unicode": "⋮",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\acute",
+      "unicode": "ˊ",
+      "group": "accent-token",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\grave",
+      "unicode": "ˋ",
+      "group": "accent-token",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\ddot",
+      "unicode": "¨",
+      "group": "accent-token",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\tilde",
+      "unicode": "~",
+      "group": "accent-token",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\bar",
+      "unicode": "ˉ",
+      "group": "accent-token",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\breve",
+      "unicode": "˘",
+      "group": "accent-token",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\check",
+      "unicode": "ˇ",
+      "group": "accent-token",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\hat",
+      "unicode": "^",
+      "group": "accent-token",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\vec",
+      "unicode": "⃗",
+      "group": "accent-token",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\dot",
+      "unicode": "˙",
+      "group": "accent-token",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\mathring",
+      "unicode": "˚",
+      "group": "accent-token",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\@imath",
+      "unicode": "",
+      "group": "mathord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\@jmath",
+      "unicode": "",
+      "group": "mathord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\u0131",
+      "unicode": "ı",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\u0237",
+      "unicode": "ȷ",
+      "group": "textord",
+      "mode": "math",
+      "font": "main"
+    },
+    {
+      "name": "\\i",
+      "unicode": "ı",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\j",
+      "unicode": "ȷ",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\ss",
+      "unicode": "ß",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\ae",
+      "unicode": "æ",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\oe",
+      "unicode": "œ",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\o",
+      "unicode": "ø",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\AE",
+      "unicode": "Æ",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\OE",
+      "unicode": "Œ",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\O",
+      "unicode": "Ø",
+      "group": "textord",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\'",
+      "unicode": "ˊ",
+      "group": "accent-token",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\`",
+      "unicode": "ˋ",
+      "group": "accent-token",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\^",
+      "unicode": "ˆ",
+      "group": "accent-token",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\~",
+      "unicode": "˜",
+      "group": "accent-token",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\=",
+      "unicode": "ˉ",
+      "group": "accent-token",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\u",
+      "unicode": "˘",
+      "group": "accent-token",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\.",
+      "unicode": "˙",
+      "group": "accent-token",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\c",
+      "unicode": "¸",
+      "group": "accent-token",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\r",
+      "unicode": "˚",
+      "group": "accent-token",
+      "mode": "text",
+      "font": "main"
+    },
+    {
+      "name": "\\v",
+      "unicode": "ˇ",
+      "group": "accent-token",
+      "mode": "text",
+      "font": "main"
+    }
+  ],
+  "macros": [
+    {
+      "name": "\\@ifstar",
+      "body": "\\\\@ifnextchar *{\\\\@firstoftwo{#1}}",
+      "params": 1
+    },
+    {
+      "name": "\\bgroup",
+      "body": "{",
+      "params": 0
+    },
+    {
+      "name": "\\egroup",
+      "body": "}",
+      "params": 0
+    },
+    {
+      "name": "\\lq",
+      "body": "`",
+      "params": 0
+    },
+    {
+      "name": "\\rq",
+      "body": "'",
+      "params": 0
+    },
+    {
+      "name": "\\aa",
+      "body": "\\\\r a",
+      "params": 0
+    },
+    {
+      "name": "\\AA",
+      "body": "\\\\r A",
+      "params": 0
+    },
+    {
+      "name": "\\textcopyright",
+      "body": "\\\\html@mathml{\\\\textcircled{c}}{\\\\char`©}",
+      "params": 0
+    },
+    {
+      "name": "\\copyright",
+      "body": "\\\\TextOrMath{\\\\textcopyright}{\\\\text{\\\\textcopyright}}",
+      "params": 0
+    },
+    {
+      "name": "\\textregistered",
+      "body": "\\\\html@mathml{\\\\textcircled{\\\\scriptsize R}}{\\\\char`®}",
+      "params": 0
+    },
+    {
+      "name": "\\Bbbk",
+      "body": "\\\\Bbb{k}",
+      "params": 0
+    },
+    {
+      "name": "\\llap",
+      "body": "\\\\mathllap{\\\\textrm{#1}}",
+      "params": 1
+    },
+    {
+      "name": "\\rlap",
+      "body": "\\\\mathrlap{\\\\textrm{#1}}",
+      "params": 1
+    },
+    {
+      "name": "\\clap",
+      "body": "\\\\mathclap{\\\\textrm{#1}}",
+      "params": 1
+    },
+    {
+      "name": "\\mathstrut",
+      "body": "\\\\vphantom{(}",
+      "params": 0
+    },
+    {
+      "name": "\\underbar",
+      "body": "\\\\underline{\\\\text{#1}}",
+      "params": 1
+    },
+    {
+      "name": "\\neq",
+      "body": "\\\\html@mathml{\\\\mathrel{\\\\not=}}{\\\\mathrel{\\\\char`≠}}",
+      "params": 0
+    },
+    {
+      "name": "\\ne",
+      "body": "\\\\neq",
+      "params": 0
+    },
+    {
+      "name": "\\vdots",
+      "body": "\\\\mathord{\\\\varvdots\\\\rule{0pt}{15pt}}",
+      "params": 0
+    },
+    {
+      "name": "\\varGamma",
+      "body": "\\\\mathit{\\\\Gamma}",
+      "params": 0
+    },
+    {
+      "name": "\\varDelta",
+      "body": "\\\\mathit{\\\\Delta}",
+      "params": 0
+    },
+    {
+      "name": "\\varTheta",
+      "body": "\\\\mathit{\\\\Theta}",
+      "params": 0
+    },
+    {
+      "name": "\\varLambda",
+      "body": "\\\\mathit{\\\\Lambda}",
+      "params": 0
+    },
+    {
+      "name": "\\varXi",
+      "body": "\\\\mathit{\\\\Xi}",
+      "params": 0
+    },
+    {
+      "name": "\\varPi",
+      "body": "\\\\mathit{\\\\Pi}",
+      "params": 0
+    },
+    {
+      "name": "\\varSigma",
+      "body": "\\\\mathit{\\\\Sigma}",
+      "params": 0
+    },
+    {
+      "name": "\\varUpsilon",
+      "body": "\\\\mathit{\\\\Upsilon}",
+      "params": 0
+    },
+    {
+      "name": "\\varPhi",
+      "body": "\\\\mathit{\\\\Phi}",
+      "params": 0
+    },
+    {
+      "name": "\\varPsi",
+      "body": "\\\\mathit{\\\\Psi}",
+      "params": 0
+    },
+    {
+      "name": "\\varOmega",
+      "body": "\\\\mathit{\\\\Omega}",
+      "params": 0
+    },
+    {
+      "name": "\\substack",
+      "body": "\\\\begin{subarray}{c}#1\\\\end{subarray}",
+      "params": 1
+    },
+    {
+      "name": "\\boxed",
+      "body": "\\\\fbox{$\\\\displaystyle{#1}$}",
+      "params": 1
+    },
+    {
+      "name": "\\iff",
+      "body": "\\\\DOTSB\\\\;\\\\Longleftrightarrow\\\\;",
+      "params": 0
+    },
+    {
+      "name": "\\implies",
+      "body": "\\\\DOTSB\\\\;\\\\Longrightarrow\\\\;",
+      "params": 0
+    },
+    {
+      "name": "\\impliedby",
+      "body": "\\\\DOTSB\\\\;\\\\Longleftarrow\\\\;",
+      "params": 0
+    },
+    {
+      "name": "\\dotsb",
+      "body": "\\\\cdots",
+      "params": 0
+    },
+    {
+      "name": "\\dotsm",
+      "body": "\\\\cdots",
+      "params": 0
+    },
+    {
+      "name": "\\dotsi",
+      "body": "\\\\!\\\\cdots",
+      "params": 0
+    },
+    {
+      "name": "\\dotsx",
+      "body": "\\\\ldots\\\\,",
+      "params": 0
+    },
+    {
+      "name": "\\DOTSI",
+      "body": "\\\\relax",
+      "params": 0
+    },
+    {
+      "name": "\\DOTSB",
+      "body": "\\\\relax",
+      "params": 0
+    },
+    {
+      "name": "\\DOTSX",
+      "body": "\\\\relax",
+      "params": 0
+    },
+    {
+      "name": "\\tmspace",
+      "body": "\\\\TextOrMath{\\\\kern#1#3}{\\\\mskip#1#2}\\\\relax",
+      "params": 3
+    },
+    {
+      "name": "\\,",
+      "body": "\\\\tmspace+{3mu}{.1667em}",
+      "params": 0
+    },
+    {
+      "name": "\\thinspace",
+      "body": "\\\\,",
+      "params": 0
+    },
+    {
+      "name": "\\>",
+      "body": "\\\\mskip{4mu}",
+      "params": 0
+    },
+    {
+      "name": "\\:",
+      "body": "\\\\tmspace+{4mu}{.2222em}",
+      "params": 0
+    },
+    {
+      "name": "\\medspace",
+      "body": "\\\\:",
+      "params": 0
+    },
+    {
+      "name": "\\;",
+      "body": "\\\\tmspace+{5mu}{.2777em}",
+      "params": 0
+    },
+    {
+      "name": "\\thickspace",
+      "body": "\\\\;",
+      "params": 0
+    },
+    {
+      "name": "\\!",
+      "body": "\\\\tmspace-{3mu}{.1667em}",
+      "params": 0
+    },
+    {
+      "name": "\\negthinspace",
+      "body": "\\\\!",
+      "params": 0
+    },
+    {
+      "name": "\\negmedspace",
+      "body": "\\\\tmspace-{4mu}{.2222em}",
+      "params": 0
+    },
+    {
+      "name": "\\negthickspace",
+      "body": "\\\\tmspace-{5mu}{.277em}",
+      "params": 0
+    },
+    {
+      "name": "\\enspace",
+      "body": "\\\\kern.5em ",
+      "params": 0
+    },
+    {
+      "name": "\\enskip",
+      "body": "\\\\hskip.5em\\\\relax",
+      "params": 0
+    },
+    {
+      "name": "\\quad",
+      "body": "\\\\hskip1em\\\\relax",
+      "params": 0
+    },
+    {
+      "name": "\\qquad",
+      "body": "\\\\hskip2em\\\\relax",
+      "params": 0
+    },
+    {
+      "name": "\\tag",
+      "body": "\\\\@ifstar\\\\tag@literal\\\\tag@paren",
+      "params": 0
+    },
+    {
+      "name": "\\tag@paren",
+      "body": "\\\\tag@literal{({#1})}",
+      "params": 1
+    },
+    {
+      "name": "\\pmod",
+      "body": "\\\\pod{{\\\\rm mod}\\\\mkern6mu#1}",
+      "params": 1
+    },
+    {
+      "name": "\\newline",
+      "body": "\\\\\\\\\\\\relax",
+      "params": 0
+    },
+    {
+      "name": "\\hspace",
+      "body": "\\\\@ifstar\\\\@hspacer\\\\@hspace",
+      "params": 0
+    },
+    {
+      "name": "\\@hspace",
+      "body": "\\\\hskip #1\\\\relax",
+      "params": 1
+    },
+    {
+      "name": "\\@hspacer",
+      "body": "\\\\rule{0pt}{0pt}\\\\hskip #1\\\\relax",
+      "params": 1
+    },
+    {
+      "name": "\\ordinarycolon",
+      "body": ":",
+      "params": 0
+    },
+    {
+      "name": "\\vcentcolon",
+      "body": "\\\\mathrel{\\\\mathop\\\\ordinarycolon}",
+      "params": 0
+    },
+    {
+      "name": "\\ratio",
+      "body": "\\\\vcentcolon",
+      "params": 0
+    },
+    {
+      "name": "\\coloncolon",
+      "body": "\\\\dblcolon",
+      "params": 0
+    },
+    {
+      "name": "\\colonequals",
+      "body": "\\\\coloneqq",
+      "params": 0
+    },
+    {
+      "name": "\\coloncolonequals",
+      "body": "\\\\Coloneqq",
+      "params": 0
+    },
+    {
+      "name": "\\equalscolon",
+      "body": "\\\\eqqcolon",
+      "params": 0
+    },
+    {
+      "name": "\\equalscoloncolon",
+      "body": "\\\\Eqqcolon",
+      "params": 0
+    },
+    {
+      "name": "\\colonminus",
+      "body": "\\\\coloneq",
+      "params": 0
+    },
+    {
+      "name": "\\coloncolonminus",
+      "body": "\\\\Coloneq",
+      "params": 0
+    },
+    {
+      "name": "\\minuscolon",
+      "body": "\\\\eqcolon",
+      "params": 0
+    },
+    {
+      "name": "\\minuscoloncolon",
+      "body": "\\\\Eqcolon",
+      "params": 0
+    },
+    {
+      "name": "\\coloncolonapprox",
+      "body": "\\\\Colonapprox",
+      "params": 0
+    },
+    {
+      "name": "\\coloncolonsim",
+      "body": "\\\\Colonsim",
+      "params": 0
+    },
+    {
+      "name": "\\simcolon",
+      "body": "\\\\mathrel{\\\\sim\\\\mathrel{\\\\mkern-1.2mu}\\\\vcentcolon}",
+      "params": 0
+    },
+    {
+      "name": "\\simcoloncolon",
+      "body": "\\\\mathrel{\\\\sim\\\\mathrel{\\\\mkern-1.2mu}\\\\dblcolon}",
+      "params": 0
+    },
+    {
+      "name": "\\approxcolon",
+      "body": "\\\\mathrel{\\\\approx\\\\mathrel{\\\\mkern-1.2mu}\\\\vcentcolon}",
+      "params": 0
+    },
+    {
+      "name": "\\approxcoloncolon",
+      "body": "\\\\mathrel{\\\\approx\\\\mathrel{\\\\mkern-1.2mu}\\\\dblcolon}",
+      "params": 0
+    },
+    {
+      "name": "\\notni",
+      "body": "\\\\html@mathml{\\\\not\\\\ni}{\\\\mathrel{\\\\char`∌}}",
+      "params": 0
+    },
+    {
+      "name": "\\limsup",
+      "body": "\\\\DOTSB\\\\operatorname*{lim\\\\,sup}",
+      "params": 0
+    },
+    {
+      "name": "\\liminf",
+      "body": "\\\\DOTSB\\\\operatorname*{lim\\\\,inf}",
+      "params": 0
+    },
+    {
+      "name": "\\injlim",
+      "body": "\\\\DOTSB\\\\operatorname*{inj\\\\,lim}",
+      "params": 0
+    },
+    {
+      "name": "\\projlim",
+      "body": "\\\\DOTSB\\\\operatorname*{proj\\\\,lim}",
+      "params": 0
+    },
+    {
+      "name": "\\varlimsup",
+      "body": "\\\\DOTSB\\\\operatorname*{\\\\overline{lim}}",
+      "params": 0
+    },
+    {
+      "name": "\\varliminf",
+      "body": "\\\\DOTSB\\\\operatorname*{\\\\underline{lim}}",
+      "params": 0
+    },
+    {
+      "name": "\\varinjlim",
+      "body": "\\\\DOTSB\\\\operatorname*{\\\\underrightarrow{lim}}",
+      "params": 0
+    },
+    {
+      "name": "\\varprojlim",
+      "body": "\\\\DOTSB\\\\operatorname*{\\\\underleftarrow{lim}}",
+      "params": 0
+    },
+    {
+      "name": "\\gvertneqq",
+      "body": "\\\\html@mathml{\\\\@gvertneqq}{≩}",
+      "params": 0
+    },
+    {
+      "name": "\\lvertneqq",
+      "body": "\\\\html@mathml{\\\\@lvertneqq}{≨}",
+      "params": 0
+    },
+    {
+      "name": "\\ngeqq",
+      "body": "\\\\html@mathml{\\\\@ngeqq}{≱}",
+      "params": 0
+    },
+    {
+      "name": "\\ngeqslant",
+      "body": "\\\\html@mathml{\\\\@ngeqslant}{≱}",
+      "params": 0
+    },
+    {
+      "name": "\\nleqq",
+      "body": "\\\\html@mathml{\\\\@nleqq}{≰}",
+      "params": 0
+    },
+    {
+      "name": "\\nleqslant",
+      "body": "\\\\html@mathml{\\\\@nleqslant}{≰}",
+      "params": 0
+    },
+    {
+      "name": "\\nshortmid",
+      "body": "\\\\html@mathml{\\\\@nshortmid}{∤}",
+      "params": 0
+    },
+    {
+      "name": "\\nshortparallel",
+      "body": "\\\\html@mathml{\\\\@nshortparallel}{∦}",
+      "params": 0
+    },
+    {
+      "name": "\\nsubseteqq",
+      "body": "\\\\html@mathml{\\\\@nsubseteqq}{⊈}",
+      "params": 0
+    },
+    {
+      "name": "\\nsupseteqq",
+      "body": "\\\\html@mathml{\\\\@nsupseteqq}{⊉}",
+      "params": 0
+    },
+    {
+      "name": "\\varsubsetneq",
+      "body": "\\\\html@mathml{\\\\@varsubsetneq}{⊊}",
+      "params": 0
+    },
+    {
+      "name": "\\varsubsetneqq",
+      "body": "\\\\html@mathml{\\\\@varsubsetneqq}{⫋}",
+      "params": 0
+    },
+    {
+      "name": "\\varsupsetneq",
+      "body": "\\\\html@mathml{\\\\@varsupsetneq}{⊋}",
+      "params": 0
+    },
+    {
+      "name": "\\varsupsetneqq",
+      "body": "\\\\html@mathml{\\\\@varsupsetneqq}{⫌}",
+      "params": 0
+    },
+    {
+      "name": "\\imath",
+      "body": "\\\\html@mathml{\\\\@imath}{ı}",
+      "params": 0
+    },
+    {
+      "name": "\\jmath",
+      "body": "\\\\html@mathml{\\\\@jmath}{ȷ}",
+      "params": 0
+    },
+    {
+      "name": "\\darr",
+      "body": "\\\\downarrow",
+      "params": 0
+    },
+    {
+      "name": "\\dArr",
+      "body": "\\\\Downarrow",
+      "params": 0
+    },
+    {
+      "name": "\\Darr",
+      "body": "\\\\Downarrow",
+      "params": 0
+    },
+    {
+      "name": "\\lang",
+      "body": "\\\\langle",
+      "params": 0
+    },
+    {
+      "name": "\\rang",
+      "body": "\\\\rangle",
+      "params": 0
+    },
+    {
+      "name": "\\uarr",
+      "body": "\\\\uparrow",
+      "params": 0
+    },
+    {
+      "name": "\\uArr",
+      "body": "\\\\Uparrow",
+      "params": 0
+    },
+    {
+      "name": "\\Uarr",
+      "body": "\\\\Uparrow",
+      "params": 0
+    },
+    {
+      "name": "\\N",
+      "body": "\\\\mathbb{N}",
+      "params": 0
+    },
+    {
+      "name": "\\R",
+      "body": "\\\\mathbb{R}",
+      "params": 0
+    },
+    {
+      "name": "\\Z",
+      "body": "\\\\mathbb{Z}",
+      "params": 0
+    },
+    {
+      "name": "\\alef",
+      "body": "\\\\aleph",
+      "params": 0
+    },
+    {
+      "name": "\\alefsym",
+      "body": "\\\\aleph",
+      "params": 0
+    },
+    {
+      "name": "\\Alpha",
+      "body": "\\\\mathrm{A}",
+      "params": 0
+    },
+    {
+      "name": "\\Beta",
+      "body": "\\\\mathrm{B}",
+      "params": 0
+    },
+    {
+      "name": "\\bull",
+      "body": "\\\\bullet",
+      "params": 0
+    },
+    {
+      "name": "\\Chi",
+      "body": "\\\\mathrm{X}",
+      "params": 0
+    },
+    {
+      "name": "\\clubs",
+      "body": "\\\\clubsuit",
+      "params": 0
+    },
+    {
+      "name": "\\cnums",
+      "body": "\\\\mathbb{C}",
+      "params": 0
+    },
+    {
+      "name": "\\Complex",
+      "body": "\\\\mathbb{C}",
+      "params": 0
+    },
+    {
+      "name": "\\Dagger",
+      "body": "\\\\ddagger",
+      "params": 0
+    },
+    {
+      "name": "\\diamonds",
+      "body": "\\\\diamondsuit",
+      "params": 0
+    },
+    {
+      "name": "\\empty",
+      "body": "\\\\emptyset",
+      "params": 0
+    },
+    {
+      "name": "\\Epsilon",
+      "body": "\\\\mathrm{E}",
+      "params": 0
+    },
+    {
+      "name": "\\Eta",
+      "body": "\\\\mathrm{H}",
+      "params": 0
+    },
+    {
+      "name": "\\exist",
+      "body": "\\\\exists",
+      "params": 0
+    },
+    {
+      "name": "\\harr",
+      "body": "\\\\leftrightarrow",
+      "params": 0
+    },
+    {
+      "name": "\\hArr",
+      "body": "\\\\Leftrightarrow",
+      "params": 0
+    },
+    {
+      "name": "\\Harr",
+      "body": "\\\\Leftrightarrow",
+      "params": 0
+    },
+    {
+      "name": "\\hearts",
+      "body": "\\\\heartsuit",
+      "params": 0
+    },
+    {
+      "name": "\\image",
+      "body": "\\\\Im",
+      "params": 0
+    },
+    {
+      "name": "\\infin",
+      "body": "\\\\infty",
+      "params": 0
+    },
+    {
+      "name": "\\Iota",
+      "body": "\\\\mathrm{I}",
+      "params": 0
+    },
+    {
+      "name": "\\isin",
+      "body": "\\\\in",
+      "params": 0
+    },
+    {
+      "name": "\\Kappa",
+      "body": "\\\\mathrm{K}",
+      "params": 0
+    },
+    {
+      "name": "\\larr",
+      "body": "\\\\leftarrow",
+      "params": 0
+    },
+    {
+      "name": "\\lArr",
+      "body": "\\\\Leftarrow",
+      "params": 0
+    },
+    {
+      "name": "\\Larr",
+      "body": "\\\\Leftarrow",
+      "params": 0
+    },
+    {
+      "name": "\\lrarr",
+      "body": "\\\\leftrightarrow",
+      "params": 0
+    },
+    {
+      "name": "\\lrArr",
+      "body": "\\\\Leftrightarrow",
+      "params": 0
+    },
+    {
+      "name": "\\Lrarr",
+      "body": "\\\\Leftrightarrow",
+      "params": 0
+    },
+    {
+      "name": "\\Mu",
+      "body": "\\\\mathrm{M}",
+      "params": 0
+    },
+    {
+      "name": "\\natnums",
+      "body": "\\\\mathbb{N}",
+      "params": 0
+    },
+    {
+      "name": "\\Nu",
+      "body": "\\\\mathrm{N}",
+      "params": 0
+    },
+    {
+      "name": "\\Omicron",
+      "body": "\\\\mathrm{O}",
+      "params": 0
+    },
+    {
+      "name": "\\plusmn",
+      "body": "\\\\pm",
+      "params": 0
+    },
+    {
+      "name": "\\rarr",
+      "body": "\\\\rightarrow",
+      "params": 0
+    },
+    {
+      "name": "\\rArr",
+      "body": "\\\\Rightarrow",
+      "params": 0
+    },
+    {
+      "name": "\\Rarr",
+      "body": "\\\\Rightarrow",
+      "params": 0
+    },
+    {
+      "name": "\\real",
+      "body": "\\\\Re",
+      "params": 0
+    },
+    {
+      "name": "\\reals",
+      "body": "\\\\mathbb{R}",
+      "params": 0
+    },
+    {
+      "name": "\\Reals",
+      "body": "\\\\mathbb{R}",
+      "params": 0
+    },
+    {
+      "name": "\\Rho",
+      "body": "\\\\mathrm{P}",
+      "params": 0
+    },
+    {
+      "name": "\\sdot",
+      "body": "\\\\cdot",
+      "params": 0
+    },
+    {
+      "name": "\\sect",
+      "body": "\\\\S",
+      "params": 0
+    },
+    {
+      "name": "\\spades",
+      "body": "\\\\spadesuit",
+      "params": 0
+    },
+    {
+      "name": "\\sub",
+      "body": "\\\\subset",
+      "params": 0
+    },
+    {
+      "name": "\\sube",
+      "body": "\\\\subseteq",
+      "params": 0
+    },
+    {
+      "name": "\\supe",
+      "body": "\\\\supseteq",
+      "params": 0
+    },
+    {
+      "name": "\\Tau",
+      "body": "\\\\mathrm{T}",
+      "params": 0
+    },
+    {
+      "name": "\\thetasym",
+      "body": "\\\\vartheta",
+      "params": 0
+    },
+    {
+      "name": "\\varcoppa",
+      "body": "\\\\\\mbox{\\\\coppa}",
+      "params": 0
+    },
+    {
+      "name": "\\weierp",
+      "body": "\\\\wp",
+      "params": 0
+    },
+    {
+      "name": "\\Zeta",
+      "body": "\\\\mathrm{Z}",
+      "params": 0
+    },
+    {
+      "name": "\\argmin",
+      "body": "\\\\DOTSB\\\\operatorname*{arg\\\\,min}",
+      "params": 0
+    },
+    {
+      "name": "\\argmax",
+      "body": "\\\\DOTSB\\\\operatorname*{arg\\\\,max}",
+      "params": 0
+    },
+    {
+      "name": "\\plim",
+      "body": "\\\\DOTSB\\\\mathop{\\\\operatorname{plim}}\\\\limits",
+      "params": 0
+    },
+    {
+      "name": "\\bra",
+      "body": "\\\\mathinner{\\\\langle{#1}|}",
+      "params": 1
+    },
+    {
+      "name": "\\ket",
+      "body": "\\\\mathinner{|{#1}\\\\rangle}",
+      "params": 1
+    },
+    {
+      "name": "\\braket",
+      "body": "\\\\mathinner{\\\\langle{#1}\\\\rangle}",
+      "params": 1
+    },
+    {
+      "name": "\\Bra",
+      "body": "\\\\left\\\\langle#1\\\\right|",
+      "params": 1
+    },
+    {
+      "name": "\\Ket",
+      "body": "\\\\left|#1\\\\right\\\\rangle",
+      "params": 1
+    },
+    {
+      "name": "\\set",
+      "body": "\\\\bra@set{\\\\{\\\\,}{\\\\mid}{}{\\\\,\\\\}}",
+      "params": 0
+    },
+    {
+      "name": "\\angln",
+      "body": "{\\\\angl n}",
+      "params": 0
+    },
+    {
+      "name": "\\blue",
+      "body": "\\\\textcolor{##6495ed}{#1}",
+      "params": 6495
+    },
+    {
+      "name": "\\orange",
+      "body": "\\\\textcolor{##ffa500}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\pink",
+      "body": "\\\\textcolor{##ff00af}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\red",
+      "body": "\\\\textcolor{##df0030}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\green",
+      "body": "\\\\textcolor{##28ae7b}{#1}",
+      "params": 28
+    },
+    {
+      "name": "\\gray",
+      "body": "\\\\textcolor{gray}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\purple",
+      "body": "\\\\textcolor{##9d38bd}{#1}",
+      "params": 9
+    },
+    {
+      "name": "\\blueA",
+      "body": "\\\\textcolor{##ccfaff}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\blueB",
+      "body": "\\\\textcolor{##80f6ff}{#1}",
+      "params": 80
+    },
+    {
+      "name": "\\blueC",
+      "body": "\\\\textcolor{##63d9ea}{#1}",
+      "params": 63
+    },
+    {
+      "name": "\\blueD",
+      "body": "\\\\textcolor{##11accd}{#1}",
+      "params": 11
+    },
+    {
+      "name": "\\blueE",
+      "body": "\\\\textcolor{##0c7f99}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\tealA",
+      "body": "\\\\textcolor{##94fff5}{#1}",
+      "params": 94
+    },
+    {
+      "name": "\\tealB",
+      "body": "\\\\textcolor{##26edd5}{#1}",
+      "params": 26
+    },
+    {
+      "name": "\\tealC",
+      "body": "\\\\textcolor{##01d1c1}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\tealD",
+      "body": "\\\\textcolor{##01a995}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\tealE",
+      "body": "\\\\textcolor{##208170}{#1}",
+      "params": 208170
+    },
+    {
+      "name": "\\greenA",
+      "body": "\\\\textcolor{##b6ffb0}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\greenB",
+      "body": "\\\\textcolor{##8af281}{#1}",
+      "params": 8
+    },
+    {
+      "name": "\\greenC",
+      "body": "\\\\textcolor{##74cf70}{#1}",
+      "params": 74
+    },
+    {
+      "name": "\\greenD",
+      "body": "\\\\textcolor{##1fab54}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\greenE",
+      "body": "\\\\textcolor{##0d923f}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\goldA",
+      "body": "\\\\textcolor{##ffd0a9}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\goldB",
+      "body": "\\\\textcolor{##ffbb71}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\goldC",
+      "body": "\\\\textcolor{##ff9c39}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\goldD",
+      "body": "\\\\textcolor{##e07d10}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\goldE",
+      "body": "\\\\textcolor{##a75a05}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\redA",
+      "body": "\\\\textcolor{##fca9a9}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\redB",
+      "body": "\\\\textcolor{##ff8482}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\redC",
+      "body": "\\\\textcolor{##f9685d}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\redD",
+      "body": "\\\\textcolor{##e84d39}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\redE",
+      "body": "\\\\textcolor{##bc2612}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\maroonA",
+      "body": "\\\\textcolor{##ffbde0}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\maroonB",
+      "body": "\\\\textcolor{##ff92c6}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\maroonC",
+      "body": "\\\\textcolor{##ed5fa6}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\maroonD",
+      "body": "\\\\textcolor{##ca337c}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\maroonE",
+      "body": "\\\\textcolor{##9e034e}{#1}",
+      "params": 9
+    },
+    {
+      "name": "\\purpleA",
+      "body": "\\\\textcolor{##ddd7ff}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\purpleB",
+      "body": "\\\\textcolor{##c6b9fc}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\purpleC",
+      "body": "\\\\textcolor{##aa87ff}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\purpleD",
+      "body": "\\\\textcolor{##7854ab}{#1}",
+      "params": 7854
+    },
+    {
+      "name": "\\purpleE",
+      "body": "\\\\textcolor{##543b78}{#1}",
+      "params": 543
+    },
+    {
+      "name": "\\mintA",
+      "body": "\\\\textcolor{##f5f9e8}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\mintB",
+      "body": "\\\\textcolor{##edf2df}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\mintC",
+      "body": "\\\\textcolor{##e0e5cc}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\grayA",
+      "body": "\\\\textcolor{##f6f7f7}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\grayB",
+      "body": "\\\\textcolor{##f0f1f2}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\grayC",
+      "body": "\\\\textcolor{##e3e5e6}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\grayD",
+      "body": "\\\\textcolor{##d6d8da}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\grayE",
+      "body": "\\\\textcolor{##babec2}{#1}",
+      "params": 1
+    },
+    {
+      "name": "\\grayF",
+      "body": "\\\\textcolor{##888d93}{#1}",
+      "params": 888
+    },
+    {
+      "name": "\\grayG",
+      "body": "\\\\textcolor{##626569}{#1}",
+      "params": 626569
+    },
+    {
+      "name": "\\grayH",
+      "body": "\\\\textcolor{##3b3e40}{#1}",
+      "params": 3
+    },
+    {
+      "name": "\\grayI",
+      "body": "\\\\textcolor{##21242c}{#1}",
+      "params": 21242
+    },
+    {
+      "name": "\\kaBlue",
+      "body": "\\\\textcolor{##314453}{#1}",
+      "params": 314453
+    },
+    {
+      "name": "\\kaGreen",
+      "body": "\\\\textcolor{##71B307}{#1}",
+      "params": 71
+    }
+  ],
+  "functions": [
+    {
+      "file": "accent.js",
+      "names": [
+        "\\acute",
+        "\\grave",
+        "\\ddot",
+        "\\tilde",
+        "\\bar",
+        "\\breve",
+        "\\check",
+        "\\hat",
+        "\\vec",
+        "\\dot",
+        "\\mathring",
+        "\\widecheck",
+        "\\widehat",
+        "\\widetilde",
+        "\\overrightarrow",
+        "\\overleftarrow",
+        "\\Overrightarrow",
+        "\\overleftrightarrow",
+        "\\overgroup",
+        "\\overlinesegment",
+        "\\overleftharpoon",
+        "\\overrightharpoon"
+      ],
+      "num_args": 1,
+      "kind": "accent"
+    },
+    {
+      "file": "accent.js",
+      "names": [
+        "\\'",
+        "\\`",
+        "\\^",
+        "\\~",
+        "\\=",
+        "\\u",
+        "\\."
+      ],
+      "num_args": 1,
+      "kind": "accent"
+    },
+    {
+      "file": "accentunder.js",
+      "names": [
+        "\\underleftarrow",
+        "\\underrightarrow",
+        "\\underleftrightarrow",
+        "\\undergroup",
+        "\\underlinesegment",
+        "\\utilde"
+      ],
+      "num_args": 1,
+      "kind": "accentunder"
+    },
+    {
+      "file": "arrow.js",
+      "names": [
+        "\\xleftarrow",
+        "\\xrightarrow",
+        "\\xLeftarrow",
+        "\\xRightarrow",
+        "\\xleftrightarrow",
+        "\\xLeftrightarrow",
+        "\\xhookleftarrow",
+        "\\xhookrightarrow",
+        "\\xmapsto",
+        "\\xrightharpoondown",
+        "\\xrightharpoonup",
+        "\\xleftharpoondown",
+        "\\xleftharpoonup",
+        "\\xrightleftharpoons",
+        "\\xleftrightharpoons",
+        "\\xlongequal",
+        "\\xtwoheadrightarrow",
+        "\\xtwoheadleftarrow",
+        "\\xtofrom",
+        "\\xrightleftarrows",
+        "\\xrightequilibrium",
+        "\\xleftequilibrium"
+      ],
+      "num_args": 1,
+      "kind": "arrow"
+    },
+    {
+      "file": "def.js",
+      "names": [
+        "\\global",
+        "\\long"
+      ],
+      "num_args": 0,
+      "kind": "def"
+    },
+    {
+      "file": "delimsizing.js",
+      "names": [
+        "\\bigl",
+        "\\Bigl",
+        "\\biggl",
+        "\\Biggl",
+        "\\bigr",
+        "\\Bigr",
+        "\\biggr",
+        "\\Biggr",
+        "\\bigm",
+        "\\Bigm",
+        "\\biggm",
+        "\\Biggm",
+        "\\big",
+        "\\Big",
+        "\\bigg",
+        "\\Bigg"
+      ],
+      "num_args": 1,
+      "kind": "delimsizing"
+    },
+    {
+      "file": "delimsizing.js",
+      "names": [
+        "\\right"
+      ],
+      "num_args": 1,
+      "kind": "delimsizing"
+    },
+    {
+      "file": "delimsizing.js",
+      "names": [
+        "\\left"
+      ],
+      "num_args": 1,
+      "kind": "delimsizing"
+    },
+    {
+      "file": "delimsizing.js",
+      "names": [
+        "\\middle"
+      ],
+      "num_args": 1,
+      "kind": "delimsizing"
+    },
+    {
+      "file": "enclose.js",
+      "names": [
+        "\\colorbox"
+      ],
+      "num_args": 2,
+      "kind": "enclose"
+    },
+    {
+      "file": "enclose.js",
+      "names": [
+        "\\fcolorbox"
+      ],
+      "num_args": 3,
+      "kind": "enclose"
+    },
+    {
+      "file": "enclose.js",
+      "names": [
+        "\\fbox"
+      ],
+      "num_args": 1,
+      "kind": "enclose"
+    },
+    {
+      "file": "enclose.js",
+      "names": [
+        "\\cancel",
+        "\\bcancel",
+        "\\xcancel",
+        "\\sout",
+        "\\phase"
+      ],
+      "num_args": 1,
+      "kind": "enclose"
+    },
+    {
+      "file": "enclose.js",
+      "names": [
+        "\\angl"
+      ],
+      "num_args": 1,
+      "kind": "enclose"
+    },
+    {
+      "file": "font.js",
+      "names": [
+        "\\mathrm",
+        "\\mathit",
+        "\\mathbf",
+        "\\mathnormal",
+        "\\mathbb",
+        "\\mathcal",
+        "\\mathfrak",
+        "\\mathscr",
+        "\\mathsf",
+        "\\mathtt",
+        "\\Bbb",
+        "\\bold",
+        "\\frak"
+      ],
+      "num_args": 1,
+      "kind": "font"
+    },
+    {
+      "file": "font.js",
+      "names": [
+        "\\boldsymbol",
+        "\\bm"
+      ],
+      "num_args": 1,
+      "kind": "font"
+    },
+    {
+      "file": "font.js",
+      "names": [
+        "\\rm",
+        "\\sf",
+        "\\tt",
+        "\\bf",
+        "\\it",
+        "\\cal"
+      ],
+      "num_args": 0,
+      "kind": "font"
+    },
+    {
+      "file": "genfrac.js",
+      "names": [
+        "\\dfrac",
+        "\\frac",
+        "\\tfrac",
+        "\\dbinom",
+        "\\binom",
+        "\\tbinom"
+      ],
+      "num_args": 2,
+      "kind": "genfrac"
+    },
+    {
+      "file": "genfrac.js",
+      "names": [
+        "\\cfrac"
+      ],
+      "num_args": 2,
+      "kind": "genfrac"
+    },
+    {
+      "file": "genfrac.js",
+      "names": [
+        "\\over",
+        "\\choose",
+        "\\atop",
+        "\\brace",
+        "\\brack"
+      ],
+      "num_args": 0,
+      "kind": "genfrac"
+    },
+    {
+      "file": "genfrac.js",
+      "names": [
+        "\\genfrac"
+      ],
+      "num_args": 6,
+      "kind": "genfrac"
+    },
+    {
+      "file": "genfrac.js",
+      "names": [
+        "\\above"
+      ],
+      "num_args": 1,
+      "kind": "genfrac"
+    },
+    {
+      "file": "horizBrace.js",
+      "names": [
+        "\\overbrace",
+        "\\underbrace"
+      ],
+      "num_args": 1,
+      "kind": "horizBrace"
+    },
+    {
+      "file": "math.js",
+      "names": [
+        "\\(",
+        "$"
+      ],
+      "num_args": 0,
+      "kind": "math"
+    },
+    {
+      "file": "math.js",
+      "names": [
+        "\\)"
+      ],
+      "num_args": 0,
+      "kind": "math"
+    },
+    {
+      "file": "mclass.js",
+      "names": [
+        "\\mathord",
+        "\\mathbin",
+        "\\mathrel",
+        "\\mathopen",
+        "\\mathclose",
+        "\\mathpunct",
+        "\\mathinner"
+      ],
+      "num_args": 1,
+      "kind": "mclass"
+    },
+    {
+      "file": "op.js",
+      "names": [
+        "\\coprod",
+        "\\bigvee",
+        "\\bigwedge",
+        "\\biguplus",
+        "\\bigcap",
+        "\\bigcup",
+        "\\intop",
+        "\\prod",
+        "\\sum",
+        "\\bigotimes",
+        "\\bigoplus",
+        "\\bigodot",
+        "\\bigsqcup",
+        "\\smallint",
+        "\\u220F",
+        "\\u2210",
+        "\\u2211",
+        "\\u22c0",
+        "\\u22c1",
+        "\\u22c2",
+        "\\u22c3",
+        "\\u2a00",
+        "\\u2a01",
+        "\\u2a02",
+        "\\u2a04",
+        "\\u2a06"
+      ],
+      "num_args": 0,
+      "kind": "op"
+    },
+    {
+      "file": "op.js",
+      "names": [
+        "\\mathop"
+      ],
+      "num_args": 1,
+      "kind": "op"
+    },
+    {
+      "file": "op.js",
+      "names": [
+        "\\arcsin",
+        "\\arccos",
+        "\\arctan",
+        "\\arctg",
+        "\\arcctg",
+        "\\arg",
+        "\\ch",
+        "\\cos",
+        "\\cosec",
+        "\\cosh",
+        "\\cot",
+        "\\cotg",
+        "\\coth",
+        "\\csc",
+        "\\ctg",
+        "\\cth",
+        "\\deg",
+        "\\dim",
+        "\\exp",
+        "\\hom",
+        "\\ker",
+        "\\lg",
+        "\\ln",
+        "\\log",
+        "\\sec",
+        "\\sin",
+        "\\sinh",
+        "\\sh",
+        "\\tan",
+        "\\tanh",
+        "\\tg",
+        "\\th"
+      ],
+      "num_args": 0,
+      "kind": "op"
+    },
+    {
+      "file": "op.js",
+      "names": [
+        "\\det",
+        "\\gcd",
+        "\\inf",
+        "\\lim",
+        "\\max",
+        "\\min",
+        "\\Pr",
+        "\\sup"
+      ],
+      "num_args": 0,
+      "kind": "op"
+    },
+    {
+      "file": "op.js",
+      "names": [
+        "\\int",
+        "\\iint",
+        "\\iiint",
+        "\\oint",
+        "\\oiint",
+        "\\oiiint",
+        "\\u222b",
+        "\\u222c",
+        "\\u222d",
+        "\\u222e",
+        "\\u222f",
+        "\\u2230"
+      ],
+      "num_args": 0,
+      "kind": "op"
+    },
+    {
+      "file": "operatorname.js",
+      "names": [
+        "\\operatorname@",
+        "\\operatornamewithlimits"
+      ],
+      "num_args": 1,
+      "kind": "operatorname"
+    },
+    {
+      "file": "overline.js",
+      "names": [
+        "\\overline"
+      ],
+      "num_args": 1,
+      "kind": "overline"
+    },
+    {
+      "file": "phantom.js",
+      "names": [
+        "\\phantom"
+      ],
+      "num_args": 1,
+      "kind": "phantom"
+    },
+    {
+      "file": "sqrt.js",
+      "names": [
+        "\\sqrt"
+      ],
+      "num_args": 1,
+      "kind": "sqrt"
+    },
+    {
+      "file": "styling.js",
+      "names": [
+        "\\displaystyle",
+        "\\textstyle",
+        "\\scriptstyle",
+        "\\scriptscriptstyle"
+      ],
+      "num_args": 0,
+      "kind": "styling"
+    },
+    {
+      "file": "text.js",
+      "names": [
+        "\\text",
+        "\\textrm",
+        "\\textsf",
+        "\\texttt",
+        "\\textnormal",
+        "\\textbf",
+        "\\textmd",
+        "\\textit",
+        "\\textup",
+        "\\emph"
+      ],
+      "num_args": 1,
+      "kind": "text"
+    },
+    {
+      "file": "underline.js",
+      "names": [
+        "\\underline"
+      ],
+      "num_args": 1,
+      "kind": "underline"
+    }
+  ],
+  "excluded_files": [
+    "char.js",
+    "color.js",
+    "cr.js",
+    "environment.js",
+    "hbox.js",
+    "href.js",
+    "html.js",
+    "htmlmathml.js",
+    "includegraphics.js",
+    "kern.js",
+    "lap.js",
+    "mathchoice.js",
+    "ordgroup.js",
+    "pmb.js",
+    "raisebox.js",
+    "relax.js",
+    "rule.js",
+    "smash.js",
+    "tag.js",
+    "vcenter.js",
+    "verb.js"
+  ]
+}

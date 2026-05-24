@@ -33,3 +33,4 @@ Cargo.lock.bak
 **/*.pending-snap
 **/*.snap.new
 scripts/__pycache__/
+scripts/output/

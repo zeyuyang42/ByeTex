@@ -4602,7 +4602,7 @@ fn extract_def_and_record(
     None
 }
 
-fn wrap_for_command_name(name: &str) -> Option<(&'static str, &'static str)> {
+pub(crate) fn wrap_for_command_name(name: &str) -> Option<(&'static str, &'static str)> {
     Some(match name {
         "\\mathbb" | "\\mathbbm" | "\\Bbb" => ("bb(", ")"),
         "\\mathcal" => ("cal(", ")"),

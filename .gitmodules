@@ -1,0 +1,3 @@
+[submodule "vendor/katex"]
+	path = vendor/katex
+	url = https://github.com/KaTeX/KaTeX.git

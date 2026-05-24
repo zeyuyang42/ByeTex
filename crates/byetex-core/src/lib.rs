@@ -16,8 +16,20 @@ pub mod warnings;
 
 mod class_map;
 mod document;
-mod emit;
+pub(crate) mod emit;
 pub(crate) mod package_macros;
+
+/// Test-support surface: thin wrappers over internal functions exposed for
+/// integration tests in `tests/`. Not part of the public API.
+#[doc(hidden)]
+pub mod __test_support {
+    pub fn lookup_math_symbol(name: &str) -> Option<&'static str> {
+        super::emit::lookup_math_symbol(name)
+    }
+    pub fn wrap_for_command_name(name: &str) -> Option<(&'static str, &'static str)> {
+        super::emit::wrap_for_command_name(name)
+    }
+}
 
 pub use warnings::{Category, Range, Severity, Warning};
 
