@@ -1305,6 +1305,12 @@ impl<'a> Emitter<'a> {
     /// macro table, and `base_dir`. The child's body output is appended
     /// to the parent's; warnings are merged. If the parameter count
     /// doesn't match, fall back to warn-and-drop.
+    ///
+    /// Brace-less calls (`\mat X`, `\mat \alpha`) are also supported:
+    /// when the AST has fewer `curly_group` children than the macro
+    /// expects, the missing args are consumed from raw source bytes via
+    /// [`consume_braceless_arg`]. `self.skip_until` is bumped so the
+    /// parent walker doesn't re-emit the consumed tokens.
     fn expand_user_macro(&mut self, node: Node<'_>, name: &str) -> usize {
         if self.macro_depth >= MAX_MACRO_DEPTH {
             // Bail out and emit a warning. A self-referential or mutually
@@ -1330,7 +1336,7 @@ impl<'a> Emitter<'a> {
         };
         // Collect the call's curly_group arguments in order.
         let mut cursor = node.walk();
-        let args: Vec<String> = node
+        let mut args: Vec<String> = node
             .children(&mut cursor)
             .filter(|c| c.kind() == "curly_group")
             .map(|c| {
@@ -1341,11 +1347,27 @@ impl<'a> Emitter<'a> {
                     .to_string()
             })
             .collect();
+        // If the call site has fewer curly_groups than the macro expects,
+        // try LaTeX's brace-less calling convention: read the next N
+        // tokens from the raw source (`\name`, `{group}`, or one char).
+        // Real arXiv papers heavily rely on this — `$\mat X$`, `\vec a`,
+        // `\rvec \alpha`. Without it every such call site is dropped with
+        // a `custom_macro` warning.
+        let mut consumed_end = node.end_byte();
+        while args.len() < macro_def.params {
+            match consume_braceless_arg(self.src, consumed_end) {
+                Some((arg, end)) => {
+                    args.push(arg.as_substitution().to_string());
+                    consumed_end = end;
+                }
+                None => break, // EOF / only whitespace — fall through to warn.
+            }
+        }
         if args.len() < macro_def.params {
-            // Not enough arguments — emit a warning and drop the call.
-            // The body might reference `#N` placeholders that we can't
-            // resolve. Leaving the source unmodified would let the raw
-            // `\name` text bleed into the Typst output.
+            // Genuine missing-arg case: the source really doesn't have
+            // enough tokens after the macro call. Emit a warning and
+            // drop the call so the raw `\name` doesn't bleed into the
+            // Typst output.
             self.warnings.push(Warning {
                 range: range_of(node),
                 category: Category::CustomMacro {
@@ -1362,6 +1384,12 @@ impl<'a> Emitter<'a> {
                 suggested_skill: None,
             });
             return node.end_byte();
+        }
+        // Mark the consumed brace-less range as already-emitted so the
+        // parent walker doesn't re-emit those source bytes after we
+        // append the expansion.
+        if consumed_end > node.end_byte() {
+            self.skip_until = self.skip_until.max(consumed_end);
         }
         // Substitute `#1`..`#N` in the body. We can't naively call
         // `str::replace("#1", arg)` — that would also rewrite `#10`,
@@ -1397,7 +1425,11 @@ impl<'a> Emitter<'a> {
         // A `\includegraphics` or `\bibliography` reached via a macro body
         // must still bubble up so the project materialiser copies the file.
         self.asset_refs.append(&mut sub.asset_refs);
-        node.end_byte()
+        // Return the end of the consumed range so the AST walker resumes
+        // past any brace-less args we ate. For purely curly-group calls,
+        // `consumed_end == node.end_byte()` and this matches the prior
+        // behaviour.
+        consumed_end
     }
 
     /// Expand a `\input{...}` / `\include{...}` directive inline.
@@ -2571,128 +2603,77 @@ impl<'a> Emitter<'a> {
         // Brace-less form — LaTeX permits `\hat x`, `\mathcal A`,
         // `\bar\alpha` etc. The argument is the next non-whitespace
         // token in the source; tree-sitter parses it as a sibling of
-        // this command, not a child. Consume it directly from the
-        // source bytes and mark the range as already-emitted via
-        // `skip_until` so the parent walker doesn't re-emit the
-        // token as plain text.
-        let bytes = self.src.as_bytes();
-        let mut i = node.end_byte();
-        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
-            i += 1;
-        }
-        if i >= bytes.len() {
-            self.warn_ambiguous_math(node, "missing argument");
-            return node.end_byte();
-        }
-        let (arg_end, arg_render) = if bytes[i] == b'\\' && i + 1 < bytes.len() {
-            // `\alpha`, `\beta`, ... — look up via the math symbol
-            // table so the wrap emits `hat(alpha)` not `hat(\alpha)`.
-            let mut j = i + 1;
-            while j < bytes.len() && bytes[j].is_ascii_alphabetic() {
-                j += 1;
+        // this command, not a child. Consume it via the shared
+        // `consume_braceless_arg` helper, then route per variant:
+        // commands lookup_math_symbol → user macros → raw; groups go
+        // through a math sub-emitter; chars pass through.
+        let (parsed_arg, arg_end) = match consume_braceless_arg(self.src, node.end_byte()) {
+            Some(pair) => pair,
+            None => {
+                self.warn_ambiguous_math(node, "missing argument");
+                return node.end_byte();
             }
-            if j == i + 1 {
-                // Single-char backslash escape (e.g. `\%`). The char after
-                // `\` may be non-ASCII (`\é`); advance by UTF-8 length so
-                // `&self.src[i..j]` lands on a char boundary.
-                let after = &self.src[i + 1..];
-                let step = after.chars().next().map(|c| c.len_utf8()).unwrap_or(0);
-                j = i + 1 + step;
+        };
+        let arg_render = match parsed_arg {
+            BracelessArg::Command(cmd) => {
+                // Resolution order: math symbol table → user macros → raw.
+                // Without the macro check, `\widehat\HSIC` (where `\HSIC`
+                // is a `\newcommand` defined in the source) emits the
+                // literal `\HSIC` instead of the expansion.
+                if let Some(typst) = lookup_math_symbol(&cmd) {
+                    typst.to_string()
+                } else if let Some(macro_def) = self.macros.get(&cmd).cloned() {
+                    // Expand: re-parse the macro body and render via a
+                    // sub-emitter inheriting the math context + macro table.
+                    let body = macro_def.body.clone();
+                    let tree = crate::parser::parse(&body);
+                    let visited = std::mem::take(&mut self.visited_includes);
+                    let macros = self.macros.clone();
+                    let mut sub = Emitter::with_includes(
+                        &body,
+                        self.source_name,
+                        self.base_dir.clone(),
+                        visited,
+                    );
+                    sub.in_math = true;
+                    sub.macros = macros;
+                    sub.macro_depth = self.macro_depth + 1;
+                    sub.emit_root(tree.root_node());
+                    self.visited_includes = std::mem::take(&mut sub.visited_includes);
+                    for (k, v) in sub.macros.drain() {
+                        self.macros.entry(k).or_insert(v);
+                    }
+                    self.warnings.append(&mut sub.warnings);
+                    self.asset_refs.append(&mut sub.asset_refs);
+                    sub.out.trim().to_string()
+                } else {
+                    cmd
+                }
             }
-            let cmd = &self.src[i..j];
-            // Resolution order: math symbol table → user macros → raw.
-            // Without the macro check, `\widehat\HSIC` (where `\HSIC`
-            // is a `\newcommand` defined in the source) emits the
-            // literal `\HSIC` instead of the expansion.
-            let rendered = if let Some(typst) = lookup_math_symbol(cmd) {
-                typst.to_string()
-            } else if let Some(macro_def) = self.macros.get(cmd).cloned() {
-                // Expand: re-parse the macro body and render via a
-                // sub-emitter inheriting the math context + macro table.
-                let body = macro_def.body.clone();
-                let tree = crate::parser::parse(&body);
+            BracelessArg::Group(inner_src) => {
+                // Brace group as the arg: re-parse inner content with the
+                // current math context so nested commands render properly.
+                let tree = crate::parser::parse(&inner_src);
                 let visited = std::mem::take(&mut self.visited_includes);
                 let macros = self.macros.clone();
-                let mut sub =
-                    Emitter::with_includes(&body, self.source_name, self.base_dir.clone(), visited);
+                let mut sub = Emitter::with_includes(
+                    &inner_src,
+                    self.source_name,
+                    self.base_dir.clone(),
+                    visited,
+                );
                 sub.in_math = true;
                 sub.macros = macros;
-                sub.macro_depth = self.macro_depth + 1;
                 sub.emit_root(tree.root_node());
                 self.visited_includes = std::mem::take(&mut sub.visited_includes);
                 for (k, v) in sub.macros.drain() {
                     self.macros.entry(k).or_insert(v);
                 }
-                // Warnings and asset_refs raised inside the macro body
-                // must propagate to the parent, just like expand_user_macro.
                 self.warnings.append(&mut sub.warnings);
                 self.asset_refs.append(&mut sub.asset_refs);
                 sub.out.trim().to_string()
-            } else {
-                cmd.to_string()
-            };
-            (j, rendered)
-        } else if bytes[i] == b'{' {
-            // Brace group as the arg: tree-sitter dropped the curly
-            // group because `\hat` / `\mathcal` etc. were parsed as
-            // bare `command_name` (no `generic_command` parent that
-            // would attach the curly_group as a child). Find the
-            // matching `}` by balancing depth on raw bytes, then
-            // re-parse the inner content with the current math
-            // context so nested commands render properly.
-            let inner_start = i + 1;
-            let mut depth = 1i32;
-            let mut j = inner_start;
-            while j < bytes.len() {
-                match bytes[j] {
-                    b'\\' if j + 1 < bytes.len() => {
-                        j += 2;
-                        continue;
-                    }
-                    b'{' => depth += 1,
-                    b'}' => {
-                        depth -= 1;
-                        if depth == 0 {
-                            break;
-                        }
-                    }
-                    _ => {}
-                }
-                j += 1;
             }
-            if j >= bytes.len() {
-                self.warn_ambiguous_math(node, "unbalanced argument braces");
-                return node.end_byte();
-            }
-            let inner_src = &self.src[inner_start..j];
-            let tree = crate::parser::parse(inner_src);
-            let visited = std::mem::take(&mut self.visited_includes);
-            let macros = self.macros.clone();
-            let mut sub =
-                Emitter::with_includes(inner_src, self.source_name, self.base_dir.clone(), visited);
-            sub.in_math = true;
-            sub.macros = macros;
-            sub.emit_root(tree.root_node());
-            self.visited_includes = std::mem::take(&mut sub.visited_includes);
-            for (k, v) in sub.macros.drain() {
-                self.macros.entry(k).or_insert(v);
-            }
-            self.warnings.append(&mut sub.warnings);
-            self.asset_refs.append(&mut sub.asset_refs);
-            let rendered = sub.out.trim().to_string();
-            (j + 1, rendered)
-        } else {
-            // Single character — letter, digit, punctuation, or one
-            // codepoint of a multi-byte UTF-8 sequence.
-            let rest = &self.src[i..];
-            let c = match rest.chars().next() {
-                Some(c) => c,
-                None => {
-                    self.warn_ambiguous_math(node, "missing argument");
-                    return node.end_byte();
-                }
-            };
-            (i + c.len_utf8(), c.to_string())
+            BracelessArg::Char(c) => c,
         };
         self.ensure_math_letter_boundary(left);
         self.out.push_str(left);
@@ -4389,6 +4370,108 @@ pub(crate) fn lookup_math_symbol(name: &str) -> Option<&'static str> {
 ///   brack_group (optional, skipped)  the optional-default form — unsupported
 ///   curly_group                      the macro body
 /// ```
+/// The three shapes a brace-less LaTeX argument can take. See
+/// [`consume_braceless_arg`].
+#[derive(Debug, Clone)]
+pub(crate) enum BracelessArg {
+    /// A `\command-name` (with the leading backslash). Letters-only run;
+    /// for single-character escapes like `\%` or `\é` the next char is
+    /// included regardless of class.
+    Command(String),
+    /// The inner content of a balanced `{...}` group, sans braces.
+    Group(String),
+    /// A single Unicode codepoint argument (letter, digit, punctuation).
+    Char(String),
+}
+
+impl BracelessArg {
+    /// The textual representation used as a substitution body for
+    /// `\newcommand` expansion. For `Command` this is the literal
+    /// `\name`; for `Group` it's the inner content; for `Char` it's the
+    /// single codepoint.
+    pub(crate) fn as_substitution(&self) -> &str {
+        match self {
+            BracelessArg::Command(s) | BracelessArg::Group(s) | BracelessArg::Char(s) => s,
+        }
+    }
+}
+
+/// Consume one LaTeX argument starting at byte offset `start` in `src`,
+/// LaTeX-style: leading ASCII whitespace is skipped, then the next token
+/// is read as either a `\command` run, a balanced `{group}`, or one
+/// Unicode codepoint.
+///
+/// Returns `Some((arg, end_byte))` on success, where `end_byte` is the
+/// byte index immediately past the consumed token. Returns `None` only
+/// when `start` lies past EOF or the remaining bytes are pure whitespace
+/// — the caller decides whether that's an error condition.
+///
+/// Used by both [`Emitter::emit_math_wrap`] (math accents like `\hat x`,
+/// `\bar\alpha`, `\mathbf{X}`) and [`Emitter::expand_user_macro`] so
+/// `\newcommand`s called brace-less (`\mat X`, `\rvec\alpha`) work the
+/// same way LaTeX expects.
+pub(crate) fn consume_braceless_arg(src: &str, start: usize) -> Option<(BracelessArg, usize)> {
+    let bytes = src.as_bytes();
+    let mut i = start;
+    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    if i >= bytes.len() {
+        return None;
+    }
+    if bytes[i] == b'\\' && i + 1 < bytes.len() {
+        // `\name` — ASCII-letter run, OR single-char escape (`\%`, `\é`).
+        let mut j = i + 1;
+        while j < bytes.len() && bytes[j].is_ascii_alphabetic() {
+            j += 1;
+        }
+        if j == i + 1 {
+            // Single-char escape. Advance by codepoint length so we
+            // never split a multi-byte UTF-8 sequence mid-byte.
+            let after = &src[i + 1..];
+            let step = after.chars().next().map(|c| c.len_utf8()).unwrap_or(0);
+            j = i + 1 + step;
+        }
+        return Some((BracelessArg::Command(src[i..j].to_string()), j));
+    }
+    if bytes[i] == b'{' {
+        // Balanced `{...}` group; depth-track, ignore `\{` and `\}`.
+        let inner_start = i + 1;
+        let mut depth = 1i32;
+        let mut j = inner_start;
+        while j < bytes.len() {
+            match bytes[j] {
+                b'\\' if j + 1 < bytes.len() => {
+                    j += 2;
+                    continue;
+                }
+                b'{' => depth += 1,
+                b'}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                _ => {}
+            }
+            j += 1;
+        }
+        if j >= bytes.len() {
+            // Unbalanced — fail closed so the caller can warn.
+            return None;
+        }
+        return Some((
+            BracelessArg::Group(src[inner_start..j].to_string()),
+            j + 1,
+        ));
+    }
+    // Single Unicode codepoint.
+    let rest = &src[i..];
+    let c = rest.chars().next()?;
+    let end = i + c.len_utf8();
+    Some((BracelessArg::Char(c.to_string()), end))
+}
+
 /// Substitute `#1`..`#N` placeholders in a `\newcommand` body. Walks
 /// the body character-by-character so `#10` doesn't accidentally match
 /// `#1`+`0` and an unmatched `#<digit>` (outside the param range) is

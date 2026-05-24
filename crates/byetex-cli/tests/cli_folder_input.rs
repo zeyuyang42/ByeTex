@@ -74,6 +74,70 @@ fn cli_convert_project_accepts_a_directory_and_pre_scans_macros() {
 }
 
 #[test]
+fn braceless_user_macros_dont_warn() {
+    // Real arXiv papers (corpus/online/arxiv/paper) heavily use
+    // brace-less calls like `$\mat X$` for 1-arg `\newcommand`s. The
+    // pre-scan harvests the definition from a sibling `.tex`; the
+    // expander must accept the brace-less call form.
+    let project = tmpdir("braceless-macros");
+    write(
+        &project,
+        "macros.tex",
+        "\\newcommand{\\mat}[1]{\\mathbf{#1}}\n\
+         \\newcommand{\\rvec}[1]{\\mathbf{#1}}\n",
+    );
+    write(
+        &project,
+        "main.tex",
+        "\\documentclass{article}\n\
+         \\input{macros.tex}\n\
+         \\begin{document}\n\
+         The matrix $\\mat X$ and the vector $\\rvec y$ are scary.\n\
+         \\end{document}\n",
+    );
+
+    let out_dir = project.with_extension("typst-project");
+    let _ = fs::remove_dir_all(&out_dir);
+
+    let status = Command::new(binary_path())
+        .arg("convert")
+        .arg(&project)
+        .arg("--project")
+        .arg("--project-out")
+        .arg(&out_dir)
+        .arg("--no-toml")
+        .status()
+        .expect("running byetex");
+    assert!(status.success(), "byetex exited with {:?}", status);
+
+    let warnings_text = fs::read_to_string(out_dir.join("warnings.json")).unwrap();
+    let warnings: serde_json::Value = serde_json::from_str(&warnings_text).unwrap();
+    let custom_macro_count = warnings
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|w| {
+            w.get("category")
+                .and_then(|c| c.get("kind"))
+                .and_then(|s| s.as_str())
+                == Some("custom_macro")
+        })
+        .count();
+    assert_eq!(
+        custom_macro_count, 0,
+        "expected zero custom_macro warnings; got {}: {}",
+        custom_macro_count, warnings_text
+    );
+
+    let body = fs::read_to_string(out_dir.join("main.typ")).unwrap();
+    assert!(
+        body.contains("bold(X)") || body.contains("bold( X )"),
+        "expected `\\mat X` to expand to bold(X); main.typ:\n{}",
+        body
+    );
+}
+
+#[test]
 fn cli_convert_dir_without_project_writes_flat_typ() {
     let project = tmpdir("convert-flat-dir");
     write(
