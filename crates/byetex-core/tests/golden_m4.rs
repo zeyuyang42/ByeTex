@@ -165,6 +165,50 @@ fn m4_newtheorem_dropped_silently() {
 }
 
 #[test]
+fn m4_newtheorem_env_rendered() {
+    // `\newtheorem{assumption}{Assumption}` should be harvested so that
+    // `\begin{assumption}...\end{assumption}` is emitted as a theorem block
+    // rather than producing an UnsupportedEnvironment warning.
+    let src = concat!(
+        "\\newtheorem{assumption}{Assumption}\n",
+        "\\newtheorem*{rem}{Remark}\n\n",
+        "\\begin{assumption}\\label{asm:main}\n",
+        "The function is convex.\n",
+        "\\end{assumption}\n\n",
+        "\\begin{rem}\n",
+        "This also holds for non-convex $f$.\n",
+        "\\end{rem}\n",
+    );
+    let out = convert(
+        src,
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        out.warnings.is_empty(),
+        "expected no warnings, got: {:?}",
+        out.warnings
+    );
+    assert!(
+        out.typst.contains("kind: \"assumption\""),
+        "expected #figure with kind:\"assumption\", got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("<asm:main>"),
+        "expected label <asm:main>, got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("kind: \"remark\""),
+        "expected #figure with kind:\"remark\" (from \\newtheorem*{{rem}}{{Remark}}), got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
 fn m4_bibliography() {
     insta::assert_snapshot!(run("m4_floats/bibliography.tex"), @r#"
     ==== TYPST ====

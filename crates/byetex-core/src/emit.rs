@@ -168,6 +168,11 @@ pub(crate) struct Emitter<'a> {
     /// optional-default `\newcommand[1][default]`) are not entered into
     /// this map.
     macros: HashMap<String, MacroDef>,
+    /// `\newtheorem{name}{Display}` declarations harvested as we walk the
+    /// source. When `emit_generic_environment` encounters an unknown env name
+    /// that matches a key here, it routes to `emit_theorem_env_dyn` instead of
+    /// `warn_unsupported_environment`.
+    theorem_kinds: HashMap<String, String>,
     /// Assets (images, bib files) resolved on disk during this emit pass.
     /// Populated only when `base_dir` is `Some`. Bubbled up to `ConvertOutput`
     /// by `finish()` so the project layer can copy them to the output dir.
@@ -245,6 +250,7 @@ impl<'a> Emitter<'a> {
             base_dir,
             visited_includes: visited,
             macros: preseeded_macros,
+            theorem_kinds: HashMap::new(),
             asset_refs: Vec::new(),
             macro_depth: 0,
         }
@@ -835,7 +841,11 @@ impl<'a> Emitter<'a> {
             }
             return node.end_byte();
         }
-        if matches!(node.kind(), "counter_declaration" | "theorem_definition") {
+        if node.kind() == "counter_declaration" {
+            return node.end_byte();
+        }
+        if node.kind() == "theorem_definition" {
+            self.harvest_theorem_definition(node);
             return node.end_byte();
         }
 
@@ -1286,9 +1296,11 @@ impl<'a> Emitter<'a> {
             | Some("\\titrun")
             | Some("\\titlerunning")
             | Some("\\authorrunning")
-            // tcolorbox environment declarations
-            | Some("\\newtcolorbox")
-            | Some("\\newmdenv")
+            // tcolorbox theorem-env declarations — handled below so their
+            // bodies are passed through rather than warned on.
+            // Some("\\newtcolorbox") | Some("\\newmdenv") — see dedicated arms.
+            // \newmdtheoremenv: theorem-like, but display name is in 2nd arg
+            // (same shape as \newtheorem).
             | Some("\\newmdtheoremenv")
             // caption / subfigure setup
             | Some("\\captionsetup")
@@ -1313,6 +1325,20 @@ impl<'a> Emitter<'a> {
             | Some("\\abstract*") => {
                 node.end_byte()
             }
+            // `\newsiamremark` / `\newsiamthm` (SIAM theorem declarations) —
+            // harvest `{name}{Display}` into theorem_kinds so the env is routed
+            // correctly when encountered in the body.
+            Some("\\newsiamremark") | Some("\\newsiamthm") => {
+                self.harvest_generic_theorem_cmd(node);
+                node.end_byte()
+            }
+            // \newtcolorbox{name}{opts} / \newmdenv{name}{opts}: harvest the
+            // env name only. The body of any `\begin{name}...\end{name}` is
+            // then passed through transparently (empty display = transparent sentinel).
+            Some("\\newtcolorbox") | Some("\\newmdenv") => {
+                self.harvest_tcolorbox_decl(node);
+                node.end_byte()
+            }
             // `\newcommandx` (xargs/xargspec package) parses as a bare
             // generic_command with only its command_name child; the
             // `\name[N][K=def]{body}` definition lands as sibling
@@ -1325,12 +1351,6 @@ impl<'a> Emitter<'a> {
                     self.skip_until = self.skip_until.max(def_end);
                     return def_end;
                 }
-                node.end_byte()
-            }
-            // `\newsiamremark`/`\newsiamthm` (SIAM theorem declarations)
-            // — same issue: not harvested. Drop silently so the warning
-            // count doesn't inflate on SIAM papers.
-            Some("\\newsiamremark") | Some("\\newsiamthm") => {
                 node.end_byte()
             }
             // Macro (re)definitions in text mode — warn because the user may
@@ -1942,11 +1962,12 @@ impl<'a> Emitter<'a> {
             Ok(s) => s,
             Err(_) => return,
         };
-        // Walk the file's AST looking for `new_command_definition`
-        // and `old_command_definition` nodes; harvest each one's
-        // definition into a fresh map, then merge.
+        // Walk the file's AST looking for `new_command_definition`,
+        // `old_command_definition`, and `theorem_definition` nodes;
+        // harvest each one into a fresh map, then merge.
         let tree = crate::parser::parse(&source);
         let mut harvested: HashMap<String, MacroDef> = HashMap::new();
+        let mut harvested_theorems: HashMap<String, String> = HashMap::new();
         let root = tree.root_node();
         let mut stack: Vec<Node<'_>> = vec![root];
         while let Some(n) = stack.pop() {
@@ -1959,6 +1980,11 @@ impl<'a> Emitter<'a> {
                 "old_command_definition" => {
                     let _ = extract_def_and_record(n, &source, &mut harvested);
                 }
+                "theorem_definition" => {
+                    if let Some((name, display)) = extract_theorem_def(n, &source) {
+                        harvested_theorems.entry(name).or_insert(display);
+                    }
+                }
                 _ => {
                     let mut cursor = n.walk();
                     for c in n.children(&mut cursor) {
@@ -1967,9 +1993,12 @@ impl<'a> Emitter<'a> {
                 }
             }
         }
-        // Merge into self.macros, parent-wins.
+        // Merge into self.macros / self.theorem_kinds, parent-wins.
         for (k, v) in harvested {
             self.macros.entry(k).or_insert(v);
+        }
+        for (k, v) in harvested_theorems {
+            self.theorem_kinds.entry(k).or_insert(v);
         }
     }
 
@@ -2059,6 +2088,10 @@ impl<'a> Emitter<'a> {
             visited,
             macros,
         );
+        // Inherit parent's theorem-kind map so that environments defined in a
+        // previously-processed \input file (e.g. macros.tex) are recognisable
+        // when they appear in a later sibling include (e.g. sections/04_…tex).
+        sub.theorem_kinds = self.theorem_kinds.clone();
         sub.emit_root(tree.root_node());
         // Merge the child's body and state back into the parent.
         if !self.out.ends_with('\n') && !self.out.is_empty() {
@@ -2091,6 +2124,10 @@ impl<'a> Emitter<'a> {
         // project-layer pre-scan, take precedence).
         for (k, v) in sub.macros.drain() {
             self.macros.entry(k).or_insert(v);
+        }
+        // Same for theorem-kind declarations (`\newtheorem` et al.).
+        for (k, v) in sub.theorem_kinds.drain() {
+            self.theorem_kinds.entry(k).or_insert(v);
         }
         true
     }
@@ -2242,12 +2279,28 @@ impl<'a> Emitter<'a> {
             // already produced warnings as separate top-level commands.
             Some("document") | Some("subequations") | Some("center") | Some("flushleft")
             | Some("flushright") | Some("quote") | Some("quotation") | Some("verse")
-            | Some("titlepage") | Some("minipage") => self.emit_environment_body(node),
+            | Some("titlepage") | Some("minipage")
+            // Acknowledgements, keyword-list, and conference-specific metadata
+            // blocks that carry plain content with no Typst-renderable structure.
+            | Some("ack") | Some("keywords") | Some("MSCcodes") | Some("icmlauthorlist")
+            // Color-styled box environments (tcolorbox, framed). Styling is not
+            // round-trippable to Typst without a full color-name map; pass the
+            // body through so at least the content is preserved.
+            | Some("tcolorbox") | Some("promptbox") | Some("framed") | Some("mdframed")
+            // IEEE author biography blocks at the end of papers. The photo arg
+            // and author name arg are in the environment arguments and will be
+            // dropped; pass the bio text through.
+            | Some("IEEEbiography") | Some("IEEEbiographynophoto")
+                => self.emit_environment_body(node),
             // Matrix family — handled wherever we encounter them. If we're
             // not already in math mode, the surrounding container will wrap
             // us; pmatrix() etc. assume math context.
             Some("pmatrix") | Some("bmatrix") | Some("vmatrix") | Some("Vmatrix")
-            | Some("Bmatrix") | Some("matrix") => self.emit_matrix_env(node, env.as_deref()),
+            | Some("Bmatrix") | Some("matrix")
+            // `smallmatrix`: same rendering as `matrix` — Typst sizes math
+            // contextually, so the "small" qualifier is dropped.
+            | Some("smallmatrix")
+                => self.emit_matrix_env(node, env.as_deref()),
             // `cases` env produces piecewise display.
             Some("cases") => self.emit_cases_env(node),
             // M4: tables and figure floats.
@@ -2256,8 +2309,21 @@ impl<'a> Emitter<'a> {
             // it should render as Typst `cases(...)`, not as a `#table(...)`
             // (which is text-mode-only and breaks the surrounding `$...$`).
             Some("array") if self.in_math => self.emit_array_in_math(node),
-            Some("tabular") | Some("tabular*") | Some("array") => self.emit_tabular(node),
-            Some("figure") | Some("figure*") | Some("table") => self.emit_figure(node),
+            Some("tabular") | Some("tabular*") | Some("array")
+            // tblr (tabularray): same layout shape as tabular; leading
+            // key=value options group is ignored if emit_tabular trips on it.
+            | Some("tblr")
+                => self.emit_tabular(node),
+            Some("figure") | Some("figure*") | Some("table") | Some("table*")
+            // algorithm / algorithm*: float wrapper around \begin{algorithmic}.
+            // The inner algorithmic steps pass through; only the float shell
+            // needs handling here.
+            | Some("algorithm") | Some("algorithm*") | Some("algorithm2e")
+            // wrapfigure / wraptable: degrade to a standard float — the
+            // text-wrap positioning is lost but the content (caption + graphic
+            // or table) is preserved.
+            | Some("wrapfigure") | Some("wraptable")
+                => self.emit_figure(node),
             // IEEE/thebibliography style: emit each \bibitem as a labeled
             // numbered-list entry so `@bN` references resolve.
             Some("thebibliography") => self.emit_thebibliography(node),
@@ -2272,6 +2338,17 @@ impl<'a> Emitter<'a> {
             Some("remark") => self.emit_theorem_env(node, "Remark"),
             // Proof env — no label-targeting needed; emit as a block.
             Some("proof") => self.emit_proof_env(node),
+            // User-defined environments harvested from `\newtheorem` (non-empty
+            // display) or `\newtcolorbox`/`\newmdenv` (empty display sentinel →
+            // transparent body pass-through).
+            Some(other) if self.theorem_kinds.contains_key(other) => {
+                let display = self.theorem_kinds[other].clone();
+                if display.is_empty() {
+                    self.emit_environment_body(node)
+                } else {
+                    self.emit_theorem_env(node, &display)
+                }
+            }
             _ => {
                 self.warn_unsupported_environment(node, env.as_deref());
                 node.end_byte()
@@ -2438,7 +2515,7 @@ impl<'a> Emitter<'a> {
 
     /// `\begin{theorem}[note]\label{X} body \end{theorem}` →
     /// `#figure(kind: "<name>", supplement: [Name], [body]) <X>`.
-    fn emit_theorem_env(&mut self, env: Node<'_>, name: &'static str) -> usize {
+    fn emit_theorem_env(&mut self, env: Node<'_>, name: &str) -> usize {
         let mut cursor = env.walk();
         let mut label: Option<String> = None;
         let body: Vec<Node<'_>> = env
@@ -2561,6 +2638,73 @@ impl<'a> Emitter<'a> {
             snippet,
             suggested_skill: None,
         });
+    }
+
+    /// Harvest a `theorem_definition` node (`\newtheorem{name}{Display}` and
+    /// variants) into `self.theorem_kinds` so that `emit_generic_environment`
+    /// can route unknown environment names to `emit_theorem_env` instead of
+    /// warning.
+    fn harvest_theorem_definition(&mut self, node: Node<'_>) {
+        if let Some((name, display)) = extract_theorem_def(node, self.src) {
+            self.theorem_kinds.entry(name).or_insert(display);
+        }
+    }
+
+    /// Harvest `\newtcolorbox{name}{opts}` and `\newmdenv{name}{opts}`: record
+    /// the env name in `theorem_kinds` with an empty-string sentinel so that
+    /// any `\begin{name}...\end{name}` is treated as transparent (body
+    /// pass-through) rather than triggering an `UnsupportedEnvironment` warning.
+    fn harvest_tcolorbox_decl(&mut self, node: Node<'_>) {
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if matches!(
+                child.kind(),
+                "curly_group" | "curly_group_text" | "curly_group_text_list"
+            ) {
+                let raw = &self.src[child.start_byte()..child.end_byte()];
+                let name = raw
+                    .trim_matches(|c: char| c == '{' || c == '}')
+                    .trim()
+                    .to_string();
+                if !name.is_empty() {
+                    // Empty display = transparent sentinel (not a theorem block).
+                    self.theorem_kinds.entry(name).or_insert_with(String::new);
+                }
+                break;
+            }
+        }
+    }
+
+    /// Harvest a SIAM-style theorem declaration (`\newsiamremark{name}{Display}`,
+    /// `\newsiamthm{name}{Display}`) from a generic_command node into
+    /// `self.theorem_kinds`. These commands share the same two-curly-group
+    /// signature as `\newtheorem`.
+    fn harvest_generic_theorem_cmd(&mut self, node: Node<'_>) {
+        let mut cursor = node.walk();
+        let mut groups: Vec<(usize, usize)> = Vec::new();
+        for child in node.children(&mut cursor) {
+            if matches!(
+                child.kind(),
+                "curly_group" | "curly_group_text" | "curly_group_text_list"
+            ) {
+                groups.push((child.start_byte(), child.end_byte()));
+                if groups.len() == 2 {
+                    break;
+                }
+            }
+        }
+        let [name_range, display_range] = groups.as_slice() else { return };
+        let name = self.src[name_range.0..name_range.1]
+            .trim_matches(|c: char| c == '{' || c == '}')
+            .trim()
+            .to_string();
+        let display = self.src[display_range.0..display_range.1]
+            .trim_matches(|c: char| c == '{' || c == '}')
+            .trim()
+            .to_string();
+        if !name.is_empty() && !display.is_empty() {
+            self.theorem_kinds.entry(name).or_insert(display);
+        }
     }
 
     // ===== Math mode =====
@@ -5656,6 +5800,55 @@ fn substitute_macro_args(body: &str, args: &[String]) -> String {
 ///   kind is `command_name` directly. Without this branch, ~400
 ///   user macros across the test corpus failed to be harvested by
 ///   the pre-scan and every call site emitted `ambiguous_math`.
+/// Extract `(env_name, display_name)` from a `theorem_definition` node.
+/// Handles all four variant patterns:
+///   `\newtheorem{name}{Display}`
+///   `\newtheorem{name}[counter]{Display}`
+///   `\newtheorem{name}{Display}[parent]`
+///   `\newtheorem*{name}{Display}`
+/// Falls back to capitalizing `name` when no display curly group is found
+/// (e.g. `\declaretheorem[name=Foo]{foo}` whose title is in options).
+fn extract_theorem_def(node: Node<'_>, src: &str) -> Option<(String, String)> {
+    let mut cursor = node.walk();
+    let mut name_bytes: Option<(usize, usize)> = None;
+    let mut title_bytes: Option<(usize, usize)> = None;
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "curly_group_text_list" | "curly_group_text" if name_bytes.is_none() => {
+                name_bytes = Some((child.start_byte(), child.end_byte()));
+            }
+            "curly_group" if name_bytes.is_some() && title_bytes.is_none() => {
+                title_bytes = Some((child.start_byte(), child.end_byte()));
+            }
+            _ => {}
+        }
+    }
+    let (ns, ne) = name_bytes?;
+    let name = src[ns..ne]
+        .trim_matches(|c: char| c == '{' || c == '}')
+        .trim()
+        .to_string();
+    if name.is_empty() {
+        return None;
+    }
+    let display = title_bytes
+        .map(|(ts, te)| {
+            src[ts..te]
+                .trim_matches(|c: char| c == '{' || c == '}')
+                .trim()
+                .to_string()
+        })
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| {
+            let mut s = name.clone();
+            if let Some(first) = s.get_mut(0..1) {
+                first.make_ascii_uppercase();
+            }
+            s
+        });
+    Some((name, display))
+}
+
 fn extract_newcommand(node: Node<'_>, src: &str) -> Option<(String, MacroDef)> {
     let mut cursor = node.walk();
     let mut name: Option<String> = None;
