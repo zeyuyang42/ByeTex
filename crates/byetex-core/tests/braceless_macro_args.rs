@@ -28,6 +28,23 @@ fn custom_macro_warnings(out: &byetex_core::ConvertOutput) -> Vec<String> {
         .collect()
 }
 
+fn ambiguous_math_messages(out: &byetex_core::ConvertOutput) -> Vec<String> {
+    out.warnings
+        .iter()
+        .filter_map(|w| match &w.category {
+            Category::AmbiguousMath { reason } => Some(reason.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+fn ambiguous_math_count(out: &byetex_core::ConvertOutput, needle: &str) -> usize {
+    ambiguous_math_messages(out)
+        .iter()
+        .filter(|m| m.contains(needle))
+        .count()
+}
+
 #[test]
 fn single_letter_arg() {
     // `\mat X` should expand the same way `\mat{X}` does.
@@ -190,5 +207,86 @@ fn missing_arg_still_warns() {
         !custom_macro_warnings(&out).is_empty(),
         "expected a custom_macro warning when no arg follows the call; got typst:\n{}",
         out.typst
+    );
+}
+
+// ------------------------------------------------------------------
+// D1: brace-less structural math commands (\frac, \sqrt, \binom)
+// ------------------------------------------------------------------
+
+#[test]
+fn sqrt_braceless_single_arg() {
+    let src = r"\documentclass{article}\begin{document}$\sqrt x$\end{document}";
+    let out = convert_str(src);
+    assert_eq!(
+        ambiguous_math_count(&out, "\\sqrt"),
+        0,
+        "expected no ambiguous_math for \\sqrt; got typst:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("sqrt(x)") || out.typst.contains("sqrt( x )"),
+        "expected `sqrt(x)`; got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn sqrt_braceless_backslash_command() {
+    let src = r"\documentclass{article}\begin{document}$\sqrt\alpha$\end{document}";
+    let out = convert_str(src);
+    assert_eq!(ambiguous_math_count(&out, "\\sqrt"), 0);
+    assert!(
+        out.typst.contains("sqrt(alpha)"),
+        "expected `sqrt(alpha)`; got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn frac_braceless_two_args() {
+    let src = r"\documentclass{article}\begin{document}$\frac a b$\end{document}";
+    let out = convert_str(src);
+    assert_eq!(ambiguous_math_count(&out, "\\frac"), 0);
+    assert!(
+        out.typst.contains("(a) / (b)"),
+        "expected `(a) / (b)`; got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn binom_braceless_two_args() {
+    let src = r"\documentclass{article}\begin{document}$\binom n k$\end{document}";
+    let out = convert_str(src);
+    assert_eq!(ambiguous_math_count(&out, "\\binom"), 0);
+    assert!(
+        out.typst.contains("binom(n, k)"),
+        "expected `binom(n, k)`; got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn frac_canonical_still_works() {
+    // Regression guard: canonical `\frac{a}{b}` path is unchanged.
+    let src = r"\documentclass{article}\begin{document}$\frac{a}{b}$\end{document}";
+    let out = convert_str(src);
+    assert_eq!(ambiguous_math_count(&out, "\\frac"), 0);
+    assert!(out.typst.contains("(a) / (b)"));
+}
+
+#[test]
+fn frac_with_truly_missing_args_still_warns() {
+    // `\frac{a}$` — only one curly_group, closing `$` immediately
+    // follows. consume_braceless_arg has no second arg to grab.
+    // Existing "missing args" warning must still fire — don't silently
+    // swallow.
+    let src = r"\documentclass{article}\begin{document}$\frac{a}$\end{document}";
+    let out = convert_str(src);
+    assert!(
+        ambiguous_math_count(&out, "\\frac") > 0,
+        "expected a \\frac warning; got: {:?}",
+        ambiguous_math_messages(&out)
     );
 }
