@@ -51,11 +51,17 @@ cargo install --git https://github.com/zeyuyang42/ByeTex byetex-cli --features m
 # Auto-detects the entry .tex (the one with \documentclass), pre-scans
 # every .tex/.sty/.cls in the tree for \newcommand/\def, then converts.
 byetex convert ./paper-source
-# Writes paper-source.typ and paper-source.warnings.json next to the dir.
+# Writes next to the dir:
+#   paper-source.typ
+#   paper-source.warnings.json
+#   paper-source.agent_brief.md   ← portable Markdown brief for LLM patching
 
 # Convert a single LaTeX document.
 byetex convert paper.tex
-# Writes paper.typ and paper.warnings.json.
+# Writes paper.typ, paper.warnings.json, and paper.agent_brief.md.
+
+# Skip the brief for batch / CI runs.
+byetex convert paper.tex --no-brief
 
 # Inspect the warnings.
 cat paper.warnings.json | jq '.[].category.kind' | sort | uniq -c
@@ -90,6 +96,8 @@ byetex convert ./paper-source --project
 #   refs.bib          — bibliography copied as-is (Typst reads it natively)
 #   typst.toml        — optional manifest for known document classes
 #   warnings.json     — structured warnings sidecar
+#   agent_brief.md    — portable Markdown brief (paste into an LLM to patch
+#                       residual compile errors). Skip with --no-brief.
 
 # Or, if you already know the entry file, pass it directly.
 byetex convert paper.tex --project

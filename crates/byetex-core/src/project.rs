@@ -37,6 +37,12 @@ pub struct ProjectPlan {
     /// `None` when the document class does not map to a known Typst Universe
     /// package or when the caller opts out via `no_toml`.
     pub manifest: Option<String>,
+    /// The `.tex` file that drove this conversion. For [`plan_project`] this
+    /// is the path the caller passed in; for [`plan_project_from_dir`] it is
+    /// the entry file `detect_entry_file` selected. Carried so downstream
+    /// callers (e.g. the CLI's agent-brief writer) can reference the
+    /// original source without re-running detection.
+    pub entry_tex: PathBuf,
 }
 
 /// Errors that can occur during project planning.
@@ -137,6 +143,7 @@ pub fn plan_project(
         assets,
         warnings: out.warnings,
         manifest,
+        entry_tex: main_tex.to_path_buf(),
     })
 }
 
@@ -357,5 +364,6 @@ pub fn plan_project_from_dir(
         assets,
         warnings: out.warnings,
         manifest,
+        entry_tex: entry,
     })
 }

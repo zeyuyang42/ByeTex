@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
@@ -41,6 +41,12 @@ enum Command {
         /// Overwrite non-empty --project-out directory.
         #[arg(long, requires = "project")]
         force: bool,
+
+        /// Skip writing the per-paper `agent_brief.md` sidecar. The brief
+        /// is on by default — it bundles the source, the generated `.typ`,
+        /// and the warnings into a single Markdown file an LLM can patch.
+        #[arg(long)]
+        no_brief: bool,
     },
 
     /// List or read the bundled skills that document how to act on warnings.
@@ -61,17 +67,31 @@ enum Command {
         action: CorpusAction,
     },
 
-    /// Convert a paper, attempt to compile it with `typst`, and write a
-    /// per-paper `<stem>.agent_brief.md` that bundles everything an LLM
-    /// agent needs to patch the residual issues. The brief is portable:
-    /// paste it into any chat that can see the source `.tex` and the
-    /// generated `.typ`.
+    /// Convert a paper AND run `typst compile` so the brief includes the
+    /// real compile log. Functionally equivalent to `byetex convert <input>`
+    /// (which already emits the brief by default) plus invoking `typst`
+    /// inline. The brief is portable: paste it into any chat that can see
+    /// the source `.tex` and the generated `.typ`.
     AgentBrief {
-        /// Path to the input .tex file.
+        /// Path to the input `.tex` file or project directory.
         input: PathBuf,
         /// Skip the `typst compile` step (useful when typst isn't on PATH).
         #[arg(long)]
         no_compile: bool,
+        /// Convert as a LaTeX project: copy assets and emit a self-contained
+        /// Typst project directory. Brief lives inside it as `agent_brief.md`.
+        #[arg(long)]
+        project: bool,
+        /// Output directory for project mode. Defaults to
+        /// `<input-stem>.typst-project/`.
+        #[arg(long, value_name = "DIR", requires = "project")]
+        project_out: Option<PathBuf>,
+        /// Skip writing typst.toml even when a known Typst Universe package is detected.
+        #[arg(long, requires = "project")]
+        no_toml: bool,
+        /// Overwrite non-empty --project-out directory.
+        #[arg(long, requires = "project")]
+        force: bool,
     },
 }
 
@@ -113,19 +133,62 @@ enum SkillsAction {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Command::Convert { input, output, project, project_out, no_toml, force } => {
+        Command::Convert {
+            input,
+            output,
+            project,
+            project_out,
+            no_toml,
+            force,
+            no_brief,
+        } => {
+            let brief_opts = BriefOpts {
+                skip: no_brief,
+                no_compile: true, // convert is the fast path — no implicit typst spawn
+            };
             if project {
-                run_convert_project(input, project_out, no_toml, force)
+                run_convert_project(input, project_out, no_toml, force, brief_opts)
             } else {
-                run_convert(input, output)
+                run_convert(input, output, brief_opts)
             }
         }
         Command::Skills { action } => run_skills(action),
         #[cfg(feature = "mcp")]
         Command::Serve => run_serve(),
         Command::Corpus { action } => run_corpus(action),
-        Command::AgentBrief { input, no_compile } => run_agent_brief(input, no_compile),
+        Command::AgentBrief {
+            input,
+            no_compile,
+            project,
+            project_out,
+            no_toml,
+            force,
+        } => {
+            // `agent-brief` is `convert` with the brief always on and a
+            // real `typst compile` invocation (unless --no-compile).
+            let brief_opts = BriefOpts {
+                skip: false,
+                no_compile,
+            };
+            if project {
+                run_convert_project(input, project_out, no_toml, force, brief_opts)
+            } else {
+                run_convert(input, None, brief_opts)
+            }
+        }
     }
+}
+
+/// Per-call control over brief emission. Threaded through every convert
+/// flow so `byetex convert` and `byetex agent-brief` share the same code
+/// path with only this struct differing.
+#[derive(Debug, Clone, Copy)]
+struct BriefOpts {
+    /// `true` for `--no-brief`; suppresses writing the `.agent_brief.md`.
+    skip: bool,
+    /// `true` to skip the embedded `typst compile` invocation. `convert`
+    /// passes `true` (fast); `agent-brief` passes `false` (full log).
+    no_compile: bool,
 }
 
 fn run_corpus(action: CorpusAction) -> Result<()> {
@@ -287,6 +350,7 @@ fn run_convert_project(
     project_out: Option<PathBuf>,
     no_toml: bool,
     force: bool,
+    brief: BriefOpts,
 ) -> Result<()> {
     // Resolve the input shape. When the user passes a directory, ByeTex
     // detects the entry `.tex` file (`\documentclass`-bearing) and
@@ -365,15 +429,33 @@ fn run_convert_project(
         if n_warnings == 1 { "" } else { "s" },
         if has_manifest { "yes" } else { "no" },
     );
+
+    if !brief.skip {
+        // Project briefs live INSIDE the typst-project dir, alongside
+        // main.typ. No stem prefix needed — it's a dedicated dir.
+        let typst_path = out_dir.join("main.typ");
+        let brief_path = out_dir.join("agent_brief.md");
+        let manual_path = out_dir.join("main_manual.typ");
+        write_agent_brief(BriefInputs {
+            brief_path: &brief_path,
+            source_tex: &plan.entry_tex,
+            typst_path: &typst_path,
+            warnings_path: &warnings_path,
+            manual_path: &manual_path,
+            mode: BriefMode::Project,
+            no_compile: brief.no_compile,
+        })?;
+    }
+
     Ok(())
 }
 
-fn run_convert(input: PathBuf, output: Option<PathBuf>) -> Result<()> {
+fn run_convert(input: PathBuf, output: Option<PathBuf>, brief: BriefOpts) -> Result<()> {
     // When the user hands us a directory, route through the same
     // entry-detect + macro pre-scan pipeline as project mode but emit
     // a flat `<dir>.typ` next to the dir instead of a project tree.
     if input.is_dir() {
-        return run_convert_dir_flat(input, output);
+        return run_convert_dir_flat(input, output, brief);
     }
 
     let source =
@@ -417,13 +499,34 @@ fn run_convert(input: PathBuf, output: Option<PathBuf>) -> Result<()> {
         result.warnings.len(),
         if result.warnings.len() == 1 { "" } else { "s" }
     );
+
+    if !brief.skip {
+        let brief_path = typst_path.with_extension("agent_brief.md");
+        let manual_path = typst_path.with_file_name(format!(
+            "{}_manual.typ",
+            typst_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("paper")
+        ));
+        write_agent_brief(BriefInputs {
+            brief_path: &brief_path,
+            source_tex: &input,
+            typst_path: &typst_path,
+            warnings_path: &warnings_path,
+            manual_path: &manual_path,
+            mode: BriefMode::Flat,
+            no_compile: brief.no_compile,
+        })?;
+    }
+
     Ok(())
 }
 
 /// Non-project conversion when the user hands us a directory. Detects
 /// the entry `.tex` and writes `<dir>.typ` + `<dir>.warnings.json` next
 /// to the dir. Asset files are NOT copied — use `--project` for that.
-fn run_convert_dir_flat(input: PathBuf, output: Option<PathBuf>) -> Result<()> {
+fn run_convert_dir_flat(input: PathBuf, output: Option<PathBuf>, brief: BriefOpts) -> Result<()> {
     let plan = byetex_core::project::plan_project_from_dir(&input, true)
         .with_context(|| format!("planning project from {}", input.display()))?;
 
@@ -453,27 +556,145 @@ fn run_convert_dir_flat(input: PathBuf, output: Option<PathBuf>) -> Result<()> {
         plan.warnings.len(),
         if plan.warnings.len() == 1 { "" } else { "s" }
     );
+
+    if !brief.skip {
+        let brief_path = typst_path.with_extension("agent_brief.md");
+        let manual_path = typst_path.with_file_name(format!(
+            "{}_manual.typ",
+            typst_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("paper")
+        ));
+        write_agent_brief(BriefInputs {
+            brief_path: &brief_path,
+            source_tex: &plan.entry_tex,
+            typst_path: &typst_path,
+            warnings_path: &warnings_path,
+            manual_path: &manual_path,
+            mode: BriefMode::Flat,
+            no_compile: brief.no_compile,
+        })?;
+    }
+
     Ok(())
 }
 
-/// `byetex agent-brief <paper.tex> [--no-compile]`
+/// Whether the brief describes a flat-output convert or a `--project`
+/// directory. Drives the wording of the "What to do" section, the
+/// validation command suggested to the LLM, and the note about whether
+/// assets were copied.
+#[derive(Debug, Clone, Copy)]
+enum BriefMode {
+    Flat,
+    Project,
+}
+
+/// Everything `write_agent_brief` needs. All paths are absolute or
+/// relative-to-cwd; the helper relativises them against
+/// `brief_path.parent()` when rendering so the brief is portable across
+/// working directories.
+struct BriefInputs<'a> {
+    /// Where the `.agent_brief.md` will be written.
+    brief_path: &'a Path,
+    /// The entry `.tex` file (the one driving conversion). In folder
+    /// mode this is the detected entry, not the folder itself.
+    source_tex: &'a Path,
+    /// Generated Typst output: `paper.typ` in flat mode,
+    /// `<out_dir>/main.typ` in project mode.
+    typst_path: &'a Path,
+    /// `warnings.json` sidecar location.
+    warnings_path: &'a Path,
+    /// Where the brief asks the LLM to write its patched output.
+    manual_path: &'a Path,
+    mode: BriefMode,
+    /// Skip the `typst compile` invocation. `convert`-driven briefs
+    /// default to `true` (fast); `agent-brief` sets it to `false`.
+    no_compile: bool,
+}
+
+/// Render an absolute-or-relative `target` as a path relative to
+/// `base_dir`. Walks both paths component-by-component and emits
+/// `../` prefixes when needed. Falls back to the absolute `display()`
+/// when the paths can't share a common prefix (different drive letters
+/// on Windows, etc.).
+fn relativize(target: &Path, base_dir: &Path) -> String {
+    fn absolutize(p: &Path) -> PathBuf {
+        if p.is_absolute() {
+            p.to_path_buf()
+        } else {
+            std::env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .join(p)
+        }
+    }
+    let target_abs = absolutize(target);
+    let base_abs = absolutize(base_dir);
+    let t: Vec<_> = target_abs.components().collect();
+    let b: Vec<_> = base_abs.components().collect();
+    // Bail to absolute display when the roots differ (different drives,
+    // VerbatimDisk vs Disk on Windows, etc.) so we never produce a
+    // misleading relative path.
+    if t.first().map(|c| c.as_os_str()) != b.first().map(|c| c.as_os_str()) {
+        return target.display().to_string();
+    }
+    let common = t.iter().zip(b.iter()).take_while(|(a, b)| a == b).count();
+    let mut rel = PathBuf::new();
+    for _ in common..b.len() {
+        rel.push("..");
+    }
+    for c in &t[common..] {
+        rel.push(c.as_os_str());
+    }
+    if rel.as_os_str().is_empty() {
+        ".".to_string()
+    } else {
+        rel.display().to_string()
+    }
+}
+
+/// Render and write a per-paper `agent_brief.md`. Called by every
+/// `byetex convert` flow (unless `--no-brief`) and by `byetex agent-brief`.
 ///
-/// Convert + try to compile + emit a per-paper Markdown brief an LLM
-/// agent can read to fix the residual issues. The brief lives at
-/// `<paper-stem>.agent_brief.md` alongside the `.typ` / `.warnings.json`.
-fn run_agent_brief(input: PathBuf, no_compile: bool) -> Result<()> {
-    // Reuse the standard conversion path.
-    run_convert(input.clone(), None)?;
-    let typst_path = input.with_extension("typ");
-    let warnings_path = typst_path.with_extension("warnings.json");
-    let brief_path = input.with_extension("agent_brief.md");
+/// The brief embeds the source `.tex`, generated `.typ`, optional
+/// `typst compile` log, and the structured `warnings.json` inline so an
+/// LLM can act on it without filesystem access. Paths shown at the top
+/// are relativised against the brief's own directory so they remain
+/// meaningful regardless of the caller's cwd.
+fn write_agent_brief(inputs: BriefInputs<'_>) -> Result<()> {
+    let BriefInputs {
+        brief_path,
+        source_tex,
+        typst_path,
+        warnings_path,
+        manual_path,
+        mode,
+        no_compile,
+    } = inputs;
+
+    // Ensure the brief directory exists (matters for project mode,
+    // where the dir is created by materialize_project; in flat mode
+    // the dir already exists because we just wrote the .typ there).
+    if let Some(parent) = brief_path.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent).with_context(|| {
+                format!("ensuring brief directory {}", parent.display())
+            })?;
+        }
+    }
+
+    let brief_dir = brief_path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("."));
 
     // Read the artifacts so we can paste them inline.
-    let tex =
-        std::fs::read_to_string(&input).with_context(|| format!("reading {}", input.display()))?;
-    let typ = std::fs::read_to_string(&typst_path).unwrap_or_default();
+    let tex = std::fs::read_to_string(source_tex)
+        .with_context(|| format!("reading {}", source_tex.display()))?;
+    let typ = std::fs::read_to_string(typst_path).unwrap_or_default();
     let warnings_text =
-        std::fs::read_to_string(&warnings_path).unwrap_or_else(|_| "[]".to_string());
+        std::fs::read_to_string(warnings_path).unwrap_or_else(|_| "[]".to_string());
 
     // Detect template binding by peeking the first few lines of the
     // generated `.typ` (looking for our `#import "@preview/X:V":` line).
@@ -497,7 +718,7 @@ fn run_agent_brief(input: PathBuf, no_compile: bool) -> Result<()> {
         let _ = std::fs::remove_file(&pdf_path);
         let out = std::process::Command::new("typst")
             .arg("compile")
-            .arg(&typst_path)
+            .arg(typst_path)
             .arg(&pdf_path)
             .output()
             .with_context(|| "spawning `typst compile`")?;
@@ -538,30 +759,74 @@ fn run_agent_brief(input: PathBuf, no_compile: bool) -> Result<()> {
         .join("\n");
 
     let compile_status = match compile_ok {
-        None => "(skipped — --no-compile)".to_string(),
+        None if no_compile => {
+            "(not run — pass `byetex agent-brief` to capture the typst log)".to_string()
+        }
+        None => "(skipped)".to_string(),
         Some(true) => "✅ typst compile succeeded".to_string(),
         Some(false) => "❌ typst compile failed".to_string(),
     };
 
-    let manual_path = input.with_file_name(format!(
-        "{}_manual.typ",
-        typst_path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("paper")
-    ));
+    // Render all the path references relative to the brief's own dir
+    // so the brief stays portable regardless of caller cwd.
+    let src_rel = relativize(source_tex, &brief_dir);
+    let typ_rel = relativize(typst_path, &brief_dir);
+    let warn_rel = relativize(warnings_path, &brief_dir);
+    let manual_rel = relativize(manual_path, &brief_dir);
+
+    let stem = typst_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("paper")
+        .to_string();
+
+    // Mode-specific guidance: what command validates the patched output,
+    // what file the LLM should write to, what's already in the dir.
+    let (mode_label, what_to_do, layout_note) = match mode {
+        BriefMode::Flat => (
+            "flat",
+            format!(
+                "You are an LLM. Read the source `.tex` and the generated `.typ` (both embedded below — \
+filesystem access is optional) and **write a patched copy to `{manual_rel}`** that compiles \
+cleanly with `typst compile {typ_rel}`. Don't rewrite the whole document — preserve what works \
+and apply the smallest possible local edits to fix each compile error."
+            ),
+            "_Note: this is flat-output mode — referenced figures and `.bib` files were NOT copied. \
+Use `byetex convert <input> --project` if you want a self-contained Typst project directory._"
+                .to_string(),
+        ),
+        BriefMode::Project => (
+            "project",
+            format!(
+                "You are an LLM. This brief lives inside a self-contained Typst project directory. \
+Read the source `.tex` and the generated `main.typ` (both embedded below — filesystem access is \
+optional) and **write a patched copy to `{manual_rel}`** that compiles cleanly with \
+`typst compile main.typ` (run from this directory). Preserve what works; apply the smallest \
+possible local edits per compile error."
+            ),
+            "_Project layout: `main.typ` (the body), `warnings.json` (sidecar), `agent_brief.md` \
+(this file), plus any figures / `.bib` files referenced by the paper, copied here by ByeTex. \
+The original `.tex` lives at the `Source` path above (outside this directory)._"
+                .to_string(),
+        ),
+    };
 
     let brief = format!(
-        r#"# ByeTex agent brief: `{stem}`
+        r#"# ByeTex agent brief: `{stem}` ({mode_label} mode)
 
-Source: `{src}`
-Typst output: `{typ}`
-Warnings sidecar: `{warn}`
-**Suggested patched output: `{manual}`**
+_All relative paths below are resolved against the directory containing this brief:_
+`{brief_dir_display}`
+
+- **Source** `.tex`: `{src_rel}`
+- **Typst output**: `{typ_rel}`
+- **Warnings sidecar**: `{warn_rel}`
+- **Suggested patched output**: **`{manual_rel}`**
+
+{layout_note}
 
 ## Detection
 - Typst template binding: **{template}**
-- Bytetex warnings: ```
+- ByeTex warnings: ```
 {warnings_summary}
 ```
 
@@ -575,11 +840,7 @@ Warnings sidecar: `{warn}`
 
 ## What to do
 
-You are an LLM with file access. Your job: read the source `.tex` and
-the generated `.typ`, then **write a patched copy to `{manual}`** that
-compiles cleanly with `typst compile`. Don't rewrite the whole
-document — preserve what works and apply the smallest possible
-local edits to fix each compile error.
+{what_to_do}
 
 Useful patterns observed in this corpus (from
 `docs/visual-regression-2026-05-23.md`):
@@ -620,14 +881,14 @@ Useful patterns observed in this corpus (from
 {warnings_text}
 ```
 "#,
-        stem = typst_path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("paper"),
-        src = input.display(),
-        typ = typst_path.display(),
-        warn = warnings_path.display(),
-        manual = manual_path.display(),
+        stem = stem,
+        mode_label = mode_label,
+        brief_dir_display = brief_dir.display(),
+        src_rel = src_rel,
+        typ_rel = typ_rel,
+        warn_rel = warn_rel,
+        manual_rel = manual_rel,
+        layout_note = layout_note,
         template = detected_template,
         warnings_summary = warnings_summary,
         compile_status = compile_status,
@@ -636,20 +897,21 @@ Useful patterns observed in this corpus (from
         } else {
             first_errors
         },
+        what_to_do = what_to_do,
         tex = if tex.len() > 30_000 {
             format!(
-                "{}\n... [truncated, see {}]",
+                "{}\n... [truncated, see `{}`]",
                 truncate_at_char_boundary(&tex, 30_000),
-                input.display()
+                src_rel
             )
         } else {
             tex
         },
         typ_inline = if typ.len() > 30_000 {
             format!(
-                "{}\n... [truncated, see {}]",
+                "{}\n... [truncated, see `{}`]",
                 truncate_at_char_boundary(&typ, 30_000),
-                typst_path.display()
+                typ_rel
             )
         } else {
             typ
@@ -657,22 +919,25 @@ Useful patterns observed in this corpus (from
         compile_log = if compile_log.is_empty() {
             "(empty)".to_string()
         } else if compile_log.len() > 10_000 {
-            format!("{}\n... [truncated]", truncate_at_char_boundary(&compile_log, 10_000))
+            format!(
+                "{}\n... [truncated]",
+                truncate_at_char_boundary(&compile_log, 10_000)
+            )
         } else {
             compile_log
         },
         warnings_text = if warnings_text.len() > 20_000 {
             format!(
-                "{}\n... [truncated, see {}]",
+                "{}\n... [truncated, see `{}`]",
                 truncate_at_char_boundary(&warnings_text, 20_000),
-                warnings_path.display()
+                warn_rel
             )
         } else {
             warnings_text
         },
     );
 
-    std::fs::write(&brief_path, brief)
+    std::fs::write(brief_path, brief)
         .with_context(|| format!("writing {}", brief_path.display()))?;
     eprintln!("wrote {}", brief_path.display());
     Ok(())
