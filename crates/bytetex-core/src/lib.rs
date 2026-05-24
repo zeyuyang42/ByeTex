@@ -6,7 +6,7 @@
 
 #![deny(rust_2018_idioms)]
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 pub mod parser;
@@ -38,6 +38,12 @@ pub struct ConvertOutput {
     /// resolved on disk. The project layer uses this list to copy files
     /// into the output directory. Only populated when `base_dir` is set.
     pub asset_refs: Vec<AssetRef>,
+    /// Class-specific metadata captured from the LaTeX preamble (e.g. ACM
+    /// author fields like `institution`, `email`, `orcid`). Keys are command
+    /// names without the leading backslash; values are the rendered content of
+    /// the first argument. Populated regardless of whether a class template was
+    /// detected — callers can read or forward to other tools.
+    pub class_metadata: HashMap<String, String>,
 }
 
 /// A single asset that the emitter resolved on disk during conversion.
@@ -63,6 +69,6 @@ pub fn convert(source: &str, opts: &ConvertOptions) -> ConvertOutput {
     let mut emitter =
         emit::Emitter::with_includes(source, source_name, opts.base_dir.clone(), visited);
     emitter.emit_root(tree.root_node());
-    let (typst, warnings, asset_refs) = emitter.finish();
-    ConvertOutput { typst, warnings, asset_refs }
+    let (typst, warnings, asset_refs, class_metadata) = emitter.finish();
+    ConvertOutput { typst, warnings, asset_refs, class_metadata }
 }
