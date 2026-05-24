@@ -1004,15 +1004,72 @@ impl<'a> Emitter<'a> {
                 self.out.push_str("\\ \n");
                 node.end_byte()
             }
-            // Deprecated font-switching commands. These change the style of
-            // all following text until the group ends — Typst would need a
-            // #strong[…]/#emph[…] scope wrap, which requires end-of-group
-            // tracking we don't yet have. Warn so the caller can see the loss.
+            // More text-mode symbol commands.
+            Some("\\textless") => {
+                self.out.push('<');
+                node.end_byte()
+            }
+            Some("\\textgreater") => {
+                self.out.push('>');
+                node.end_byte()
+            }
+            Some("\\ldots") | Some("\\dots") | Some("\\textellipsis") => {
+                self.out.push('…');
+                node.end_byte()
+            }
+            Some("\\slash") => {
+                self.out.push('/');
+                node.end_byte()
+            }
+            // `\today` — insert the current date at conversion time.
+            Some("\\today") => {
+                self.out.push_str(
+                    "#datetime.today().display(\"[month repr:long] [day], [year]\")",
+                );
+                node.end_byte()
+            }
+            // `\phantom{X}` — reserves space equal to X but renders nothing.
+            // No Typst equivalent; drop silently to preserve surrounding content.
+            Some("\\phantom") | Some("\\hphantom") | Some("\\vphantom") => node.end_byte(),
+            // `\relax` — TeX no-op primitive; silently consumed.
+            Some("\\relax") => node.end_byte(),
+            // `\par` — explicit paragraph break; emit Typst blank-line equivalent.
+            Some("\\par") => {
+                self.out.push_str("\n\n");
+                node.end_byte()
+            }
+            // `\footnotemark` — superscript footnote counter reference. Without
+            // coordinated `\footnotetext` tracking, emit a footnote placeholder.
+            Some("\\footnotemark") => {
+                self.out.push_str("#footnote[]");
+                node.end_byte()
+            }
+            // `\mathtt{X}` in text mode — typewriter math font; render as code.
+            Some("\\mathtt") => self.emit_inline_raw(node),
+            // Deprecated font-switching commands (LaTeX 2.09 style). These change
+            // the style of all following text until the group ends — Typst would
+            // need a scope wrap, which requires end-of-group tracking we don't yet
+            // have. Warn so the caller can see the loss.
             Some("\\bf") | Some("\\sf") | Some("\\rm") | Some("\\it") | Some("\\tt")
             | Some("\\sl") | Some("\\sc") | Some("\\em") => {
                 self.warn_unsupported_command(node);
                 node.end_byte()
             }
+            // NFSS font-switch declarations (LaTeX2e unscoped form). Same issue as
+            // above — silent-drop; these are lower-signal than 2.09 forms since
+            // they appear far less in well-written modern LaTeX.
+            Some("\\bfseries")
+            | Some("\\mdseries")
+            | Some("\\itshape")
+            | Some("\\upshape")
+            | Some("\\slshape")
+            | Some("\\scshape")
+            | Some("\\rmfamily")
+            | Some("\\sffamily")
+            | Some("\\ttfamily")
+            | Some("\\normalfont")
+            | Some("\\boldmath")
+            | Some("\\unboldmath") => node.end_byte(),
             // Vertical-skip primitives.
             Some("\\smallskip") => {
                 self.out.push_str("#v(0.5em)");
@@ -1135,7 +1192,78 @@ impl<'a> Emitter<'a> {
             | Some("\\colorlet")
             | Some("\\ifthenelse")
             | Some("\\fi")
-            | Some("\\else") => {
+            | Some("\\else")
+            // TeX conditionals surfaced as generic_command
+            | Some("\\ifpdf")
+            | Some("\\ifdefined")
+            | Some("\\ifcsname")
+            | Some("\\ifxetex")
+            | Some("\\ifluatex")
+            | Some("\\ifx")
+            | Some("\\if")
+            | Some("\\ifdim")
+            | Some("\\ifnum")
+            // PGF/pgfplots preamble setup — no visible rendered body.
+            | Some("\\pgfplotsset")
+            | Some("\\pgfplotscreateplotcyclelist")
+            | Some("\\pgfplotscreatecyclelist")
+            // titlesec / fancyhdr / titling formatting
+            | Some("\\titlespacing")
+            | Some("\\titlespacing*")
+            | Some("\\titleformat")
+            | Some("\\fancyhead")
+            | Some("\\fancyfoot")
+            | Some("\\fancypagestyle")
+            | Some("\\renewpagestyle")
+            // Document structure helpers with no Typst equivalent
+            | Some("\\numberwithin")
+            | Some("\\makeindex")
+            | Some("\\RequirePackage")
+            | Some("\\DeclareGraphicsExtensions")
+            | Some("\\DeclareGraphicsRule")
+            | Some("\\DeclareRobustCommand")
+            | Some("\\DeclareOption")
+            | Some("\\ExecuteOptions")
+            | Some("\\ProcessOptions")
+            | Some("\\ProcessList")
+            // TeX low-level primitives
+            | Some("\\csname")
+            | Some("\\global")
+            | Some("\\long")
+            | Some("\\outer")
+            // Conference-specific conditionals
+            | Some("\\ificmlshowauthors")
+            | Some("\\ifanonymous")
+            // titling / SIAM header commands
+            | Some("\\headers")
+            | Some("\\titrun")
+            | Some("\\titlerunning")
+            | Some("\\authorrunning")
+            // tcolorbox environment declarations
+            | Some("\\newtcolorbox")
+            | Some("\\newmdenv")
+            | Some("\\newmdtheoremenv")
+            // caption / subfigure setup
+            | Some("\\captionsetup")
+            | Some("\\DeclareCaptionFont")
+            | Some("\\DeclareCaptionStyle")
+            // misc no-effect preamble
+            | Some("\\setlist")
+            | Some("\\sisetup")
+            | Some("\\lstset")
+            | Some("\\tcbuselibrary")
+            // TeX output / engine primitives
+            | Some("\\pdfoutput")
+            | Some("\\pdfcompresslevel")
+            | Some("\\pdfobjcompresslevel")
+            | Some("\\string")
+            // Springer/LNCS running-head variants (content appears in full \title / \author)
+            | Some("\\title*")
+            | Some("\\author*")
+            // Springer/LNCS affiliation
+            | Some("\\institute")
+            // Springer abstract variant
+            | Some("\\abstract*") => {
                 node.end_byte()
             }
             // `\newcommandx` (xargs package) — tree-sitter sees this as a
@@ -1182,10 +1310,15 @@ impl<'a> Emitter<'a> {
             | Some("\\postcode")
             | Some("\\email")
             | Some("\\orcid")
+            | Some("\\orcidID")
             | Some("\\authornote")
             | Some("\\additionalaffiliation")
             | Some("\\ccsdesc")
-            | Some("\\shortauthors") => {
+            | Some("\\shortauthors")
+            // authblk / other class author-info fields
+            | Some("\\affil")
+            | Some("\\address")
+            | Some("\\funding") => {
                 if let Some(key) = command_name_text(node, self.src) {
                     let field = key.trim_start_matches('\\').to_string();
                     if let Some(arg) = first_curly_like(node) {
@@ -5768,10 +5901,30 @@ fn is_known_noop_package(name: &str) -> bool {
         | "xfrac" | "type1cm" | "titlesec" | "soul" | "multicol"
         | "makeidx" | "dirtytalk" | "changepage" | "afterpage" | "ragged2e"
         | "xstring" | "calc" | "currfile" | "kvoptions" | "fp"
+        // Theorem / proof tools
+        | "thmtools" | "thm-restate" | "ntheorem"
+        // List styling
+        | "enumerate" | "paralist" | "mdwlist"
+        // Paragraph / spacing
+        | "parskip" | "parskip2"
+        // Hyperlinks / DOI
+        | "doi"
+        // Math symbols
+        | "gensymb" | "esint" | "mathdots" | "yhmath" | "extarrows" | "extpfeil"
+        | "dutchcal" | "cancel"
+        // Table extensions
+        | "tabulary" | "tabularray" | "diagbox" | "cellspace"
+        // Font / encoding
+        | "cmap" | "fontawesome5" | "pdfrender"
+        // Conditional
+        | "ifxetex" | "ifluatex"
+        // Misc layout/utility
+        | "standalone" | "titletoc" | "etoc" | "todonotes" | "overpic"
+        | "numprint" | "totcount"
         // Conference/journal style files commonly preloaded by templates.
         | "neurips_2022" | "neurips_2023" | "neurips_2024" | "neurips_2025"
         | "neurips_2026" | "iclr2024_conference" | "iclr2025_conference"
-        | "icml2024" | "icml2025" | "icml2026"
+        | "iclr_conference" | "icml2024" | "icml2025" | "icml2026"
         | "acmart" | "IEEEtran" | "spconf"
     )
 }
