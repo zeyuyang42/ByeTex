@@ -555,12 +555,13 @@ fn m3_label_with_underscores_in_math_env() {
 }
 
 #[test]
-#[ignore = "Bug #20 — pending fix: \\\\[length] optional arg in math align"]
 fn m3_align_row_break_strips_optional_length() {
-    // Bug #20: `\\[1mm]` inside an `align` environment emits `\[1mm\]` in
-    // Typst, which the parser reads as a math matrix delimiter — producing an
-    // unclosed delimiter error. The optional length argument must be consumed
-    // and dropped; only the bare row-break `\` should remain.
+    // Bug #20/#21 (fixed): `\\[1mm]` inside an `align` environment used to
+    // emit `\[1mm\]` in Typst, which the parser reads as a math matrix
+    // delimiter — producing an unclosed delimiter error. The math `\\`
+    // handler now source-byte-peeks for a following `[...]`, consumes it,
+    // and emits a newline instead — so the row break is preserved without
+    // the broken bracket.
     let out = convert(
         "\\begin{align}a &= b \\\\[1mm] c &= d\\end{align}\n",
         &ConvertOptions {
@@ -585,16 +586,93 @@ fn m3_align_row_break_strips_optional_length() {
     );
 }
 
+#[test]
+fn m3_ref_inside_math_uses_text_interpolation() {
+    // Bug #24 (fixed): `\ref{eqn:AMPa}` inside an `equation` env used to
+    // emit `@eqn:AMPa` in math context, where Typst parses `eqn` as an
+    // identifier (unknown variable). The fix emits `#ref(<eqn:AMPa>)`
+    // when `self.in_math == true`, escaping out of math context for
+    // the reference.
+    let out = convert(
+        "\\begin{equation}x = y + \\ref{eqn:AMPa}\\end{equation}\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        out.typst.contains("#ref(<eqn:AMPa>)"),
+        "expected `#ref(<eqn:AMPa>)`; got:\n{}",
+        out.typst
+    );
+    // The bare `@eqn:AMPa` math-context form must not appear.
+    assert!(
+        !out.typst.contains("$ @eqn") && !out.typst.contains("+ @eqn"),
+        "bare `@eqn:AMPa` must not appear in math; got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn m3_ref_outside_math_uses_at_form() {
+    // Regression guard for Bug #24: outside math, `\ref{foo}` should
+    // still emit the plain `@foo` form (not the `#ref(<>)` interpolation
+    // form used inside math).
+    let out = convert(
+        "See \\ref{sec:intro} for the intro.\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        out.typst.contains("@sec:intro"),
+        "expected `@sec:intro` (text-mode form); got:\n{}",
+        out.typst
+    );
+    assert!(
+        !out.typst.contains("#ref"),
+        "interpolation form `#ref` must not appear in text mode; got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn m3_alphanumeric_subscript_splits_letter_digit() {
+    // Bug #23 (fixed): `_{i0}` used to emit `_(i0)` where Typst reads
+    // `i0` as a single alphanumeric identifier and reports "unknown
+    // variable: i0". The math-word emitter now inserts a separator
+    // between an alphabetic prefix and a digit tail so the atoms parse
+    // separately.
+    let out = convert(
+        "$w_{i0} + x_{j1}$\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        out.typst.contains("i 0") || out.typst.contains("(i 0)"),
+        "expected `i 0` (separated atoms); got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("j 1") || out.typst.contains("(j 1)"),
+        "expected `j 1`; got:\n{}",
+        out.typst
+    );
+}
+
 // ============== Phase C: edge-case coverage for Bugs #14, #15 ==============
 
 #[test]
-#[ignore = "Bug #14b — pending fix: unmatched \\left not stripped (only matched left_right pairs are handled)"]
 fn m3_unmatched_left_paren_does_not_break() {
-    // Bug #14 residual: matched `\left(...\right)` pairs are stripped via the
-    // tree-sitter `left_right` node handler (line 1849 emit.rs). An unmatched
-    // `\left(` with no closing `\right` is parsed as a generic command and
-    // hits the generic fallback rather than the symbol-table entry at line 3479,
-    // so it still leaks verbatim into output.
+    // Bug #14b (fixed): matched `\left(...\right)` pairs are stripped via
+    // the tree-sitter `math_delimiter` node handler. An unmatched `\left(`
+    // (no closing `\right`) makes tree-sitter emit an ERROR node containing
+    // raw `\left` / `\right` token kinds. These bare token kinds are now
+    // dropped silently at `emit_node` so the bare delimiter that follows
+    // (`(` etc.) auto-pairs in Typst without the sizing command leaking.
     let out = convert(
         "$f\\left(x$\n",
         &ConvertOptions {
