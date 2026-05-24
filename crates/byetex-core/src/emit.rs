@@ -941,6 +941,38 @@ impl<'a> Emitter<'a> {
                 self.out.push('®');
                 node.end_byte()
             }
+            // Text-mode symbol commands — emit the Unicode character directly.
+            Some("\\texttimes") => {
+                self.out.push('×');
+                node.end_byte()
+            }
+            Some("\\textuparrow") => {
+                self.out.push('↑');
+                node.end_byte()
+            }
+            Some("\\textdownarrow") => {
+                self.out.push('↓');
+                node.end_byte()
+            }
+            Some("\\checkmark") => {
+                self.out.push('✓');
+                node.end_byte()
+            }
+            Some("\\AA") => {
+                self.out.push('Å');
+                node.end_byte()
+            }
+            Some("\\l") => {
+                self.out.push('ł');
+                node.end_byte()
+            }
+            // `\newline` — explicit line break; `\tabularnewline` is handled
+            // structurally by the table emitter but may surface here in malformed
+            // input; treat as a line break too.
+            Some("\\newline") | Some("\\tabularnewline") => {
+                self.out.push_str("\\ \n");
+                node.end_byte()
+            }
             // Deprecated font-switching commands. These change the style of
             // all following text until the group ends — Typst would need a
             // #strong[…]/#emph[…] scope wrap, which requires end-of-group
@@ -1296,7 +1328,8 @@ impl<'a> Emitter<'a> {
             }
             // Font-size directives — unscoped toggles. Typst's equivalent
             // would be a #text(size: …)[…] wrap but that needs end-of-group
-            // tracking we don't yet have. Warn so the caller can see the loss.
+            // tracking we don't yet have. Silently drop so papers don't accumulate
+            // dozens of low-signal warnings (one per paragraph size switch).
             Some("\\small")
             | Some("\\large")
             | Some("\\Large")
@@ -1306,10 +1339,7 @@ impl<'a> Emitter<'a> {
             | Some("\\normalsize")
             | Some("\\footnotesize")
             | Some("\\scriptsize")
-            | Some("\\tiny") => {
-                self.warn_unsupported_command(node);
-                node.end_byte()
-            }
+            | Some("\\tiny") => node.end_byte(),
             // `\appendix` toggles section-number style to letters; emit as a
             // set rule.
             Some("\\appendix") => {

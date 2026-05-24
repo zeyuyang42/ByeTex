@@ -69,10 +69,15 @@ fn check_template(rel: &str, budget: usize) {
 //   now emit DropOnly warnings in ACM template (+3); \tableofcontents
 //   and \listoffigures now emit DropOnly warnings in thesis (+2).
 //                                                          IEEE 16 ACM  6 NeurIPS  1 thesis  2
+//   PR1: font-size family (\small/\large/\Large/…) converted from
+//   UnsupportedCommand to silent drop; text-mode symbols (\texttimes,
+//   \textuparrow, \textdownarrow, \checkmark, \AA, \l, \newline,
+//   \tabularnewline) now emit Unicode directly.
+//                                                          IEEE 13 ACM  6 NeurIPS  1 thesis  2
 
 #[test]
 fn ieee_template_within_budget() {
-    check_template("tests/inhouse/ieee/conference_101719.tex", 16);
+    check_template("tests/inhouse/ieee/conference_101719.tex", 13);
 }
 
 #[test]
