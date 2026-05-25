@@ -638,6 +638,60 @@ fn m3_ref_outside_math_uses_at_form() {
 }
 
 #[test]
+fn m3_double_prime_in_math_survives_typography() {
+    // Bug #29 (fixed): `f''(x)` in math used to be rewritten as `f"(x)`
+    // by `post_process_typography` (which converts `''` → `"` for text-
+    // mode typographic closing quotes). That stray `"` opened a Typst
+    // string literal that ate the rest of the line, producing
+    // "unknown variable: <whatever was past the next quote>" errors
+    // (real case: 2605.22820's `B_i''(u_i)`).
+    // The typography pass now skips everything inside `$...$` spans.
+    let out = convert(
+        "$f''(x) = g'(y)$\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    // Primes must be preserved verbatim.
+    assert!(
+        out.typst.contains("f''(x)"),
+        "expected `f''(x)` preserved; got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("g'(y)"),
+        "expected `g'(y)` preserved; got:\n{}",
+        out.typst
+    );
+    // No literal `"` should appear (that would mean the typography
+    // pass mistakenly converted the primes).
+    assert!(
+        !out.typst.contains("f\""),
+        "double-prime must NOT become `\"`; got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn m3_text_mode_closing_quotes_still_transformed() {
+    // Regression guard for Bug #29's fix: outside math, the typographic
+    // closing quote `''` → `"` transformation must still fire.
+    let out = convert(
+        "He said ``hello'' and left.\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        out.typst.contains("\"hello\""),
+        "expected text-mode ``...'' to become \"...\"; got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
 fn m3_alphanumeric_subscript_splits_letter_digit() {
     // Bug #23 (fixed): `_{i0}` used to emit `_(i0)` where Typst reads
     // `i0` as a single alphanumeric identifier and reports "unknown
