@@ -376,3 +376,33 @@ fn wrapper_newcommand_with_color_in_body() {
         "expected no ambiguous_math for \\token and \\vocab; got: {ambiguous:?}"
     );
 }
+
+#[test]
+fn tex_expansion_primitives_silently_dropped_in_math() {
+    // Macro bodies in arXiv papers often expand to TeX expansion-control
+    // primitives like `\relax`, `\expandafter`, `\ifx ... \else ... \fi`.
+    // These produce no visible rendering — they're the LaTeX preprocessor's
+    // internal machinery. Emitting `ambiguous_math` for each is noise.
+    let src = r"\documentclass{article}
+\newcommand\foo{\relax\expandafter\ifx\else\fi a}
+\begin{document}
+$\foo$
+\end{document}";
+    let out = convert_str(src);
+    let unwanted: Vec<_> = ambiguous_math_messages(&out)
+        .into_iter()
+        .filter(|m| {
+            m == "\\relax"
+                || m == "\\expandafter"
+                || m == "\\ifx"
+                || m == "\\else"
+                || m == "\\fi"
+        })
+        .collect();
+    assert!(
+        unwanted.is_empty(),
+        "TeX primitives should be silently dropped, not warn; got: {:?}",
+        unwanted
+    );
+    assert!(out.typst.contains('a'));
+}
