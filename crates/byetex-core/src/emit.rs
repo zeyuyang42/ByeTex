@@ -2988,6 +2988,8 @@ impl<'a> Emitter<'a> {
         // new `$` would close the outer math in Typst's parser, leaving the outer
         // closing `$` dangling. Instead, just inline the body children.
         if self.in_math {
+            // Save the outer env's pending label so a nested env's
+            // body can use the slot for its own `\label{...}`.
             let prev_label = self.pending_math_label.take();
             let mut cursor = node.walk();
             let body: Vec<Node<'_>> = node
@@ -3002,10 +3004,16 @@ impl<'a> Emitter<'a> {
                 }
                 self.safe_copy(last, body.last().unwrap().end_byte());
             }
-            if let Some(l) = self.pending_math_label.take() {
-                let _ = write!(self.out, " <{}>", l);
+            // Bug #30: do NOT flush the label inline (we're inside an
+            // outer `$...$` — `<label>` inside math parses as `<` op
+            // followed by identifier(s) and breaks compile). Propagate
+            // it up so the outer env's post-`$` flush attaches it.
+            // If the inner body set its own pending label, prefer that
+            // (closer to the anchor point); otherwise restore the
+            // outer's saved label.
+            if self.pending_math_label.is_none() {
+                self.pending_math_label = prev_label;
             }
-            self.pending_math_label = prev_label;
             return node.end_byte();
         }
         self.ensure_paragraph_break();

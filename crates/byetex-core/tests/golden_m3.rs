@@ -313,6 +313,43 @@ fn m3_mathbb_does_not_fuse_with_preceding_letter() {
 }
 
 #[test]
+fn m3_nested_math_env_label_attaches_outside_outer_span() {
+    // Bug #30 (fixed): when a `\label{...}` lived inside a math env
+    // nested under another (e.g. `\begin{equation}\begin{split}
+    // ...\label{eq:foo}\end{split}\end{equation}`), the inner env's
+    // nested-emit branch flushed the label INSIDE the outer `$...$`
+    // — Typst then read `<eq:foo>` as math operators (`<` `eq` `:`
+    // `foo` `>`), breaking compile with `unknown variable: foo`.
+    // The nested branch now propagates the label up to the outer
+    // env so its post-`$` flush attaches it correctly.
+    let out = convert(
+        "\\begin{equation}\\begin{split}a &= b \\\\ c &= d\\label{eq:n}\\end{split}\\end{equation}\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    // The label must appear AFTER the closing `$`, not inside.
+    assert!(
+        out.typst.contains("$ <eq:n>") || out.typst.contains("$\n<eq:n>"),
+        "expected `<eq:n>` after closing `$`; got:\n{}",
+        out.typst
+    );
+    // Sanity: no `<eq:n>` before any closing `$` of the math env
+    // (a quick string check — the label should not appear before the
+    // first `$` that closes the equation).
+    let close_idx = out.typst.rfind(" $").or_else(|| out.typst.rfind("$"));
+    if let Some(idx) = close_idx {
+        let head = &out.typst[..idx];
+        assert!(
+            !head.contains("<eq:n>"),
+            "label `<eq:n>` appears INSIDE math span; got:\n{}",
+            out.typst
+        );
+    }
+}
+
+#[test]
 fn m3_bare_letter_subscript_does_not_fuse_with_next_letter() {
     // Bug #33 (fixed): a bare-letter subscript like `_h` followed by
     // another letter token (`j` in `\{g_hj\}`) used to emit `g_hj`
