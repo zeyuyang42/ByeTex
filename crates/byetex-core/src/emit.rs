@@ -3504,20 +3504,17 @@ impl<'a> Emitter<'a> {
             self.push_math_symbol(typst);
             return node.end_byte();
         }
+        // Single-arg wrapper commands: open(arg)close. `wrap_for_command_name`
+        // is the single source of truth for the prefix/suffix pairs; both this
+        // path and the bare-command_name path at the top of `emit_math_node`
+        // delegate here so adding a new wrapper only requires one edit.
+        if let Some((l, r)) = wrap_for_command_name(n) {
+            return self.emit_math_wrap(node, l, r);
+        }
         match n {
             "\\frac" | "\\tfrac" | "\\dfrac" | "\\cfrac" => self.emit_math_frac(node),
             "\\sqrt" => self.emit_math_sqrt(node),
             "\\binom" | "\\dbinom" | "\\tbinom" => self.emit_math_binom(node),
-            // Horizontal braces: `\overbrace{x}` → `overbrace(x)`.
-            // If the user writes `\overbrace{x}^{text}`, the `^{text}` becomes a
-            // Typst superscript on the overbrace call, which is correct.
-            "\\overbrace" => self.emit_math_wrap(node, "overbrace(", ")"),
-            "\\underbrace" => self.emit_math_wrap(node, "underbrace(", ")"),
-            // Enclosures
-            "\\cancel" => self.emit_math_wrap(node, "cancel(", ")"),
-            "\\bcancel" => self.emit_math_wrap(node, "cancel(inverted: true, ", ")"),
-            "\\xcancel" => self.emit_math_wrap(node, "cancel(cross: true, ", ")"),
-            "\\sout" => self.emit_math_wrap(node, "strike(", ")"),
             // `\text{X}` and `\mathrm{X}` switch to upright text inside math.
             // Typst renders quoted strings as upright text in math context.
             // `\mbox{X}` and `\hbox{X}` are TeX-primitive boxes; in math
@@ -3668,38 +3665,6 @@ impl<'a> Emitter<'a> {
                 }
                 node.end_byte()
             }
-            // `\mathbf{X}` → bold math; `\mathbb{X}` → blackboard bold (`bb(X)`).
-            "\\mathbf" | "\\bm" | "\\bs" | "\\bold" => self.emit_math_wrap(node, "bold(", ")"),
-            // `\mathds` (dsfont) and `\mathbbold` (bbold) — visually
-            // identical to `\mathbb` for the common single-letter use.
-            "\\mathbb" | "\\mathbbm" | "\\Bbb" | "\\mathds" | "\\mathbbold" => {
-                self.emit_math_wrap(node, "bb(", ")")
-            }
-            "\\mathcal" => self.emit_math_wrap(node, "cal(", ")"),
-            "\\mathfrak" | "\\frak" => self.emit_math_wrap(node, "frak(", ")"),
-            "\\mathscr" => self.emit_math_wrap(node, "scr(", ")"),
-            "\\mathsf" => self.emit_math_wrap(node, "sans(", ")"),
-            "\\mathit" => self.emit_math_wrap(node, "italic(", ")"),
-            "\\mathtt" => self.emit_math_wrap(node, "mono(", ")"),
-            "\\boldsymbol" | "\\pmb" => self.emit_math_wrap(node, "bold(", ")"),
-            // Math accents
-            "\\bar" | "\\overline" => self.emit_math_wrap(node, "overline(", ")"),
-            "\\underline" => self.emit_math_wrap(node, "underline(", ")"),
-            "\\hat" | "\\widehat" => self.emit_math_wrap(node, "hat(", ")"),
-            "\\tilde" | "\\widetilde" => self.emit_math_wrap(node, "tilde(", ")"),
-            "\\vec" | "\\overrightarrow" | "\\Overrightarrow" => {
-                self.emit_math_wrap(node, "arrow(", ")")
-            }
-            "\\dot" => self.emit_math_wrap(node, "dot(", ")"),
-            "\\ddot" => self.emit_math_wrap(node, "dot.double(", ")"),
-            "\\acute" => self.emit_math_wrap(node, "acute(", ")"),
-            "\\grave" => self.emit_math_wrap(node, "grave(", ")"),
-            "\\check" | "\\widecheck" => self.emit_math_wrap(node, "caron(", ")"),
-            "\\breve" => self.emit_math_wrap(node, "breve(", ")"),
-            "\\mathring" => self.emit_math_wrap(node, "circle(", ")"),
-            "\\phantom" => self.emit_math_wrap(node, "hide(", ")"),
-            "\\emph" => self.emit_math_wrap(node, "italic(", ")"),
-            "\\mathop" => self.emit_math_wrap(node, "op(", ")"),
             // `\operatorname{name}` → `op("name")` — upright math text.
             "\\operatorname" => self.emit_math_operatorname(node),
             // Math-mode spacing primitives — drop silently.
@@ -7624,6 +7589,11 @@ pub(crate) fn wrap_for_command_name(name: &str) -> Option<(&'static str, &'stati
         "\\overbrace" => ("overbrace(", ")"),
         "\\underbrace" => ("underbrace(", ")"),
         "\\cancel" => ("cancel(", ")"),
+        "\\bcancel" => ("cancel(inverted: true, ", ")"),
+        "\\xcancel" => ("cancel(cross: true, ", ")"),
+        "\\sout" => ("strike(", ")"),
+        "\\emph" => ("italic(", ")"),
+        "\\mathop" => ("op(", ")"),
         _ => return None,
     })
 }
