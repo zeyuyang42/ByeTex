@@ -39,6 +39,8 @@ jobs:
   corpus:
     name: corpus pass-rate
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -61,3 +63,17 @@ jobs:
         with:
           name: corpus-report
           path: tests/corpus/report.json
+
+      - name: Render README warning summary
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          python3 scripts/render_corpus_summary.py \
+            --report tests/corpus/report.json \
+            --update README.md
+
+      - name: Commit README update
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: refresh corpus warning table [skip ci]"
+          file_pattern: README.md
