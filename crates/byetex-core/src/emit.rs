@@ -191,7 +191,14 @@ pub(crate) struct Emitter<'a> {
     /// While emitting inside a math container, `\label{x}` is recorded here
     /// and later attached to the enclosing equation/figure as a Typst label.
     /// Cleared by the container emitter after attachment.
-    pending_math_label: Option<String>,
+    /// Labels collected from `\label{...}` calls while inside a math
+    /// container. Multiple labels can attach to one math env (e.g.
+    /// `\begin{subequations}\label{eqn:AMP}\begin{align}\label{eqn:AMPa}
+    /// ...\label{eqn:AMPb}`). The math-env emitter flushes the first
+    /// one as `<key>` next to the closing `$`, and emits each
+    /// additional label as a hidden equation block so all `\ref{...}`
+    /// targets still resolve.
+    pending_math_labels: Vec<String>,
     /// Captures `\bibliographystyle{plain}` so a following `\bibliography{refs}`
     /// can attach the style. Cleared after use.
     pending_bib_style: Option<String>,
@@ -319,7 +326,7 @@ impl<'a> Emitter<'a> {
             src,
             source_name,
             in_math: false,
-            pending_math_label: None,
+            pending_math_labels: Vec::new(),
             pending_bib_style: None,
             needs_heading_numbering: false,
             needs_equation_numbering: false,
@@ -558,8 +565,7 @@ impl<'a> Emitter<'a> {
         // Bibitems discovered inside the sub-emitter (e.g. when an
         // inlined `.bbl` runs through here and emits `\bibitem`
         // calls) need to flow back so the parent's citations resolve.
-        self.bibliography_keys
-            .extend(sub.bibliography_keys.drain());
+        self.bibliography_keys.extend(sub.bibliography_keys.drain());
         self.warnings.append(&mut sub.warnings);
         self.asset_refs.append(&mut sub.asset_refs);
         sub.out
@@ -784,7 +790,19 @@ impl<'a> Emitter<'a> {
         // the enclosing math container as a Typst `<label>`.
         if self.in_math && node.kind() == "label_definition" {
             if let Some((l, end)) = extract_label_name_and_end(node, self.src) {
-                self.pending_math_label = Some(l);
+                // Bug #44: multiple `\label{...}` inside one math env
+                // (e.g. `\begin{subequations}\label{eqn:AMP}\begin{align}
+                // \label{eqn:AMPa}...\label{eqn:AMPb}`). Collect them
+                // all; the env-closing flush emits the first as the
+                // attached `<key>` and emits each extra as a hidden
+                // equation block so every `\ref{...}` resolves.
+                if !self
+                    .pending_math_labels
+                    .iter()
+                    .any(|existing| existing == &l)
+                {
+                    self.pending_math_labels.push(l);
+                }
                 // tree-sitter-latex truncates the label key at `_` and
                 // leaks the rest into the surrounding text. Skip past
                 // the real closing brace so we don't re-emit the
@@ -1117,7 +1135,10 @@ impl<'a> Emitter<'a> {
                     let mut depth = 0i32;
                     while j < bytes.len() {
                         match bytes[j] {
-                            b'\\' if j + 1 < bytes.len() => { j += 2; continue; }
+                            b'\\' if j + 1 < bytes.len() => {
+                                j += 2;
+                                continue;
+                            }
                             b'{' => depth += 1,
                             b'}' => depth -= 1,
                             b']' if depth == 0 => break,
@@ -1138,11 +1159,16 @@ impl<'a> Emitter<'a> {
                     let mut depth = 1i32;
                     while j < bytes.len() {
                         match bytes[j] {
-                            b'\\' if j + 1 < bytes.len() => { j += 2; continue; }
+                            b'\\' if j + 1 < bytes.len() => {
+                                j += 2;
+                                continue;
+                            }
                             b'{' => depth += 1,
                             b'}' => {
                                 depth -= 1;
-                                if depth == 0 { break; }
+                                if depth == 0 {
+                                    break;
+                                }
                             }
                             _ => {}
                         }
@@ -2510,9 +2536,16 @@ impl<'a> Emitter<'a> {
                     self.emit_environment_body(node)
                 }
             }
+            // `subequations` wraps one or more math envs and provides
+            // a single shared numbering. Bug #44: any `\label{...}`
+            // calls that are direct children of `subequations` belong
+            // to the equation group as a whole, not to the surrounding
+            // text. Pre-stage them into `pending_math_labels` so the
+            // inner math env's close-flush attaches them.
+            Some("subequations") => self.emit_subequations_env(node),
             // Transparent wrappers: emit body, no markup. `\documentclass` etc.
             // already produced warnings as separate top-level commands.
-            Some("document") | Some("subequations") | Some("center") | Some("flushleft")
+            Some("document") | Some("center") | Some("flushleft")
             | Some("flushright") | Some("quote") | Some("quotation") | Some("verse")
             | Some("titlepage") | Some("minipage")
             // Acknowledgements, keyword-list, and conference-specific metadata
@@ -2598,6 +2631,30 @@ impl<'a> Emitter<'a> {
         self.with_sub_buffer(|emitter| {
             emitter.emit_environment_body(env);
         })
+    }
+
+    /// Emit a `\begin{subequations}...\end{subequations}` env. Bug #44:
+    /// a `\label{...}` that's a direct child of `subequations` (e.g.
+    /// `\begin{subequations}\label{eqn:AMP}\begin{align}...\end{align}
+    /// \end{subequations}`) targets the equation group as a whole. By
+    /// the time we visit the inner math env, that text-mode label has
+    /// already been emitted as a stray `<key>` and Typst attaches it
+    /// to the wrong content. Pre-stage direct-child labels into
+    /// `pending_math_labels` so the inner math env's close-flush
+    /// attaches them all together.
+    fn emit_subequations_env(&mut self, env: Node<'_>) -> usize {
+        let mut cursor = env.walk();
+        for child in env.children(&mut cursor) {
+            if child.kind() == "label_definition" {
+                if let Some((key, end)) = extract_label_name_and_end(child, self.src) {
+                    if !self.pending_math_labels.iter().any(|x| x == &key) {
+                        self.pending_math_labels.push(key);
+                    }
+                    self.skip_until = self.skip_until.max(end);
+                }
+            }
+        }
+        self.emit_environment_body(env)
     }
 
     /// Emit just the body of an environment (skip `begin` and `end` children).
@@ -3208,9 +3265,9 @@ impl<'a> Emitter<'a> {
         // new `$` would close the outer math in Typst's parser, leaving the outer
         // closing `$` dangling. Instead, just inline the body children.
         if self.in_math {
-            // Save the outer env's pending label so a nested env's
-            // body can use the slot for its own `\label{...}`.
-            let prev_label = self.pending_math_label.take();
+            // Save the outer env's pending labels so a nested env's
+            // body can collect its own `\label{...}` calls.
+            let prev_labels = std::mem::take(&mut self.pending_math_labels);
             let mut cursor = node.walk();
             let body: Vec<Node<'_>> = node
                 .children(&mut cursor)
@@ -3224,15 +3281,18 @@ impl<'a> Emitter<'a> {
                 }
                 self.safe_copy(last, body.last().unwrap().end_byte());
             }
-            // Bug #30: do NOT flush the label inline (we're inside an
-            // outer `$...$` — `<label>` inside math parses as `<` op
-            // followed by identifier(s) and breaks compile). Propagate
-            // it up so the outer env's post-`$` flush attaches it.
-            // If the inner body set its own pending label, prefer that
-            // (closer to the anchor point); otherwise restore the
-            // outer's saved label.
-            if self.pending_math_label.is_none() {
-                self.pending_math_label = prev_label;
+            // Bug #30 / #44: don't flush labels inline (we're inside
+            // an outer `$...$` — `<label>` inside math parses as `<`
+            // op followed by identifier(s) and breaks compile).
+            // Propagate the labels up so the outer env's post-`$`
+            // flush attaches them. Concat outer-first, then any new
+            // labels collected during the nested body, deduped.
+            let inner_labels = std::mem::take(&mut self.pending_math_labels);
+            self.pending_math_labels = prev_labels;
+            for l in inner_labels {
+                if !self.pending_math_labels.contains(&l) {
+                    self.pending_math_labels.push(l);
+                }
             }
             return node.end_byte();
         }
@@ -3242,7 +3302,10 @@ impl<'a> Emitter<'a> {
         let was = self.in_math;
         self.in_math = true;
 
-        let prev_label = self.pending_math_label.take();
+        // Bug #44: INHERIT pre-staged labels (e.g. from
+        // `subequations`'s top-level `\label{...}`). Don't take/restore
+        // here — the body emission may push more labels, and the close
+        // flush emits the full set.
         let mut cursor = node.walk();
         let body: Vec<Node<'_>> = node
             .children(&mut cursor)
@@ -3268,10 +3331,28 @@ impl<'a> Emitter<'a> {
         self.balance_math_brackets(body_start);
         self.escape_math_semicolons(body_start);
         self.out.push_str(" $");
-        if let Some(l) = self.pending_math_label.take() {
-            let _ = write!(self.out, " <{}>", l);
+        // Emit ALL collected labels — first attached to this equation,
+        // the rest as hidden equation-kind figures so each `\ref{...}`
+        // still resolves. Typst only honours the LAST `<label>` next
+        // to one equation; further `<label>`s on the same equation
+        // are silently ignored, and `#hide[...]` of a raw `$..$`
+        // produces a `hide` element that can't itself be referenced —
+        // wrapping in `#figure(kind: "equation", ...)` makes the
+        // hidden stub a valid `@key` target.
+        let labels = std::mem::take(&mut self.pending_math_labels);
+        if let Some((first, rest)) = labels.split_first() {
+            let _ = write!(self.out, " <{}>", first);
+            if !rest.is_empty() {
+                self.needs_equation_numbering = true;
+            }
+            for extra in rest {
+                let _ = write!(
+                    self.out,
+                    "\n#hide[#figure(kind: \"equation\", supplement: [Eq.], $ \"\" $) <{}>]",
+                    extra
+                );
+            }
         }
-        self.pending_math_label = prev_label;
         node.end_byte()
     }
 
@@ -4581,9 +4662,7 @@ impl<'a> Emitter<'a> {
         let mut typst_parts: Vec<String> = Vec::new();
         for raw_key in &keys {
             let sanitized = sanitize_label_key(raw_key);
-            if !self.bibliography_keys.is_empty()
-                && !self.bibliography_keys.contains(&sanitized)
-            {
+            if !self.bibliography_keys.is_empty() && !self.bibliography_keys.contains(&sanitized) {
                 missing.push(raw_key.as_str());
                 typst_parts.push(format!("[cite: missing key `{}`]", raw_key));
             } else {
@@ -4681,7 +4760,7 @@ impl<'a> Emitter<'a> {
                 // Heuristic: prefix tells us what the ref targets. Figures and
                 // tables are auto-numbered by Typst; only headings/equations
                 // need an explicit `#set ... (numbering: ...)` preamble.
-                if key.starts_with("eq:") {
+                if key.starts_with("eq:") || key.starts_with("eqn:") {
                     self.needs_equation_numbering = true;
                 } else if !key.starts_with("fig:")
                     && !key.starts_with("tab:")
@@ -7702,7 +7781,7 @@ fn probe_any_bbl(base: &Path) -> Option<String> {
             p.is_file()
                 && p.extension()
                     .and_then(|e| e.to_str())
-                    .map_or(false, |e| e.eq_ignore_ascii_case("bbl"))
+                    .is_some_and(|e| e.eq_ignore_ascii_case("bbl"))
         })
         .collect();
     found.sort();

@@ -1240,3 +1240,75 @@ fn m3_declaremathoperator_basic() {
         out.typst
     );
 }
+
+#[test]
+fn m3_multi_label_in_nested_math_env_all_resolve() {
+    // Bug #44: `\begin{subequations}\label{eqn:AMP}\begin{align}
+    // \label{eqn:AMPa}...\label{eqn:AMPb}\end{align}\end{subequations}`
+    // (real driver: 2605.22159) collected three `\label{...}` calls
+    // into one single-slot Option, so only the LAST one
+    // (`eqn:AMPb`) survived. `\ref{eqn:AMP}` and `\ref{eqn:AMPa}`
+    // then crashed Typst with `label does not exist`.
+    //
+    // The fix collects labels into a Vec, attaches the first to the
+    // outer math equation, and emits each extra as a hidden
+    // empty-equation stub (`#hide[$ "" $] <key>`) so every ref still
+    // resolves.
+    let src = "\\begin{subequations}\\label{eqn:AMP}\
+        \\begin{align}\
+        \\label{eqn:AMPa} a &= b \\\\\n\
+        c &= d \\label{eqn:AMPb}\
+        \\end{align}\
+        \\end{subequations}\nSee \\ref{eqn:AMP}, \\ref{eqn:AMPa}, \\ref{eqn:AMPb}.\n";
+    let out = convert(
+        src,
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    // All three label targets must be present in the output.
+    for key in ["<eqn:AMP>", "<eqn:AMPa>", "<eqn:AMPb>"] {
+        assert!(
+            out.typst.contains(key),
+            "expected label `{}` in output (multi-label flush); got:\n{}",
+            key,
+            out.typst
+        );
+    }
+    // The `\ref{...}` calls in the body must emit `@eqn:...` for
+    // every key — proves each label is reachable from the body.
+    for key in ["@eqn:AMP", "@eqn:AMPa", "@eqn:AMPb"] {
+        assert!(
+            out.typst.contains(key),
+            "expected `{}` ref in body; got:\n{}",
+            key,
+            out.typst
+        );
+    }
+}
+
+#[test]
+fn m3_multi_label_in_single_math_env() {
+    // Two `\label{...}` in a single math env (no nesting). Both must
+    // survive — the first attached to the equation, the second as a
+    // hidden stub.
+    let src = "\\begin{align}\\label{eq:one}a=b\\\\\\label{eq:two}c=d\\end{align}\n";
+    let out = convert(
+        src,
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        out.typst.contains("<eq:one>"),
+        "expected `<eq:one>` in output; got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("<eq:two>"),
+        "expected `<eq:two>` in output; got:\n{}",
+        out.typst
+    );
+}

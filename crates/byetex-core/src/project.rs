@@ -481,7 +481,7 @@ pub fn materialize_project(
             .rel_dest
             .extension()
             .and_then(|e| e.to_str())
-            .map_or(false, |e| e.eq_ignore_ascii_case("bib"));
+            .is_some_and(|e| e.eq_ignore_ascii_case("bib"));
         if is_bib {
             let raw = std::fs::read_to_string(&asset.source)?;
             let processed = crate::bib::preprocess_bib(&raw);
