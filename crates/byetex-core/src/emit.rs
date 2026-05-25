@@ -1059,24 +1059,94 @@ impl<'a> Emitter<'a> {
         // with a custom kind so that `@key` references resolve. Typst only
         // allows labels to be referenced on a few element kinds — `figure`
         // with `supplement: none` is the least-intrusive.
+        //
+        // tree-sitter-latex parses `\bibitem[Agr02]{Agr:Foo}` (optional
+        // bracket present) with the `[...]` and `{...}` as AST siblings
+        // of the generic_command rather than children. Source-byte
+        // peek catches that case — same shape as PR #27's
+        // `\xrightarrow` fix.
         if name.as_deref() == Some("\\bibitem") {
+            let mut key: Option<String> = None;
+            let mut consumed_end = node.end_byte();
             if let Some(arg) = first_curly_group(node) {
-                let key = self
+                let k = self
                     .src
                     .get(arg.start_byte() + 1..arg.end_byte() - 1)
                     .unwrap_or("")
                     .trim()
                     .to_string();
-                if !key.is_empty() {
-                    self.close_bibitem();
-                    if !self.out.ends_with('\n') {
-                        self.out.push('\n');
-                    }
-                    self.out
-                        .push_str("#figure(kind: \"bibitem\", supplement: none, [");
-                    self.pending_bibitem_key = Some(key);
-                    return node.end_byte();
+                if !k.is_empty() {
+                    key = Some(k);
                 }
+            } else {
+                // AST-sibling fallback: scan source bytes after the
+                // command for optional `[...]` then mandatory `{...}`.
+                let bytes = self.src.as_bytes();
+                let mut i = node.end_byte();
+                while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                    i += 1;
+                }
+                // Skip optional `[label]`.
+                if i < bytes.len() && bytes[i] == b'[' {
+                    let mut j = i + 1;
+                    let mut depth = 0i32;
+                    while j < bytes.len() {
+                        match bytes[j] {
+                            b'\\' if j + 1 < bytes.len() => { j += 2; continue; }
+                            b'{' => depth += 1,
+                            b'}' => depth -= 1,
+                            b']' if depth == 0 => break,
+                            _ => {}
+                        }
+                        j += 1;
+                    }
+                    if j < bytes.len() && bytes[j] == b']' {
+                        i = j + 1;
+                        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                            i += 1;
+                        }
+                    }
+                }
+                if i < bytes.len() && bytes[i] == b'{' {
+                    let inner_start = i + 1;
+                    let mut j = inner_start;
+                    let mut depth = 1i32;
+                    while j < bytes.len() {
+                        match bytes[j] {
+                            b'\\' if j + 1 < bytes.len() => { j += 2; continue; }
+                            b'{' => depth += 1,
+                            b'}' => {
+                                depth -= 1;
+                                if depth == 0 { break; }
+                            }
+                            _ => {}
+                        }
+                        j += 1;
+                    }
+                    if j < bytes.len() && bytes[j] == b'}' {
+                        let k = self.src[inner_start..j].trim().to_string();
+                        if !k.is_empty() {
+                            key = Some(k);
+                            consumed_end = j + 1;
+                        }
+                    }
+                }
+            }
+            if let Some(k) = key {
+                self.close_bibitem();
+                if !self.out.ends_with('\n') {
+                    self.out.push('\n');
+                }
+                self.out
+                    .push_str("#figure(kind: \"bibitem\", supplement: none, [");
+                // Sanitize the bibitem key so Typst accepts the `<key>`
+                // label syntax; cite/ref use sites apply the same
+                // transformation so the labels still match.
+                self.pending_bibitem_key = Some(sanitize_label_key(&k));
+                if consumed_end > node.end_byte() {
+                    self.skip_until = self.skip_until.max(consumed_end);
+                }
+                return consumed_end;
             }
         }
         match name.as_deref() {
@@ -4471,7 +4541,7 @@ impl<'a> Emitter<'a> {
         }
         let typst = keys
             .iter()
-            .map(|k| format!("@{}", k))
+            .map(|k| format!("@{}", sanitize_label_key(k)))
             .collect::<Vec<_>>()
             .join(" ");
         self.out.push_str(&typst);
@@ -4495,13 +4565,16 @@ impl<'a> Emitter<'a> {
             .children(&mut cursor)
             .next()
             .map(|c| c.kind().to_string());
-        let (key, end_after_brace) = match extract_label_ref_key_and_end(node, self.src) {
+        let (raw_key, end_after_brace) = match extract_label_ref_key_and_end(node, self.src) {
             Some(x) => x,
             None => {
                 self.warn_unsupported_command(node);
                 return node.end_byte();
             }
         };
+        // Apply the same label-key sanitization as `\bibitem` / `\cite`
+        // so labels with `+`/`*`/etc. still resolve symmetrically.
+        let key = sanitize_label_key(&raw_key);
         if key.is_empty() {
             self.warn_unsupported_command(node);
             return node.end_byte();
@@ -4646,8 +4719,33 @@ impl<'a> Emitter<'a> {
             });
         }
         if kept.is_empty() {
-            // All paths missing — drop the call entirely (with a
-            // single summary warning for the dropped call itself).
+            // PR-2: before giving up, look for a pre-rendered `.bbl`
+            // file in base_dir. arXiv preprints whose authors only
+            // ship the BibTeX-output `.bbl` (no `.bib` source) are
+            // common — e.g. 2605.22159 ships only `GS4AGBEM.bbl`.
+            // The `.bbl` is LaTeX text containing
+            // `\begin{thebibliography}{...}\bibitem{k}...\end{thebibliography}`
+            // which our existing `emit_thebibliography` already
+            // handles. Inline its content as fresh LaTeX source.
+            if let Some(ref base) = self.base_dir.clone() {
+                if let Some(bbl_content) = probe_any_bbl(base) {
+                    self.warnings.push(Warning {
+                        range: range_of(node),
+                        category: Category::NeedsManualReview {
+                            reason: "\\bibliography{...}: no `.bib` found, rendered `.bbl` inlined as fallback".to_string(),
+                        },
+                        severity: Severity::Info,
+                        message: "the LaTeX `.bib` source was not bundled; inlined the pre-rendered `.bbl` instead — entries should still resolve for `\\cite{}` lookups, but the bibliography style is whatever the original BibTeX produced".to_string(),
+                        snippet: self.src[node.start_byte()..node.end_byte()].to_string(),
+                        suggested_skill: None,
+                    });
+                    let rendered = self.render_in_sub_emitter(&bbl_content, false, false);
+                    self.ensure_paragraph_break();
+                    self.out.push_str(rendered.trim_end());
+                    return node.end_byte();
+                }
+            }
+            // No `.bib` AND no `.bbl` — drop the call entirely.
             self.warnings.push(Warning {
                 range: range_of(node),
                 category: Category::NeedsManualReview {
@@ -5569,6 +5667,25 @@ fn needs_text_escape(kind: &str) -> Option<&'static str> {
 
 /// Extract the list of citation keys from a `citation` node. Keys are
 /// children of `curly_group_text_list`, separated by `,`.
+/// Replace characters that Typst rejects in `<label>` / `@label`
+/// identifiers with `-`. Typst label identifiers allow ASCII
+/// letters, digits, `_`, `-`, `:`, `.`. LaTeX is more permissive
+/// — `+`, `'`, `*`, etc. appear in real arXiv `\bibitem` keys
+/// like `DFG+:InverseInequalitiesNonquasiuniform2004` (Bug #42).
+/// Apply this symmetrically at BOTH the bibitem-define and
+/// citation/ref-use sites so the rewritten labels match.
+pub(crate) fn sanitize_label_key(key: &str) -> String {
+    key.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | ':' | '.') {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect()
+}
+
 fn extract_citation_keys(node: Node<'_>, src: &str) -> Vec<String> {
     let mut keys = Vec::new();
     let mut cursor = node.walk();
@@ -7343,6 +7460,35 @@ fn probe_image_on_disk(base: &Path, path: &str) -> Option<PathBuf> {
 
 /// Probe the base directory for a BibTeX file. Appends `.bib` if the stem has
 /// no extension. Returns the resolved path on disk, or `None`.
+/// Read the contents of any `.bbl` file in `base` if exactly one
+/// exists. Returns `None` when no `.bbl` is present or when multiple
+/// candidates are ambiguous (better to drop the call than guess wrong).
+///
+/// Used by `emit_bibliography` as a fallback when the LaTeX
+/// `\bibliography{Foo}` references a `.bib` file that isn't bundled
+/// but a pre-rendered `.bbl` is (common in arXiv preprints — the
+/// author only shipped what BibTeX wrote, not the source `.bib`).
+fn probe_any_bbl(base: &Path) -> Option<String> {
+    let entries = std::fs::read_dir(base).ok()?;
+    let mut found: Vec<PathBuf> = entries
+        .filter_map(|e| e.ok().map(|d| d.path()))
+        .filter(|p| {
+            p.is_file()
+                && p.extension()
+                    .and_then(|e| e.to_str())
+                    .map_or(false, |e| e.eq_ignore_ascii_case("bbl"))
+        })
+        .collect();
+    found.sort();
+    if found.is_empty() {
+        return None;
+    }
+    // Prefer the first hit (sorted) — when an arXiv source bundles
+    // multiple `.bbl` files they're usually variants of the same
+    // bibliography, so picking one consistently is acceptable.
+    std::fs::read_to_string(&found[0]).ok()
+}
+
 fn probe_bib_on_disk(base: &Path, path: &str) -> Option<PathBuf> {
     let direct = base.join(path);
     if direct.is_file() {
