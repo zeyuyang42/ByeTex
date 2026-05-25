@@ -187,6 +187,11 @@ tree-sitter-latex grammar is best-effort and gives up on some exotic TeX).
 The supported subset is meant to grow incrementally; each release will bump
 the corpus threshold.
 
+For arXiv paper compile-fidelity tracking, see the visual regression series under
+`docs/visual-regression-*.md`. The most recent snapshot is
+[`docs/visual-regression-2026-05-25c.md`](docs/visual-regression-2026-05-25c.md),
+which documents Bugs #30–#41 closed and the deferred open tier (#32, #34).
+
 ## License
 
 Dual-licensed under MIT or Apache 2.0. Vendored sources keep their original
