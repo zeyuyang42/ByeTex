@@ -7781,7 +7781,7 @@ fn probe_any_bbl(base: &Path) -> Option<String> {
             p.is_file()
                 && p.extension()
                     .and_then(|e| e.to_str())
-                    .map_or(false, |e| e.eq_ignore_ascii_case("bbl"))
+                    .is_some_and(|e| e.eq_ignore_ascii_case("bbl"))
         })
         .collect();
     found.sort();
