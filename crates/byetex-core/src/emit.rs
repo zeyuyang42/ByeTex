@@ -245,6 +245,15 @@ pub(crate) struct Emitter<'a> {
     /// that matches a key here, it routes to `emit_theorem_env_dyn` instead of
     /// `warn_unsupported_environment`.
     theorem_kinds: HashMap<String, String>,
+    /// Set of bibliography keys that are defined either by a `.bib`
+    /// file in `base_dir` or by a `\bibitem{key}` somewhere in the
+    /// document. Populated by `harvest_bib_keys_from_dir` in the
+    /// prepass plus per-bibitem inserts during emit. Used by
+    /// `emit_citation` to drop `\cite{key}` calls whose key isn't
+    /// defined — otherwise Typst aborts with `label <key> does not
+    /// exist`. Keys are stored sanitized (see `sanitize_label_key`).
+    /// Empty set short-circuits validation (legacy convert path).
+    bibliography_keys: std::collections::HashSet<String>,
     /// Assets (images, bib files) resolved on disk during this emit pass.
     /// Populated only when `base_dir` is `Some`. Bubbled up to `ConvertOutput`
     /// by `finish()` so the project layer can copy them to the output dir.
@@ -323,6 +332,7 @@ impl<'a> Emitter<'a> {
             visited_includes: visited,
             macros: preseeded_macros,
             theorem_kinds: HashMap::new(),
+            bibliography_keys: std::collections::HashSet::new(),
             asset_refs: Vec::new(),
             macro_depth: 0,
         }
@@ -336,6 +346,15 @@ impl<'a> Emitter<'a> {
     /// definitions into `self.macros`. This ensures macros used before their
     /// definition (forward references) are available at emit time.
     pub(crate) fn prepass_collect(&mut self, root: Node<'_>) {
+        // PR-3: harvest bibliography keys from any `.bib` file in
+        // base_dir so `emit_citation` can validate `\cite{key}` calls
+        // and drop refs to undefined keys (otherwise Typst aborts the
+        // whole compile with `label <key> does not exist`).
+        // `\bibitem{key}` keys discovered during the main emit pass
+        // are added to the set incrementally.
+        if let Some(ref base) = self.base_dir.clone() {
+            harvest_bib_keys_from_dir(base, &mut self.bibliography_keys);
+        }
         let mut stack: Vec<Node<'_>> = vec![root];
         while let Some(n) = stack.pop() {
             match n.kind() {
@@ -529,12 +548,18 @@ impl<'a> Emitter<'a> {
         if increment_depth {
             sub.macro_depth = self.macro_depth + 1;
         }
+        sub.bibliography_keys = self.bibliography_keys.clone();
         sub.emit_root(tree.root_node());
         // Merge side-effects back into the parent.
         self.visited_includes = std::mem::take(&mut sub.visited_includes);
         for (k, v) in sub.macros.drain() {
             self.macros.entry(k).or_insert(v);
         }
+        // Bibitems discovered inside the sub-emitter (e.g. when an
+        // inlined `.bbl` runs through here and emits `\bibitem`
+        // calls) need to flow back so the parent's citations resolve.
+        self.bibliography_keys
+            .extend(sub.bibliography_keys.drain());
         self.warnings.append(&mut sub.warnings);
         self.asset_refs.append(&mut sub.asset_refs);
         sub.out
@@ -1142,7 +1167,10 @@ impl<'a> Emitter<'a> {
                 // Sanitize the bibitem key so Typst accepts the `<key>`
                 // label syntax; cite/ref use sites apply the same
                 // transformation so the labels still match.
-                self.pending_bibitem_key = Some(sanitize_label_key(&k));
+                let sanitized = sanitize_label_key(&k);
+                // Record the key so `emit_citation` knows it's defined.
+                self.bibliography_keys.insert(sanitized.clone());
+                self.pending_bibitem_key = Some(sanitized);
                 if consumed_end > node.end_byte() {
                     self.skip_until = self.skip_until.max(consumed_end);
                 }
@@ -4539,11 +4567,45 @@ impl<'a> Emitter<'a> {
             self.warn_unsupported_command(node);
             return node.end_byte();
         }
-        let typst = keys
-            .iter()
-            .map(|k| format!("@{}", sanitize_label_key(k)))
-            .collect::<Vec<_>>()
-            .join(" ");
+        // PR-3: validate each key against the harvested set of
+        // available bibliography entries. Keys that aren't defined
+        // would crash Typst with `label <key> does not exist` —
+        // emit a plain-text placeholder instead and warn once.
+        //
+        // Skip validation entirely when the set is empty (legacy
+        // bare-string convert calls with no base_dir to scan, or
+        // papers with no bibliography at all). In that mode we
+        // assume the user provided the right keys and preserve the
+        // old behaviour.
+        let mut missing: Vec<&str> = Vec::new();
+        let mut typst_parts: Vec<String> = Vec::new();
+        for raw_key in &keys {
+            let sanitized = sanitize_label_key(raw_key);
+            if !self.bibliography_keys.is_empty()
+                && !self.bibliography_keys.contains(&sanitized)
+            {
+                missing.push(raw_key.as_str());
+                typst_parts.push(format!("[cite: missing key `{}`]", raw_key));
+            } else {
+                typst_parts.push(format!("@{}", sanitized));
+            }
+        }
+        for miss in &missing {
+            self.warnings.push(Warning {
+                range: range_of(node),
+                category: Category::NeedsManualReview {
+                    reason: format!("\\cite{{{}}}: key not found in any bibliography", miss),
+                },
+                severity: Severity::Warning,
+                message: format!(
+                    "cite key `{}` is not defined in any `.bib`/`.bbl` — emitting a plain-text placeholder",
+                    miss
+                ),
+                snippet: self.src[node.start_byte()..node.end_byte()].to_string(),
+                suggested_skill: None,
+            });
+        }
+        let typst = typst_parts.join(" ");
         self.out.push_str(&typst);
         // See `emit_label_reference` for why we sometimes append a separator
         // after `@key`. Same logic applies to citations.
@@ -7460,6 +7522,170 @@ fn probe_image_on_disk(base: &Path, path: &str) -> Option<PathBuf> {
 
 /// Probe the base directory for a BibTeX file. Appends `.bib` if the stem has
 /// no extension. Returns the resolved path on disk, or `None`.
+/// Walk the immediate `base_dir` (non-recursive) for `.bib` and
+/// `.bbl` files, parse their entry / `\bibitem` keys, and insert
+/// the sanitized forms into `out`. Errors (unreadable file,
+/// unparseable content) are silently skipped — the worst case is a
+/// citation that should have resolved gets dropped, which is the
+/// same end state as before this validation existed.
+fn harvest_bib_keys_from_dir(base: &Path, out: &mut std::collections::HashSet<String>) {
+    let entries = match std::fs::read_dir(base) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        match path.extension().and_then(|e| e.to_str()) {
+            Some(e) if e.eq_ignore_ascii_case("bib") => {
+                if let Ok(content) = std::fs::read_to_string(&path) {
+                    for key in extract_bib_entry_keys(&content) {
+                        out.insert(sanitize_label_key(&key));
+                    }
+                }
+            }
+            Some(e) if e.eq_ignore_ascii_case("bbl") => {
+                if let Ok(content) = std::fs::read_to_string(&path) {
+                    for key in extract_bbl_bibitem_keys(&content) {
+                        out.insert(sanitize_label_key(&key));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Scan a `.bib` file for entry keys (the identifier right after
+/// `@type{`). Permissive — picks up any `@<word>{<key>,` pattern,
+/// ignores @string/@preamble/@comment, doesn't validate the rest of
+/// the entry.
+fn extract_bib_entry_keys(content: &str) -> Vec<String> {
+    let mut keys = Vec::new();
+    let bytes = content.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        // Find next `@`.
+        let at = match content[i..].find('@') {
+            Some(p) => i + p,
+            None => break,
+        };
+        // Read type identifier.
+        let type_start = at + 1;
+        let type_end = bytes[type_start..]
+            .iter()
+            .position(|&b| !b.is_ascii_alphabetic())
+            .map(|p| type_start + p)
+            .unwrap_or(bytes.len());
+        let entry_type = content[type_start..type_end].to_ascii_lowercase();
+        i = at + 1;
+        if matches!(entry_type.as_str(), "string" | "preamble" | "comment") {
+            continue;
+        }
+        // Skip whitespace, expect `{`.
+        let mut j = type_end;
+        while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+            j += 1;
+        }
+        if j >= bytes.len() || bytes[j] != b'{' {
+            continue;
+        }
+        j += 1;
+        // Skip whitespace inside.
+        while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+            j += 1;
+        }
+        // Read key up to the first `,`.
+        let key_start = j;
+        while j < bytes.len() && bytes[j] != b',' && bytes[j] != b'}' {
+            j += 1;
+        }
+        let key = content[key_start..j].trim();
+        if !key.is_empty() {
+            keys.push(key.to_string());
+        }
+        i = j;
+    }
+    keys
+}
+
+/// Scan a `.bbl` file for `\bibitem{key}` and `\bibitem[label]{key}`
+/// occurrences and return the keys.
+fn extract_bbl_bibitem_keys(content: &str) -> Vec<String> {
+    let mut keys = Vec::new();
+    let bytes = content.as_bytes();
+    let mut i = 0;
+    let needle = b"\\bibitem";
+    while i + needle.len() <= bytes.len() {
+        if &bytes[i..i + needle.len()] == needle {
+            let mut j = i + needle.len();
+            // Skip optional `[label]`.
+            while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+                j += 1;
+            }
+            if j < bytes.len() && bytes[j] == b'[' {
+                let mut depth = 0i32;
+                let mut k = j + 1;
+                while k < bytes.len() {
+                    match bytes[k] {
+                        b'\\' if k + 1 < bytes.len() => {
+                            k += 2;
+                            continue;
+                        }
+                        b'{' => depth += 1,
+                        b'}' => depth -= 1,
+                        b']' if depth == 0 => break,
+                        _ => {}
+                    }
+                    k += 1;
+                }
+                if k < bytes.len() {
+                    j = k + 1;
+                }
+            }
+            while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+                j += 1;
+            }
+            if j < bytes.len() && bytes[j] == b'{' {
+                let key_start = j + 1;
+                let mut k = key_start;
+                let mut depth = 1i32;
+                while k < bytes.len() {
+                    match bytes[k] {
+                        b'\\' if k + 1 < bytes.len() => {
+                            k += 2;
+                            continue;
+                        }
+                        b'{' => depth += 1,
+                        b'}' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                    k += 1;
+                }
+                if k < bytes.len() {
+                    let key = content[key_start..k].trim();
+                    if !key.is_empty() {
+                        keys.push(key.to_string());
+                    }
+                    i = k + 1;
+                    continue;
+                }
+            }
+            i = j;
+        } else {
+            i += 1;
+        }
+    }
+    keys
+}
+
 /// Read the contents of any `.bbl` file in `base` if exactly one
 /// exists. Returns `None` when no `.bbl` is present or when multiple
 /// candidates are ambiguous (better to drop the call than guess wrong).
