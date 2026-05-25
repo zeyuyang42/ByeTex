@@ -313,6 +313,47 @@ fn m3_mathbb_does_not_fuse_with_preceding_letter() {
 }
 
 #[test]
+fn m3_section_with_underscore_label_in_title_ref_attaches() {
+    // Bug #35 (fixed): `\section{Proof of Lemma~\ref{thm:UAP_general_dim}}\label{sec:appendix}`
+    // — tree-sitter mis-parses the inner `\ref{...}` key (it truncates
+    // at `_` because `_general_dim` looks like math subscripts),
+    // leaving an orphan `}` as an ERROR child of the section node
+    // between the title curly_group and the `\label`. emit_section's
+    // title-extraction loop used to break on the ERROR, never reaching
+    // the `\label` — so the section emitted without its label, and a
+    // downstream `\ref{sec:appendix}` failed with `cannot reference text`.
+    //
+    // The loop now skips single-brace ERROR children; emit_node also
+    // drops them at the top level so they don't leak into output.
+    // Also collapses multi-line titles so the heading sits on one line.
+    let out = convert(
+        "See Section~\\ref{sec:appendix}.\n\n\\section{Proof of Lemma~\\ref{thm:UAP_general_dim}}\\label{sec:appendix}\nBody.\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    // The label must be attached to the heading line, not on a
+    // separate paragraph (which Typst rejects as `cannot reference text`).
+    assert!(
+        out.typst.contains("= Proof of Lemma~@thm:UAP_general_dim <sec:appendix>"),
+        "expected heading + inline label; got:\n{}",
+        out.typst
+    );
+    // The stray `}` from tree-sitter's mis-parse must not appear.
+    let lines: Vec<&str> = out.typst.lines().collect();
+    for (i, ln) in lines.iter().enumerate() {
+        assert!(
+            ln.trim() != "}" && ln.trim() != "} <sec:appendix>",
+            "stray `}}` at line {}: {:?}\nfull:\n{}",
+            i + 1,
+            ln,
+            out.typst
+        );
+    }
+}
+
+#[test]
 fn m3_smallmatrix_with_no_space_before_rowbreak() {
     // Bug #31 (fixed): `\begin{smallmatrix}a&-a\\0&0\end{smallmatrix}`
     // (no space before the `\\` row-break) used to produce
