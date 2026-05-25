@@ -4839,11 +4839,15 @@ impl<'a> Emitter<'a> {
 
         // Strip \hline (already emitted as raw text by the default emitter).
         let cleaned = body_str.replace("\\hline", "");
-        // Rows are separated by ` \` (the math-mode-style row break we emit).
-        // Outside math, we emit `\\\\` → ` \` too in `\\` emitter; same shape.
-        // We split on the literal `\` token, then on `&` for cells.
-        let rows: Vec<&str> = cleaned
-            .split('\\')
+        // Rows are separated by `\` followed by whitespace (the LaTeX
+        // `\\` row break, which our `\\` emitter writes as a single
+        // backslash). Use `split_math_rows` (Bug #31's helper) so we
+        // don't accidentally split inside escape sequences like
+        // `\$`, `\_`, `\*` that legitimately appear in cell content
+        // — e.g. `\multicolumn{2}{c}{\textbf{\$10.23}}` which used
+        // to fragment at every `\$`/`\*` and corrupt the table.
+        let rows: Vec<&str> = split_math_rows(&cleaned)
+            .into_iter()
             .filter(|r| !r.trim().is_empty())
             .collect();
         let mut cells = Vec::new();
