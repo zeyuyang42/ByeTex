@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use byetex_core::{convert, ConvertOptions};
+use byetex_core::{convert, Category, ConvertOptions};
 
 fn fixtures_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -218,6 +218,59 @@ fn m4_bibliography() {
     ==== WARNINGS ====
     []
     "#);
+}
+
+#[test]
+fn m4_bibliography_drops_missing_files() {
+    // Bug #27 (fixed): when `\bibliography{a,b,c}` lists multiple
+    // files but only some are present in the source tree, Typst's
+    // `#bibliography` aborts on the first missing file with `file
+    // not found`. We now probe each listed `.bib` against the
+    // base_dir and only emit the ones that resolve, warning about
+    // the rest. Real driver: 2605.22776 bundles only `Stas.bib`
+    // but `\bibliography` lists 4 paths.
+    let tmp = std::env::temp_dir().join(format!(
+        "byetex-bib-missing-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+    // Bundle only `present.bib`; reference both it and `missing.bib`.
+    std::fs::write(tmp.join("present.bib"), "@article{x,title={X}}").unwrap();
+    std::fs::write(
+        tmp.join("main.tex"),
+        "\\documentclass{article}\n\\begin{document}\nBody.\n\
+         \\bibliography{present,missing}\n\\end{document}\n",
+    )
+    .unwrap();
+    let opts = ConvertOptions {
+        source_name: Some("main.tex".into()),
+        base_dir: Some(tmp.clone()),
+    };
+    let out = convert(&std::fs::read_to_string(tmp.join("main.tex")).unwrap(), &opts);
+    // The bibliography call must include `present.bib` (the file that
+    // resolved) but NOT `missing.bib` (which would crash typst compile).
+    assert!(
+        out.typst.contains("present.bib"),
+        "expected `present.bib` to survive in the output; got:\n{}",
+        out.typst
+    );
+    assert!(
+        !out.typst.contains("missing.bib"),
+        "missing.bib should be filtered out; got:\n{}",
+        out.typst
+    );
+    // A needs_manual_review warning should flag the missing path.
+    let has_missing_warning = out.warnings.iter().any(|w| {
+        matches!(&w.category, Category::NeedsManualReview { reason }
+            if reason.contains("missing.bib"))
+    });
+    assert!(
+        has_missing_warning,
+        "expected a needs_manual_review warning for missing.bib; got: {:?}",
+        out.warnings
+    );
+    let _ = std::fs::remove_dir_all(&tmp);
 }
 
 // ============== Phase B: TDD red tests for Bugs #17, #19 ==============
