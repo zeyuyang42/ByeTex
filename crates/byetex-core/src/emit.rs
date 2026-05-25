@@ -1962,6 +1962,17 @@ impl<'a> Emitter<'a> {
         // body is a one-liner; otherwise math expansions get
         // unwanted line breaks.
         let body_out = body_out.trim_end_matches('\n');
+        // Bug #25: when a user macro is invoked in math right after a
+        // literal letter (e.g. `d\src` where `\src` expands to
+        // `\nu_{...}`), the sub-emitter's `out` starts empty so its
+        // own letter-boundary check sees no preceding letter. The
+        // expansion's first character then fuses with our `d`,
+        // producing `dnu_(...)` — Typst reads it as an unknown
+        // identifier. Re-run the boundary check at the parent level
+        // before appending.
+        if self.in_math {
+            self.ensure_math_letter_boundary(body_out);
+        }
         self.out.push_str(body_out);
         // Return the end of the consumed range so the AST walker resumes
         // past any brace-less args we ate. For purely curly-group calls,

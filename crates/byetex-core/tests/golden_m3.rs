@@ -313,6 +313,36 @@ fn m3_mathbb_does_not_fuse_with_preceding_letter() {
 }
 
 #[test]
+fn m3_macro_expansion_does_not_fuse_with_preceding_letter() {
+    // Bug #25 (fixed): `d\src` in math (where `\src` is a user macro
+    // expanding to `\nu_{\text{src}}`) used to emit `dnu_("src")`
+    // because the sub-emitter that renders the macro body starts with
+    // an empty `out` — its own letter-boundary check sees no preceding
+    // letter, so the expansion's first character fuses with the
+    // parent's last `d`. Typst then reads `dnu` as an unknown
+    // identifier. `expand_user_macro` now re-runs
+    // `ensure_math_letter_boundary` against the rendered body before
+    // appending.
+    let out = convert(
+        "\\newcommand{\\src}{\\nu_{\\text{src}}}\n$d\\src(x)$\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        !out.typst.contains("dnu"),
+        "`d` + `\\src`→`nu...` should not fuse into `dnu`, got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("d nu"),
+        "expected `d nu` with separator, got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
 fn m3_pmatrix_does_not_fuse_with_preceding_letter() {
     // Bug #26 (fixed): `Q\begin{pmatrix}...\end{pmatrix}` used to emit
     // `Qmat(...)` because `emit_matrix_env` wrote `mat(` immediately
