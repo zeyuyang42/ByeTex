@@ -313,6 +313,36 @@ fn m3_mathbb_does_not_fuse_with_preceding_letter() {
 }
 
 #[test]
+fn m3_bare_letter_subscript_does_not_fuse_with_next_letter() {
+    // Bug #33 (fixed): a bare-letter subscript like `_h` followed by
+    // another letter token (`j` in `\{g_hj\}`) used to emit `g_hj`
+    // because Typst greedily consumes alphanumeric chars after `_`.
+    // The subscript emitter now drops a MATH_WORD_BOUNDARY sentinel
+    // after a letter-ending bare subscript so `collapse_math_spaces`
+    // inserts a separator when the next token starts with a letter.
+    // Real driver: 2605.22159's `\{\genvarBdh[j]\}_{j=1}^{...}`,
+    // which expanded to `g_hj` and crashed Typst with `unknown
+    // variable: hj`.
+    let out = convert(
+        "\\newcommand{\\diamP}{h}\n$\\{g_\\diamP j\\}$\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        !out.typst.contains("g_hj"),
+        "`g_h` + `j` should not fuse into `g_hj`; got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("g_h j"),
+        "expected `g_h j` with separator; got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
 fn m3_notempty_consumes_ast_sibling_brack_and_curly() {
     // Bug #28 (fixed): tree-sitter parses `\notempty[default]{value}`
     // with both the brack and the curly as AST siblings of the

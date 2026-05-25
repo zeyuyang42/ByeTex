@@ -4066,6 +4066,19 @@ impl<'a> Emitter<'a> {
                     let _ = write!(self.out, "({})", trimmed);
                 } else {
                     self.out.push_str(trimmed);
+                    // Bug #33: a bare-letter subscript (`_h`) followed
+                    // by a letter token (`j` in `\{g_hj\}`) fuses into
+                    // `hj` because Typst greedily consumes alphanumeric
+                    // chars after `_`. Drop a MATH_WORD_BOUNDARY
+                    // sentinel so `collapse_math_spaces` inserts a
+                    // separator when the next token is letter/digit.
+                    if trimmed
+                        .chars()
+                        .last()
+                        .is_some_and(|c| c.is_ascii_alphanumeric())
+                    {
+                        self.out.push(MATH_WORD_BOUNDARY);
+                    }
                 }
             }
         }
