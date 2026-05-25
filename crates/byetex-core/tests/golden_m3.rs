@@ -313,6 +313,42 @@ fn m3_mathbb_does_not_fuse_with_preceding_letter() {
 }
 
 #[test]
+fn m3_notempty_consumes_ast_sibling_brack_and_curly() {
+    // Bug #28 (fixed): tree-sitter parses `\notempty[default]{value}`
+    // with both the brack and the curly as AST siblings of the
+    // `\notempty` command_name. The AST-child-only handler used to
+    // miss them, then the parent walker emitted both as raw tokens —
+    // surfacing as `[^(]{}` inside subscript bodies after macro
+    // expansion in 2605.22159's `\genvarBdh`. The handler now
+    // source-byte-peeks for `[...]` (skipped) and `{...}` (rendered
+    // as math), bumping `skip_until` past both.
+    let out = convert(
+        "\\newcommand{\\sscript}[1]{^{#1}}\n$\\min_{a\\notempty[\\sscript]{}\\in B}$\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    // The leaked `[^(]` shape must not appear.
+    assert!(
+        !out.typst.contains("[^"),
+        "no `[^` leak expected; got:\n{}",
+        out.typst
+    );
+    assert!(
+        !out.typst.contains("\\sscript"),
+        "raw `\\sscript` must not leak; got:\n{}",
+        out.typst
+    );
+    // The expected output has a in math followed by `in B` — no junk.
+    assert!(
+        out.typst.contains("a in B") || out.typst.contains("(a in B)"),
+        "expected `a in B` (clean subscript body); got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
 fn m3_macro_expansion_does_not_fuse_with_preceding_letter() {
     // Bug #25 (fixed): `d\src` in math (where `\src` is a user macro
     // expanding to `\nu_{\text{src}}`) used to emit `dnu_("src")`
