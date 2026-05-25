@@ -4043,6 +4043,11 @@ impl<'a> Emitter<'a> {
                     .join(", ")
             })
             .collect();
+        // Bug #26: a preceding identifier letter (e.g. `Q\begin{pmatrix}`)
+        // fuses with `mat(` into the undefined identifier `Qmat`. Insert
+        // a space when the previous output ends in a letter — same shape
+        // as `push_math_symbol` / `emit_math_wrap` guards.
+        self.ensure_math_letter_boundary("mat(");
         let _ = write!(self.out, "mat({})", rendered.join("; "));
         self.in_math = was;
         node.end_byte()
@@ -4098,6 +4103,10 @@ impl<'a> Emitter<'a> {
             })
             .filter(|r| r != "[]")
             .collect();
+        // Letter-boundary guard so a preceding identifier doesn't fuse
+        // with the leading `c` of `cases(` (same shape as Bug #26 for
+        // `mat(`).
+        self.ensure_math_letter_boundary("cases(");
         let _ = write!(self.out, "cases({})", rows.join(", "));
         self.in_math = was;
         node.end_byte()

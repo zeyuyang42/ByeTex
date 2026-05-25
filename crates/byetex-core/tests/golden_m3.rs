@@ -313,6 +313,56 @@ fn m3_mathbb_does_not_fuse_with_preceding_letter() {
 }
 
 #[test]
+fn m3_pmatrix_does_not_fuse_with_preceding_letter() {
+    // Bug #26 (fixed): `Q\begin{pmatrix}...\end{pmatrix}` used to emit
+    // `Qmat(...)` because `emit_matrix_env` wrote `mat(` immediately
+    // after the `Q` letter. Typst reads `Qmat` as an unknown identifier.
+    // The matrix/cases emitters now call `ensure_math_letter_boundary`
+    // before the `mat(`/`cases(` write — same shape as the existing
+    // `\mathbb`/`\bm`/etc. fusion guards.
+    let out = convert(
+        "$Q\\begin{pmatrix}a\\\\b\\end{pmatrix}$\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        !out.typst.contains("Qmat"),
+        "`Q` + `mat(...)` should not fuse into `Qmat`, got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("Q mat("),
+        "expected `Q mat(` with separator, got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn m3_cases_does_not_fuse_with_preceding_letter() {
+    // Same shape as the pmatrix guard: a letter just before
+    // `\begin{cases}` would otherwise fuse with the `c` of `cases(`.
+    let out = convert(
+        "$f\\begin{cases}1 & x>0 \\\\ 0 & x\\le 0\\end{cases}$\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        !out.typst.contains("fcases"),
+        "`f` + `cases(...)` should not fuse, got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("f cases("),
+        "expected `f cases(` with separator, got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
 fn m3_partial_uses_modern_typst_name() {
     // Bug #13: Typst 0.13+ deprecates `diff` in favour of `partial`. The
     // emitter now uses the new name to keep the compile clean.
