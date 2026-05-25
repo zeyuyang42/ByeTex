@@ -6951,7 +6951,34 @@ fn post_process_typography(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();
     let mut prev: Option<char> = None;
+    // Track whether we're inside a `$...$` math span. Inside math, the
+    // typographic transformations (especially `''` → `"`) must NOT
+    // apply: `''` in math is a double-prime derivative (`f''(x)`),
+    // not a closing double-quote. Treating it as `"` opens a Typst
+    // string literal that runs through the rest of the expression
+    // and corrupts parsing (Bug #29 / 2605.22820: `B_i''(u_i)`
+    // started a string that consumed everything until the next
+    // unescaped `"` deep into the line, breaking the math).
+    let mut in_math = false;
     while let Some(c) = chars.next() {
+        // Toggle math state on unescaped `$`. We never receive `\$` here
+        // because the upstream emitter converts those to text-mode
+        // escapes (`\$` is a `text_command` that becomes a literal `$`
+        // rendered outside math context, so it's already handled).
+        if c == '$' && prev != Some('\\') {
+            in_math = !in_math;
+            out.push('$');
+            prev = Some('$');
+            continue;
+        }
+        if in_math {
+            // Inside math, pass everything through unchanged. Typst
+            // math has its own typography rules (prime `'`, en-dash
+            // via `dash`, etc.) — don't mangle.
+            out.push(c);
+            prev = Some(c);
+            continue;
+        }
         match c {
             '`' if chars.peek() == Some(&'`') => {
                 chars.next();
