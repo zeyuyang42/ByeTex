@@ -180,9 +180,26 @@ ByeTex/
 
 ## Status
 
-Current corpus pass-rate (clean + warnings) against the harvested
-`context/latex-context.md` blocks: **87%**, with 13% in `parse_error` (the
-tree-sitter-latex grammar is best-effort and gives up on some exotic TeX).
+<!-- corpus-summary:start -->
+_Last updated: 2026-05-25 (commit 18da6b2)_
+
+Corpus pass-rate (clean + warnings): **87%** — 431/495 files.
+
+| Bucket | Count |
+|---|---:|
+| Total | 495 |
+| Clean | 179 |
+| Warnings (≥1, no parse error) | 252 |
+| Parse errors | 64 |
+
+| Warning category | Count |
+|---|---:|
+| `unsupported_command` | 600 |
+| `drop_only` | 69 |
+| `unsupported_environment` | 62 |
+| `ambiguous_math` | 27 |
+| `needs_manual_review` | 7 |
+<!-- corpus-summary:end -->
 
 The supported subset is meant to grow incrementally; each release will bump
 the corpus threshold.
