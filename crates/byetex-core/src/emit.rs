@@ -4743,50 +4743,69 @@ impl<'a> Emitter<'a> {
     fn emit_label_reference(&mut self, node: Node<'_>) -> usize {
         // `label_reference` children are `\ref`, `\eqref`, `\pageref` as the
         // first child (with the backslash literally in the kind), then the
-        // curly group with the label.
+        // curly group with the label(s).
         let mut cursor = node.walk();
         let first_kind = node
             .children(&mut cursor)
             .next()
             .map(|c| c.kind().to_string());
-        let (raw_key, end_after_brace) = match extract_label_ref_key_and_end(node, self.src) {
-            Some(x) => x,
-            None => {
-                self.warn_unsupported_command(node);
-                return node.end_byte();
-            }
-        };
-        // Apply the same label-key sanitization as `\bibitem` / `\cite`
-        // so labels with `+`/`*`/etc. still resolve symmetrically.
-        let key = sanitize_label_key(&raw_key);
-        if key.is_empty() {
+        let (raw_keys, end_after_brace) =
+            match extract_label_ref_keys_and_end(node, self.src) {
+                Some(x) => x,
+                None => {
+                    self.warn_unsupported_command(node);
+                    return node.end_byte();
+                }
+            };
+        // Sanitize each key independently — `sanitize_label_key` maps
+        // non-[A-Za-z0-9_\-:.] chars (incl. commas) to `-`. By splitting
+        // first and sanitizing per-key, `\cref{a,b}` → ["a", "b"] rather
+        // than the old single-string "a-b" (Bug #45).
+        let keys: Vec<String> = raw_keys
+            .iter()
+            .map(|k| sanitize_label_key(k))
+            .filter(|k| !k.is_empty())
+            .collect();
+        if keys.is_empty() {
             self.warn_unsupported_command(node);
             return node.end_byte();
         }
-        // Cover the truncated-grammar tail (`_objective}`) when the key
+        // Cover the truncated-grammar tail (`_objective}`) when a key
         // contains underscores — same as `\label{...}` handling above.
         self.skip_until = self.skip_until.max(end_after_brace);
         // Bug #24: inside math mode, a bare `@key` is parsed by Typst as
-        // an identifier (`@key:other` → unknown variable `key`). Wrap
-        // the reference in a markup-escape `#ref(<key>)` so the Typst
-        // parser exits math context for the reference itself.
+        // an identifier. Wrap in `#ref(<key>)` to escape math context.
         let in_math = self.in_math;
         match first_kind.as_deref() {
             Some("\\eqref") => {
                 self.needs_equation_numbering = true;
-                if in_math {
-                    let _ = write!(self.out, "(#ref(<{}>))", key);
-                } else {
-                    let _ = write!(self.out, "(@{})", key);
-                }
+                // Wrap the full comma-separated list in one pair of parens —
+                // `\eqref{a,b}` → `(@a, @b)`, matching LaTeX convention.
+                let parts: Vec<String> = keys
+                    .iter()
+                    .map(|k| {
+                        if in_math {
+                            format!("#ref(<{}>)", k)
+                        } else {
+                            format!("@{}", k)
+                        }
+                    })
+                    .collect();
+                let _ = write!(self.out, "({})", parts.join(", "));
             }
             Some("\\pageref") => {
-                // Typst doesn't have a direct equivalent; warn once and emit `@key`.
-                if in_math {
-                    let _ = write!(self.out, "#ref(<{}>)", key);
-                } else {
-                    let _ = write!(self.out, "@{}", key);
-                }
+                // Typst doesn't have a direct equivalent; warn once and emit refs.
+                let parts: Vec<String> = keys
+                    .iter()
+                    .map(|k| {
+                        if in_math {
+                            format!("#ref(<{}>)", k)
+                        } else {
+                            format!("@{}", k)
+                        }
+                    })
+                    .collect();
+                self.out.push_str(&parts.join(", "));
                 self.warnings.push(Warning {
                     range: range_of(node),
                     category: Category::NeedsManualReview {
@@ -4800,26 +4819,33 @@ impl<'a> Emitter<'a> {
                 });
             }
             _ => {
-                // Heuristic: prefix tells us what the ref targets. Figures and
-                // tables are auto-numbered by Typst; only headings/equations
-                // need an explicit `#set ... (numbering: ...)` preamble.
-                if key.starts_with("eq:") || key.starts_with("eqn:") {
-                    self.needs_equation_numbering = true;
-                } else if !key.starts_with("fig:")
-                    && !key.starts_with("tab:")
-                    && !key.starts_with("thm:")
-                    && !key.starts_with("lem:")
-                    && !key.starts_with("cor:")
-                    && !key.starts_with("def:")
-                    && !key.starts_with("prop:")
-                {
-                    self.needs_heading_numbering = true;
+                // Heuristic: prefix tells us what the ref targets. Apply
+                // over all keys (any key matching triggers the flag).
+                for k in &keys {
+                    if k.starts_with("eq:") || k.starts_with("eqn:") {
+                        self.needs_equation_numbering = true;
+                    } else if !k.starts_with("fig:")
+                        && !k.starts_with("tab:")
+                        && !k.starts_with("thm:")
+                        && !k.starts_with("lem:")
+                        && !k.starts_with("cor:")
+                        && !k.starts_with("def:")
+                        && !k.starts_with("prop:")
+                    {
+                        self.needs_heading_numbering = true;
+                    }
                 }
-                if in_math {
-                    let _ = write!(self.out, "#ref(<{}>)", key);
-                } else {
-                    let _ = write!(self.out, "@{}", key);
-                }
+                let parts: Vec<String> = keys
+                    .iter()
+                    .map(|k| {
+                        if in_math {
+                            format!("#ref(<{}>)", k)
+                        } else {
+                            format!("@{}", k)
+                        }
+                    })
+                    .collect();
+                self.out.push_str(&parts.join(", "));
             }
         }
         // Typst labels include `-`, `.`, `:`, etc. If the source has
@@ -4828,9 +4854,6 @@ impl<'a> Emitter<'a> {
         // would form an identifier-continuation character.
         let end = node.end_byte();
         if let Some(&b) = self.src.as_bytes().get(end) {
-            // `-`, `_`, `:`, digit, and lowercase/uppercase letters all extend
-            // a Typst label identifier. `.` does NOT extend it, so we don't
-            // append a separator before a sentence-final period.
             if matches!(b, b'-' | b'_' | b':' | b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z') {
                 self.out.push(' ');
             }
@@ -5903,7 +5926,13 @@ fn extract_citation_keys(node: Node<'_>, src: &str) -> Vec<String> {
 /// plus the byte offset just past the closing `}` so callers can
 /// `skip_until` over the part of the source tree-sitter dropped when
 /// the key contains underscores (same bug as `extract_label_name`).
-fn extract_label_ref_key_and_end(node: Node<'_>, src: &str) -> Option<(String, usize)> {
+/// Extract the keys from a `label_reference` node (`\ref{x}`, `\cref{a,b}`)
+/// plus the byte offset just past the closing `}` so callers can
+/// `skip_until` over the part of the source tree-sitter dropped when
+/// the key contains underscores (same bug as `extract_label_name`).
+///
+/// Returns all comma-separated keys; single-key refs return a one-element Vec.
+fn extract_label_ref_keys_and_end(node: Node<'_>, src: &str) -> Option<(Vec<String>, usize)> {
     let bytes = src.as_bytes();
     let mut cursor = node.walk();
     let mut open: Option<usize> = None;
@@ -5930,7 +5959,13 @@ fn extract_label_ref_key_and_end(node: Node<'_>, src: &str) -> Option<(String, u
             b'}' => {
                 depth -= 1;
                 if depth == 0 {
-                    return Some((normalize_label_key(&src[start..i]), i + 1));
+                    let inner = &src[start..i];
+                    let keys: Vec<String> = inner
+                        .split(',')
+                        .map(|k| normalize_label_key(k.trim()))
+                        .filter(|k| !k.is_empty())
+                        .collect();
+                    return Some((keys, i + 1));
                 }
             }
             _ => {}

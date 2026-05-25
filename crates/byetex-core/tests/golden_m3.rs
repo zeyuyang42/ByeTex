@@ -1312,3 +1312,151 @@ fn m3_multi_label_in_single_math_env() {
         out.typst
     );
 }
+
+// ============== cref multi-key (Bug #45) ==============
+
+#[test]
+fn m3_cref_multi_key_emits_separate_refs() {
+    // Bug #45: `\cref{thm:SL,thm:S}` (the 2605.22159 first error after
+    // Bug #44 was fixed) was emitting `@thm:SL-thm:S` — the comma got
+    // rewritten to `-` by `sanitize_label_key`. Both keys must become
+    // separate refs joined by ", ".
+    let out = convert(
+        "See \\cref{thm:SL,thm:S}.\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        out.typst.contains("@thm:SL"),
+        "expected `@thm:SL` as a separate ref; got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("@thm:S"),
+        "expected `@thm:S` as a separate ref; got:\n{}",
+        out.typst
+    );
+    assert!(
+        !out.typst.contains("thm:SL-thm:S"),
+        "keys must NOT be joined with `-`; got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn m3_cref_multi_key_with_whitespace() {
+    // Keys with spaces around commas are trimmed: `\cref{a, b, c}` → `@a, @b, @c`.
+    let out = convert(
+        "See \\cref{a, b, c}.\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    for key in ["@a", "@b", "@c"] {
+        assert!(
+            out.typst.contains(key),
+            "expected `{}` in output; got:\n{}",
+            key,
+            out.typst
+        );
+    }
+    // Must not join them all into one broken identifier.
+    assert!(
+        !out.typst.contains("@a-b") && !out.typst.contains("@a,b"),
+        "keys must be separated, not fused; got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn m3_eqref_multi_key_wraps_in_one_paren_pair() {
+    // `\eqref{eqn:a,eqn:b}` → `(@eqn:a, @eqn:b)` — a single outer pair
+    // of parens wrapping the comma-separated list, matching LaTeX convention.
+    let out = convert(
+        "Eq. \\eqref{eqn:a,eqn:b} and \\eqref{eqn:c}.\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    // Both keys appear.
+    assert!(
+        out.typst.contains("@eqn:a") && out.typst.contains("@eqn:b"),
+        "expected both `@eqn:a` and `@eqn:b`; got:\n{}",
+        out.typst
+    );
+    // The multi-key list is wrapped in exactly one pair of parens.
+    assert!(
+        out.typst.contains("(@eqn:a") && out.typst.contains("@eqn:b)"),
+        "expected outer parens around multi-key eqref; got:\n{}",
+        out.typst
+    );
+    // Single-key eqref regression: `\eqref{eqn:c}` must still produce `(@eqn:c)`.
+    assert!(
+        out.typst.contains("(@eqn:c)"),
+        "single-key eqref regression: expected `(@eqn:c)`; got:\n{}",
+        out.typst
+    );
+    // needs_equation_numbering must be triggered by the eqn: prefix.
+    assert!(
+        out.typst.contains("numbering"),
+        "expected equation numbering preamble; got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn m3_cref_single_key_unchanged() {
+    // Regression: single-key `\cref{x}` must still emit exactly `@x`
+    // with no extra separators, parens, or joiner artefacts.
+    let out = convert(
+        "See \\cref{x}.\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        out.typst.contains("@x"),
+        "expected `@x`; got:\n{}",
+        out.typst
+    );
+    // No comma joiner artefact when there is only one key.
+    assert!(
+        !out.typst.contains("@x,"),
+        "single-key cref must not have trailing comma; got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn m3_cref_multi_key_with_underscore() {
+    // The brace-depth byte scanner must find the real `}` even when keys
+    // contain underscores (tree-sitter truncation path): `\cref{a_1,b_2}` →
+    // `@a_1, @b_2` (both keys, underscores preserved via sanitize_label_key).
+    let out = convert(
+        "See \\cref{a_1,b_2}.\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        out.typst.contains("@a_1"),
+        "expected `@a_1`; got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("@b_2"),
+        "expected `@b_2`; got:\n{}",
+        out.typst
+    );
+    assert!(
+        !out.typst.contains("a_1-b_2"),
+        "keys must not be joined with `-`; got:\n{}",
+        out.typst
+    );
+}
