@@ -402,6 +402,35 @@ fn m4_figure_without_includegraphics_uses_compileable_placeholder() {
 }
 
 #[test]
+fn m4_tabular_row_split_preserves_escape_sequences() {
+    // Bug #38 (fixed): the tabular emitter split rows on bare `\\`
+    // (single backslash char) — which also matched `\\$`, `\\_`,
+    // `\\*` etc. inside cell content. A `\\multicolumn{2}{c}{\\textbf{\\$10.23}}`
+    // would fragment at every escape, corrupting the multicolumn
+    // body to `*,\\n[$10.23\\*]` and breaking typst compile with
+    // "unclosed delimiter".
+    //
+    // The splitter now uses `split_math_rows` (which distinguishes
+    // `\\` followed by whitespace from `\\X` escape sequences),
+    // mirroring the matrix/cases fix from Bug #31.
+    let src = "\\begin{tabular}{cc}\na & \\multicolumn{2}{c}{\\textbf{\\$10.23}} \\\\\nb & c\n\\end{tabular}\n";
+    let out = convert(
+        src,
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    // The multicolumn cell body must contain the escaped dollar as
+    // one unit, not get fragmented.
+    assert!(
+        out.typst.contains("table.cell(colspan: 2)[*\\$10.23*]"),
+        "expected `table.cell(colspan: 2)[*\\$10.23*]` intact; got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
 fn m4_multicolumn_emits_complete_table_cell_expression() {
     // Bug #22 (fixed): `\multicolumn{N}{spec}{body}` used to emit
     // `table.cell(colspan: N)` with the body on a separate line —
