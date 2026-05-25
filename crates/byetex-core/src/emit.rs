@@ -537,6 +537,19 @@ impl<'a> Emitter<'a> {
             | "\\Biggl" | "\\bigr" | "\\Bigr" | "\\biggr" | "\\Biggr" | "\\bigm"
             | "\\Bigm" | "\\biggm" | "\\Biggm" | "\\big" | "\\Big" | "\\bigg"
             | "\\Bigg" => return node.end_byte(),
+            // tree-sitter-latex frequently mis-parses keys that
+            // contain `_` (e.g. inside `\ref{thm:UAP_general_dim}`)
+            // by truncating the curly_group, leaving an *orphan*
+            // closing brace as an `ERROR` node — which then leaks
+            // into the output as a stray `}` and either breaks the
+            // surrounding markdown (Bug #35 in 2605.22557) or
+            // produces stray label/ref attachment. Drop ERROR nodes
+            // that are just a single brace.
+            "ERROR" if {
+                let text = &self.src[node.start_byte()..node.end_byte()];
+                let trimmed = text.trim();
+                trimmed == "{" || trimmed == "}"
+            } => return node.end_byte(),
             // `\left( ... \right)` in math: tree-sitter packages the whole
             // span as a single `math_delimiter` with `left_command`,
             // `left_delimiter`, body, `right_command`, `right_delimiter`
@@ -4881,7 +4894,18 @@ impl<'a> Emitter<'a> {
                 k if k.starts_with('\\') && k.ends_with('*') => starred = true,
                 k if k.starts_with('\\') => {}
                 "curly_group" if title.is_empty() => {
-                    title = self.render_curly_group_content(*child);
+                    // Bug #35: section titles that span multiple source
+                    // lines (e.g. `\section{Foo bar\nbaz}`) used to emit
+                    // a heading where only the first line started with
+                    // `= `; the continuation became a plain paragraph
+                    // followed by `<label>` attached to *text* rather
+                    // than the heading. Typst then aborted with
+                    // `cannot reference text` on any `@label` to that
+                    // section. Collapse internal whitespace runs
+                    // (including newlines) to a single space so the
+                    // entire title sits on one line.
+                    let raw = self.render_curly_group_content(*child);
+                    title = collapse_inline_whitespace(&raw);
                 }
                 "brack_group" => {
                     // Optional short-title arg, e.g. \section[Short]{Long}. Ignore.
@@ -4889,9 +4913,82 @@ impl<'a> Emitter<'a> {
                 "label_definition" if label.is_none() => {
                     label = extract_label_name(*child, self.src);
                 }
+                // Bug #35: tree-sitter mis-parses curly groups whose
+                // key contains `_` (e.g. `\ref{thm:UAP_general_dim}`
+                // inside the title), leaving an orphan `}` as an
+                // ERROR child between the title and the label. Skip
+                // these so the title-extraction loop reaches the
+                // `\label{...}` that follows.
+                "ERROR" => {
+                    let text = self.src[child.start_byte()..child.end_byte()].trim();
+                    if text == "{" || text == "}" || text.is_empty() {
+                        // Skip silently; orphan brace from mis-parse.
+                    } else {
+                        body_start_idx = i;
+                        break;
+                    }
+                }
                 _ => {
                     body_start_idx = i;
                     break;
+                }
+            }
+        }
+
+        // Bug #35 (sibling-label fallback): tree-sitter sometimes
+        // truncates a curly group containing `_` (e.g.
+        // `\ref{thm:UAP_general_dim}` inside the title) and the
+        // section node ends prematurely. The associated `\label{...}`
+        // then sits as a sibling of the section rather than a child,
+        // and our AST-child-only sweep above doesn't find it. Source-
+        // byte peek for `\label{...}` immediately after this section
+        // node's end so the label attaches to the heading.
+        if label.is_none() {
+            let bytes = self.src.as_bytes();
+            let mut i = node.end_byte();
+            // Skip whitespace and stray closing braces (the ERROR
+            // `}` left behind by the truncated curly group).
+            while i < bytes.len()
+                && (bytes[i].is_ascii_whitespace() || bytes[i] == b'}')
+            {
+                i += 1;
+            }
+            const LABEL_TAG: &[u8] = b"\\label";
+            if bytes.len().saturating_sub(i) >= LABEL_TAG.len()
+                && &bytes[i..i + LABEL_TAG.len()] == LABEL_TAG
+            {
+                let mut k = i + LABEL_TAG.len();
+                while k < bytes.len() && bytes[k].is_ascii_whitespace() {
+                    k += 1;
+                }
+                if k < bytes.len() && bytes[k] == b'{' {
+                    let key_start = k + 1;
+                    let mut j = key_start;
+                    let mut depth = 1i32;
+                    while j < bytes.len() {
+                        match bytes[j] {
+                            b'\\' if j + 1 < bytes.len() => {
+                                j += 2;
+                                continue;
+                            }
+                            b'{' => depth += 1,
+                            b'}' => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    break;
+                                }
+                            }
+                            _ => {}
+                        }
+                        j += 1;
+                    }
+                    if j < bytes.len() && bytes[j] == b'}' {
+                        let key = self.src[key_start..j].trim().to_string();
+                        if !key.is_empty() {
+                            label = Some(key);
+                            self.skip_until = self.skip_until.max(j + 1);
+                        }
+                    }
                 }
             }
         }
@@ -5459,6 +5556,30 @@ fn parse_column_spec(spec: &str) -> (usize, Vec<String>) {
 /// otherwise Typst complains about an unclosed delimiter on the *other* one.
 /// Balanced pairs are left untouched. Pre-existing backslash escapes are
 /// skipped so we never double-escape.
+/// Collapse runs of whitespace (spaces, tabs, newlines) in `s` to a
+/// single space and trim leading/trailing whitespace. Used to keep
+/// content like heading titles on a single line so Typst's
+/// reference-target detection works.
+fn collapse_inline_whitespace(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut last_was_space = true; // skip leading whitespace
+    for c in s.chars() {
+        if c.is_whitespace() {
+            if !last_was_space {
+                out.push(' ');
+                last_was_space = true;
+            }
+        } else {
+            out.push(c);
+            last_was_space = false;
+        }
+    }
+    while out.ends_with(' ') {
+        out.pop();
+    }
+    out
+}
+
 /// Split a rendered math body into row segments at every `\\`
 /// row-break. The row-break is the single backslash char that
 /// `emit_math_command`'s `\\` arm writes (optionally followed by a
