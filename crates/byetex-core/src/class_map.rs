@@ -269,10 +269,16 @@ fn ieee_show_call(title: &str, authors: &[Author], abstract_: &str, keywords: &s
         s.push_str(&format!("name: [{}]", content_escape(a.name.as_content())));
         if let Some(aff) = &a.affiliation {
             if let Some(dept) = &aff.department {
-                s.push_str(&format!(", department: [{}]", content_escape(dept.as_content())));
+                s.push_str(&format!(
+                    ", department: [{}]",
+                    content_escape(dept.as_content())
+                ));
             }
             if let Some(inst) = &aff.institution {
-                s.push_str(&format!(", organization: [{}]", content_escape(inst.as_content())));
+                s.push_str(&format!(
+                    ", organization: [{}]",
+                    content_escape(inst.as_content())
+                ));
             }
             let loc = match (&aff.city, &aff.country) {
                 (Some(c), Some(co)) => Some(format!("{}, {}", c, co)),

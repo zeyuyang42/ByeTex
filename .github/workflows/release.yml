@@ -50,19 +50,19 @@ jobs:
           echo "CC_aarch64_unknown_linux_musl=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
 
       - name: Build release binary
-        run: cargo build -p bytetex-cli --release --target ${{ matrix.target }} --features mcp
+        run: cargo build -p byetex-cli --release --target ${{ matrix.target }} --features mcp
 
       - name: Stage artifact
         shell: bash
         run: |
           mkdir -p dist
-          NAME="bytetex-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          NAME="byetex-${GITHUB_REF_NAME}-${{ matrix.target }}"
           STAGE="dist/${NAME}"
           mkdir -p "${STAGE}"
           if [[ "${{ matrix.target }}" == *windows* ]]; then
-            cp "target/${{ matrix.target }}/release/bytetex.exe" "${STAGE}/"
+            cp "target/${{ matrix.target }}/release/byetex.exe" "${STAGE}/"
           else
-            cp "target/${{ matrix.target }}/release/bytetex" "${STAGE}/"
+            cp "target/${{ matrix.target }}/release/byetex" "${STAGE}/"
           fi
           cp -r skills "${STAGE}/"
           cp README.md "${STAGE}/" 2>/dev/null || true
@@ -79,8 +79,8 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: bytetex-${{ matrix.target }}
-          path: dist/bytetex-*.{tar.gz,zip}
+          name: byetex-${{ matrix.target }}
+          path: dist/byetex-*.{tar.gz,zip}
           if-no-files-found: ignore
 
   release:
@@ -97,18 +97,18 @@ jobs:
 
       - name: Flatten artifact dirs
         run: |
-          find dist -name 'bytetex-*.tar.gz' -exec cp {} dist/ \;
-          find dist -name 'bytetex-*.zip' -exec cp {} dist/ \;
+          find dist -name 'byetex-*.tar.gz' -exec cp {} dist/ \;
+          find dist -name 'byetex-*.zip' -exec cp {} dist/ \;
           ls -la dist/
 
       - name: Generate checksums
-        run: cd dist && sha256sum bytetex-*.tar.gz bytetex-*.zip > SHA256SUMS 2>/dev/null || true
+        run: cd dist && sha256sum byetex-*.tar.gz byetex-*.zip > SHA256SUMS 2>/dev/null || true
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/bytetex-*.tar.gz
-            dist/bytetex-*.zip
+            dist/byetex-*.tar.gz
+            dist/byetex-*.zip
             dist/SHA256SUMS
           generate_release_notes: true

@@ -9,7 +9,7 @@
 //! Negative tests at the bottom lock in the deliberate "stays silent" design
 //! for pure-spacing commands.
 
-use byetex_core::{warnings::Category, convert, ConvertOptions};
+use byetex_core::{convert, warnings::Category, ConvertOptions};
 
 fn convert_str(src: &str) -> byetex_core::ConvertOutput {
     convert(src, &ConvertOptions::default())
@@ -41,7 +41,8 @@ fn drop_only_not_math() {
     let names = drop_only_names(&out);
     assert!(
         names.contains(&"\\not"),
-        "expected DropOnly {{\\not}}, warnings: {:?}", out.warnings
+        "expected DropOnly {{\\not}}, warnings: {:?}",
+        out.warnings
     );
 }
 
@@ -51,7 +52,8 @@ fn drop_only_displaystyle_math() {
     let names = drop_only_names(&out);
     assert!(
         names.contains(&"\\displaystyle"),
-        "expected DropOnly {{\\displaystyle}}, warnings: {:?}", out.warnings
+        "expected DropOnly {{\\displaystyle}}, warnings: {:?}",
+        out.warnings
     );
 }
 
@@ -59,14 +61,22 @@ fn drop_only_displaystyle_math() {
 fn drop_only_textstyle_math() {
     let out = convert_str(r"$\textstyle x$");
     let names = drop_only_names(&out);
-    assert!(names.contains(&"\\textstyle"), "warnings: {:?}", out.warnings);
+    assert!(
+        names.contains(&"\\textstyle"),
+        "warnings: {:?}",
+        out.warnings
+    );
 }
 
 #[test]
 fn drop_only_scriptstyle_math() {
     let out = convert_str(r"$\scriptstyle x$");
     let names = drop_only_names(&out);
-    assert!(names.contains(&"\\scriptstyle"), "warnings: {:?}", out.warnings);
+    assert!(
+        names.contains(&"\\scriptstyle"),
+        "warnings: {:?}",
+        out.warnings
+    );
 }
 
 // ── Page breaks ──────────────────────────────────────────────────────────────
@@ -84,7 +94,11 @@ fn drop_only_newpage() {
 fn drop_only_clearpage() {
     let out = convert_str("A\\clearpage B");
     let names = drop_only_names(&out);
-    assert!(names.contains(&"\\clearpage"), "warnings: {:?}", out.warnings);
+    assert!(
+        names.contains(&"\\clearpage"),
+        "warnings: {:?}",
+        out.warnings
+    );
 }
 
 // ── Alignment directives ──────────────────────────────────────────────────────
@@ -93,14 +107,22 @@ fn drop_only_clearpage() {
 fn drop_only_centering() {
     let out = convert_str("\\centering Hello");
     let names = drop_only_names(&out);
-    assert!(names.contains(&"\\centering"), "warnings: {:?}", out.warnings);
+    assert!(
+        names.contains(&"\\centering"),
+        "warnings: {:?}",
+        out.warnings
+    );
 }
 
 #[test]
 fn drop_only_raggedright() {
     let out = convert_str("\\raggedright Text");
     let names = drop_only_names(&out);
-    assert!(names.contains(&"\\raggedright"), "warnings: {:?}", out.warnings);
+    assert!(
+        names.contains(&"\\raggedright"),
+        "warnings: {:?}",
+        out.warnings
+    );
 }
 
 // ── Macro redefinitions ───────────────────────────────────────────────────────
@@ -119,7 +141,8 @@ fn drop_only_tableofcontents() {
     let names = drop_only_names(&out);
     assert!(
         names.contains(&"\\tableofcontents"),
-        "warnings: {:?}", out.warnings
+        "warnings: {:?}",
+        out.warnings
     );
 }
 
@@ -129,7 +152,8 @@ fn drop_only_printbibliography() {
     let names = drop_only_names(&out);
     assert!(
         names.contains(&"\\printbibliography"),
-        "warnings: {:?}", out.warnings
+        "warnings: {:?}",
+        out.warnings
     );
 }
 
@@ -141,7 +165,8 @@ fn drop_only_acm_conference() {
     let names = drop_only_names(&out);
     assert!(
         names.contains(&"\\acmConference"),
-        "warnings: {:?}", out.warnings
+        "warnings: {:?}",
+        out.warnings
     );
 }
 
@@ -151,7 +176,8 @@ fn drop_only_affiliation() {
     let names = drop_only_names(&out);
     assert!(
         names.contains(&"\\affiliation"),
-        "warnings: {:?}", out.warnings
+        "warnings: {:?}",
+        out.warnings
     );
 }
 
@@ -163,7 +189,8 @@ fn no_drop_only_for_spacing_hspace() {
     let names = drop_only_names(&out);
     assert!(
         !names.contains(&"\\hspace"),
-        "\\hspace should not produce a DropOnly warning, but got: {:?}", out.warnings
+        "\\hspace should not produce a DropOnly warning, but got: {:?}",
+        out.warnings
     );
 }
 
@@ -173,7 +200,8 @@ fn no_drop_only_for_spacing_thinspace() {
     let names = drop_only_names(&out);
     assert!(
         names.is_empty(),
-        "\\, should not produce warnings, but got: {:?}", out.warnings
+        "\\, should not produce warnings, but got: {:?}",
+        out.warnings
     );
 }
 
@@ -183,7 +211,8 @@ fn no_drop_only_for_linebreak() {
     let names = drop_only_names(&out);
     assert!(
         !names.contains(&"\\linebreak"),
-        "\\linebreak should not produce a DropOnly warning, got: {:?}", out.warnings
+        "\\linebreak should not produce a DropOnly warning, got: {:?}",
+        out.warnings
     );
 }
 
@@ -193,6 +222,7 @@ fn no_drop_only_for_math_spacing() {
     let names = drop_only_names(&out);
     assert!(
         !names.contains(&"\\!"),
-        "\\! should not produce a DropOnly warning, got: {:?}", out.warnings
+        "\\! should not produce a DropOnly warning, got: {:?}",
+        out.warnings
     );
 }

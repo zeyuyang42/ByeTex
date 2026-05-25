@@ -296,9 +296,7 @@ impl<'a> Emitter<'a> {
                             }
                         }
                         Some("\\DeclareMathOperator") | Some("\\DeclareMathOperator*") => {
-                            let starred = cmd_token
-                                .as_deref()
-                                .map_or(false, |s| s.ends_with('*'));
+                            let starred = cmd_token.as_deref().map_or(false, |s| s.ends_with('*'));
                             if let Some((name, def)) =
                                 extract_declare_math_operator_from_newcmd(n, self.src, starred)
                             {
@@ -340,13 +338,13 @@ impl<'a> Emitter<'a> {
                         if let Some(seeds) = crate::package_macros::package_macros(&pkg) {
                             for (macro_name, seed) in seeds {
                                 if lookup_math_symbol(macro_name).is_none() {
-                                    self.macros
-                                        .entry(macro_name.to_string())
-                                        .or_insert_with(|| MacroDef {
+                                    self.macros.entry(macro_name.to_string()).or_insert_with(
+                                        || MacroDef {
                                             params: seed.params,
                                             body: seed.body.to_string(),
                                             optional_defaults: HashMap::new(),
-                                        });
+                                        },
+                                    );
                                 }
                             }
                         }
@@ -449,12 +447,7 @@ impl<'a> Emitter<'a> {
     /// stays inline because it merges several additional fields
     /// (metadata, raw_authors, detected_class, needs_*_numbering)
     /// that aren't part of the common pattern.
-    fn render_in_sub_emitter(
-        &mut self,
-        src: &str,
-        in_math: bool,
-        increment_depth: bool,
-    ) -> String {
+    fn render_in_sub_emitter(&mut self, src: &str, in_math: bool, increment_depth: bool) -> String {
         let tree = crate::parser::parse(src);
         let visited = std::mem::take(&mut self.visited_includes);
         let macros = self.macros.clone();
@@ -533,10 +526,9 @@ impl<'a> Emitter<'a> {
             // partner) or when the enclosing math span ended up as an
             // ERROR node, the raw `\left` token leaks through. Drop it
             // silently; Typst auto-pairs the bare delimiter that follows.
-            "\\left" | "\\right" | "\\middle" | "\\bigl" | "\\Bigl" | "\\biggl"
-            | "\\Biggl" | "\\bigr" | "\\Bigr" | "\\biggr" | "\\Biggr" | "\\bigm"
-            | "\\Bigm" | "\\biggm" | "\\Biggm" | "\\big" | "\\Big" | "\\bigg"
-            | "\\Bigg" => return node.end_byte(),
+            "\\left" | "\\right" | "\\middle" | "\\bigl" | "\\Bigl" | "\\biggl" | "\\Biggl"
+            | "\\bigr" | "\\Bigr" | "\\biggr" | "\\Biggr" | "\\bigm" | "\\Bigm" | "\\biggm"
+            | "\\Biggm" | "\\big" | "\\Big" | "\\bigg" | "\\Bigg" => return node.end_byte(),
             // tree-sitter-latex frequently mis-parses keys that
             // contain `_` (e.g. inside `\ref{thm:UAP_general_dim}`)
             // by truncating the curly_group, leaving an *orphan*
@@ -545,11 +537,15 @@ impl<'a> Emitter<'a> {
             // surrounding markdown (Bug #35 in 2605.22557) or
             // produces stray label/ref attachment. Drop ERROR nodes
             // that are just a single brace.
-            "ERROR" if {
-                let text = &self.src[node.start_byte()..node.end_byte()];
-                let trimmed = text.trim();
-                trimmed == "{" || trimmed == "}"
-            } => return node.end_byte(),
+            "ERROR"
+                if {
+                    let text = &self.src[node.start_byte()..node.end_byte()];
+                    let trimmed = text.trim();
+                    trimmed == "{" || trimmed == "}"
+                } =>
+            {
+                return node.end_byte()
+            }
             // `\left( ... \right)` in math: tree-sitter packages the whole
             // span as a single `math_delimiter` with `left_command`,
             // `left_delimiter`, body, `right_command`, `right_delimiter`
@@ -628,7 +624,9 @@ impl<'a> Emitter<'a> {
             // tree-sitter-latex sometimes appends trailing punctuation (`.`, `!`,
             // `?`) to the word token (e.g. `dt.` is one node, not `dt` + `.`).
             // Split at the first non-alphabetic char to get the identifier prefix.
-            let alpha_end = text.find(|c: char| !c.is_ascii_alphabetic()).unwrap_or(text.len());
+            let alpha_end = text
+                .find(|c: char| !c.is_ascii_alphabetic())
+                .unwrap_or(text.len());
             let alpha = &text[..alpha_end];
             let tail = &text[alpha_end..];
             // Guard: keep the preceding identifier from fusing with this word's
@@ -871,9 +869,7 @@ impl<'a> Emitter<'a> {
                 Some("\\providecommand") | Some("\\providecommand*") => {
                     // \providecommand: no-op if already defined or is a built-in.
                     if let Some((name, def)) = extract_newcommand(node, self.src) {
-                        if !self.macros.contains_key(&name)
-                            && lookup_math_symbol(&name).is_none()
-                        {
+                        if !self.macros.contains_key(&name) && lookup_math_symbol(&name).is_none() {
                             self.macros.insert(name, def);
                         }
                     }
@@ -937,14 +933,8 @@ impl<'a> Emitter<'a> {
             // The opening `{` and closing `}` need to land in the output
             // so Typst sees a balanced group. Emit them around the
             // scope-aware walk of the inner nodes.
-            let start_skip = usize::from(matches!(
-                children.first().map(|n| n.kind()),
-                Some("{")
-            ));
-            let end_skip = usize::from(matches!(
-                children.last().map(|n| n.kind()),
-                Some("}")
-            ));
+            let start_skip = usize::from(matches!(children.first().map(|n| n.kind()), Some("{")));
+            let end_skip = usize::from(matches!(children.last().map(|n| n.kind()), Some("}")));
             let inner_len = children.len().saturating_sub(start_skip + end_skip);
             if start_skip == 1 {
                 self.out.push('{');
@@ -2768,7 +2758,9 @@ impl<'a> Emitter<'a> {
                 }
             }
         }
-        let [name_range, display_range] = groups.as_slice() else { return };
+        let [name_range, display_range] = groups.as_slice() else {
+            return;
+        };
         let name = self.src[name_range.0..name_range.1]
             .trim_matches(|c: char| c == '{' || c == '}')
             .trim()
@@ -3221,8 +3213,8 @@ impl<'a> Emitter<'a> {
             // the same upright-quoted text (the style attribute is lost
             // — partial render).
             "\\text" | "\\mathrm" | "\\textrm" | "\\mathnormal" | "\\mbox" | "\\hbox"
-            | "\\textnormal" | "\\texttt" | "\\textbf" | "\\textup" | "\\textit"
-            | "\\textsc" | "\\textsl" => self.emit_math_text_call(node),
+            | "\\textnormal" | "\\texttt" | "\\textbf" | "\\textup" | "\\textit" | "\\textsc"
+            | "\\textsl" => self.emit_math_text_call(node),
             // `\smash[t/b]{X}`, `\raisebox{offset}{X}`, `\scalebox{factor}{X}`
             // — layout/positioning primitives with no Typst equivalent for
             // the offset, but the inner content should still render. Drop
@@ -3293,20 +3285,29 @@ impl<'a> Emitter<'a> {
             // Their arguments are AST siblings that get emitted by the
             // normal walker. Without this drop, every body that uses
             // TeX conditionals warns once per primitive token.
-            "\\relax" | "\\expandafter" | "\\fi" | "\\else" | "\\ifx" | "\\if"
-            | "\\ifdim" | "\\ifnum" | "\\ifdefined" | "\\ifcsname" | "\\ifpdf"
-            | "\\ifxetex" | "\\ifluatex" | "\\detokenize" | "\\noexpand"
-            | "\\unexpanded" | "\\csname" | "\\endcsname" | "\\protect"
-            | "\\equal" => node.end_byte(),
+            "\\relax" | "\\expandafter" | "\\fi" | "\\else" | "\\ifx" | "\\if" | "\\ifdim"
+            | "\\ifnum" | "\\ifdefined" | "\\ifcsname" | "\\ifpdf" | "\\ifxetex" | "\\ifluatex"
+            | "\\detokenize" | "\\noexpand" | "\\unexpanded" | "\\csname" | "\\endcsname"
+            | "\\protect" | "\\equal" => node.end_byte(),
             // `\xrightarrow[below]{above}` — extensible right arrow with
             // optional labels. Typst's `arrow.r` is the base symbol;
             // attaching labels needs `attach(arrow.r, t: ..., b: ...)`.
             // Render with labels when present; fall back to bare arrow
             // when not.
-            "\\xrightarrow" | "\\xleftarrow" | "\\xLeftarrow" | "\\xRightarrow"
-            | "\\xLeftrightarrow" | "\\xleftrightarrow" | "\\xmapsto" | "\\xhookleftarrow"
-            | "\\xhookrightarrow" | "\\xtwoheadleftarrow" | "\\xtwoheadrightarrow"
-            | "\\xleftharpoondown" | "\\xleftharpoonup" | "\\xrightharpoondown"
+            "\\xrightarrow"
+            | "\\xleftarrow"
+            | "\\xLeftarrow"
+            | "\\xRightarrow"
+            | "\\xLeftrightarrow"
+            | "\\xleftrightarrow"
+            | "\\xmapsto"
+            | "\\xhookleftarrow"
+            | "\\xhookrightarrow"
+            | "\\xtwoheadleftarrow"
+            | "\\xtwoheadrightarrow"
+            | "\\xleftharpoondown"
+            | "\\xleftharpoonup"
+            | "\\xrightharpoondown"
             | "\\xrightharpoonup" => self.emit_math_extensible_arrow(node, n),
             // `\substack{a\\b\\c}` — multi-line subscript content used
             // inside `\sum_{...}` / `\max_{...}` etc. Render the lines
@@ -3548,8 +3549,7 @@ impl<'a> Emitter<'a> {
             .children(&mut cursor)
             .filter(|c| c.kind() == "curly_group")
             .collect();
-        let mut rendered: Vec<String> =
-            groups.iter().map(|g| self.render_math_group(*g)).collect();
+        let mut rendered: Vec<String> = groups.iter().map(|g| self.render_math_group(*g)).collect();
         let mut consumed_end = node.end_byte();
         while rendered.len() < 2 {
             match try_consume_math_arg(self.src, consumed_end) {
@@ -3567,7 +3567,12 @@ impl<'a> Emitter<'a> {
         if consumed_end > node.end_byte() {
             self.skip_until = self.skip_until.max(consumed_end);
         }
-        let _ = write!(self.out, "({}) / ({})", rendered[0].trim(), rendered[1].trim());
+        let _ = write!(
+            self.out,
+            "({}) / ({})",
+            rendered[0].trim(),
+            rendered[1].trim()
+        );
         consumed_end
     }
 
@@ -3924,12 +3929,22 @@ impl<'a> Emitter<'a> {
                 "brack_group" if below.is_none() => {
                     let inner_start = child.start_byte() + 1;
                     let inner_end = child.end_byte().saturating_sub(1);
-                    below = Some(self.src.get(inner_start..inner_end).unwrap_or("").to_string());
+                    below = Some(
+                        self.src
+                            .get(inner_start..inner_end)
+                            .unwrap_or("")
+                            .to_string(),
+                    );
                 }
                 "curly_group" if above.is_none() => {
                     let inner_start = child.start_byte() + 1;
                     let inner_end = child.end_byte().saturating_sub(1);
-                    above = Some(self.src.get(inner_start..inner_end).unwrap_or("").to_string());
+                    above = Some(
+                        self.src
+                            .get(inner_start..inner_end)
+                            .unwrap_or("")
+                            .to_string(),
+                    );
                 }
                 _ => {}
             }
@@ -4060,8 +4075,7 @@ impl<'a> Emitter<'a> {
             .children(&mut cursor)
             .filter(|c| c.kind() == "curly_group")
             .collect();
-        let mut rendered: Vec<String> =
-            groups.iter().map(|g| self.render_math_group(*g)).collect();
+        let mut rendered: Vec<String> = groups.iter().map(|g| self.render_math_group(*g)).collect();
         let mut consumed_end = node.end_byte();
         while rendered.len() < 2 {
             match try_consume_math_arg(self.src, consumed_end) {
@@ -4080,7 +4094,12 @@ impl<'a> Emitter<'a> {
             self.skip_until = self.skip_until.max(consumed_end);
         }
         self.ensure_math_letter_boundary("binom(");
-        let _ = write!(self.out, "binom({}, {})", rendered[0].trim(), rendered[1].trim());
+        let _ = write!(
+            self.out,
+            "binom({}, {})",
+            rendered[0].trim(),
+            rendered[1].trim()
+        );
         consumed_end
     }
 
@@ -4538,8 +4557,7 @@ impl<'a> Emitter<'a> {
                     reason: "\\bibliography{...}: no listed file resolved on disk".to_string(),
                 },
                 severity: Severity::Warning,
-                message: "all bibliography paths missing; #bibliography call dropped"
-                    .to_string(),
+                message: "all bibliography paths missing; #bibliography call dropped".to_string(),
                 snippet: self.src[node.start_byte()..node.end_byte()].to_string(),
                 suggested_skill: None,
             });
@@ -4992,9 +5010,7 @@ impl<'a> Emitter<'a> {
             let mut i = node.end_byte();
             // Skip whitespace and stray closing braces (the ERROR
             // `}` left behind by the truncated curly group).
-            while i < bytes.len()
-                && (bytes[i].is_ascii_whitespace() || bytes[i] == b'}')
-            {
+            while i < bytes.len() && (bytes[i].is_ascii_whitespace() || bytes[i] == b'}') {
                 i += 1;
             }
             const LABEL_TAG: &[u8] = b"\\label";
@@ -5329,52 +5345,94 @@ fn needs_empty_base(out: &str) -> bool {
 fn apply_text_accent(accent: char, letter: char) -> String {
     let precomposed: Option<char> = match (accent, letter) {
         // Acute (')
-        ('\'', 'a') => Some('á'), ('\'', 'A') => Some('Á'),
-        ('\'', 'e') => Some('é'), ('\'', 'E') => Some('É'),
-        ('\'', 'i') => Some('í'), ('\'', 'I') => Some('Í'),
-        ('\'', 'o') => Some('ó'), ('\'', 'O') => Some('Ó'),
-        ('\'', 'u') => Some('ú'), ('\'', 'U') => Some('Ú'),
-        ('\'', 'y') => Some('ý'), ('\'', 'Y') => Some('Ý'),
-        ('\'', 'n') => Some('ń'), ('\'', 'N') => Some('Ń'),
-        ('\'', 'c') => Some('ć'), ('\'', 'C') => Some('Ć'),
-        ('\'', 's') => Some('ś'), ('\'', 'S') => Some('Ś'),
-        ('\'', 'z') => Some('ź'), ('\'', 'Z') => Some('Ź'),
-        ('\'', 'l') => Some('ĺ'), ('\'', 'L') => Some('Ĺ'),
-        ('\'', 'r') => Some('ŕ'), ('\'', 'R') => Some('Ŕ'),
+        ('\'', 'a') => Some('á'),
+        ('\'', 'A') => Some('Á'),
+        ('\'', 'e') => Some('é'),
+        ('\'', 'E') => Some('É'),
+        ('\'', 'i') => Some('í'),
+        ('\'', 'I') => Some('Í'),
+        ('\'', 'o') => Some('ó'),
+        ('\'', 'O') => Some('Ó'),
+        ('\'', 'u') => Some('ú'),
+        ('\'', 'U') => Some('Ú'),
+        ('\'', 'y') => Some('ý'),
+        ('\'', 'Y') => Some('Ý'),
+        ('\'', 'n') => Some('ń'),
+        ('\'', 'N') => Some('Ń'),
+        ('\'', 'c') => Some('ć'),
+        ('\'', 'C') => Some('Ć'),
+        ('\'', 's') => Some('ś'),
+        ('\'', 'S') => Some('Ś'),
+        ('\'', 'z') => Some('ź'),
+        ('\'', 'Z') => Some('Ź'),
+        ('\'', 'l') => Some('ĺ'),
+        ('\'', 'L') => Some('Ĺ'),
+        ('\'', 'r') => Some('ŕ'),
+        ('\'', 'R') => Some('Ŕ'),
         // Grave (`)
-        ('`', 'a') => Some('à'), ('`', 'A') => Some('À'),
-        ('`', 'e') => Some('è'), ('`', 'E') => Some('È'),
-        ('`', 'i') => Some('ì'), ('`', 'I') => Some('Ì'),
-        ('`', 'o') => Some('ò'), ('`', 'O') => Some('Ò'),
-        ('`', 'u') => Some('ù'), ('`', 'U') => Some('Ù'),
-        ('`', 'n') => Some('ǹ'), ('`', 'N') => Some('Ǹ'),
+        ('`', 'a') => Some('à'),
+        ('`', 'A') => Some('À'),
+        ('`', 'e') => Some('è'),
+        ('`', 'E') => Some('È'),
+        ('`', 'i') => Some('ì'),
+        ('`', 'I') => Some('Ì'),
+        ('`', 'o') => Some('ò'),
+        ('`', 'O') => Some('Ò'),
+        ('`', 'u') => Some('ù'),
+        ('`', 'U') => Some('Ù'),
+        ('`', 'n') => Some('ǹ'),
+        ('`', 'N') => Some('Ǹ'),
         // Diaeresis (")
-        ('"', 'a') => Some('ä'), ('"', 'A') => Some('Ä'),
-        ('"', 'e') => Some('ë'), ('"', 'E') => Some('Ë'),
-        ('"', 'i') => Some('ï'), ('"', 'I') => Some('Ï'),
-        ('"', 'o') => Some('ö'), ('"', 'O') => Some('Ö'),
-        ('"', 'u') => Some('ü'), ('"', 'U') => Some('Ü'),
-        ('"', 'y') => Some('ÿ'), ('"', 'Y') => Some('Ÿ'),
+        ('"', 'a') => Some('ä'),
+        ('"', 'A') => Some('Ä'),
+        ('"', 'e') => Some('ë'),
+        ('"', 'E') => Some('Ë'),
+        ('"', 'i') => Some('ï'),
+        ('"', 'I') => Some('Ï'),
+        ('"', 'o') => Some('ö'),
+        ('"', 'O') => Some('Ö'),
+        ('"', 'u') => Some('ü'),
+        ('"', 'U') => Some('Ü'),
+        ('"', 'y') => Some('ÿ'),
+        ('"', 'Y') => Some('Ÿ'),
         // Circumflex (^)
-        ('^', 'a') => Some('â'), ('^', 'A') => Some('Â'),
-        ('^', 'e') => Some('ê'), ('^', 'E') => Some('Ê'),
-        ('^', 'i') => Some('î'), ('^', 'I') => Some('Î'),
-        ('^', 'o') => Some('ô'), ('^', 'O') => Some('Ô'),
-        ('^', 'u') => Some('û'), ('^', 'U') => Some('Û'),
-        ('^', 'c') => Some('ĉ'), ('^', 'C') => Some('Ĉ'),
-        ('^', 'g') => Some('ĝ'), ('^', 'G') => Some('Ĝ'),
-        ('^', 'h') => Some('ĥ'), ('^', 'H') => Some('Ĥ'),
-        ('^', 'j') => Some('ĵ'), ('^', 'J') => Some('Ĵ'),
-        ('^', 's') => Some('ŝ'), ('^', 'S') => Some('Ŝ'),
-        ('^', 'w') => Some('ŵ'), ('^', 'W') => Some('Ŵ'),
-        ('^', 'y') => Some('ŷ'), ('^', 'Y') => Some('Ŷ'),
+        ('^', 'a') => Some('â'),
+        ('^', 'A') => Some('Â'),
+        ('^', 'e') => Some('ê'),
+        ('^', 'E') => Some('Ê'),
+        ('^', 'i') => Some('î'),
+        ('^', 'I') => Some('Î'),
+        ('^', 'o') => Some('ô'),
+        ('^', 'O') => Some('Ô'),
+        ('^', 'u') => Some('û'),
+        ('^', 'U') => Some('Û'),
+        ('^', 'c') => Some('ĉ'),
+        ('^', 'C') => Some('Ĉ'),
+        ('^', 'g') => Some('ĝ'),
+        ('^', 'G') => Some('Ĝ'),
+        ('^', 'h') => Some('ĥ'),
+        ('^', 'H') => Some('Ĥ'),
+        ('^', 'j') => Some('ĵ'),
+        ('^', 'J') => Some('Ĵ'),
+        ('^', 's') => Some('ŝ'),
+        ('^', 'S') => Some('Ŝ'),
+        ('^', 'w') => Some('ŵ'),
+        ('^', 'W') => Some('Ŵ'),
+        ('^', 'y') => Some('ŷ'),
+        ('^', 'Y') => Some('Ŷ'),
         // Tilde (~)
-        ('~', 'a') => Some('ã'), ('~', 'A') => Some('Ã'),
-        ('~', 'e') => Some('ẽ'), ('~', 'E') => Some('Ẽ'),
-        ('~', 'i') => Some('ĩ'), ('~', 'I') => Some('Ĩ'),
-        ('~', 'n') => Some('ñ'), ('~', 'N') => Some('Ñ'),
-        ('~', 'o') => Some('õ'), ('~', 'O') => Some('Õ'),
-        ('~', 'u') => Some('ũ'), ('~', 'U') => Some('Ũ'),
+        ('~', 'a') => Some('ã'),
+        ('~', 'A') => Some('Ã'),
+        ('~', 'e') => Some('ẽ'),
+        ('~', 'E') => Some('Ẽ'),
+        ('~', 'i') => Some('ĩ'),
+        ('~', 'I') => Some('Ĩ'),
+        ('~', 'n') => Some('ñ'),
+        ('~', 'N') => Some('Ñ'),
+        ('~', 'o') => Some('õ'),
+        ('~', 'O') => Some('Õ'),
+        ('~', 'u') => Some('ũ'),
+        ('~', 'U') => Some('Ũ'),
         _ => None,
     };
     if let Some(c) = precomposed {
@@ -5651,9 +5709,7 @@ fn split_math_rows(body: &str) -> Vec<&str> {
                 // Skip the `\` and any following whitespace so the
                 // next row segment doesn't start with stray whitespace.
                 i += 1;
-                while i < bytes.len()
-                    && matches!(bytes[i], b' ' | b'\t' | b'\n' | b'\r')
-                {
+                while i < bytes.len() && matches!(bytes[i], b' ' | b'\t' | b'\n' | b'\r') {
                     i += 1;
                 }
                 start = i;
@@ -6431,10 +6487,7 @@ pub(crate) fn consume_braceless_arg(src: &str, start: usize) -> Option<(Braceles
             // Unbalanced — fail closed so the caller can warn.
             return None;
         }
-        return Some((
-            BracelessArg::Group(src[inner_start..j].to_string()),
-            j + 1,
-        ));
+        return Some((BracelessArg::Group(src[inner_start..j].to_string()), j + 1));
     }
     // Single Unicode codepoint.
     let rest = &src[i..];
@@ -6652,10 +6705,7 @@ fn extract_newcommandx(node: Node<'_>, src: &str) -> Option<(String, MacroDef)> 
 /// after the closing `}` of the body. The emit-time dispatcher uses
 /// this to bump `skip_until` so the sibling AST nodes carrying the
 /// definition's bracket/body fragments don't leak into the output.
-fn extract_newcommandx_and_end(
-    node: Node<'_>,
-    src: &str,
-) -> Option<((String, MacroDef), usize)> {
+fn extract_newcommandx_and_end(node: Node<'_>, src: &str) -> Option<((String, MacroDef), usize)> {
     let bytes = src.as_bytes();
     let mut i = node.end_byte();
 

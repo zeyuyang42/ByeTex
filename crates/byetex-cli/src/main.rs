@@ -147,7 +147,11 @@ fn main() -> Result<()> {
                 no_compile: true, // convert is the fast path — no implicit typst spawn
             };
             let mode = if project {
-                ConvertMode::Project { project_out, no_toml, force }
+                ConvertMode::Project {
+                    project_out,
+                    no_toml,
+                    force,
+                }
             } else {
                 ConvertMode::Flat { output }
             };
@@ -172,7 +176,11 @@ fn main() -> Result<()> {
                 no_compile,
             };
             let mode = if project {
-                ConvertMode::Project { project_out, no_toml, force }
+                ConvertMode::Project {
+                    project_out,
+                    no_toml,
+                    force,
+                }
             } else {
                 ConvertMode::Flat { output: None }
             };
@@ -429,10 +437,20 @@ fn run_convert_dispatch(input: PathBuf, mode: ConvertMode, brief: BriefOpts) -> 
         .map(|p| p.to_path_buf());
 
     match mode {
-        ConvertMode::Flat { output } => {
-            run_flat(input, plan, &default_stem, parent_for_outputs, output, input_is_dir, brief)
-        }
-        ConvertMode::Project { project_out, no_toml: _, force } => run_project(
+        ConvertMode::Flat { output } => run_flat(
+            input,
+            plan,
+            &default_stem,
+            parent_for_outputs,
+            output,
+            input_is_dir,
+            brief,
+        ),
+        ConvertMode::Project {
+            project_out,
+            no_toml: _,
+            force,
+        } => run_project(
             plan,
             &base_dir,
             &default_stem,
@@ -542,8 +560,8 @@ fn run_project(
     // Persist warnings as a sidecar so downstream tooling (agent-brief,
     // skill-driven remediation) can act on them.
     let warnings_path = out_dir.join("warnings.json");
-    let warnings_json = serde_json::to_string_pretty(&plan.warnings)
-        .with_context(|| "serialising warnings")?;
+    let warnings_json =
+        serde_json::to_string_pretty(&plan.warnings).with_context(|| "serialising warnings")?;
     std::fs::write(&warnings_path, warnings_json)
         .with_context(|| format!("writing {}", warnings_path.display()))?;
 
@@ -670,9 +688,8 @@ fn write_agent_brief(inputs: BriefInputs<'_>) -> Result<()> {
     // the dir already exists because we just wrote the .typ there).
     if let Some(parent) = brief_path.parent() {
         if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent).with_context(|| {
-                format!("ensuring brief directory {}", parent.display())
-            })?;
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("ensuring brief directory {}", parent.display()))?;
         }
     }
 
@@ -684,8 +701,7 @@ fn write_agent_brief(inputs: BriefInputs<'_>) -> Result<()> {
 
     // Read the .typ for template-detection only (first 8 lines are enough).
     let typ = std::fs::read_to_string(typst_path).unwrap_or_default();
-    let warnings_text =
-        std::fs::read_to_string(warnings_path).unwrap_or_else(|_| "[]".to_string());
+    let warnings_text = std::fs::read_to_string(warnings_path).unwrap_or_else(|_| "[]".to_string());
 
     // Detect template binding by peeking the first few lines of the
     // generated `.typ` (looking for our `#import "@preview/X:V":` line).

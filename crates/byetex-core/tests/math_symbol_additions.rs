@@ -46,7 +46,10 @@ fn lbrace_rbrace_emit_braces() {
     // warnings across the corpus.
     let src = r"\documentclass{article}\begin{document}$\lbrace x \rbrace$\end{document}";
     let out = convert_str(src);
-    assert_eq!(ambiguous_for(&out, "lbrace") + ambiguous_for(&out, "rbrace"), 0);
+    assert_eq!(
+        ambiguous_for(&out, "lbrace") + ambiguous_for(&out, "rbrace"),
+        0
+    );
     assert!(
         out.typst.contains("\\{") && out.typst.contains("\\}"),
         "expected escaped braces in output; got:\n{}",

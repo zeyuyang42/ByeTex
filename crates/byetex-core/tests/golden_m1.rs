@@ -8,7 +8,6 @@ use std::path::PathBuf;
 
 use byetex_core::{convert, ConvertOptions};
 
-
 fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -103,9 +102,16 @@ fn m1_accent_brace_forms() {
     // Common braced accent forms → precomposed Unicode codepoints.
     // Uses r#"..."# because the input contains \" (diaeresis) which
     // would otherwise terminate a plain r"..." raw string.
-    let out = convert(r#"\'{e} \`{a} \"{o} \^{i} \~{n}"#, &ConvertOptions::default());
+    let out = convert(
+        r#"\'{e} \`{a} \"{o} \^{i} \~{n}"#,
+        &ConvertOptions::default(),
+    );
     assert_eq!(out.typst.trim(), "é à ö î ñ");
-    assert!(out.warnings.is_empty(), "unexpected warnings: {:?}", out.warnings);
+    assert!(
+        out.warnings.is_empty(),
+        "unexpected warnings: {:?}",
+        out.warnings
+    );
 }
 
 #[test]
@@ -113,14 +119,22 @@ fn m1_accent_bare_forms() {
     // Bare form: the letter follows the command directly without braces.
     let out = convert(r"caf\'e", &ConvertOptions::default());
     assert_eq!(out.typst.trim(), "café");
-    assert!(out.warnings.is_empty(), "unexpected warnings: {:?}", out.warnings);
+    assert!(
+        out.warnings.is_empty(),
+        "unexpected warnings: {:?}",
+        out.warnings
+    );
 }
 
 #[test]
 fn m1_accent_uppercase() {
     let out = convert(r#"\'{A} \"{O} \`{E}"#, &ConvertOptions::default());
     assert_eq!(out.typst.trim(), "Á Ö È");
-    assert!(out.warnings.is_empty(), "unexpected warnings: {:?}", out.warnings);
+    assert!(
+        out.warnings.is_empty(),
+        "unexpected warnings: {:?}",
+        out.warnings
+    );
 }
 
 // ============ ACM metadata capture (Phase 3 of the silent-drop audit) ============

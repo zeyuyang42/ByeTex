@@ -31,7 +31,9 @@ pub mod __test_support {
     }
     /// Returns true if the name is seeded as an always-on KATEX_BUILTIN macro.
     pub fn is_katex_builtin(name: &str) -> bool {
-        super::package_macros::KATEX_BUILTIN.iter().any(|(n, _)| *n == name)
+        super::package_macros::KATEX_BUILTIN
+            .iter()
+            .any(|(n, _)| *n == name)
     }
 }
 
@@ -111,5 +113,10 @@ pub(crate) fn convert_with_macros(
     emitter.prepass_collect(root);
     emitter.emit_root(root);
     let (typst, warnings, asset_refs, class_metadata) = emitter.finish();
-    ConvertOutput { typst, warnings, asset_refs, class_metadata }
+    ConvertOutput {
+        typst,
+        warnings,
+        asset_refs,
+        class_metadata,
+    }
 }
