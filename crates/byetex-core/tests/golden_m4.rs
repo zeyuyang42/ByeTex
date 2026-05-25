@@ -221,6 +221,42 @@ fn m4_bibliography() {
 }
 
 #[test]
+fn m4_theorem_kind_sanitized_when_display_has_math() {
+    // Bug #39 (fixed): when `\newtheorem` display contains math
+    // characters (`Theorem A$^\star_{\mathrm{global}}$`), the raw
+    // lowercased display used to leak into the `kind: "..."` string
+    // literal, breaking Typst's string parser with stray `$`/`\`/`^`.
+    // The `kind:` is sanitized to ASCII alphanumeric + hyphens; the
+    // `supplement:` content block keeps the original display.
+    let src = "\\newtheorem{thm}{Theorem A$^\\star$}\n\\begin{thm}Body.\\end{thm}\n";
+    let out = convert(
+        src,
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    // `kind:` must be a safe identifier — no `$`, `\`, or `^`.
+    let kind_field = out
+        .typst
+        .split("kind: \"")
+        .nth(1)
+        .and_then(|s| s.split('"').next())
+        .unwrap_or("");
+    assert!(
+        !kind_field.contains('$') && !kind_field.contains('\\') && !kind_field.contains('^'),
+        "kind: must be sanitized; got `{}` in:\n{}",
+        kind_field,
+        out.typst
+    );
+    assert!(
+        !kind_field.is_empty(),
+        "kind: must not be empty; got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
 fn m4_includegraphics_no_extension_resolves_with_extension() {
     // Bug #37 (fixed): `\includegraphics{foo}` (no extension) — when
     // `foo.png` exists on disk, the emitter used to write

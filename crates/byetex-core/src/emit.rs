@@ -2682,10 +2682,35 @@ impl<'a> Emitter<'a> {
         };
 
         self.ensure_paragraph_break();
+        // Bug #39: the `kind:` string must be a plain identifier
+        // (used for `@xxx` cross-references). When the `\newtheorem`
+        // display contains math like `Theorem A$^\star_{\mathrm{global}}$`,
+        // the raw lowercased name leaks `$`, `\`, and `^` into a
+        // Typst STRING literal and breaks parsing. Sanitize to
+        // ASCII alphanumeric + hyphens; the `supplement: [...]`
+        // content block (which IS markup, math allowed) keeps the
+        // full display unchanged.
+        let kind = name
+            .chars()
+            .filter_map(|c| {
+                if c.is_ascii_alphanumeric() || c == '-' {
+                    Some(c.to_ascii_lowercase())
+                } else if c == ' ' || c == '_' {
+                    Some('-')
+                } else {
+                    None
+                }
+            })
+            .collect::<String>();
+        let kind = if kind.is_empty() {
+            "theorem".to_string()
+        } else {
+            kind
+        };
         let _ = write!(
             self.out,
             "#figure(kind: \"{}\", supplement: [{}], [{}])",
-            name.to_lowercase(),
+            kind,
             name,
             inner.trim()
         );
