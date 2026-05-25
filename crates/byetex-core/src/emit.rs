@@ -3384,11 +3384,11 @@ impl<'a> Emitter<'a> {
                 self.warn_silently_dropped(node);
                 node.end_byte()
             }
-            // Math style switches — Typst determines display/inline style from
-            // the equation context; these per-expression overrides have no
-            // direct equivalent. Warn so the user is aware.
+            // Math style switches (\displaystyle/\textstyle/\scriptstyle/
+            // \scriptscriptstyle) are pure size declarations with no content
+            // and no Typst equivalent — Typst sizes math contextually.
+            // Silent-drop, same family as \small/\large/\normalsize in text mode.
             "\\displaystyle" | "\\textstyle" | "\\scriptstyle" | "\\scriptscriptstyle" => {
-                self.warn_silently_dropped(node);
                 node.end_byte()
             }
             // Row break inside math envs. Emit `\` followed by `\n` —
