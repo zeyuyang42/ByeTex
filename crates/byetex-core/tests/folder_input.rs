@@ -130,3 +130,86 @@ fn plan_project_from_dir_preserves_entry_at_subpath() {
     let plan = plan_project_from_dir(&dir, true).unwrap();
     assert!(plan.main_typst.contains("content"));
 }
+
+#[test]
+fn wrapper_newcommand_in_sty_is_harvested_via_dir_mode() {
+    // Regression for wrapper-macro pattern: a .sty defines macros using
+    // a wrapper (\mytoken[2]{\newcommand{#1}{body}}), and calls like
+    // \mytoken{\token}{t} are scattered through the project files.
+    // harvest_project_macros must expand these calls so \token reaches
+    // the emitter's macro table.
+    let dir = tmpdir("wrapper-harvest");
+    write(
+        &dir,
+        "macros.sty",
+        concat!(
+            "\\newcommand{\\mytoken}[2]{\\newcommand{#1}{{#2}}}\n",
+            "\\mytoken{\\token}{t}\n",
+            "\\mytoken{\\vocab}{\\mathcal{T}}\n",
+        ),
+    );
+    write(
+        &dir,
+        "main.tex",
+        concat!(
+            "\\documentclass{article}\n",
+            "\\usepackage{macros}\n",
+            "\\begin{document}\n",
+            "Token $\\token$ vocab $\\vocab$\n",
+            "\\end{document}\n",
+        ),
+    );
+
+    let plan =
+        byetex_core::project::plan_project_from_dir(&dir, false).expect("plan_project_from_dir");
+    let ambiguous_count = plan
+        .warnings
+        .iter()
+        .filter(|w| format!("{:?}", w.category).contains("ambiguous_math"))
+        .count();
+    assert_eq!(
+        ambiguous_count,
+        0,
+        "\\token and \\vocab should expand via wrapper-newcommand harvest; warnings: {:?}",
+        plan.warnings
+            .iter()
+            .map(|w| format!("{:?}: {}", w.category, w.snippet))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn wrapper_newcommand_calls_in_main_tex_are_harvested() {
+    // Same-file case: wrapper definitions AND calls both in main.tex.
+    // This is the 22821 structure (no separate macros.sty).
+    let dir = tmpdir("wrapper-same-file");
+    write(
+        &dir,
+        "main.tex",
+        concat!(
+            "\\documentclass{article}\n",
+            "\\newcommand{\\mytoken}[2]{\\newcommand{#1}{{\\color{x}#2}}}\n",
+            "\\mytoken{\\token}{t}\n",
+            "\\mytoken{\\vocab}{\\mathcal{T}}\n",
+            "\\begin{document}\n",
+            "Token $\\token$ vocab $\\vocab$\n",
+            "\\end{document}\n",
+        ),
+    );
+    let plan =
+        byetex_core::project::plan_project_from_dir(&dir, false).expect("plan_project_from_dir");
+    let ambiguous_count = plan
+        .warnings
+        .iter()
+        .filter(|w| format!("{:?}", w.category).contains("ambiguous_math"))
+        .count();
+    assert_eq!(
+        ambiguous_count,
+        0,
+        "\\token and \\vocab should expand; warnings: {:?}",
+        plan.warnings
+            .iter()
+            .map(|w| format!("{:?}: {}", w.category, w.snippet))
+            .collect::<Vec<_>>()
+    );
+}

@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use byetex_core::{convert, ConvertOptions};
 
+#[allow(dead_code)]
 fn run_str(src: &str) -> String {
     let out = convert(src, &ConvertOptions::default());
     let warnings_json = serde_json::to_string_pretty(&out.warnings).expect("warnings serialize");
