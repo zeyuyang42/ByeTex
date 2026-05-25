@@ -4411,8 +4411,15 @@ impl<'a> Emitter<'a> {
                 }
             })
             .collect();
-        // Record an AssetRef for each bib that resolves on disk so the
-        // project materialiser copies every entry, not just the first.
+        // Bug #27: Typst's `#bibliography` aborts when ANY listed path
+        // doesn't resolve on disk. arXiv preprints frequently bundle
+        // only a subset of the `.bib` files the LaTeX `\bibliography`
+        // call lists (other entries may be from local TeX-distribution
+        // paths). Filter to just the paths that resolve, emit a
+        // `needs_manual_review` warning for the missing ones, and
+        // skip the call entirely if NONE resolve.
+        let mut kept: Vec<(String, String)> = Vec::new();
+        let mut missing: Vec<String> = Vec::new();
         if let Some(ref base) = self.base_dir.clone() {
             for (raw, with_ext) in paths.iter().zip(paths_with_ext.iter()) {
                 if let Some(source_path) = probe_bib_on_disk(base, raw) {
@@ -4421,19 +4428,61 @@ impl<'a> Emitter<'a> {
                         typst_path: with_ext.clone(),
                         source_path,
                     });
+                    kept.push((raw.clone(), with_ext.clone()));
+                } else {
+                    missing.push(with_ext.clone());
                 }
             }
+        } else {
+            // No base_dir to probe — keep all paths as-is (legacy
+            // bare-string convert call; the user is responsible for
+            // file resolution).
+            for (raw, with_ext) in paths.iter().zip(paths_with_ext.iter()) {
+                kept.push((raw.clone(), with_ext.clone()));
+            }
+        }
+        for miss in &missing {
+            self.warnings.push(Warning {
+                range: range_of(node),
+                category: Category::NeedsManualReview {
+                    reason: format!("\\bibliography references missing file: {}", miss),
+                },
+                severity: Severity::Warning,
+                message: format!(
+                    "bibliography file `{}` not found in source tree — \
+                     omitted from #bibliography(...) so the rest still compiles",
+                    miss
+                ),
+                snippet: self.src[node.start_byte()..node.end_byte()].to_string(),
+                suggested_skill: None,
+            });
+        }
+        if kept.is_empty() {
+            // All paths missing — drop the call entirely (with a
+            // single summary warning for the dropped call itself).
+            self.warnings.push(Warning {
+                range: range_of(node),
+                category: Category::NeedsManualReview {
+                    reason: "\\bibliography{...}: no listed file resolved on disk".to_string(),
+                },
+                severity: Severity::Warning,
+                message: "all bibliography paths missing; #bibliography call dropped"
+                    .to_string(),
+                snippet: self.src[node.start_byte()..node.end_byte()].to_string(),
+                suggested_skill: None,
+            });
+            return node.end_byte();
         }
         self.ensure_paragraph_break();
         let mapped = style.as_deref().and_then(map_bibliography_style);
         // Typst's `#bibliography` takes either a single path string or a
         // tuple of paths. Emit the tuple form when we have multiple.
-        let path_arg = if paths_with_ext.len() == 1 {
-            format!("\"{}\"", paths_with_ext[0])
+        let path_arg = if kept.len() == 1 {
+            format!("\"{}\"", kept[0].1)
         } else {
-            let joined = paths_with_ext
+            let joined = kept
                 .iter()
-                .map(|p| format!("\"{}\"", p))
+                .map(|(_raw, with_ext)| format!("\"{}\"", with_ext))
                 .collect::<Vec<_>>()
                 .join(", ");
             format!("({},)", joined)
