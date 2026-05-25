@@ -24,8 +24,7 @@ fn materialize_writes_expected_tree() {
     let tmp = tempfile::TempDir::new().unwrap();
     let out_dir = tmp.path().join("out");
 
-    materialize_project(&plan, &out_dir, &base_dir, false)
-        .expect("materialize_project failed");
+    materialize_project(&plan, &out_dir, &base_dir, false).expect("materialize_project failed");
 
     // main.typ must exist.
     assert!(out_dir.join("main.typ").is_file(), "main.typ missing");
@@ -66,8 +65,7 @@ fn materialize_path_traversal_guard_skips_escape() {
     let tmp = tempfile::TempDir::new().unwrap();
     let out_dir = tmp.path().join("out");
 
-    materialize_project(&plan, &out_dir, &base_dir, false)
-        .expect("materialize_project failed");
+    materialize_project(&plan, &out_dir, &base_dir, false).expect("materialize_project failed");
 
     // The escape fixture references ../asset-discovery/fig/diagram which
     // is outside base_dir. The path-traversal guard must reject the copy.
@@ -100,7 +98,10 @@ fn materialize_refuses_non_empty_without_force() {
     std::fs::write(out_dir.join("stale.txt"), b"leftover").unwrap();
 
     let result = materialize_project(&plan, &out_dir, &base_dir, false);
-    assert!(result.is_err(), "expected refusal on non-empty dir without --force");
+    assert!(
+        result.is_err(),
+        "expected refusal on non-empty dir without --force"
+    );
 
     // With --force the stale file is wiped and main.typ takes its place.
     materialize_project(&plan, &out_dir, &base_dir, true)

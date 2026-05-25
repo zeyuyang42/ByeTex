@@ -129,8 +129,7 @@ fn katex_coverage_complete() {
     let excl_toml: Exclusions = toml::from_str(include_str!("data/katex_exclusions.toml"))
         .expect("parse katex_exclusions.toml");
 
-    let excluded: HashSet<String> =
-        excl_toml.exclude.into_iter().map(|e| e.name).collect();
+    let excluded: HashSet<String> = excl_toml.exclude.into_iter().map(|e| e.name).collect();
 
     let structural: HashSet<&str> = STRUCTURAL_ARMS.iter().copied().collect();
 

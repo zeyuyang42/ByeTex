@@ -85,7 +85,11 @@ Brief.
         .join("\n");
     // The show block must contain `title:` and must NOT have an
     // unbalanced `[`/`]` pair on the title line.
-    assert!(show_block.contains("title:"), "no title slot in:\n{}", show_block);
+    assert!(
+        show_block.contains("title:"),
+        "no title slot in:\n{}",
+        show_block
+    );
 }
 
 #[test]
@@ -106,8 +110,13 @@ We compare [baseline] vs ours.
     // that don't (some neurips configs), the abstract lands in the
     // body and the bracket is fine. Either way the convert must
     // not produce a parse_error.
-    let has_parse_error = out.warnings.iter().any(|w| {
-        matches!(&w.category, byetex_core::Category::ParseError { .. })
-    });
-    assert!(!has_parse_error, "unexpected parse_error: {:?}", out.warnings);
+    let has_parse_error = out
+        .warnings
+        .iter()
+        .any(|w| matches!(&w.category, byetex_core::Category::ParseError { .. }));
+    assert!(
+        !has_parse_error,
+        "unexpected parse_error: {:?}",
+        out.warnings
+    );
 }

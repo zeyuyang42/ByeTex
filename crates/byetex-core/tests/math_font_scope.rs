@@ -61,9 +61,7 @@ fn bf_in_curly_group_wraps_rest() {
         ambiguous_math_messages(&out)
     );
     assert!(
-        unsupported_command_names(&out)
-            .iter()
-            .all(|n| n != "\\bf"),
+        unsupported_command_names(&out).iter().all(|n| n != "\\bf"),
         "should not emit unsupported_command for \\bf; got: {:?}",
         unsupported_command_names(&out)
     );
@@ -194,9 +192,7 @@ fn empty_after_bf_emits_empty_wrapper() {
     // Just make sure the conversion doesn't panic and doesn't emit an
     // unsupported_command warning. Output shape is incidental.
     assert!(
-        unsupported_command_names(&out)
-            .iter()
-            .all(|n| n != "\\bf"),
+        unsupported_command_names(&out).iter().all(|n| n != "\\bf"),
         "no unsupported_command for \\bf; got: {:?}",
         unsupported_command_names(&out)
     );

@@ -51,11 +51,15 @@ pub enum ProjectError {
     Io(std::io::Error),
     /// No `.tex` file in the project tree carries a `\documentclass`
     /// declaration. The caller should re-check the input directory.
-    NoEntryFile { searched: PathBuf },
+    NoEntryFile {
+        searched: PathBuf,
+    },
     /// More than one `.tex` file declares `\documentclass`. The caller
     /// has to disambiguate by passing the path to the desired entry
     /// directly instead of the directory.
-    AmbiguousEntryFile { candidates: Vec<PathBuf> },
+    AmbiguousEntryFile {
+        candidates: Vec<PathBuf>,
+    },
 }
 
 impl std::fmt::Display for ProjectError {
@@ -104,10 +108,7 @@ impl From<std::io::Error> for ProjectError {
 ///
 /// Set `no_toml = true` to suppress `typst.toml` generation even when the
 /// document class maps to a known Typst Universe package.
-pub fn plan_project(
-    main_tex: &Path,
-    no_toml: bool,
-) -> Result<ProjectPlan, ProjectError> {
+pub fn plan_project(main_tex: &Path, no_toml: bool) -> Result<ProjectPlan, ProjectError> {
     let source = std::fs::read_to_string(main_tex)?;
     let base_dir = main_tex
         .parent()
@@ -335,10 +336,7 @@ pub(crate) fn harvest_project_macros(
 ///    harvested macros pre-seeded into the emitter.
 /// 4. The returned [`ProjectPlan`] is identical in shape to
 ///    [`plan_project`]'s, so the same materialiser can write it out.
-pub fn plan_project_from_dir(
-    dir: &Path,
-    no_toml: bool,
-) -> Result<ProjectPlan, ProjectError> {
+pub fn plan_project_from_dir(dir: &Path, no_toml: bool) -> Result<ProjectPlan, ProjectError> {
     let entry = detect_entry_file(dir)?;
     let preseeded = harvest_project_macros(dir)?;
 

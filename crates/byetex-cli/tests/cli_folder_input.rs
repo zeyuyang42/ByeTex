@@ -35,11 +35,7 @@ fn write(dir: &Path, rel: &str, contents: &str) {
 #[test]
 fn cli_convert_project_accepts_a_directory_and_pre_scans_macros() {
     let project = tmpdir("convert-project-dir");
-    write(
-        &project,
-        "macros.sty",
-        "\\newcommand{\\brand}{ByeTex}\n",
-    );
+    write(&project, "macros.sty", "\\newcommand{\\brand}{ByeTex}\n");
     write(
         &project,
         "main.tex",

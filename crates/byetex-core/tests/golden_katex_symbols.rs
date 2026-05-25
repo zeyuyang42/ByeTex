@@ -73,14 +73,27 @@ fn katex_phase1a_turnstile_logic() {
 
 #[test]
 fn katex_phase1a_long_arrows() {
-    let src = r"$\longrightarrow \longleftarrow \Longrightarrow \Longleftarrow \Longleftrightarrow$";
+    let src =
+        r"$\longrightarrow \longleftarrow \Longrightarrow \Longleftarrow \Longleftrightarrow$";
     let out = convert(src);
     assert!(out.warnings.is_empty(), "warnings: {:?}", out.warnings);
     assert!(out.typst.contains("arrow.r.long"), "got: {}", out.typst);
     assert!(out.typst.contains("arrow.l.long"), "got: {}", out.typst);
-    assert!(out.typst.contains("arrow.r.double.long"), "got: {}", out.typst);
-    assert!(out.typst.contains("arrow.l.double.long"), "got: {}", out.typst);
-    assert!(out.typst.contains("arrow.l.r.double.long"), "got: {}", out.typst);
+    assert!(
+        out.typst.contains("arrow.r.double.long"),
+        "got: {}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("arrow.l.double.long"),
+        "got: {}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("arrow.l.r.double.long"),
+        "got: {}",
+        out.typst
+    );
 }
 
 #[test]

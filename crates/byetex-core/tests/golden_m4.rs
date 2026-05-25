@@ -228,10 +228,7 @@ fn m4_includegraphics_no_extension_resolves_with_extension() {
     // (Typst's `image()` requires the extension). The emitter now
     // probes for `foo.{png,pdf,jpg,jpeg,svg,gif}` and writes
     // `image("foo.png")` when it resolves.
-    let tmp = std::env::temp_dir().join(format!(
-        "byetex-img-ext-{}",
-        std::process::id()
-    ));
+    let tmp = std::env::temp_dir().join(format!("byetex-img-ext-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();
     // Pretend a PNG exists.
@@ -245,7 +242,10 @@ fn m4_includegraphics_no_extension_resolves_with_extension() {
         source_name: Some("main.tex".into()),
         base_dir: Some(tmp.clone()),
     };
-    let out = convert(&std::fs::read_to_string(tmp.join("main.tex")).unwrap(), &opts);
+    let out = convert(
+        &std::fs::read_to_string(tmp.join("main.tex")).unwrap(),
+        &opts,
+    );
     assert!(
         out.typst.contains("image(\"plot.png\")"),
         "expected `image(\"plot.png\")` with resolved extension; got:\n{}",
@@ -261,10 +261,7 @@ fn m4_includegraphics_missing_file_emits_placeholder() {
     // typst compile would abort on. The fallback now emits a
     // compileable `rect(...)` placeholder so the rest of the
     // document compiles.
-    let tmp = std::env::temp_dir().join(format!(
-        "byetex-img-missing-{}",
-        std::process::id()
-    ));
+    let tmp = std::env::temp_dir().join(format!("byetex-img-missing-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();
     std::fs::write(
@@ -276,7 +273,10 @@ fn m4_includegraphics_missing_file_emits_placeholder() {
         source_name: Some("main.tex".into()),
         base_dir: Some(tmp.clone()),
     };
-    let out = convert(&std::fs::read_to_string(tmp.join("main.tex")).unwrap(), &opts);
+    let out = convert(
+        &std::fs::read_to_string(tmp.join("main.tex")).unwrap(),
+        &opts,
+    );
     assert!(
         !out.typst.contains("image(\"nowhere\""),
         "missing file should NOT keep raw `image(\"nowhere\")`; got:\n{}",
@@ -299,10 +299,7 @@ fn m4_bibliography_drops_missing_files() {
     // base_dir and only emit the ones that resolve, warning about
     // the rest. Real driver: 2605.22776 bundles only `Stas.bib`
     // but `\bibliography` lists 4 paths.
-    let tmp = std::env::temp_dir().join(format!(
-        "byetex-bib-missing-{}",
-        std::process::id()
-    ));
+    let tmp = std::env::temp_dir().join(format!("byetex-bib-missing-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();
     // Bundle only `present.bib`; reference both it and `missing.bib`.
@@ -317,7 +314,10 @@ fn m4_bibliography_drops_missing_files() {
         source_name: Some("main.tex".into()),
         base_dir: Some(tmp.clone()),
     };
-    let out = convert(&std::fs::read_to_string(tmp.join("main.tex")).unwrap(), &opts);
+    let out = convert(
+        &std::fs::read_to_string(tmp.join("main.tex")).unwrap(),
+        &opts,
+    );
     // The bibliography call must include `present.bib` (the file that
     // resolved) but NOT `missing.bib` (which would crash typst compile).
     assert!(
@@ -487,10 +487,7 @@ fn m4_figure_wrapping_tabular_emits_inner_table() {
 fn m4_nested_math_env_no_extra_dollar() {
     // A math_environment that tree-sitter parses under an outer $...$
     // must NOT open a fresh `$ ... $` — that would close the outer math.
-    let out = convert(
-        "$\\Phi_{\\theta_t}(z(x,t))$",
-        &ConvertOptions::default(),
-    );
+    let out = convert("$\\Phi_{\\theta_t}(z(x,t))$", &ConvertOptions::default());
     let typst = &out.typst;
     // Count `$` signs: an opening $ and a closing $ is the minimum (2 total).
     // A spurious nested $ would give 4+.
@@ -523,7 +520,9 @@ fn m4_unknown_math_command_no_raw_backslash() {
     // Must produce at least one ambiguous_math warning.
     assert!(
         out.warnings.iter().any(|w| {
-            serde_json::to_string(&w.category).unwrap_or_default().contains("ambiguous_math")
+            serde_json::to_string(&w.category)
+                .unwrap_or_default()
+                .contains("ambiguous_math")
         }),
         "expected ambiguous_math warning, got:\n{:?}",
         out.warnings

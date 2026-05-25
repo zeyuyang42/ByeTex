@@ -4,9 +4,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use byetex_core::project::{
-    detect_entry_file, plan_project_from_dir, ProjectError,
-};
+use byetex_core::project::{detect_entry_file, plan_project_from_dir, ProjectError};
 
 fn tmpdir(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("byetex-folder-{}-{}", name, std::process::id()));
@@ -97,11 +95,7 @@ fn plan_project_from_dir_uses_sibling_sty_macros() {
     // The entry never `\input`s mystyle.sty, but a project-wide
     // pre-scan should harvest \brand and expand it at the call site.
     let dir = tmpdir("preseed-sty");
-    write(
-        &dir,
-        "mystyle.sty",
-        "\\newcommand{\\brand}{ByeTex}\n",
-    );
+    write(&dir, "mystyle.sty", "\\newcommand{\\brand}{ByeTex}\n");
     write(
         &dir,
         "paper.tex",

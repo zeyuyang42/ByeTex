@@ -178,10 +178,12 @@ impl ByeTexServer {
         )]))
     }
 
-    #[tool(description = "Convert a LaTeX project to a self-contained Typst project directory. \
+    #[tool(
+        description = "Convert a LaTeX project to a self-contained Typst project directory. \
                           Reads the main .tex file, copies all referenced assets (images, .bib \
                           files), and writes main.typ + optionally typst.toml to out_dir. \
-                          Returns the list of written files and any conversion warnings.")]
+                          Returns the list of written files and any conversion warnings."
+    )]
     async fn convert_project(
         &self,
         Parameters(p): Parameters<ConvertProjectParams>,
@@ -204,9 +206,8 @@ impl ByeTexServer {
             })
             .unwrap_or_else(|| std::path::PathBuf::from("."));
 
-        let plan = plan_project(&main_tex, p.no_toml).map_err(|e| {
-            McpError::internal_error(format!("plan_project: {}", e), None)
-        })?;
+        let plan = plan_project(&main_tex, p.no_toml)
+            .map_err(|e| McpError::internal_error(format!("plan_project: {}", e), None))?;
 
         // Materialise the project (path-traversal guard included).
         let force = p.force;
@@ -225,7 +226,9 @@ impl ByeTexServer {
             "written_files": written,
             "warnings": plan.warnings,
         });
-        Ok(CallToolResult::success(vec![Content::text(json.to_string())]))
+        Ok(CallToolResult::success(vec![Content::text(
+            json.to_string(),
+        )]))
     }
 
     #[tool(description = "Return the full markdown body of a single skill by name.")]

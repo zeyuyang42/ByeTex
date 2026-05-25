@@ -45,7 +45,11 @@ fn mathrel_unwraps_to_inner_math() {
     assert_eq!(ambiguous_count(&out, "mathrel"), 0);
     // R should appear as a bare math identifier in the output.
     let stripped: String = out.typst.chars().filter(|c| !c.is_whitespace()).collect();
-    assert!(stripped.contains('R'), "expected R in output; got:\n{}", out.typst);
+    assert!(
+        stripped.contains('R'),
+        "expected R in output; got:\n{}",
+        out.typst
+    );
 }
 
 #[test]

@@ -236,7 +236,10 @@ fn probe_real_header_tex() {
             m.contains("src") || m.contains("tgt") || m.contains("norm") || m.contains("supp")
         })
         .collect();
-    eprintln!("ambiguous_math for fixture (should be empty): {:?}", unrecognised);
+    eprintln!(
+        "ambiguous_math for fixture (should be empty): {:?}",
+        unrecognised
+    );
     eprintln!("typst output:\n{}", plan.main_typst);
     assert!(
         unrecognised.is_empty(),

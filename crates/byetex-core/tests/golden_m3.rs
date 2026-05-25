@@ -389,7 +389,8 @@ fn m3_section_with_underscore_label_in_title_ref_attaches() {
     // The label must be attached to the heading line, not on a
     // separate paragraph (which Typst rejects as `cannot reference text`).
     assert!(
-        out.typst.contains("= Proof of Lemma~@thm:UAP_general_dim <sec:appendix>"),
+        out.typst
+            .contains("= Proof of Lemma~@thm:UAP_general_dim <sec:appendix>"),
         "expected heading + inline label; got:\n{}",
         out.typst
     );
@@ -1138,7 +1139,12 @@ x = y \tag{Dual LP}
     // Typst output is unchanged — \tag carries no renderable math content.
     assert!(out.typst.contains("x = y"), "typst: {}", out.typst);
     // A DropOnly warning is now emitted so the user knows their label was lost.
-    assert_eq!(out.warnings.len(), 1, "expected one warning, got: {:?}", out.warnings);
+    assert_eq!(
+        out.warnings.len(),
+        1,
+        "expected one warning, got: {:?}",
+        out.warnings
+    );
     assert!(
         matches!(&out.warnings[0].category, byetex_core::Category::DropOnly { name } if name == "\\tag"),
         "expected DropOnly {{name: \\tag}}, got: {:?}",
@@ -1175,30 +1181,58 @@ fn m3_newcommand_use_before_define() {
 \newcommand{\R}{\mathbb{R}}
 $\R$";
     let out = byetex_core::convert(src, &Default::default());
-    assert!(out.warnings.is_empty(), "unexpected warnings: {:?}", out.warnings);
+    assert!(
+        out.warnings.is_empty(),
+        "unexpected warnings: {:?}",
+        out.warnings
+    );
 }
 
 #[test]
 fn m3_renewcommand_overrides_newcommand() {
     let src = r"\newcommand{\foo}{A}\renewcommand{\foo}{B}x\textbf{\foo}y";
     let out = byetex_core::convert(src, &Default::default());
-    assert!(out.typst.contains('B'), "expected B in output, got: {}", out.typst);
-    assert!(!out.typst.contains('A'), "unexpected A in output: {}", out.typst);
+    assert!(
+        out.typst.contains('B'),
+        "expected B in output, got: {}",
+        out.typst
+    );
+    assert!(
+        !out.typst.contains('A'),
+        "unexpected A in output: {}",
+        out.typst
+    );
 }
 
 #[test]
 fn m3_providecommand_respects_existing() {
     let src = r"\newcommand{\foo}{A}\providecommand{\foo}{B}x\textbf{\foo}y";
     let out = byetex_core::convert(src, &Default::default());
-    assert!(out.typst.contains('A'), "expected A in output, got: {}", out.typst);
-    assert!(!out.typst.contains('B'), "unexpected B in output: {}", out.typst);
+    assert!(
+        out.typst.contains('A'),
+        "expected A in output, got: {}",
+        out.typst
+    );
+    assert!(
+        !out.typst.contains('B'),
+        "unexpected B in output: {}",
+        out.typst
+    );
 }
 
 #[test]
 fn m3_declaremathoperator_basic() {
     let src = "\\DeclareMathOperator{\\sinc}{sinc}\n$\\sinc(x)$";
     let out = byetex_core::convert(src, &Default::default());
-    assert!(out.warnings.is_empty(), "unexpected warnings: {:?}", out.warnings);
+    assert!(
+        out.warnings.is_empty(),
+        "unexpected warnings: {:?}",
+        out.warnings
+    );
     // operatorname{sinc} should appear in the output
-    assert!(out.typst.contains("sinc"), "expected sinc in output, got: {}", out.typst);
+    assert!(
+        out.typst.contains("sinc"),
+        "expected sinc in output, got: {}",
+        out.typst
+    );
 }

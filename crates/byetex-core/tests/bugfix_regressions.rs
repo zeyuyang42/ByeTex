@@ -141,8 +141,9 @@ fn missing_includegraphics_emits_warning() {
         },
     );
     assert!(
-        out.warnings.iter().any(|w| w.message.contains("missing.png")
-            || w.message.contains("could not resolve")),
+        out.warnings
+            .iter()
+            .any(|w| w.message.contains("missing.png") || w.message.contains("could not resolve")),
         "expected a warning about the missing image; got: {:?}",
         out.warnings
     );

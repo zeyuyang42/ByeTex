@@ -84,7 +84,10 @@ fn katex_phase4_bcancel() {
     let out = convert(src);
     assert!(out.warnings.is_empty(), "warnings: {:?}", out.warnings);
     let t = &out.typst;
-    assert!(t.contains("cancel(") && t.contains("inverted: true"), "got: {t}");
+    assert!(
+        t.contains("cancel(") && t.contains("inverted: true"),
+        "got: {t}"
+    );
 }
 
 #[test]
@@ -93,7 +96,10 @@ fn katex_phase4_xcancel() {
     let out = convert(src);
     assert!(out.warnings.is_empty(), "warnings: {:?}", out.warnings);
     let t = &out.typst;
-    assert!(t.contains("cancel(") && t.contains("cross: true"), "got: {t}");
+    assert!(
+        t.contains("cancel(") && t.contains("cross: true"),
+        "got: {t}"
+    );
 }
 
 #[test]

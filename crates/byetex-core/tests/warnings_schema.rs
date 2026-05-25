@@ -112,7 +112,9 @@ fn every_category_variant_roundtrips() {
             serde_json::json!({"kind": "unknown_package", "name": "tikz"}),
         ),
         (
-            Category::DropOnly { name: "\\centering".into() },
+            Category::DropOnly {
+                name: "\\centering".into(),
+            },
             serde_json::json!({"kind": "drop_only", "name": "\\centering"}),
         ),
         (
