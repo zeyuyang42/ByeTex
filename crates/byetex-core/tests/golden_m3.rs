@@ -313,6 +313,31 @@ fn m3_mathbb_does_not_fuse_with_preceding_letter() {
 }
 
 #[test]
+fn m3_smallmatrix_with_no_space_before_rowbreak() {
+    // Bug #31 (fixed): `\begin{smallmatrix}a&-a\\0&0\end{smallmatrix}`
+    // (no space before the `\\` row-break) used to produce
+    // `mat(a, -a\0, 0)` — the row separator `;` was missing because
+    // the splitter looked for ` \\` (space+backslash) which the
+    // source didn't have.
+    // The math `\\` arm now unconditionally appends a `\n` (when the
+    // source itself didn't already provide one) so the row-break is
+    // recognizable. The splitter (split_math_rows) finds `\\` + ws
+    // unambiguously.
+    let out = convert(
+        "$\\begin{smallmatrix}a&-a\\\\0&0\\end{smallmatrix}$\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        out.typst.contains("mat(a, -a; 0, 0)"),
+        "expected `mat(a, -a; 0, 0)`; got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
 fn m3_nested_math_env_label_attaches_outside_outer_span() {
     // Bug #30 (fixed): when a `\label{...}` lived inside a math env
     // nested under another (e.g. `\begin{equation}\begin{split}

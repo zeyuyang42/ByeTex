@@ -3356,20 +3356,33 @@ impl<'a> Emitter<'a> {
                 self.warn_silently_dropped(node);
                 node.end_byte()
             }
-            // Row break inside math envs. We emit just `\`; the source's
-            // surrounding whitespace (gap-copied by the parent) takes care of
-            // spacing around it.
+            // Row break inside math envs. Emit `\` followed by `\n` —
+            // the newline guarantees the row-break is unambiguously
+            // recognizable by downstream splitters (matrix/cases),
+            // even when the source has `\\X` with no whitespace
+            // before the next content (e.g. `\begin{smallmatrix}a&-a\\0&0`,
+            // Bug #31). Also makes the output readable.
+            //
+            // Bug #20/#21 additionally consumes an optional `[length]`
+            // bracket so it doesn't leak into the output and trip
+            // Typst's matrix-delimiter parser.
             "\\\\" => {
                 self.out.push('\\');
-                // Bug #20/#21: `\\[1mm]` (math row-break with optional
-                // length) — tree-sitter leaves the `[...]` as sibling
-                // nodes which emit as `\[1mm\]` and trip Typst's
-                // matrix delimiter parser. Consume and drop the
-                // bracket; also append a `\n` so the row break has
-                // the expected separator for downstream matrix/cases
-                // splitting AND for readability. Source-byte peek
-                // follows the pattern from PR #27 / #32.
+                // Only append our own `\n` when the source doesn't
+                // already provide one. Many `align` bodies write
+                // `\\\n` already; adding ours would yield a blank
+                // line between rows.
                 let bytes = self.src.as_bytes();
+                let next_non_space = {
+                    let mut k = node.end_byte();
+                    while k < bytes.len() && (bytes[k] == b' ' || bytes[k] == b'\t') {
+                        k += 1;
+                    }
+                    bytes.get(k).copied()
+                };
+                if next_non_space != Some(b'\n') && next_non_space != Some(b'\r') {
+                    self.out.push('\n');
+                }
                 let mut i = node.end_byte();
                 while i < bytes.len() && bytes[i].is_ascii_whitespace() {
                     i += 1;
@@ -3391,9 +3404,6 @@ impl<'a> Emitter<'a> {
                         j += 1;
                     }
                     if j < bytes.len() && bytes[j] == b']' {
-                        // Replace the consumed range with a single
-                        // newline so the row separator survives.
-                        self.out.push('\n');
                         let end = j + 1;
                         self.skip_until = self.skip_until.max(end);
                         return end;
@@ -4145,9 +4155,13 @@ impl<'a> Emitter<'a> {
             })
         };
 
-        // Split on the `\` token that our math-mode `\\` emitter writes
-        // (always surrounded by a single space on the left).
-        let rows: Vec<&str> = body_str.split(" \\").collect();
+        // Split on the `\` token that our math-mode `\\` emitter writes.
+        // Pre-Bug #20 it was always ` \` (leading space); the Bug #20
+        // fix appends `\n` so the format is `\\n`. Sources with no
+        // space before `\\` (common in `\begin{smallmatrix}...\\...`)
+        // are not caught by the pre-fix splitter. Use a manual scan
+        // that finds the row-break char unambiguously.
+        let rows: Vec<&str> = split_math_rows(&body_str);
         let rendered: Vec<String> = rows
             .into_iter()
             .map(|row| {
@@ -4197,11 +4211,13 @@ impl<'a> Emitter<'a> {
                 emitter.safe_copy(last, end);
             })
         };
-        // Row break in LaTeX cases is `\\`. The render walker emitted that
-        // as ` \` (trailing space then backslash) at the end of each line,
-        // matching the source convention. Split on it.
-        let rows: Vec<String> = body_str
-            .split(" \\")
+        // Row break in LaTeX cases is `\\`. The render walker emitted
+        // that as `\` (with optional leading space / trailing newline).
+        // Use the same scan helper as the matrix emitter so the row
+        // break is found regardless of whether the source had a space
+        // before the `\\` (Bug #31 driver).
+        let rows: Vec<String> = split_math_rows(&body_str)
+            .into_iter()
             .map(|r| {
                 let r = r.trim();
                 // Inside a row, `&` separates value from condition.
@@ -4259,10 +4275,11 @@ impl<'a> Emitter<'a> {
                 emitter.safe_copy(last, end);
             })
         };
-        // Rows are split on the rendered row-break (` \` from the
+        // Rows are split on the rendered row-break (`\` from the
         // emit_math_command `\\` handler) — same as emit_cases_env.
-        let rows: Vec<String> = body_str
-            .split(" \\")
+        // Use the manual scan via `split_math_rows`.
+        let rows: Vec<String> = split_math_rows(&body_str)
+            .into_iter()
             .map(|r| {
                 let r = r.trim();
                 // Cells: `&` separator gets collapsed to `quad`. Wrap
@@ -5442,6 +5459,54 @@ fn parse_column_spec(spec: &str) -> (usize, Vec<String>) {
 /// otherwise Typst complains about an unclosed delimiter on the *other* one.
 /// Balanced pairs are left untouched. Pre-existing backslash escapes are
 /// skipped so we never double-escape.
+/// Split a rendered math body into row segments at every `\\`
+/// row-break. The row-break is the single backslash char that
+/// `emit_math_command`'s `\\` arm writes (optionally followed by a
+/// `\n` per Bug #20). Other backslashes in the body (`\{`, `\}`,
+/// `\#`, `\$`, etc.) are escape sequences and must be preserved.
+///
+/// Heuristic: a `\` is a row-break iff the next character is
+/// whitespace (space, tab, newline) OR end-of-body. Escape sequences
+/// (`\{`, `\}`, `\#`, ...) all have a non-whitespace second char.
+fn split_math_rows(body: &str) -> Vec<&str> {
+    let bytes = body.as_bytes();
+    let mut out = Vec::new();
+    let mut start = 0usize;
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i] == b'\\' {
+            let next = bytes.get(i + 1).copied();
+            let is_row_break = match next {
+                None => true, // trailing backslash at end of body
+                Some(b' ') | Some(b'\t') | Some(b'\n') | Some(b'\r') => true,
+                _ => false,
+            };
+            if is_row_break {
+                out.push(&body[start..i]);
+                // Skip the `\` and any following whitespace so the
+                // next row segment doesn't start with stray whitespace.
+                i += 1;
+                while i < bytes.len()
+                    && matches!(bytes[i], b' ' | b'\t' | b'\n' | b'\r')
+                {
+                    i += 1;
+                }
+                start = i;
+                continue;
+            }
+            // Escape sequence: skip the `\X` pair so we don't mistake
+            // it for a row-break on the next iteration.
+            i += 2;
+            continue;
+        }
+        i += 1;
+    }
+    if start <= bytes.len() {
+        out.push(&body[start..]);
+    }
+    out
+}
+
 fn escape_unbalanced_math_brackets(body: &str) -> String {
     let bytes = body.as_bytes();
     let mut bracket_opens: Vec<usize> = Vec::new();
