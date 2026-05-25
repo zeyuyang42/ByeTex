@@ -3237,18 +3237,16 @@ impl<'a> Emitter<'a> {
             "\\ifstrempty" => self.emit_math_then_branch(node, 2),
             // `\notempty[default]{value}` (xargspec): when value is
             // non-empty, returns value; else default. Emit value.
-            "\\notempty" => {
-                let mut cursor = node.walk();
-                let curlys: Vec<Node<'_>> = node
-                    .children(&mut cursor)
-                    .filter(|c| c.kind() == "curly_group")
-                    .collect();
-                if let Some(arg) = curlys.first() {
-                    let inner = self.render_math_group(*arg);
-                    self.out.push_str(inner.trim());
-                }
-                node.end_byte()
-            }
+            //
+            // Bug #28: tree-sitter often parses `\notempty[X]{Y}` with
+            // BOTH the brack and the curly as AST siblings of the
+            // command_name (not children). The AST-child-only path
+            // misses them and they leak as raw `[X]{Y}` tokens that
+            // Typst then re-parses (the `^` from `\sscript` body etc.
+            // breaks the surrounding math). Use source-byte fallback
+            // to consume both — same shape as `\xrightarrow`/text
+            // family fixes from PRs #27/#33.
+            "\\notempty" => self.emit_math_notempty(node),
             // Bare conditionals / expansion primitives — drop silently.
             // Their arguments are AST siblings that get emitted by the
             // normal walker. Without this drop, every body that uses
@@ -3626,6 +3624,90 @@ impl<'a> Emitter<'a> {
         }
         // Truly no argument — emit nothing, no warning.
         node.end_byte()
+    }
+
+    /// `\notempty[default]{value}` (xargspec): emit `value` as math.
+    /// Consumes any AST-sibling `[...]` and `{...}` via source-byte
+    /// scanning so the brack arg doesn't leak as raw tokens. Same
+    /// shape as `emit_math_layout_inner` but the brack is mandatory-
+    /// to-consume and the curly is the rendered output (not skipped).
+    fn emit_math_notempty(&mut self, node: Node<'_>) -> usize {
+        let bytes = self.src.as_bytes();
+        let mut i = node.end_byte();
+        // Skip optional `[default]` if present (drop its bytes).
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i < bytes.len() && bytes[i] == b'[' {
+            let mut j = i + 1;
+            let mut depth = 0i32;
+            while j < bytes.len() {
+                match bytes[j] {
+                    b'\\' if j + 1 < bytes.len() => {
+                        j += 2;
+                        continue;
+                    }
+                    b'{' => depth += 1,
+                    b'}' => depth -= 1,
+                    b']' if depth == 0 => break,
+                    _ => {}
+                }
+                j += 1;
+            }
+            if j < bytes.len() && bytes[j] == b']' {
+                i = j + 1;
+            }
+        }
+        // Expect `{value}` and render its inner content as math.
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        let mut consumed = node.end_byte();
+        if i < bytes.len() && bytes[i] == b'{' {
+            let inner_start = i + 1;
+            let mut j = inner_start;
+            let mut depth = 1i32;
+            while j < bytes.len() {
+                match bytes[j] {
+                    b'\\' if j + 1 < bytes.len() => {
+                        j += 2;
+                        continue;
+                    }
+                    b'{' => depth += 1,
+                    b'}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+                j += 1;
+            }
+            if j < bytes.len() && bytes[j] == b'}' {
+                let inner_src = self.src[inner_start..j].to_string();
+                let rendered = self.render_in_sub_emitter(&inner_src, true, true);
+                self.out.push_str(rendered.trim());
+                consumed = j + 1;
+            }
+        }
+        // AST-children fallback: if no source-byte sibling found but a
+        // child curly_group exists, emit its content.
+        if consumed == node.end_byte() {
+            let mut cursor = node.walk();
+            let curlys: Vec<Node<'_>> = node
+                .children(&mut cursor)
+                .filter(|c| c.kind() == "curly_group")
+                .collect();
+            if let Some(arg) = curlys.first() {
+                let inner = self.render_math_group(*arg);
+                self.out.push_str(inner.trim());
+            }
+        }
+        if consumed > node.end_byte() {
+            self.skip_until = self.skip_until.max(consumed);
+        }
+        consumed
     }
 
     /// Emit a chosen `curly_group` branch of a TeX conditional like
