@@ -87,6 +87,40 @@ const STRUCTURAL_ARMS: &[&str] = &[
     "\\textstyle",
     "\\scriptstyle",
     "\\scriptscriptstyle",
+    // math class wrappers — passthrough, emit child verbatim
+    "\\mathbin",
+    "\\mathrel",
+    "\\mathord",
+    "\\mathopen",
+    "\\mathclose",
+    "\\mathpunct",
+    "\\mathinner",
+    // TeX spacing
+    "\\ ",
+    // multi-line subscript helper
+    "\\substack",
+    // text-mode font switches in math context
+    "\\textbf",
+    "\\textit",
+    "\\textnormal",
+    "\\texttt",
+    "\\textup",
+    // extensible arrows (emit_math_extensible_arrow)
+    "\\xrightarrow",
+    "\\xleftarrow",
+    "\\xLeftarrow",
+    "\\xRightarrow",
+    "\\xLeftrightarrow",
+    "\\xleftrightarrow",
+    "\\xmapsto",
+    "\\xhookleftarrow",
+    "\\xhookrightarrow",
+    "\\xtwoheadleftarrow",
+    "\\xtwoheadrightarrow",
+    "\\xleftharpoondown",
+    "\\xleftharpoonup",
+    "\\xrightharpoondown",
+    "\\xrightharpoonup",
 ];
 
 #[derive(serde::Deserialize)]

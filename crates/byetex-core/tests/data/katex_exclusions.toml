@@ -4,9 +4,6 @@
 # Shrink this file in subsequent phases as coverage improves.
 
 [[exclude]]
-name = "\\ "
-reason = "TeX text-mode accent commands, not math symbols"
-[[exclude]]
 name = "\\^"
 reason = "text-mode circumflex accent, handled via text path not math symbol table"
 [[exclude]]
@@ -121,9 +118,6 @@ reason = "handled in text-mode emit_command"
 name = "\\Vvdash"
 reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
-name = "\\`"
-reason = "TeX text-mode accent commands, not math symbols"
-[[exclude]]
 name = "\\ae"
 reason = "text-mode encoding, not math symbol"
 [[exclude]]
@@ -151,12 +145,6 @@ reason = "no Typst named symbol in 0.14.2 — defer"
 name = "\\c"
 reason = "TeX text-mode accent primitives"
 [[exclude]]
-name = "\\cdotp"
-reason = "implemented as dot.c in Phase 1b"
-[[exclude]]
-name = "\\centerdot"
-reason = "implemented as dot.c in Phase 1b"
-[[exclude]]
 name = "\\circeq"
 reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
@@ -165,9 +153,6 @@ reason = "no Typst named symbol in 0.14.2 — defer"
 [[exclude]]
 name = "\\circlearrowright"
 reason = "no Typst named symbol in 0.14.2 — defer"
-[[exclude]]
-name = "\\circledS"
-reason = "implemented as circle.small.filled in Phase 1b"
 [[exclude]]
 name = "\\curlyvee"
 reason = "no Typst named symbol in 0.14.2 — defer"
@@ -199,14 +184,8 @@ reason = "no Typst named symbol (eq.slant.lt invalid) in 0.14.2 — defer"
 name = "\\fallingdotseq"
 reason = "no Typst named symbol (eq.dots.fall invalid) in 0.14.2 — defer"
 [[exclude]]
-name = "\\gneqq"
-reason = "no Typst named symbol (gt.nequiv.double invalid) in 0.14.2 — defer"
-[[exclude]]
 name = "\\gt"
 reason = "delimiters handled via text-escape path or structural emit"
-[[exclude]]
-name = "\\gtreqqless"
-reason = "no Typst named symbol (gt.equiv.lt invalid) in 0.14.2 — defer"
 [[exclude]]
 name = "\\i"
 reason = "text-mode encoding, not math symbol"
@@ -220,17 +199,11 @@ reason = "no Typst named symbol in 0.14.2 — defer"
 name = "\\j"
 reason = "text-mode encoding, not math symbol"
 [[exclude]]
-name = "\\lbrace"
-reason = "delimiter handled via text-escape path or structural emit"
-[[exclude]]
 name = "\\lbrack"
 reason = "delimiter handled via text-escape path or structural emit"
 [[exclude]]
 name = "\\ldotp"
 reason = "no Typst named symbol in 0.14.2 — defer"
-[[exclude]]
-name = "\\lesseqqgtr"
-reason = "no Typst named symbol (lt.equiv.gt invalid) in 0.14.2 — defer"
 [[exclude]]
 name = "\\leftrightsquigarrow"
 reason = "no Typst named symbol (arrow.l.r.squiggly invalid) in 0.14.2 — defer"
@@ -241,23 +214,11 @@ reason = "unusual TeX delimiter, out of scope"
 name = "\\lmoustache"
 reason = "unusual TeX delimiter, out of scope"
 [[exclude]]
-name = "\\lneqq"
-reason = "no Typst named symbol (lt.nequiv.double invalid) in 0.14.2 — defer"
-[[exclude]]
-name = "\\looparrowleft"
-reason = "implemented as arrow.l.loop in Phase 1b"
-[[exclude]]
-name = "\\looparrowright"
-reason = "implemented as arrow.r.loop in Phase 1b"
-[[exclude]]
 name = "\\lparen"
 reason = "delimiter handled via text-escape path or structural emit"
 [[exclude]]
 name = "\\lt"
 reason = "delimiter handled via text-escape path or structural emit"
-[[exclude]]
-name = "\\measuredangle"
-reason = "implemented as angle.arc in Phase 1b"
 [[exclude]]
 name = "\\mho"
 reason = "no Typst named symbol in 0.14.2 — defer"
@@ -286,9 +247,6 @@ reason = "no Typst named symbol in 0.14.2 — defer"
 name = "\\r"
 reason = "TeX text-mode accent primitives"
 [[exclude]]
-name = "\\rbrace"
-reason = "delimiter handled via text-escape path or structural emit"
-[[exclude]]
 name = "\\rbrack"
 reason = "delimiter handled via text-escape path or structural emit"
 [[exclude]]
@@ -304,14 +262,8 @@ reason = "unusual TeX delimiter, out of scope"
 name = "\\rparen"
 reason = "delimiter handled via text-escape path or structural emit"
 [[exclude]]
-name = "\\smallint"
-reason = "implemented as integral in Phase 1b"
-[[exclude]]
 name = "\\space"
 reason = "whitespace, handled in spacing arm"
-[[exclude]]
-name = "\\sphericalangle"
-reason = "implemented as angle.spheric in Phase 1b"
 [[exclude]]
 name = "\\sqsubset"
 reason = "no Typst named symbol in 0.14.2 — defer"
@@ -769,9 +721,6 @@ reason = "complex mathrel combinator, no Typst equivalent, defer"
 name = "\\simcoloncolon"
 reason = "complex mathrel combinator, no Typst equivalent, defer"
 [[exclude]]
-name = "\\substack"
-reason = "Phase 4.6 structural (subarray environment), defer"
-[[exclude]]
 name = "\\tag@paren"
 reason = "KaTeX internal tag helper, not user-facing, skip"
 [[exclude]]
@@ -822,9 +771,6 @@ reason = "html@mathml with Unicode char, no named Typst symbol, skip"
 [[exclude]]
 name = "\\varsupsetneqq"
 reason = "html@mathml with Unicode char, no named Typst symbol, skip"
-[[exclude]]
-name = "\\vcentcolon"
-reason = "mathrel mathop ordinarycolon, complex math class ops, skip"
 [[exclude]]
 name = "$"
 reason = "math mode delimiter, handled separately"
@@ -880,27 +826,6 @@ reason = "TeX font-switch (no argument) — use mathit instead"
 name = "\\long"
 reason = "TeX modifier primitive, no Typst equivalent"
 [[exclude]]
-name = "\\mathbin"
-reason = "math class command — spacing only, no Typst equivalent, safe to ignore"
-[[exclude]]
-name = "\\mathclose"
-reason = "math class command — spacing only, no Typst equivalent, safe to ignore"
-[[exclude]]
-name = "\\mathinner"
-reason = "math class command — spacing only, no Typst equivalent, safe to ignore"
-[[exclude]]
-name = "\\mathopen"
-reason = "math class command — spacing only, no Typst equivalent, safe to ignore"
-[[exclude]]
-name = "\\mathord"
-reason = "math class command — spacing only, no Typst equivalent, safe to ignore"
-[[exclude]]
-name = "\\mathpunct"
-reason = "math class command — spacing only, no Typst equivalent, safe to ignore"
-[[exclude]]
-name = "\\mathrel"
-reason = "math class command — spacing only, no Typst equivalent, safe to ignore"
-[[exclude]]
 name = "\\operatorname@"
 reason = "KaTeX internal name for operatorname*, handled via operatorname arm"
 [[exclude]]
@@ -937,26 +862,11 @@ reason = "TeX font-switch (no argument) — use mathrm instead"
 name = "\\sf"
 reason = "TeX font-switch (no argument) — use mathsf instead"
 [[exclude]]
-name = "\\textbf"
-reason = "text formatting in math; use mathbf for math bold instead"
-[[exclude]]
-name = "\\textit"
-reason = "text formatting in math; use mathit for math italic instead"
-[[exclude]]
 name = "\\textmd"
 reason = "text medium weight in math, no Typst equivalent"
 [[exclude]]
-name = "\\textnormal"
-reason = "normal text in math, use text{...} instead"
-[[exclude]]
 name = "\\textsf"
 reason = "sans-serif text in math, use mathsf instead"
-[[exclude]]
-name = "\\texttt"
-reason = "monospace text in math, use mathtt instead"
-[[exclude]]
-name = "\\textup"
-reason = "upright text in math, use mathrm instead"
 [[exclude]]
 name = "\\tt"
 reason = "TeX font-switch (no argument) — use mathtt instead"
@@ -1033,35 +943,8 @@ reason = "under right-arrow accent, needs bottom: true parameter, no simple wrap
 name = "\\utilde"
 reason = "under tilde accent, needs bottom: true parameter, no simple wrap"
 [[exclude]]
-name = "\\xLeftarrow"
-reason = "extensible arrow with label, needs multi-arg structural emitter"
-[[exclude]]
-name = "\\xLeftrightarrow"
-reason = "extensible arrow with label, needs multi-arg structural emitter"
-[[exclude]]
-name = "\\xRightarrow"
-reason = "extensible arrow with label, needs multi-arg structural emitter"
-[[exclude]]
-name = "\\xhookleftarrow"
-reason = "extensible arrow with label, needs multi-arg structural emitter"
-[[exclude]]
-name = "\\xhookrightarrow"
-reason = "extensible arrow with label, needs multi-arg structural emitter"
-[[exclude]]
-name = "\\xleftarrow"
-reason = "extensible arrow with label, needs multi-arg structural emitter"
-[[exclude]]
 name = "\\xleftequilibrium"
 reason = "extensible equilibrium arrow, needs multi-arg structural emitter"
-[[exclude]]
-name = "\\xleftharpoondown"
-reason = "extensible harpoon arrow, needs multi-arg structural emitter"
-[[exclude]]
-name = "\\xleftharpoonup"
-reason = "extensible harpoon arrow, needs multi-arg structural emitter"
-[[exclude]]
-name = "\\xleftrightarrow"
-reason = "extensible arrow with label, needs multi-arg structural emitter"
 [[exclude]]
 name = "\\xleftrightharpoons"
 reason = "extensible harpoon arrows, needs multi-arg structural emitter"
@@ -1069,20 +952,8 @@ reason = "extensible harpoon arrows, needs multi-arg structural emitter"
 name = "\\xlongequal"
 reason = "extensible equal sign with label, needs multi-arg structural emitter"
 [[exclude]]
-name = "\\xmapsto"
-reason = "extensible mapsto with label, needs multi-arg structural emitter"
-[[exclude]]
-name = "\\xrightarrow"
-reason = "extensible arrow with label, needs multi-arg structural emitter"
-[[exclude]]
 name = "\\xrightequilibrium"
 reason = "extensible equilibrium arrow, needs multi-arg structural emitter"
-[[exclude]]
-name = "\\xrightharpoondown"
-reason = "extensible harpoon arrow, needs multi-arg structural emitter"
-[[exclude]]
-name = "\\xrightharpoonup"
-reason = "extensible harpoon arrow, needs multi-arg structural emitter"
 [[exclude]]
 name = "\\xrightleftarrows"
 reason = "extensible double arrow, needs multi-arg structural emitter"
@@ -1093,8 +964,22 @@ reason = "extensible harpoon arrows, needs multi-arg structural emitter"
 name = "\\xtofrom"
 reason = "extensible to-from arrow, needs multi-arg structural emitter"
 [[exclude]]
-name = "\\xtwoheadleftarrow"
-reason = "extensible twohead arrow, needs multi-arg structural emitter"
+name = "\\`"
+reason = "TeX text-mode accent commands, not math symbols"
+
 [[exclude]]
-name = "\\xtwoheadrightarrow"
-reason = "extensible twohead arrow, needs multi-arg structural emitter"
+name = "\\gneqq"
+reason = "no Typst named symbol (gt.nequiv.double invalid) in 0.14.2 — defer"
+
+[[exclude]]
+name = "\\gtreqqless"
+reason = "no Typst named symbol (gt.equiv.lt invalid) in 0.14.2 — defer"
+
+[[exclude]]
+name = "\\lesseqqgtr"
+reason = "no Typst named symbol (lt.equiv.gt invalid) in 0.14.2 — defer"
+
+[[exclude]]
+name = "\\lneqq"
+reason = "no Typst named symbol (lt.nequiv.double invalid) in 0.14.2 — defer"
+
