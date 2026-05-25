@@ -276,35 +276,66 @@ fn brief_paths_are_relative_to_brief_dir() {
     let brief = entry.with_extension("agent_brief.md");
     let body = fs::read_to_string(&brief).unwrap();
 
-    // Pull the bullet lines and check they don't carry an absolute prefix.
-    // (Unix-only — the path-prefix check uses '/'. The test crate is
-    // gated to Unix by the line below.)
+    // All four artifact paths should appear as plain filenames (no `../`
+    // or absolute-path prefix) because the brief lives in the same directory.
+    for path_ref in &[
+        "`paper.tex`",
+        "`paper.typ`",
+        "`paper.warnings.json`",
+        "`paper_manual.typ`",
+    ] {
+        assert!(
+            body.contains(path_ref),
+            "expected relative path {} in brief:\n{}",
+            path_ref,
+            body
+        );
+    }
+
+    // No line that carries a path reference (Task line or Files bullets)
+    // should contain an absolute path. Unix-only: the guard uses '/'.
     #[cfg(unix)]
-    {
-        for needle in &[
-            "**Typst output**:",
-            "**Source** `.tex`:",
-            "**Warnings sidecar**:",
-            "**Suggested patched output**:",
-        ] {
-            let line = body
-                .lines()
-                .find(|l| l.contains(needle))
-                .unwrap_or_else(|| panic!("missing line `{}` in brief:\n{}", needle, body));
-            // Extract the backtick-quoted path on that line.
-            let path = line
-                .split('`')
-                .nth(1)
-                .unwrap_or_else(|| panic!("no path on line: {}", line));
+    for line in body.lines() {
+        if line.starts_with('-') || line.starts_with("**Task") {
             assert!(
-                !path.starts_with('/'),
-                "`{}` should be relative; got `{}` on line: {}",
-                needle,
-                path,
-                line
+                !line.contains("`/"),
+                "absolute path in brief line: {}\nfull brief:\n{}",
+                line,
+                body
             );
         }
     }
+}
+
+#[test]
+fn brief_is_compact() {
+    // The brief must not inline file bodies — a simple "hi" document should
+    // produce a brief well under 4 KB. If this trips, something is inlining
+    // large blobs again.
+    let dir = tmpdir("brief-compact");
+    let entry = dir.join("paper.tex");
+    fs::write(
+        &entry,
+        "\\documentclass{article}\n\\begin{document}\nhi\n\\end{document}\n",
+    )
+    .unwrap();
+
+    let status = Command::new(binary_path())
+        .arg("convert")
+        .arg(&entry)
+        .status()
+        .expect("running byetex");
+    assert!(status.success());
+
+    let brief = entry.with_extension("agent_brief.md");
+    let size = fs::metadata(&brief)
+        .unwrap_or_else(|e| panic!("stat {}: {}", brief.display(), e))
+        .len();
+    assert!(
+        size < 4_096,
+        "brief should be < 4 KB (got {} bytes); check for inlined file bodies",
+        size
+    );
 }
 
 #[test]

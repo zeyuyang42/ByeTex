@@ -273,13 +273,15 @@ uses `write_agent_brief`):
 - `<stem>.typ` / `<out>/main.typ` — the converted body.
 - `<stem>.warnings.json` / `<out>/warnings.json` — the warnings array.
   Pretty-printed JSON; even an empty doc gets `[]`.
-- `<stem>.agent_brief.md` / `<out>/agent_brief.md` — a Markdown
-  bundle for LLM remediation. Contains the source `.tex`, the
-  generated `.typ`, optional `typst compile` log, all warnings
-  with their categories histogrammed, and a `<stem>_manual.typ`
-  pointer the LLM should write its patched copy to. Paths in the
-  brief are rendered relative to the brief's own directory so the
-  doc stays portable. On by default; `--no-brief` suppresses.
+- `<stem>.agent_brief.md` / `<out>/agent_brief.md` — a compact
+  Markdown pointer file for LLM remediation (~1 KB). Contains the
+  task instruction, compile status, a warning-category histogram,
+  and relative paths to the source `.tex`, generated `.typ`,
+  `warnings.json` sidecar, and a `<stem>_manual.typ` target for
+  the LLM's patched output. File bodies are NOT inlined — the LLM
+  reads the sidecars via tool calls. Paths are rendered relative to
+  the brief's own directory so the doc stays portable.
+  On by default; `--no-brief` suppresses.
 - `<out>/typst.toml` (project mode only) — derived in
   `derive_manifest` by peeking the first few lines of the
   generated `.typ` for an `#import "@preview/X:V"` line and
