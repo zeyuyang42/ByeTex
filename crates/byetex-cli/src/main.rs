@@ -652,10 +652,8 @@ fn relativize(target: &Path, base_dir: &Path) -> String {
 /// `byetex convert` flow (unless `--no-brief`) and by `byetex agent-brief`.
 ///
 /// The brief embeds the source `.tex`, generated `.typ`, optional
-/// `typst compile` log, and the structured `warnings.json` inline so an
-/// LLM can act on it without filesystem access. Paths shown at the top
-/// are relativised against the brief's own directory so they remain
-/// meaningful regardless of the caller's cwd.
+/// Paths shown are relativised against the brief's own directory so they
+/// remain meaningful regardless of the caller's cwd.
 fn write_agent_brief(inputs: BriefInputs<'_>) -> Result<()> {
     let BriefInputs {
         brief_path,
@@ -684,9 +682,7 @@ fn write_agent_brief(inputs: BriefInputs<'_>) -> Result<()> {
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| PathBuf::from("."));
 
-    // Read the artifacts so we can paste them inline.
-    let tex = std::fs::read_to_string(source_tex)
-        .with_context(|| format!("reading {}", source_tex.display()))?;
+    // Read the .typ for template-detection only (first 8 lines are enough).
     let typ = std::fs::read_to_string(typst_path).unwrap_or_default();
     let warnings_text =
         std::fs::read_to_string(warnings_path).unwrap_or_else(|_| "[]".to_string());
@@ -721,8 +717,8 @@ fn write_agent_brief(inputs: BriefInputs<'_>) -> Result<()> {
         (Some(out.status.success()), log)
     };
 
-    // Warnings: summarise category counts for the brief header.
-    let warnings_summary: String =
+    // Warnings: total count + category histogram sorted by count desc.
+    let (warnings_total, warnings_histogram): (usize, String) =
         match serde_json::from_str::<Vec<serde_json::Value>>(&warnings_text) {
             Ok(arr) => {
                 let mut counts: std::collections::BTreeMap<String, usize> =
@@ -736,20 +732,27 @@ fn write_agent_brief(inputs: BriefInputs<'_>) -> Result<()> {
                         .to_string();
                     *counts.entry(kind).or_default() += 1;
                 }
-                let mut s = format!("Total: {}", arr.len());
-                for (k, c) in &counts {
-                    s.push_str(&format!("\n  - {}: {}", k, c));
-                }
-                s
+                let mut sorted: Vec<(String, usize)> = counts.into_iter().collect();
+                sorted.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+                let histogram = if sorted.is_empty() {
+                    "(none)".to_string()
+                } else {
+                    sorted
+                        .iter()
+                        .map(|(k, c)| format!("  - {k}: {c}"))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                };
+                (arr.len(), histogram)
             }
-            Err(_) => "(could not parse warnings.json)".to_string(),
+            Err(_) => (0, "(could not parse warnings.json)".to_string()),
         };
 
-    // First-N compile errors (full output is in the appendix).
+    // First compile errors — enough context to start patching, not the full log.
     let first_errors: String = compile_log
         .lines()
         .filter(|l| l.starts_with("error:") || l.starts_with("warning:"))
-        .take(15)
+        .take(10)
         .collect::<Vec<_>>()
         .join("\n");
 
@@ -762,8 +765,8 @@ fn write_agent_brief(inputs: BriefInputs<'_>) -> Result<()> {
         Some(false) => "❌ typst compile failed".to_string(),
     };
 
-    // Render all the path references relative to the brief's own dir
-    // so the brief stays portable regardless of caller cwd.
+    // Render all path references relative to the brief's own dir so the
+    // brief stays portable regardless of the caller's cwd.
     let src_rel = relativize(source_tex, &brief_dir);
     let typ_rel = relativize(typst_path, &brief_dir);
     let warn_rel = relativize(warnings_path, &brief_dir);
@@ -775,197 +778,66 @@ fn write_agent_brief(inputs: BriefInputs<'_>) -> Result<()> {
         .unwrap_or("paper")
         .to_string();
 
-    // Mode-specific guidance: what command validates the patched output,
-    // what file the LLM should write to, what's already in the dir.
-    let (mode_label, what_to_do, layout_note) = match mode {
-        BriefMode::Flat => (
-            "flat",
-            format!(
-                "You are an LLM. Read the source `.tex` and the generated `.typ` (both embedded below — \
-filesystem access is optional) and **write a patched copy to `{manual_rel}`** that compiles \
-cleanly with `typst compile {typ_rel}`. Don't rewrite the whole document — preserve what works \
-and apply the smallest possible local edits to fix each compile error."
-            ),
-            "_Note: this is flat-output mode — referenced figures and `.bib` files were NOT copied. \
-Use `byetex convert <input> --project` if you want a self-contained Typst project directory._"
-                .to_string(),
-        ),
-        BriefMode::Project => (
-            "project",
-            format!(
-                "You are an LLM. This brief lives inside a self-contained Typst project directory. \
-Read the source `.tex` and the generated `main.typ` (both embedded below — filesystem access is \
-optional) and **write a patched copy to `{manual_rel}`** that compiles cleanly with \
-`typst compile main.typ` (run from this directory). Preserve what works; apply the smallest \
-possible local edits per compile error."
-            ),
-            "_Project layout: `main.typ` (the body), `warnings.json` (sidecar), `agent_brief.md` \
-(this file), plus any figures / `.bib` files referenced by the paper, copied here by ByeTex. \
-The original `.tex` lives at the `Source` path above (outside this directory)._"
-                .to_string(),
-        ),
+    let mode_label = match mode {
+        BriefMode::Flat => "flat",
+        BriefMode::Project => "project",
+    };
+
+    // Project mode: note that figures and .bib files are colocated.
+    let colocated_note = match mode {
+        BriefMode::Flat => String::new(),
+        BriefMode::Project => {
+            "\n\n_Figures and `.bib` files are colocated in this directory._".to_string()
+        }
     };
 
     let brief = format!(
         r#"# ByeTex agent brief: `{stem}` ({mode_label} mode)
 
-_All relative paths below are resolved against the directory containing this brief:_
-`{brief_dir_display}`
-
-- **Source** `.tex`: `{src_rel}`
-- **Typst output**: `{typ_rel}`
-- **Warnings sidecar**: `{warn_rel}`
-- **Suggested patched output**: **`{manual_rel}`**
-
-{layout_note}
-
-## Detection
-- Typst template binding: **{template}**
-- ByeTex warnings: ```
-{warnings_summary}
-```
+**Task** — Read `{src_rel}` (source) and `{typ_rel}` (current Typst output).
+Write a patched copy to **`{manual_rel}`** that compiles cleanly with
+`typst compile {typ_rel}`. Apply the smallest possible local edits per
+compile error; preserve what already works.
 
 ## Compile status
 {compile_status}
 
-### First errors (15 max — full log below)
 ```
 {first_errors}
 ```
 
-## What to do
+## Warnings ({warnings_total})
+{warnings_histogram}
 
-{what_to_do}
+Full sidecar: `{warn_rel}`
 
-Useful patterns observed in this corpus (from
-`docs/visual-regression-2026-05-23.md`):
-
-- **`unclosed delimiter` in math** is usually a nested
-  `\left\{{ \begin{{array}} ... \right\}}` that didn't translate cleanly.
-  Rewrite as Typst `cases(...)` or a `lr({{ ... }})` block.
-- **`unknown variable: <2-letter>`** (e.g. `dh`, `zK`, `pt`) is letter-
-  fusion: insert a space between the two letters.
-- **`unknown variable: <word>`** without a backslash often means a custom
-  macro wasn't expanded; if a `\newcommand` exists for it in the source,
-  inline the expansion. If it's `\<UPPER>`, wrap as `"<UPPER>"`.
-- **`unclosed label` / `<label with spaces>`** — the label key contains
-  spaces (`<thm:foo bar>`); replace spaces with `-`.
-- **`unexpected slash` in math like `$/X$`** — replace with literal `/`.
-- **`file not found` for `.bib`** — drop the `#bibliography(...)` line
-  entirely or repoint to an existing `.bib` file in the source dir.
-- **`character ` # ` is not valid in code`** — `##` in expl3 / `\#`
-  pushforward subscript — escape with `\#` in math context.
-
-## Source `.tex`
-```
-{tex}
-```
-
-## Generated `.typ`
-```typst
-{typ_inline}
-```
-
-## Full `typst compile` log
-```
-{compile_log}
-```
-
-## Full warnings.json
-```json
-{warnings_text}
-```
+## Files
+- Typst template: **{detected_template}**
+- Source `.tex`: `{src_rel}`
+- Generated `.typ`: `{typ_rel}`
+- Write patched output here: **`{manual_rel}`**
+- Warnings JSON: `{warn_rel}`{colocated_note}
 "#,
         stem = stem,
         mode_label = mode_label,
-        brief_dir_display = brief_dir.display(),
         src_rel = src_rel,
         typ_rel = typ_rel,
         warn_rel = warn_rel,
         manual_rel = manual_rel,
-        layout_note = layout_note,
-        template = detected_template,
-        warnings_summary = warnings_summary,
         compile_status = compile_status,
         first_errors = if first_errors.is_empty() {
             "(no errors)".to_string()
         } else {
             first_errors
         },
-        what_to_do = what_to_do,
-        tex = if tex.len() > 30_000 {
-            format!(
-                "{}\n... [truncated, see `{}`]",
-                truncate_at_char_boundary(&tex, 30_000),
-                src_rel
-            )
-        } else {
-            tex
-        },
-        typ_inline = if typ.len() > 30_000 {
-            format!(
-                "{}\n... [truncated, see `{}`]",
-                truncate_at_char_boundary(&typ, 30_000),
-                typ_rel
-            )
-        } else {
-            typ
-        },
-        compile_log = if compile_log.is_empty() {
-            "(empty)".to_string()
-        } else if compile_log.len() > 10_000 {
-            format!(
-                "{}\n... [truncated]",
-                truncate_at_char_boundary(&compile_log, 10_000)
-            )
-        } else {
-            compile_log
-        },
-        warnings_text = if warnings_text.len() > 20_000 {
-            format!(
-                "{}\n... [truncated, see `{}`]",
-                truncate_at_char_boundary(&warnings_text, 20_000),
-                warn_rel
-            )
-        } else {
-            warnings_text
-        },
+        warnings_total = warnings_total,
+        warnings_histogram = warnings_histogram,
+        detected_template = detected_template,
+        colocated_note = colocated_note,
     );
 
     std::fs::write(brief_path, brief)
         .with_context(|| format!("writing {}", brief_path.display()))?;
     eprintln!("wrote {}", brief_path.display());
     Ok(())
-}
-
-/// Return `&s[..n]` rounded down to the nearest char boundary so the slice
-/// never panics on multi-byte UTF-8. When `s.len() <= n`, returns `s`.
-fn truncate_at_char_boundary(s: &str, n: usize) -> &str {
-    if s.len() <= n {
-        return s;
-    }
-    let mut end = n;
-    while end > 0 && !s.is_char_boundary(end) {
-        end -= 1;
-    }
-    &s[..end]
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn truncate_at_char_boundary_handles_multibyte() {
-        // 'é' is 2 bytes (0xC3 0xA9). At byte-index 1 we'd be mid-codepoint.
-        let s = "aé"; // 3 bytes total: a (1) + é (2)
-        assert_eq!(truncate_at_char_boundary(s, 2), "a");
-        assert_eq!(truncate_at_char_boundary(s, 3), "aé");
-    }
-
-    #[test]
-    fn truncate_at_char_boundary_short_input_passthrough() {
-        let s = "hello";
-        assert_eq!(truncate_at_char_boundary(s, 100), "hello");
-    }
 }
