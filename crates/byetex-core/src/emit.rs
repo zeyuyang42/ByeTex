@@ -3631,6 +3631,26 @@ impl<'a> Emitter<'a> {
             // separated). The actual multi-line layout would need
             // `attach` machinery; this is a partial render that keeps
             // the math compiling.
+            // `\varinjlim` / `\varprojlim` / `\varliminf` / `\varlimsup` —
+            // amsmath limit operators with a directional arrow or bar
+            // underset on the `lim` base. Render via Typst `attach` or
+            // `underline`/`overline` on `op("lim")`.
+            "\\varinjlim" => {
+                self.out.push_str("attach(op(\"lim\"), b: arrow.r)");
+                node.end_byte()
+            }
+            "\\varprojlim" => {
+                self.out.push_str("attach(op(\"lim\"), b: arrow.l)");
+                node.end_byte()
+            }
+            "\\varliminf" => {
+                self.out.push_str("underline(op(\"lim\"))");
+                node.end_byte()
+            }
+            "\\varlimsup" => {
+                self.out.push_str("overline(op(\"lim\"))");
+                node.end_byte()
+            }
             "\\substack" => {
                 if let Some(arg) = first_curly_group(node) {
                     let inner = self
