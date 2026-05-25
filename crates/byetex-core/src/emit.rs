@@ -4617,7 +4617,32 @@ impl<'a> Emitter<'a> {
             return node.end_byte();
         }
         let opts = extract_graphics_options(node, self.src);
-        let mut args = format!("\"{}\"", path);
+        // Bug #37: resolve the image path with extension. LaTeX
+        // `\includegraphics{foo}` omits the extension; Typst's
+        // `image()` requires it. When we find `foo.png` on disk,
+        // emit `image("foo.png")` rather than the bare `image("foo")`
+        // which Typst rejects with `file not found`.
+        let mut resolved_path = path.clone();
+        let mut probed_source: Option<PathBuf> = None;
+        if let Some(ref base) = self.base_dir {
+            if let Some(source_path) = probe_image_on_disk(base, &path) {
+                if std::path::Path::new(&path).extension().is_none() {
+                    if let Some(name) = source_path.file_name().and_then(|n| n.to_str()) {
+                        let dir = std::path::Path::new(&path)
+                            .parent()
+                            .and_then(|p| p.to_str())
+                            .unwrap_or("");
+                        resolved_path = if dir.is_empty() {
+                            name.to_string()
+                        } else {
+                            format!("{}/{}", dir, name)
+                        };
+                    }
+                }
+                probed_source = Some(source_path);
+            }
+        }
+        let mut args = format!("\"{}\"", resolved_path);
         if let Some(width) = opts.iter().find(|(k, _)| k == "width") {
             // Translate `0.5\textwidth` → `50%`. Other forms (e.g. `3cm`) pass through.
             let v = normalize_graphics_length(&width.1);
@@ -4633,33 +4658,21 @@ impl<'a> Emitter<'a> {
         // NeedsManualReview warning so callers know the `image(...)` call in
         // the Typst body has no matching AssetRef in the project plan.
         if let Some(ref base) = self.base_dir.clone() {
-            match probe_image_on_disk(base, &path) {
+            match probed_source {
                 Some(source_path) => {
-                    // Build the typst_path: use the resolved filename so it has an
-                    // extension even if the LaTeX source omitted it.
-                    let typst_path = if std::path::Path::new(&path).extension().is_some() {
-                        path.clone()
-                    } else {
-                        source_path
-                            .file_name()
-                            .and_then(|n| n.to_str())
-                            .map(|name| {
-                                // Re-join the directory component from the original path.
-                                let dir = std::path::Path::new(&path).parent()
-                                    .and_then(|p| p.to_str())
-                                    .unwrap_or("");
-                                if dir.is_empty() { name.to_string() }
-                                else { format!("{}/{}", dir, name) }
-                            })
-                            .unwrap_or_else(|| path.clone())
-                    };
                     self.asset_refs.push(crate::AssetRef {
                         kind: crate::AssetKind::Image,
-                        typst_path,
+                        typst_path: resolved_path.clone(),
                         source_path,
                     });
                 }
                 None => {
+                    // Bug #37b: when probe fails (file not found in
+                    // the source tree — common when LaTeX uses
+                    // `\graphicspath{{./fig/}}` or when the arXiv
+                    // bundle omits a figure), emit a compileable
+                    // placeholder rect instead of `image("...")`
+                    // which would abort typst compile.
                     self.warnings.push(Warning {
                         range: range_of(node),
                         category: Category::NeedsManualReview {
@@ -4667,13 +4680,19 @@ impl<'a> Emitter<'a> {
                         },
                         severity: Severity::Warning,
                         message: format!(
-                            "could not resolve `\\includegraphics{{{}}}` against `{}` — the Typst body still references it, so `typst compile` will fail until the file is provided.",
+                            "could not resolve `\\includegraphics{{{}}}` against `{}` — emitting a placeholder. The original asset is missing from the source tree.",
                             path,
                             base.display()
                         ),
                         snippet: self.src[node.start_byte()..node.end_byte()].to_string(),
                         suggested_skill: None,
                     });
+                    let _ = write!(
+                        self.out,
+                        "rect(width: 60%, height: 4em, stroke: 0.5pt, fill: luma(240))[#align(center + horizon)[`{}` (missing)]]",
+                        path
+                    );
+                    return node.end_byte();
                 }
             }
         }

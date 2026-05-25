@@ -221,6 +221,76 @@ fn m4_bibliography() {
 }
 
 #[test]
+fn m4_includegraphics_no_extension_resolves_with_extension() {
+    // Bug #37 (fixed): `\includegraphics{foo}` (no extension) — when
+    // `foo.png` exists on disk, the emitter used to write
+    // `image("foo")` which Typst rejected with `file not found`
+    // (Typst's `image()` requires the extension). The emitter now
+    // probes for `foo.{png,pdf,jpg,jpeg,svg,gif}` and writes
+    // `image("foo.png")` when it resolves.
+    let tmp = std::env::temp_dir().join(format!(
+        "byetex-img-ext-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+    // Pretend a PNG exists.
+    std::fs::write(tmp.join("plot.png"), b"fake png").unwrap();
+    std::fs::write(
+        tmp.join("main.tex"),
+        "\\documentclass{article}\n\\begin{document}\n\\includegraphics{plot}\n\\end{document}\n",
+    )
+    .unwrap();
+    let opts = ConvertOptions {
+        source_name: Some("main.tex".into()),
+        base_dir: Some(tmp.clone()),
+    };
+    let out = convert(&std::fs::read_to_string(tmp.join("main.tex")).unwrap(), &opts);
+    assert!(
+        out.typst.contains("image(\"plot.png\")"),
+        "expected `image(\"plot.png\")` with resolved extension; got:\n{}",
+        out.typst
+    );
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+#[test]
+fn m4_includegraphics_missing_file_emits_placeholder() {
+    // Bug #37b (fixed): `\includegraphics{nowhere}` with no matching
+    // file on disk used to still emit `image("nowhere")`, which
+    // typst compile would abort on. The fallback now emits a
+    // compileable `rect(...)` placeholder so the rest of the
+    // document compiles.
+    let tmp = std::env::temp_dir().join(format!(
+        "byetex-img-missing-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+    std::fs::write(
+        tmp.join("main.tex"),
+        "\\documentclass{article}\n\\begin{document}\n\\includegraphics{nowhere}\n\\end{document}\n",
+    )
+    .unwrap();
+    let opts = ConvertOptions {
+        source_name: Some("main.tex".into()),
+        base_dir: Some(tmp.clone()),
+    };
+    let out = convert(&std::fs::read_to_string(tmp.join("main.tex")).unwrap(), &opts);
+    assert!(
+        !out.typst.contains("image(\"nowhere\""),
+        "missing file should NOT keep raw `image(\"nowhere\")`; got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("rect("),
+        "expected placeholder `rect(...)`; got:\n{}",
+        out.typst
+    );
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+#[test]
 fn m4_bibliography_drops_missing_files() {
     // Bug #27 (fixed): when `\bibliography{a,b,c}` lists multiple
     // files but only some are present in the source tree, Typst's
