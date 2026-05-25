@@ -2856,6 +2856,24 @@ impl<'a> Emitter<'a> {
         }
     }
 
+    /// Escape `;` inside any `(...)` group in the in-progress math
+    /// body. Typst math treats `f(a; b)` as a 2-row matrix call —
+    /// `\pi(\cdot; V)` (conditional-probability notation) would
+    /// otherwise render as `pi(dot.c; V)` and Typst aborts with
+    /// `expected content, found array`. Replacing with `#";"` keeps
+    /// the literal semicolon glyph without triggering the
+    /// matrix-row interpretation.
+    fn escape_math_semicolons(&mut self, body_start: usize) {
+        if body_start > self.out.len() {
+            return;
+        }
+        let escaped = escape_paren_semicolons(&self.out[body_start..]);
+        if escaped.len() != self.out.len() - body_start {
+            self.out.truncate(body_start);
+            self.out.push_str(&escaped);
+        }
+    }
+
     /// Collapse runs of two or more ASCII spaces in the in-progress math
     /// body to a single space. `push_math_symbol` appends a trailing space
     /// to multi-character word-like symbols (`approx`, `dot.c`, `arrow.r`)
@@ -2956,6 +2974,7 @@ impl<'a> Emitter<'a> {
         self.in_math = was;
         self.collapse_math_spaces(body_start);
         self.balance_math_brackets(body_start);
+        self.escape_math_semicolons(body_start);
         self.out.push('$');
         node.end_byte()
     }
@@ -2977,6 +2996,7 @@ impl<'a> Emitter<'a> {
         }
         self.collapse_math_spaces(body_start);
         self.balance_math_brackets(body_start);
+        self.escape_math_semicolons(body_start);
         self.out.push_str(" $");
         node.end_byte()
     }
@@ -3059,6 +3079,7 @@ impl<'a> Emitter<'a> {
         }
         self.collapse_math_spaces(body_start);
         self.balance_math_brackets(body_start);
+        self.escape_math_semicolons(body_start);
         self.out.push_str(" $");
         if let Some(l) = self.pending_math_label.take() {
             let _ = write!(self.out, " <{}>", l);
@@ -5624,6 +5645,62 @@ fn split_math_rows(body: &str) -> Vec<&str> {
     }
     if start <= bytes.len() {
         out.push(&body[start..]);
+    }
+    out
+}
+
+/// Replace `;` characters that sit inside any depth of `(...)` in a
+/// math body with `#";"` — Typst's content-block escape that renders
+/// the literal semicolon glyph. Outside parens (top-level math),
+/// `;` is left alone (Typst treats it as a literal there). The
+/// matrix/cases emitters write their own `;` separators *outside*
+/// the cell-content sub-buffers, so this pass never disturbs them.
+///
+/// Already-escaped backslash sequences (`\;`, `\#`, etc.) are
+/// preserved unchanged.
+fn escape_paren_semicolons(body: &str) -> String {
+    // Track whether the enclosing paren-call uses `;` as a row
+    // separator (`mat`, `cases`, `vec`). Only escape `;` when we're
+    // *not* in such a call — those legitimately need the row syntax.
+    fn call_uses_semicolon_as_separator(prefix: &str) -> bool {
+        let id: String = prefix
+            .chars()
+            .rev()
+            .take_while(|c| c.is_ascii_alphabetic())
+            .collect::<String>()
+            .chars()
+            .rev()
+            .collect();
+        matches!(id.as_str(), "mat" | "cases" | "vec")
+    }
+    let mut out = String::with_capacity(body.len());
+    // For each open `(`, push whether `;` inside should be escaped.
+    let mut escape_in_paren: Vec<bool> = Vec::new();
+    let mut chars = body.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => {
+                out.push('\\');
+                if let Some(next) = chars.next() {
+                    out.push(next);
+                }
+            }
+            '(' => {
+                let should_escape = !call_uses_semicolon_as_separator(&out);
+                escape_in_paren.push(should_escape);
+                out.push('(');
+            }
+            ')' => {
+                escape_in_paren.pop();
+                out.push(')');
+            }
+            ';' if escape_in_paren.last().copied().unwrap_or(false) => {
+                out.push_str("#\";\"");
+            }
+            other => {
+                out.push(other);
+            }
+        }
     }
     out
 }

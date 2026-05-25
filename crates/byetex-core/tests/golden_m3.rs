@@ -313,6 +313,59 @@ fn m3_mathbb_does_not_fuse_with_preceding_letter() {
 }
 
 #[test]
+fn m3_semicolon_in_math_function_call_escaped() {
+    // Bug #36 (fixed): Typst math treats `f(a; b)` as a 2-row matrix
+    // call. `\pi(\cdot; V)` (conditional-probability notation) used to
+    // emit as `pi(dot.c; V)` and Typst aborted with `expected content,
+    // found array` because it interpreted the `;` as a row separator.
+    // The math post-process pass now escapes `;` inside any `(...)`
+    // group whose call name isn't `mat`/`cases`/`vec` — keeping the
+    // semicolon as a literal glyph via `#";"`.
+    let out = convert(
+        "$\\pi(\\cdot; V)$\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        out.typst.contains("#\";\""),
+        "expected `#\";\"` escape; got:\n{}",
+        out.typst
+    );
+    // The unescaped raw `; V` inside `pi(...)` must not appear.
+    assert!(
+        !out.typst.contains("pi(dot.c; V"),
+        "raw `pi(dot.c; V` must not remain (Typst would parse as matrix); got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn m3_semicolon_in_matrix_row_separator_preserved() {
+    // Regression guard for Bug #36: legitimate `;` row separators
+    // inside `mat(...)`/`cases(...)`/`vec(...)` must NOT be escaped —
+    // those are Typst's matrix-row syntax.
+    let out = convert(
+        "$\\begin{pmatrix}1 & 2 \\\\ 3 & 4\\end{pmatrix}$\n",
+        &ConvertOptions {
+            source_name: Some("inline".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        out.typst.contains("mat(1, 2; 3, 4)"),
+        "expected `mat(1, 2; 3, 4)` with raw `;` row separator; got:\n{}",
+        out.typst
+    );
+    assert!(
+        !out.typst.contains("#\";\""),
+        "matrix row-separator `;` must not be escaped; got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
 fn m3_section_with_underscore_label_in_title_ref_attaches() {
     // Bug #35 (fixed): `\section{Proof of Lemma~\ref{thm:UAP_general_dim}}\label{sec:appendix}`
     // — tree-sitter mis-parses the inner `\ref{...}` key (it truncates
