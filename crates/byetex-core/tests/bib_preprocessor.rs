@@ -8,7 +8,11 @@ fn fixes_unresolved_string_with_quote() {
     // 2605.22507 pattern: `Journal = mor,` but no `@string{mor = "..."}`.
     let src = "@article{burnetas1997,\n\tJournal = mor,\n\tYear = 1997\n}\n";
     let out = preprocess_bib(src);
-    assert!(out.contains("\"mor\""), "mor should be quoted; got:\n{}", out);
+    assert!(
+        out.contains("\"mor\""),
+        "mor should be quoted; got:\n{}",
+        out
+    );
     assert!(
         !out.contains("Journal = mor,"),
         "raw `Journal = mor,` should be replaced; got:\n{}",
@@ -21,7 +25,11 @@ fn resolves_at_string_to_literal() {
     let src = "@string{tpami = \"IEEE TPAMI\"}\n\
                @article{x, Journal = tpami, Year = 2024}\n";
     let out = preprocess_bib(src);
-    assert!(out.contains("\"IEEE TPAMI\""), "resolved value missing; got:\n{}", out);
+    assert!(
+        out.contains("\"IEEE TPAMI\""),
+        "resolved value missing; got:\n{}",
+        out
+    );
 }
 
 #[test]
@@ -59,7 +67,11 @@ fn strips_stray_at_in_field_position() {
     // and aborts.
     let src = "@article{x, title = \"foo\", year = 2024,\n\t@doi = {10.1109/abc}\n}\n";
     let out = preprocess_bib(src);
-    assert!(!out.contains("@doi"), "stray @doi not stripped; got:\n{}", out);
+    assert!(
+        !out.contains("@doi"),
+        "stray @doi not stripped; got:\n{}",
+        out
+    );
     assert!(out.contains("doi = {10.1109/abc}"));
 }
 
@@ -70,5 +82,9 @@ fn drops_duplicate_keys() {
     let src = "@article{BM13, year = 2013}\n@article{BM13, year = 2014}\n";
     let out = preprocess_bib(src);
     let count = out.matches("@article{BM13").count();
-    assert_eq!(count, 1, "expected 1 BM13 entry; got {} in:\n{}", count, out);
+    assert_eq!(
+        count, 1,
+        "expected 1 BM13 entry; got {} in:\n{}",
+        count, out
+    );
 }

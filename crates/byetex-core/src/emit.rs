@@ -565,8 +565,7 @@ impl<'a> Emitter<'a> {
         // Bibitems discovered inside the sub-emitter (e.g. when an
         // inlined `.bbl` runs through here and emits `\bibitem`
         // calls) need to flow back so the parent's citations resolve.
-        self.bibliography_keys
-            .extend(sub.bibliography_keys.drain());
+        self.bibliography_keys.extend(sub.bibliography_keys.drain());
         self.warnings.append(&mut sub.warnings);
         self.asset_refs.append(&mut sub.asset_refs);
         sub.out
@@ -797,7 +796,11 @@ impl<'a> Emitter<'a> {
                 // all; the env-closing flush emits the first as the
                 // attached `<key>` and emits each extra as a hidden
                 // equation block so every `\ref{...}` resolves.
-                if !self.pending_math_labels.iter().any(|existing| existing == &l) {
+                if !self
+                    .pending_math_labels
+                    .iter()
+                    .any(|existing| existing == &l)
+                {
                     self.pending_math_labels.push(l);
                 }
                 // tree-sitter-latex truncates the label key at `_` and
@@ -1132,7 +1135,10 @@ impl<'a> Emitter<'a> {
                     let mut depth = 0i32;
                     while j < bytes.len() {
                         match bytes[j] {
-                            b'\\' if j + 1 < bytes.len() => { j += 2; continue; }
+                            b'\\' if j + 1 < bytes.len() => {
+                                j += 2;
+                                continue;
+                            }
                             b'{' => depth += 1,
                             b'}' => depth -= 1,
                             b']' if depth == 0 => break,
@@ -1153,11 +1159,16 @@ impl<'a> Emitter<'a> {
                     let mut depth = 1i32;
                     while j < bytes.len() {
                         match bytes[j] {
-                            b'\\' if j + 1 < bytes.len() => { j += 2; continue; }
+                            b'\\' if j + 1 < bytes.len() => {
+                                j += 2;
+                                continue;
+                            }
                             b'{' => depth += 1,
                             b'}' => {
                                 depth -= 1;
-                                if depth == 0 { break; }
+                                if depth == 0 {
+                                    break;
+                                }
                             }
                             _ => {}
                         }
@@ -4651,9 +4662,7 @@ impl<'a> Emitter<'a> {
         let mut typst_parts: Vec<String> = Vec::new();
         for raw_key in &keys {
             let sanitized = sanitize_label_key(raw_key);
-            if !self.bibliography_keys.is_empty()
-                && !self.bibliography_keys.contains(&sanitized)
-            {
+            if !self.bibliography_keys.is_empty() && !self.bibliography_keys.contains(&sanitized) {
                 missing.push(raw_key.as_str());
                 typst_parts.push(format!("[cite: missing key `{}`]", raw_key));
             } else {

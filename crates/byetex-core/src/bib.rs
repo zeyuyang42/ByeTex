@@ -213,11 +213,7 @@ fn strip_outer_brace_or_quote(s: &str) -> &str {
 /// "article", "inproceedings"). `body` is the content between the
 /// outer `{` and `}` of the entry. Returns the full `@type{body}`
 /// reconstruction.
-fn rewrite_entry(
-    entry_type: &str,
-    body: &str,
-    strings: &HashMap<String, String>,
-) -> String {
+fn rewrite_entry(entry_type: &str, body: &str, strings: &HashMap<String, String>) -> String {
     // Bug #40 part 1: drop any leading whitespace/newlines between
     // `{` and the entry key. Typst's parser requires the key
     // immediately.
@@ -421,8 +417,16 @@ mod tests {
         let src = "@string{jcp = \"Journal of Computational Physics\"}\n\
                    @article{foo, journal = jcp, year = 2024}\n";
         let out = preprocess_bib(src);
-        assert!(out.contains(r#""Journal of Computational Physics""#), "got: {}", out);
-        assert!(!out.contains("journal = jcp"), "old bare ref remains: {}", out);
+        assert!(
+            out.contains(r#""Journal of Computational Physics""#),
+            "got: {}",
+            out
+        );
+        assert!(
+            !out.contains("journal = jcp"),
+            "old bare ref remains: {}",
+            out
+        );
     }
 
     #[test]
@@ -430,7 +434,11 @@ mod tests {
         // No @string defined for `mor`.
         let src = "@article{foo, journal = mor, year = 1997}\n";
         let out = preprocess_bib(src);
-        assert!(out.contains("\"mor\""), "expected quoted fallback; got: {}", out);
+        assert!(
+            out.contains("\"mor\""),
+            "expected quoted fallback; got: {}",
+            out
+        );
     }
 
     #[test]
@@ -449,7 +457,11 @@ mod tests {
         let src = "@article{x, title = \"Hello\", note = {with {nested} braces}, year = 2024}\n";
         let out = preprocess_bib(src);
         assert!(out.contains("title = \"Hello\""), "quoted lost: {}", out);
-        assert!(out.contains("note = {with {nested} braces}"), "braced lost: {}", out);
+        assert!(
+            out.contains("note = {with {nested} braces}"),
+            "braced lost: {}",
+            out
+        );
         assert!(out.contains("year = 2024"), "number lost: {}", out);
     }
 
@@ -457,7 +469,11 @@ mod tests {
     fn drops_entry_with_no_key() {
         let src = "@inproceedings{, title = \"orphan\"}\n@article{good, year = 2024}\n";
         let out = preprocess_bib(src);
-        assert!(!out.contains("orphan"), "keyless entry not dropped: {}", out);
+        assert!(
+            !out.contains("orphan"),
+            "keyless entry not dropped: {}",
+            out
+        );
         assert!(out.contains("@article{good,"), "good entry lost: {}", out);
     }
 
@@ -466,8 +482,7 @@ mod tests {
         // Real bug from 2605.22738: `,\n\t@doi = {...}` — the `@`
         // before `doi` makes Typst's parser think a new entry is
         // starting and abort with `expected identifier`.
-        let src =
-            "@article{x, title = {Foo}, year = 2024,\n\t@doi = {10.1109/abc}\n}\n";
+        let src = "@article{x, title = {Foo}, year = 2024,\n\t@doi = {10.1109/abc}\n}\n";
         let out = preprocess_bib(src);
         // The `@doi` must be normalised to `doi` so Typst parses
         // it as a field name.

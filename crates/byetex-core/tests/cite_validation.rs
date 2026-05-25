@@ -11,11 +11,7 @@ use std::path::PathBuf;
 use byetex_core::{convert, Category, ConvertOptions};
 
 fn tmpdir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "byetex-cite-{}-{}",
-        name,
-        std::process::id()
-    ));
+    let dir = std::env::temp_dir().join(format!("byetex-cite-{}-{}", name, std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
     dir
@@ -40,7 +36,11 @@ fn cite_to_defined_key_emits_at_form() {
         base_dir: Some(dir.clone()),
     };
     let out = convert(&fs::read_to_string(dir.join("paper.tex")).unwrap(), &opts);
-    assert!(out.typst.contains("@Smith.2024"), "expected @Smith.2024; got:\n{}", out.typst);
+    assert!(
+        out.typst.contains("@Smith.2024"),
+        "expected @Smith.2024; got:\n{}",
+        out.typst
+    );
     assert!(
         !out.typst.contains("missing key"),
         "defined key was flagged as missing; got:\n{}",
@@ -83,18 +83,18 @@ fn cite_to_undefined_key_emits_placeholder() {
     let has_warning = out.warnings.iter().any(|w| {
         matches!(&w.category, Category::NeedsManualReview { reason } if reason.contains("Jones.2019"))
     });
-    assert!(has_warning, "no warning for undefined Jones.2019; got:\n{:?}", out.warnings);
+    assert!(
+        has_warning,
+        "no warning for undefined Jones.2019; got:\n{:?}",
+        out.warnings
+    );
     let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn cite_multi_key_partial_defined() {
     let dir = tmpdir("partial");
-    fs::write(
-        dir.join("refs.bib"),
-        "@article{Smith.2024, year={2024}}\n",
-    )
-    .unwrap();
+    fs::write(dir.join("refs.bib"), "@article{Smith.2024, year={2024}}\n").unwrap();
     fs::write(
         dir.join("paper.tex"),
         "\\documentclass{article}\\begin{document}\

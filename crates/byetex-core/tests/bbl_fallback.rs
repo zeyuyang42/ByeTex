@@ -12,11 +12,7 @@ use std::path::PathBuf;
 use byetex_core::{convert, Category, ConvertOptions};
 
 fn tmpdir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "byetex-bbl-{}-{}",
-        name,
-        std::process::id()
-    ));
+    let dir = std::env::temp_dir().join(format!("byetex-bbl-{}-{}", name, std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
     dir
@@ -76,7 +72,11 @@ fn bbl_inlined_when_bib_missing() {
             Category::NeedsManualReview { reason } if reason.contains("rendered `.bbl`")
         )
     });
-    assert!(has_info, "expected .bbl-fallback warning; got:\n{:?}", out.warnings);
+    assert!(
+        has_info,
+        "expected .bbl-fallback warning; got:\n{:?}",
+        out.warnings
+    );
     let _ = fs::remove_dir_all(&dir);
 }
 
