@@ -62,8 +62,8 @@ impl DocumentMetadata {
 
 /// One author, with whatever structured detail the per-class parser
 /// was able to pull out. Most fields are `Option` because LaTeX
-/// preambles vary wildly — IEEE papers carry department + organization
-/// + location + email, but a plain arxiv preprint might give only a
+/// preambles vary wildly — IEEE papers carry department, organization,
+/// location, and email, but a plain arxiv preprint might give only a
 /// name and email.
 #[derive(Debug, Default, Clone)]
 pub(crate) struct Author {

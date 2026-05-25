@@ -14,7 +14,6 @@
 /// the built-in math symbol table takes priority at emit time and seeded macros
 /// would be silently shadowed. The unit test `no_seed_collides_with_builtin`
 /// enforces this for all tables.
-
 pub(crate) struct MacroSeed {
     pub params: usize,
     pub body: &'static str,

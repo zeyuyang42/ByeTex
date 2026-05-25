@@ -1,6 +1,6 @@
-/// Snapshot tests for Phase 1a KaTeX symbol coverage expansion.
-/// Each test verifies that specific LaTeX commands produce the expected
-/// Typst math symbol expressions and generate zero conversion warnings.
+//! Snapshot tests for Phase 1a KaTeX symbol coverage expansion.
+//! Each test verifies that specific LaTeX commands produce the expected
+//! Typst math symbol expressions and generate zero conversion warnings.
 
 fn convert(src: &str) -> byetex_core::ConvertOutput {
     byetex_core::convert(src, &Default::default())

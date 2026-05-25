@@ -1,6 +1,6 @@
-/// Snapshot tests for Phase 4 KaTeX structural command coverage.
-/// Verifies that newly-added structural arms produce correct Typst math output
-/// with zero conversion warnings.
+//! Snapshot tests for Phase 4 KaTeX structural command coverage.
+//! Verifies that newly-added structural arms produce correct Typst math output
+//! with zero conversion warnings.
 
 fn convert(src: &str) -> byetex_core::ConvertOutput {
     byetex_core::convert(src, &Default::default())

@@ -315,3 +315,64 @@ fn write(dir: &Path, rel: &str, contents: &str) {
     }
     fs::write(path, contents).unwrap();
 }
+
+#[test]
+fn wrapper_newcommand_is_harvested() {
+    // Macros defined indirectly via a wrapper like:
+    //   \newcommand{\mytoken}[2]{\newcommand{#1}{body}}
+    //   \mytoken{\token}{t}
+    // should result in \token being available at call sites.
+    let src = concat!(
+        r"\newcommand{\mytoken}[2]{\newcommand{#1}{{#2}}}",
+        "\n",
+        r"\mytoken{\token}{t}",
+        "\n",
+        r"\mytoken{\vocab}{\mathcal{T}}",
+        "\n",
+        r"\begin{document}",
+        "\n",
+        "$\\token$ and $\\vocab$",
+        "\n",
+        r"\end{document}",
+    );
+    let out = byetex_core::convert(src, &byetex_core::ConvertOptions::default());
+    let ambiguous: Vec<_> = out
+        .warnings
+        .iter()
+        .filter(|w| format!("{:?}", w.category).contains("ambiguous_math"))
+        .collect();
+    assert!(
+        ambiguous.is_empty(),
+        "expected \\token and \\vocab to expand via wrapper harvest; got: {ambiguous:?}"
+    );
+}
+
+#[test]
+fn wrapper_newcommand_with_color_in_body() {
+    // Exact 22821 pattern: body has \color{...} which contains nested commands
+    let src = concat!(
+        "\\newcommand{\\mytoken}[2]{\\newcommand{#1}{{\\color{x}#2}}}\n",
+        "\\mytoken{\\token}{t}\n",
+        "\\mytoken{\\vocab}{\\mathcal{T}}\n",
+        "\\begin{document}\n",
+        "$\\token$ and $\\vocab$\n",
+        "\\end{document}\n",
+    );
+    let out = byetex_core::convert(src, &byetex_core::ConvertOptions::default());
+    let ambiguous: Vec<_> = out
+        .warnings
+        .iter()
+        .filter(|w| format!("{:?}", w.category).contains("ambiguous_math"))
+        .collect();
+    println!(
+        "warnings: {:?}",
+        out.warnings
+            .iter()
+            .map(|w| (format!("{:?}", w.category), &w.snippet))
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        ambiguous.is_empty(),
+        "expected no ambiguous_math for \\token and \\vocab; got: {ambiguous:?}"
+    );
+}

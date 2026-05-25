@@ -81,7 +81,79 @@ pub(crate) fn harvest_macros_from_source(source: &str) -> HashMap<String, MacroD
             }
         }
     }
+    // Second pass: expand calls to wrapper-newcommand macros.
+    // A "wrapper" is a macro whose body contains `\newcommand{#` — it
+    // defines another macro from its first argument at LaTeX run time.
+    // Example from arXiv/2605.22821:
+    //   \newcommand{\mytoken}[2]{\newcommand{#1}{{\color{\c}#2}}}
+    //   \mytoken{\token}{t}   →  would define \token at run time
+    // The harvester sees \mytoken defined but never evaluates the call,
+    // so \token never reaches self.macros and every `$\token$` emits
+    // ambiguous_math. This pass closes the gap.
+    harvest_wrapper_newcommands(tree.root_node(), source, &mut out);
     out
+}
+
+/// Walk `root` and expand calls to macros whose body contains
+/// `\newcommand{#` (the diagnostic of a wrapper that defines another
+/// macro from argument #1). Expands each call with its source args and
+/// re-harvests the resulting `\newcommand` definitions into `out`.
+/// Uses `or_insert` so direct definitions always win over derived ones.
+fn harvest_wrapper_newcommands(root: Node<'_>, src: &str, out: &mut HashMap<String, MacroDef>) {
+    let mut stack: Vec<Node<'_>> = vec![root];
+    while let Some(n) = stack.pop() {
+        if n.kind() == "generic_command" {
+            if let Some(cmd) = command_name_text_static(n, src) {
+                // Clone so we don't hold a borrow of `out` while inserting.
+                let wrapper = out
+                    .get(&cmd)
+                    .filter(|d| d.body.contains("\\newcommand{#"))
+                    .cloned();
+                if let Some(macro_def) = wrapper {
+                    let args = collect_curly_args_static(n, src);
+                    if args.len() >= macro_def.params && macro_def.params > 0 {
+                        let expanded =
+                            substitute_macro_args(&macro_def.body, &args[..macro_def.params]);
+                        let sub_tree = crate::parser::parse(&expanded);
+                        let mut sub_stack = vec![sub_tree.root_node()];
+                        while let Some(sn) = sub_stack.pop() {
+                            if sn.kind() == "new_command_definition" {
+                                if let Some((nm, def)) = extract_newcommand(sn, &expanded) {
+                                    out.entry(nm).or_insert(def);
+                                }
+                            } else {
+                                let mut c = sn.walk();
+                                for child in sn.children(&mut c) {
+                                    sub_stack.push(child);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let mut cursor = n.walk();
+        for c in n.children(&mut cursor) {
+            stack.push(c);
+        }
+    }
+}
+
+/// Collect the text content of each `curly_group` child of a
+/// `generic_command` node (stripping the outer `{` / `}`). Used by
+/// `harvest_wrapper_newcommands` to read call-site arguments without an
+/// `Emitter` self.
+fn collect_curly_args_static(node: Node<'_>, src: &str) -> Vec<String> {
+    let mut args = Vec::new();
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "curly_group" {
+            let start = child.start_byte() + 1;
+            let end = child.end_byte().saturating_sub(1);
+            args.push(src.get(start..end).unwrap_or("").to_string());
+        }
+    }
+    args
 }
 
 /// Free-function variant of `command_name_text` for use inside
@@ -296,7 +368,7 @@ impl<'a> Emitter<'a> {
                             }
                         }
                         Some("\\DeclareMathOperator") | Some("\\DeclareMathOperator*") => {
-                            let starred = cmd_token.as_deref().map_or(false, |s| s.ends_with('*'));
+                            let starred = cmd_token.as_deref().is_some_and(|s| s.ends_with('*'));
                             if let Some((name, def)) =
                                 extract_declare_math_operator_from_newcmd(n, self.src, starred)
                             {
@@ -2733,7 +2805,7 @@ impl<'a> Emitter<'a> {
                     .to_string();
                 if !name.is_empty() {
                     // Empty display = transparent sentinel (not a theorem block).
-                    self.theorem_kinds.entry(name).or_insert_with(String::new);
+                    self.theorem_kinds.entry(name).or_default();
                 }
                 break;
             }
@@ -6545,28 +6617,14 @@ fn substitute_macro_args(body: &str, args: &[String]) -> String {
     out
 }
 
-///
-/// Returns `None` when the new command has an optional-default
-/// argument (the form `\newcommand{\name}[1][default]{body}`) — we
-/// don't model defaults yet, so let those fall through to silent drop.
-///
-/// Accepts both name forms tree-sitter-latex produces for the
-/// `declaration` field of `new_command_definition`:
-///
-/// - `\newcommand{\name}{body}` — the canonical, curly-wrapped name.
-///   The child kind is `curly_group_command_name`; the inner
-///   `command_name` carries the actual name string.
-/// - `\newcommand\name{body}` — the brace-less name form, common in
-///   arXiv preamble macro files (`style/header.tex` etc.). The child
-///   kind is `command_name` directly. Without this branch, ~400
-///   user macros across the test corpus failed to be harvested by
-///   the pre-scan and every call site emitted `ambiguous_math`.
 /// Extract `(env_name, display_name)` from a `theorem_definition` node.
 /// Handles all four variant patterns:
-///   `\newtheorem{name}{Display}`
-///   `\newtheorem{name}[counter]{Display}`
-///   `\newtheorem{name}{Display}[parent]`
-///   `\newtheorem*{name}{Display}`
+///
+/// - `\newtheorem{name}{Display}`
+/// - `\newtheorem{name}[counter]{Display}`
+/// - `\newtheorem{name}{Display}[parent]`
+/// - `\newtheorem*{name}{Display}`
+///
 /// Falls back to capitalizing `name` when no display curly group is found
 /// (e.g. `\declaretheorem[name=Foo]{foo}` whose title is in options).
 fn extract_theorem_def(node: Node<'_>, src: &str) -> Option<(String, String)> {
@@ -6610,6 +6668,40 @@ fn extract_theorem_def(node: Node<'_>, src: &str) -> Option<(String, String)> {
     Some((name, display))
 }
 
+/// Find the byte index one past the `}` that closes the `{` at `start`.
+/// Returns `None` if `bytes[start]` is not `{` or braces are unbalanced.
+/// Skips `\{` and `\}` so escaped braces don't affect the depth count.
+fn brace_balanced_end(bytes: &[u8], start: usize) -> Option<usize> {
+    if bytes.get(start) != Some(&b'{') {
+        return None;
+    }
+    let mut depth = 0usize;
+    let mut i = start;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => i += 1, // skip the escaped byte
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i + 1);
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Extract a `\newcommand{\name}[N]{body}` definition from a `new_command_definition` node.
+///
+/// Returns `None` when the node cannot be parsed or has an optional-default argument.
+///
+/// Accepts both name forms tree-sitter-latex produces:
+///
+/// - `\newcommand{\name}{body}` — canonical curly-wrapped name (`curly_group_command_name`).
+/// - `\newcommand\name{body}` — brace-less name form, common in arXiv preamble files.
 fn extract_newcommand(node: Node<'_>, src: &str) -> Option<(String, MacroDef)> {
     let mut cursor = node.walk();
     let mut name: Option<String> = None;
@@ -6669,9 +6761,14 @@ fn extract_newcommand(node: Node<'_>, src: &str) -> Option<(String, MacroDef)> {
     }
     let name = name?;
     let body_node = body_group?;
-    // Strip the outer `{` and `}` to leave the body source.
+    // Use brace-counting to find the true end of the body group.
+    // tree-sitter-latex sometimes truncates curly_group end_byte when the
+    // body contains a nested \newcommand (wrapper-macro pattern), so we
+    // cannot trust end_byte() alone. Brace-counting is always correct.
+    let body_start = body_node.start_byte();
+    let body_end = brace_balanced_end(src.as_bytes(), body_start).unwrap_or(body_node.end_byte());
     let body = src
-        .get(body_node.start_byte() + 1..body_node.end_byte() - 1)
+        .get(body_start + 1..body_end - 1)
         .unwrap_or("")
         .to_string();
     let mut optional_defaults = HashMap::new();
@@ -6928,16 +7025,14 @@ fn extract_declare_math_operator_from_newcmd(
                     }
                 }
             }
-            "curly_group" => {
+            "curly_group" if display.is_none() => {
                 // The display text group (e.g. "{sinc}")
-                if display.is_none() {
-                    let body_src = &src[child.start_byte()..child.end_byte()];
-                    display = Some(if body_src.starts_with('{') && body_src.ends_with('}') {
-                        body_src[1..body_src.len() - 1].to_string()
-                    } else {
-                        body_src.to_string()
-                    });
-                }
+                let body_src = &src[child.start_byte()..child.end_byte()];
+                display = Some(if body_src.starts_with('{') && body_src.ends_with('}') {
+                    body_src[1..body_src.len() - 1].to_string()
+                } else {
+                    body_src.to_string()
+                });
             }
             _ => {}
         }

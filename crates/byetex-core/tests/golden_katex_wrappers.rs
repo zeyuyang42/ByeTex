@@ -1,6 +1,6 @@
-/// Snapshot tests for Phase 3 KaTeX single-arg wrapper coverage.
-/// Verifies that newly-added wrap entries produce correct Typst math output
-/// with zero conversion warnings.
+//! Snapshot tests for Phase 3 KaTeX single-arg wrapper coverage.
+//! Verifies that newly-added wrap entries produce correct Typst math output
+//! with zero conversion warnings.
 
 fn convert(src: &str) -> byetex_core::ConvertOutput {
     byetex_core::convert(src, &Default::default())

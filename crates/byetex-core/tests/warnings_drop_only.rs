@@ -46,36 +46,54 @@ fn drop_only_not_math() {
     );
 }
 
+// Math style switches are truly silent-dropped (no DropOnly warning, no content
+// corruption). Typst determines display/inline size contextually; these
+// per-expression size declarations have no direct equivalent.
 #[test]
-fn drop_only_displaystyle_math() {
+fn silent_drop_displaystyle_math() {
     let out = convert_str(r"$\displaystyle x$");
     let names = drop_only_names(&out);
     assert!(
-        names.contains(&"\\displaystyle"),
-        "expected DropOnly {{\\displaystyle}}, warnings: {:?}",
+        !names.contains(&"\\displaystyle"),
+        "\\displaystyle should be silent, not DropOnly: {:?}",
         out.warnings
+    );
+    assert!(
+        out.typst.contains("x"),
+        "content must survive: {}",
+        out.typst
     );
 }
 
 #[test]
-fn drop_only_textstyle_math() {
+fn silent_drop_textstyle_math() {
     let out = convert_str(r"$\textstyle x$");
     let names = drop_only_names(&out);
     assert!(
-        names.contains(&"\\textstyle"),
-        "warnings: {:?}",
+        !names.contains(&"\\textstyle"),
+        "\\textstyle should be silent, not DropOnly: {:?}",
         out.warnings
+    );
+    assert!(
+        out.typst.contains("x"),
+        "content must survive: {}",
+        out.typst
     );
 }
 
 #[test]
-fn drop_only_scriptstyle_math() {
+fn silent_drop_scriptstyle_math() {
     let out = convert_str(r"$\scriptstyle x$");
     let names = drop_only_names(&out);
     assert!(
-        names.contains(&"\\scriptstyle"),
-        "warnings: {:?}",
+        !names.contains(&"\\scriptstyle"),
+        "\\scriptstyle should be silent, not DropOnly: {:?}",
         out.warnings
+    );
+    assert!(
+        out.typst.contains("x"),
+        "content must survive: {}",
+        out.typst
     );
 }
 

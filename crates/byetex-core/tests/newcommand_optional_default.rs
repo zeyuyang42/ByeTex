@@ -151,7 +151,7 @@ $\customxy{y}$
 }
 
 #[test]
-fn real_world_traceD_pattern() {
+fn real_world_trace_d_pattern() {
     // The exact form from 2605.22159: `\newcommand{\trace}[1][]{...}`
     // with `\trace[\Gamma]` and bare `\trace` both as call sites.
     let src = r"\documentclass{article}
