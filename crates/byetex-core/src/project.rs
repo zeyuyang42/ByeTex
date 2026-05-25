@@ -472,7 +472,23 @@ pub fn materialize_project(
         if let Some(parent) = dest.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::copy(&asset.source, &dest)?;
+        // `.bib` files get preprocessed (resolve `@string` macros,
+        // quote unresolved bare identifiers, normalise key whitespace)
+        // so Typst's strict Hayagriva parser accepts them. See the
+        // `bib` module for the rewrites. Non-`.bib` assets (images,
+        // etc.) are byte-copied unchanged.
+        let is_bib = asset
+            .rel_dest
+            .extension()
+            .and_then(|e| e.to_str())
+            .map_or(false, |e| e.eq_ignore_ascii_case("bib"));
+        if is_bib {
+            let raw = std::fs::read_to_string(&asset.source)?;
+            let processed = crate::bib::preprocess_bib(&raw);
+            std::fs::write(&dest, processed)?;
+        } else {
+            std::fs::copy(&asset.source, &dest)?;
+        }
     }
 
     // Write typst.toml if present.
