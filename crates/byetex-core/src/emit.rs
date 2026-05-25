@@ -280,6 +280,8 @@ pub(crate) struct Emitter<'a> {
 const MAX_MACRO_DEPTH: u32 = 24;
 
 impl<'a> Emitter<'a> {
+    // ─── Construction & lifecycle ──────────────────────────────────────────────
+
     /// Constructor variant used by the public `convert()` entry point and by
     /// recursive `\input` expansion. `base_dir` enables include resolution;
     /// `visited` is the cycle-detection set carried across the chain of
@@ -570,6 +572,8 @@ impl<'a> Emitter<'a> {
         self.asset_refs.append(&mut sub.asset_refs);
         sub.out
     }
+
+    // ─── Node dispatch ────────────────────────────────────────────────────────
 
     /// Emit `node` and return the source byte offset to resume after.
     fn emit_node(&mut self, node: Node<'_>) -> usize {
@@ -1072,6 +1076,8 @@ impl<'a> Emitter<'a> {
         self.safe_copy(last, node.end_byte());
         node.end_byte()
     }
+
+    // ─── Generic commands & macro expansion ───────────────────────────────────
 
     fn emit_generic_command(&mut self, node: Node<'_>) -> usize {
         let name = command_name_text(node, self.src);
@@ -2501,6 +2507,8 @@ impl<'a> Emitter<'a> {
         node.end_byte()
     }
 
+    // ─── Environment dispatch & lists ─────────────────────────────────────────
+
     fn emit_generic_environment(&mut self, node: Node<'_>) -> usize {
         let env = environment_name(node, self.src);
         match env.as_deref() {
@@ -2805,6 +2813,8 @@ impl<'a> Emitter<'a> {
         }
     }
 
+    // ─── Theorem / proof / bibliography environments ──────────────────────────
+
     /// `\begin{theorem}[note]\label{X} body \end{theorem}` →
     /// `#figure(kind: "<name>", supplement: [Name], [body]) <X>`.
     fn emit_theorem_env(&mut self, env: Node<'_>, name: &str) -> usize {
@@ -2958,6 +2968,8 @@ impl<'a> Emitter<'a> {
     }
 
     /// Harvest a `theorem_definition` node (`\newtheorem{name}{Display}` and
+    // ─── Theorem & tcolorbox macro harvesting ─────────────────────────────────
+
     /// variants) into `self.theorem_kinds` so that `emit_generic_environment`
     /// can route unknown environment names to `emit_theorem_env` instead of
     /// warning.
@@ -3035,6 +3047,8 @@ impl<'a> Emitter<'a> {
     /// adjacent letters as a single identifier, so `t` + `in` collapses to
     /// the unknown variable `tin`. Inserting a space recovers the boundary.
     ///
+    // ─── Math primitives & letter-boundary helpers ────────────────────────────
+
     /// Symbols that contain a `.` (e.g. `arrow.r`, `dots.h`, `chevron.l`)
     /// get an additional *trailing* space: Typst treats `arrow.r0` as
     /// `arrow.r` with an unknown `0` modifier, so we need to break the
@@ -3208,6 +3222,8 @@ impl<'a> Emitter<'a> {
         self.out.truncate(body_start);
         self.out.push_str(&out);
     }
+
+    // ─── Math environment containers ──────────────────────────────────────────
 
     fn emit_inline_math(&mut self, node: Node<'_>) -> usize {
         self.out.push('$');
@@ -3448,6 +3464,8 @@ impl<'a> Emitter<'a> {
         let end = flat.last().unwrap().end_byte();
         self.safe_copy(last, end);
     }
+
+    // ─── Math commands & operators ────────────────────────────────────────────
 
     /// Emit a math command inside `$...$`. Looks up name in the symbol table;
     /// if not found, falls back to structural commands (\frac, \sqrt, ...);
@@ -4168,6 +4186,8 @@ impl<'a> Emitter<'a> {
         consumed
     }
 
+    // ─── Math layout & structures ─────────────────────────────────────────────
+
     fn emit_math_extensible_arrow(&mut self, node: Node<'_>, name: &str) -> usize {
         // Map command name → Typst arrow base symbol. The `x` family
         // is the "extensible" form (auto-stretched in LaTeX); Typst's
@@ -4623,6 +4643,8 @@ impl<'a> Emitter<'a> {
         node.end_byte()
     }
 
+    // ─── Cross-references & bibliography ──────────────────────────────────────
+
     /// Ensure two trailing newlines for a Typst paragraph break before a block.
     fn ensure_paragraph_break(&mut self) {
         if self.out.is_empty() {
@@ -4936,6 +4958,8 @@ impl<'a> Emitter<'a> {
             end
         }
     }
+
+    // ─── Figures, graphics & tabular ──────────────────────────────────────────
 
     fn emit_graphics_include(&mut self, node: Node<'_>) -> usize {
         let path = extract_graphics_path(node, self.src).unwrap_or_default();
@@ -5272,6 +5296,8 @@ impl<'a> Emitter<'a> {
         });
     }
 
+    // ─── Sectioning ───────────────────────────────────────────────────────────
+
     fn emit_section(&mut self, node: Node<'_>) -> usize {
         let kind = node.kind();
         let level = section_level(kind);
@@ -5503,6 +5529,8 @@ impl<'a> Emitter<'a> {
     }
 }
 
+// ─── Node classification helpers ──────────────────────────────────────────────
+
 fn is_comment(kind: &str) -> bool {
     matches!(kind, "line_comment" | "block_comment" | "comment")
 }
@@ -5554,6 +5582,8 @@ fn is_command(kind: &str) -> bool {
             | "todo"
     )
 }
+
+// ─── Node span & text utilities ───────────────────────────────────────────────
 
 fn range_of(node: Node<'_>) -> Range {
     let start = node.start_position();
@@ -5635,6 +5665,8 @@ fn push_flat<'a>(node: Node<'a>, out: &mut Vec<Node<'a>>) {
 /// provides: `bold(...)`, `italic(...)`, `upright(...)`, `mono(...)`.
 /// Slant/small-caps don't have direct math equivalents — folded onto
 /// `italic`/`upright` to keep a single round-trip output.
+// ─── Math / text font helpers ─────────────────────────────────────────────────
+
 fn math_font_decl_wrapper(node: Node<'_>, src: &str) -> Option<&'static str> {
     if node.kind() != "generic_command" {
         return None;
@@ -5809,6 +5841,8 @@ fn needs_text_escape(kind: &str) -> Option<&'static str> {
 /// Extract the list of citation keys from a `citation` node. Keys are
 /// children of `curly_group_text_list`, separated by `,`.
 /// Replace characters that Typst rejects in `<label>` / `@label`
+// ─── Label, citation & graphics extraction ────────────────────────────────────
+
 /// identifiers with `-`. Typst label identifiers allow ASCII
 /// letters, digits, `_`, `-`, `:`, `.`. LaTeX is more permissive
 /// — `+`, `'`, `*`, etc. appear in real arXiv `\bibitem` keys
@@ -5991,6 +6025,8 @@ fn normalize_graphics_length(v: &str) -> String {
 
 /// Parse a LaTeX tabular column spec like `lcr` or `|l|c|r|` into a count and
 /// a vector of Typst alignment names (`"left"`, `"center"`, `"right"`).
+// ─── Tabular, math rows & math sanitization ───────────────────────────────────
+
 fn parse_column_spec(spec: &str) -> (usize, Vec<String>) {
     let mut aligns = Vec::new();
     for c in spec.chars() {
@@ -6186,6 +6222,8 @@ fn escape_unbalanced_math_brackets(body: &str) -> String {
     out.push_str(&body[last..]);
     out
 }
+
+// ─── Math symbol table ────────────────────────────────────────────────────────
 
 /// Translate a LaTeX math command (with the leading backslash) into the
 /// corresponding Typst math fragment. Returns `None` for unknown commands so
@@ -6774,6 +6812,8 @@ impl BracelessArg {
 /// `\sqrt`, `\binom`) when filling missing brace-less args: without
 /// this guard, `$\frac{a}$` would greedily eat the closing `$` as the
 /// second argument and break the surrounding math container.
+// ─── Braceless-arg & macro machinery ──────────────────────────────────────────
+
 pub(crate) fn try_consume_math_arg(src: &str, start: usize) -> Option<(BracelessArg, usize)> {
     let bytes = src.as_bytes();
     let mut i = start;
@@ -7356,6 +7396,8 @@ fn extract_declare_math_operator_from_newcmd(
 /// idempotent. We don't touch `[`, `]`, `{`, `}` here — the caller
 /// already balances those, and over-escaping breaks the surrounding
 /// content block.
+// ─── Command dispatch helpers ──────────────────────────────────────────────────
+
 fn escape_text_cell(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();
@@ -7476,6 +7518,8 @@ fn extract_def_and_record(
     None
 }
 
+// ─── Document class, path & package resolution ────────────────────────────────
+
 pub(crate) fn wrap_for_command_name(name: &str) -> Option<(&'static str, &'static str)> {
     Some(match name {
         // `\mathds` (dsfont) and `\mathbbold` (bbold) — visually
@@ -7578,6 +7622,8 @@ fn extract_latex_include_path(node: Node<'_>, src: &str) -> Option<String> {
 }
 
 /// Resolve an `\input{rel}` style path against `base`. LaTeX accepts both
+// ─── Asset & bibliography filesystem probing ──────────────────────────────────
+
 /// `\input{foo}` (no extension; the `.tex` is implicit) and `\input{foo.tex}`
 /// — try the literal first, then the `.tex`-appended form.
 /// Probe the base directory for an image asset with the given stem/path.
@@ -7958,6 +8004,8 @@ fn map_bibliography_style(latex: &str) -> Option<&'static str> {
     }
 }
 
+// ─── Math word recognition & post-processing ──────────────────────────────────
+
 /// Decide whether a word inside math should be split into single characters.
 /// LaTeX semantics: consecutive letters are implicit products (`mc` = m·c).
 /// Typst semantics: consecutive letters form an identifier (`mc` = variable mc).
@@ -8127,6 +8175,8 @@ fn consume_trailing_inline_space(src: &str, mut pos: usize) -> usize {
     }
     pos
 }
+
+// ─── Label extraction & normalization ─────────────────────────────────────────
 
 /// Read the environment name from a `generic_environment` node. Looks for
 /// `begin > curly_group_text > text|word` and returns its source text.
