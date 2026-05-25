@@ -319,8 +319,11 @@ fn m3_semicolon_in_math_function_call_escaped() {
     // emit as `pi(dot.c; V)` and Typst aborted with `expected content,
     // found array` because it interpreted the `;` as a row separator.
     // The math post-process pass now escapes `;` inside any `(...)`
-    // group whose call name isn't `mat`/`cases`/`vec` — keeping the
-    // semicolon as a literal glyph via `#";"`.
+    // group whose call name isn't `mat`/`cases`/`vec` — using the
+    // bare quoted-string form `";"` (not the `#";"` content-block
+    // form, which causes Typst to enter code mode for the next
+    // paren-group and surfaces invalid-`^`/`\` errors deeper in
+    // the math; Bug #36-revisit).
     let out = convert(
         "$\\pi(\\cdot; V)$\n",
         &ConvertOptions {
@@ -329,8 +332,8 @@ fn m3_semicolon_in_math_function_call_escaped() {
         },
     );
     assert!(
-        out.typst.contains("#\";\""),
-        "expected `#\";\"` escape; got:\n{}",
+        out.typst.contains("\";\""),
+        "expected `\";\"` escape; got:\n{}",
         out.typst
     );
     // The unescaped raw `; V` inside `pi(...)` must not appear.
@@ -359,7 +362,7 @@ fn m3_semicolon_in_matrix_row_separator_preserved() {
         out.typst
     );
     assert!(
-        !out.typst.contains("#\";\""),
+        !out.typst.contains("\";\""),
         "matrix row-separator `;` must not be escaped; got:\n{}",
         out.typst
     );

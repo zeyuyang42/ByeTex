@@ -5718,7 +5718,15 @@ fn escape_paren_semicolons(body: &str) -> String {
                 out.push(')');
             }
             ';' if escape_in_paren.last().copied().unwrap_or(false) => {
-                out.push_str("#\";\"");
+                // Use the bare quoted string `";"` rather than the
+                // `#";"` content-block escape. Both render the
+                // literal `;` glyph, but `#";"` (where `#` enters
+                // code mode) causes Typst to misparse the *next*
+                // math token when it's a `(`-grouping — the parens
+                // become a code-mode call arg list, and chars like
+                // `^` then surface as invalid (driver: 2605.22728's
+                // `#";"(L^(min...))`). `";"` stays in math context.
+                out.push_str("\";\"");
             }
             other => {
                 out.push(other);
