@@ -662,7 +662,13 @@ fn relativize(target: &Path, base_dir: &Path) -> String {
     if rel.as_os_str().is_empty() {
         ".".to_string()
     } else {
-        rel.display().to_string()
+        // Use forward slashes unconditionally — the brief is a Markdown file
+        // consumed by humans and LLMs, not the OS path resolver. Native
+        // backslashes on Windows make the brief non-portable.
+        rel.components()
+            .map(|c| c.as_os_str().to_string_lossy().into_owned())
+            .collect::<Vec<_>>()
+            .join("/")
     }
 }
 
