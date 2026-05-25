@@ -1313,6 +1313,91 @@ fn m3_multi_label_in_single_math_env() {
     );
 }
 
+// ── PR B: varlim family ────────────────────────────────────────────────────
+
+#[test]
+fn m3_varinjlim_emits_lim_with_right_arrow() {
+    let src = "$\\varinjlim_{i} A_i$\n";
+    let out = convert(src, &ConvertOptions::default());
+    assert!(
+        out.typst.contains("lim"),
+        "expected 'lim' operator in output; got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("arrow.r"),
+        "expected right arrow for varinjlim; got:\n{}",
+        out.typst
+    );
+    assert!(
+        !out.typst.contains("varinjlim"),
+        "raw \\varinjlim leaked into output; got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn m3_varprojlim_emits_lim_with_left_arrow() {
+    let src = "$\\varprojlim_{i} A_i$\n";
+    let out = convert(src, &ConvertOptions::default());
+    assert!(
+        out.typst.contains("lim"),
+        "expected 'lim' operator in output; got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("arrow.l"),
+        "expected left arrow for varprojlim; got:\n{}",
+        out.typst
+    );
+    assert!(
+        !out.typst.contains("varprojlim"),
+        "raw \\varprojlim leaked into output; got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn m3_varliminf_emits_underlined_lim() {
+    let src = "$\\varliminf_{n} a_n$\n";
+    let out = convert(src, &ConvertOptions::default());
+    assert!(
+        out.typst.contains("lim"),
+        "expected 'lim' operator in output; got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("underline"),
+        "expected underline decoration for varliminf; got:\n{}",
+        out.typst
+    );
+    assert!(
+        !out.typst.contains("varliminf"),
+        "raw \\varliminf leaked into output; got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn m3_varlimsup_emits_overlined_lim() {
+    let src = "$\\varlimsup_{n} a_n$\n";
+    let out = convert(src, &ConvertOptions::default());
+    assert!(
+        out.typst.contains("lim"),
+        "expected 'lim' operator in output; got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("overline"),
+        "expected overline decoration for varlimsup; got:\n{}",
+        out.typst
+    );
+    assert!(
+        !out.typst.contains("varlimsup"),
+        "raw \\varlimsup leaked into output; got:\n{}",
+        out.typst
+    );
+}
 // ============== cref multi-key (Bug #45) ==============
 
 #[test]

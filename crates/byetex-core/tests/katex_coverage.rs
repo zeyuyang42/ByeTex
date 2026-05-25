@@ -81,6 +81,11 @@ const STRUCTURAL_ARMS: &[&str] = &[
     "\\linebreak",
     "\\nobreak",
     "\\tag",
+    // varlim family — amsmath limit operators with underset decoration
+    "\\varinjlim",
+    "\\varprojlim",
+    "\\varliminf",
+    "\\varlimsup",
     // warn-on-drop arms (emit_math_command issues DropOnly warning then skips)
     "\\not",
     "\\displaystyle",

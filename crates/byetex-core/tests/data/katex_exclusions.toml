@@ -754,18 +754,6 @@ reason = "underline text underlining, not math, skip"
 name = "\\varcoppa"
 reason = "archaic Greek letter, no Typst equivalent, skip"
 [[exclude]]
-name = "\\varinjlim"
-reason = "complex body with underrightarrow, defer to Phase 4"
-[[exclude]]
-name = "\\varliminf"
-reason = "complex body with underline op, defer to Phase 4"
-[[exclude]]
-name = "\\varlimsup"
-reason = "complex body with overline op, defer to Phase 4"
-[[exclude]]
-name = "\\varprojlim"
-reason = "complex body with underleftarrow, defer to Phase 4"
-[[exclude]]
 name = "\\varsubsetneqq"
 reason = "html@mathml with Unicode char, no named Typst symbol, skip"
 [[exclude]]
