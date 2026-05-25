@@ -33,43 +33,8 @@ const STRUCTURAL_ARMS: &[&str] = &[
     "\\mathrm",
     "\\textrm",
     "\\mathnormal",
-    // font wraps
-    "\\mathbf",
-    "\\mathbb",
-    "\\mathcal",
-    "\\mathfrak",
-    "\\mathscr",
-    "\\mathsf",
-    "\\mathit",
-    "\\mathtt",
-    "\\boldsymbol",
-    "\\pmb",
-    // accent wraps
-    "\\bar",
-    "\\overline",
-    "\\underline",
-    "\\hat",
-    "\\widehat",
-    "\\tilde",
-    "\\widetilde",
-    "\\vec",
-    "\\dot",
-    "\\ddot",
-    "\\acute",
-    "\\grave",
-    "\\check",
-    "\\breve",
-    // horizontal braces
-    "\\overbrace",
-    "\\underbrace",
-    // enclosures
-    "\\cancel",
-    "\\bcancel",
-    "\\xcancel",
-    "\\sout",
-    // misc single-arg wraps
-    "\\emph",
-    "\\mathop",
+    // font / accent / enclosure wraps — all handled via wrap_for_command_name;
+    // no entries needed here since the coverage test checks that function directly.
     // delimiter sizing
     "\\left",
     "\\right",
