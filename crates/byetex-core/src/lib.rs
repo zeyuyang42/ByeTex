@@ -9,6 +9,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
+pub mod bib;
 pub mod parser;
 pub mod project;
 pub mod skills;
