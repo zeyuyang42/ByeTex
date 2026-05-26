@@ -592,7 +592,35 @@ impl<'a> Emitter<'a> {
             //     (recursive partial-skip).
             if self.skip_until < node.end_byte() {
                 if node.child_count() == 0 {
-                    self.safe_copy(self.skip_until, node.end_byte());
+                    // Math-mode `word` tails (e.g. `Np` after `\frac12Np`)
+                    // must go through letter-splitting instead of raw copy.
+                    if self.in_math && node.kind() == "word" {
+                        let tail = &self.src[self.skip_until..node.end_byte()];
+                        let alpha_end = tail
+                            .find(|c: char| !c.is_ascii_alphabetic())
+                            .unwrap_or(tail.len());
+                        let alpha = &tail[..alpha_end];
+                        let rest = &tail[alpha_end..];
+                        if should_split_math_word(alpha) {
+                            self.ensure_math_letter_boundary(tail);
+                            let mut first = true;
+                            for c in alpha.chars() {
+                                if !first {
+                                    self.out.push(' ');
+                                }
+                                self.out.push(c);
+                                first = false;
+                            }
+                            if rest.starts_with(|c: char| c.is_ascii_digit()) {
+                                self.out.push(' ');
+                            }
+                            self.out.push_str(rest);
+                        } else {
+                            self.safe_copy(self.skip_until, node.end_byte());
+                        }
+                    } else {
+                        self.safe_copy(self.skip_until, node.end_byte());
+                    }
                     return node.end_byte();
                 }
                 let mut cursor = node.walk();
@@ -768,6 +796,34 @@ impl<'a> Emitter<'a> {
                 self.out.push(' ');
                 self.out.push_str(tail);
                 return node.end_byte();
+            }
+            // Digit-prefix words like "2JX" or "2kg": alpha_end==0 because the
+            // word starts with a digit, so the alpha-split branch never fires.
+            // Extract the digit prefix, then apply the same splitting logic to
+            // the trailing alpha run.
+            if alpha.is_empty() {
+                let digit_end = text
+                    .find(|c: char| !c.is_ascii_digit())
+                    .unwrap_or(text.len());
+                let digit_prefix = &text[..digit_end];
+                let rest = &text[digit_end..];
+                let rest_alpha_end = rest
+                    .find(|c: char| !c.is_ascii_alphabetic())
+                    .unwrap_or(rest.len());
+                let rest_alpha = &rest[..rest_alpha_end];
+                let rest_tail = &rest[rest_alpha_end..];
+                if should_split_math_word(rest_alpha) {
+                    self.out.push_str(digit_prefix);
+                    for c in rest_alpha.chars() {
+                        self.out.push(' ');
+                        self.out.push(c);
+                    }
+                    if rest_tail.starts_with(|c: char| c.is_ascii_digit()) {
+                        self.out.push(' ');
+                    }
+                    self.out.push_str(rest_tail);
+                    return node.end_byte();
+                }
             }
             // Non-split path: we own the write so the default walker below
             // doesn't double-emit the same bytes.
@@ -3822,8 +3878,15 @@ impl<'a> Emitter<'a> {
             "\\mathop" => self.emit_math_wrap(node, "op(", ")"),
             // `\operatorname{name}` → `op("name")` — upright math text.
             "\\operatorname" => self.emit_math_operatorname(node),
-            // Math-mode spacing primitives — drop silently.
-            "\\hspace" | "\\vspace" | "\\!" | "\\linebreak" | "\\nobreak" => node.end_byte(),
+            // Math-mode spacing primitives. `\hspace` emits a thin space so
+            // that content wrapping it (e.g. `\underbrace{\hspace{4cm}}`) does
+            // not produce an empty body that Typst rejects. `\vspace` and the
+            // zero-width commands are dropped silently.
+            "\\hspace" => {
+                self.out.push_str("thin ");
+                node.end_byte()
+            }
+            "\\vspace" | "\\!" | "\\linebreak" | "\\nobreak" => node.end_byte(),
             // `\tag{...}` adds LaTeX equation labels for presentation only;
             // Typst handles equation numbering itself. Warn so the user knows
             // their custom label text was not preserved.
