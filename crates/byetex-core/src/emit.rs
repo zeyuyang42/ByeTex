@@ -1526,6 +1526,11 @@ impl<'a> Emitter<'a> {
             }
             // Forced page breaks — Typst's pagination is automatic; warn so the
             // user knows their explicit layout intent was not preserved.
+            //
+            // tree-sitter-latex sometimes attaches the following `{...}` group
+            // as an argument to these argument-less commands (e.g.
+            // `\newpage\n\n{\bibliography{refs}}`). We must emit that group's
+            // content; only the command name itself is dropped.
             Some("\\pagebreak")
             | Some("\\nopagebreak")
             | Some("\\newpage")
@@ -1534,6 +1539,18 @@ impl<'a> Emitter<'a> {
                 if !self.in_math =>
             {
                 self.warn_silently_dropped(node);
+                // tree-sitter-latex sometimes attaches the following `{...}` group
+                // as an argument to these argument-less commands (e.g.
+                // `\newpage\n\n{\bibliography{refs}}`). Emit any `curly_group`
+                // children so that content (bibliography, etc.) is preserved.
+                let mut cursor = node.walk();
+                let groups: Vec<_> = node
+                    .children(&mut cursor)
+                    .filter(|c| c.kind() == "curly_group")
+                    .collect();
+                for g in &groups {
+                    self.emit_node(*g);
+                }
                 consume_trailing_inline_space(self.src, node.end_byte())
             }
             // Layout-only alignment directives — warn so the user knows their
