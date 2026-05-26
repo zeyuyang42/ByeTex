@@ -213,8 +213,8 @@ impl DocClass {
                 &keywords_csv,
                 meta.date.as_deref(),
             )),
-            Self::Lncs | Self::SvMult => Some(lncs_show_call(&title, &meta.authors, &abstract_)),
-            Self::Unknown => None,
+            // Lncs and SvMult reach flush_title_block (import_line returns None).
+            Self::Lncs | Self::SvMult | Self::Unknown => None,
         }
     }
 }
@@ -448,21 +448,6 @@ fn arkheion_show_call(
 
 /// `lncs` 0.1.0 signature: simpler `(title, authors, abstract)` plus
 /// optional affiliation tuple. Single column, sans-serif title block.
-fn lncs_show_call(title: &str, authors: &[Author], abstract_: &str) -> String {
-    let mut s = show_call_open("lncs", title);
-    s.push_str("  authors: (\n");
-    for a in authors {
-        s.push_str(&format!(
-            "    (name: \"{}\"),\n",
-            a.name.as_string_literal()
-        ));
-    }
-    s.push_str("  ),\n");
-    push_abstract_slot(&mut s, abstract_);
-    s.push_str(")\n");
-    s
-}
-
 /// `"foo, bar"` → `"\"foo\", \"bar\""` for embedding as a Typst tuple of strings.
 fn quote_csv(s: &str) -> String {
     s.split(',')
@@ -582,6 +567,7 @@ fn parse_one_author(chunk: &str) -> Author {
     for cmd in &[
         "email",
         "affiliation",
+        "affil",
         "institute",
         "institution",
         "address",
@@ -620,7 +606,7 @@ fn parse_one_author(chunk: &str) -> Author {
                     let replacement = if unwrap_body { body.clone() } else { String::new() };
                     match *cmd {
                         "email" => email = Some(body),
-                        "affiliation" | "institute" | "institution" | "address" => {
+                        "affiliation" | "affil" | "institute" | "institution" | "address" => {
                             affiliation_raw = Some(body);
                         }
                         "orcid" | "orcidID" => orcid = Some(body),
@@ -1325,15 +1311,6 @@ mod tests {
         assert_eq!(
             s,
             "#show: arkheion.with(\n  title: [T],\n  authors: (\n    (name: \"Alice\", email: \"\", affiliation: \"\", orcid: \"\"),\n  ),\n)\n"
-        );
-    }
-
-    #[test]
-    fn snapshot_lncs_minimal() {
-        let s = lncs_show_call("T", &one_author(), "");
-        assert_eq!(
-            s,
-            "#show: lncs.with(\n  title: [T],\n  authors: (\n    (name: \"Alice\"),\n  ),\n)\n"
         );
     }
 

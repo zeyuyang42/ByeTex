@@ -1754,8 +1754,6 @@ impl<'a> Emitter<'a> {
             // Springer/LNCS running-head variants (content appears in full \title / \author)
             | Some("\\title*")
             | Some("\\author*")
-            // Springer/LNCS affiliation
-            | Some("\\institute")
             // Springer abstract variant
             | Some("\\abstract*")
             // TOC entry injection — Typst auto-generates ToC from headings so
@@ -1889,30 +1887,66 @@ impl<'a> Emitter<'a> {
             | Some("\\acmDOI")
             | Some("\\acmISBN")
             | Some("\\acmPrice")
-            | Some("\\acmSubmissionID")
-            | Some("\\affiliation") => {
+            | Some("\\acmSubmissionID") => {
                 self.warn_silently_dropped(node);
                 node.end_byte()
             }
-            // ACM author-info fields. Capture into class_metadata so callers
-            // and class templates can access the values, and warn so the user
-            // knows these fields are not yet fully rendered.
-            Some("\\institution")
-            | Some("\\city")
+            // Per-author sibling-scope attribution (elsearticle / authblk pattern).
+            // Commands like `\author{Alice}\email{a@x} \author{Bob}\email{b@y}`
+            // place per-author fields as siblings of `\author{}` rather than
+            // nested inside it. Append them as raw LaTeX to the most recently
+            // seen \author{} buffer so parse_one_author picks them up at
+            // finish-time. When no \author{} has been seen yet, fall through to
+            // class_metadata (orphan / global scope).
+            Some("\\email")
+            | Some("\\orcid")
+            | Some("\\orcidID")
+            | Some("\\affiliation")
+            | Some("\\affil")
+            | Some("\\address")
+            | Some("\\institution")
+            | Some("\\institute") => {
+                if !self.raw_authors.is_empty() {
+                    if let Some(arg) = first_curly_like(node) {
+                        let cmd = command_name_text(node, self.src).unwrap_or_default();
+                        let inner = self
+                            .src
+                            .get(arg.start_byte() + 1..arg.end_byte().saturating_sub(1))
+                            .unwrap_or("")
+                            .to_string();
+                        if let Some(last) = self.raw_authors.last_mut() {
+                            last.push(' ');
+                            last.push_str(&cmd);
+                            last.push('{');
+                            last.push_str(&inner);
+                            last.push('}');
+                        }
+                    }
+                } else {
+                    // No author context — fall back to class_metadata so
+                    // external callers can still inspect the value.
+                    if let Some(key) = command_name_text(node, self.src) {
+                        let field = key.trim_start_matches('\\').to_string();
+                        if let Some(arg) = first_curly_like(node) {
+                            let content = self.render_curly_group_content(arg);
+                            self.metadata.class_metadata.entry(field).or_insert(content);
+                        }
+                    }
+                    self.warn_unsupported_command(node);
+                }
+                node.end_byte()
+            }
+            // ACM/authblk author-info fields that don't have a per-author
+            // counterpart. Capture into class_metadata for external callers.
+            Some("\\city")
             | Some("\\country")
             | Some("\\state")
             | Some("\\streetaddress")
             | Some("\\postcode")
-            | Some("\\email")
-            | Some("\\orcid")
-            | Some("\\orcidID")
             | Some("\\authornote")
             | Some("\\additionalaffiliation")
             | Some("\\ccsdesc")
             | Some("\\shortauthors")
-            // authblk / other class author-info fields
-            | Some("\\affil")
-            | Some("\\address")
             | Some("\\funding") => {
                 if let Some(key) = command_name_text(node, self.src) {
                     let field = key.trim_start_matches('\\').to_string();
