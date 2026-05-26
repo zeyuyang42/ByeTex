@@ -1,0 +1,40 @@
+ByeTex
+Copyright 2026 Zeyu Yang
+
+This product is dual-licensed under the MIT License and the Apache License,
+Version 2.0. See LICENSE-MIT and LICENSE-APACHE for the full license texts.
+
+-------------------------------------------------------------------------------
+VENDORED SOURCE
+-------------------------------------------------------------------------------
+
+crates/byetex-core/vendor/tree-sitter-latex/
+  tree-sitter-latex — LaTeX grammar for tree-sitter
+  Copyright (c) 2021 Patrick Förster
+  Licensed under the MIT License
+  See: crates/byetex-core/vendor/tree-sitter-latex/LICENSE
+
+-------------------------------------------------------------------------------
+RUST DEPENDENCIES (cargo)
+-------------------------------------------------------------------------------
+
+This project's compiled binaries incorporate code from the following crates.
+All are distributed under permissive open-source licenses (MIT, Apache-2.0,
+Unlicense, or Zlib). The complete dependency graph and individual license texts
+can be inspected with:
+
+    cargo license        # install: cargo install cargo-license
+    cargo about generate # install: cargo install cargo-about
+
+Key runtime dependencies and their licenses:
+
+  tree-sitter          MIT OR Apache-2.0
+  serde / serde_json   MIT OR Apache-2.0
+  clap                 MIT OR Apache-2.0
+  anyhow               MIT OR Apache-2.0
+  tokio                MIT
+  rmcp                 MIT OR Apache-2.0
+  chrono               MIT OR Apache-2.0
+
+All 150 transitive dependencies at the time of this writing are licensed under
+MIT, Apache-2.0, Unlicense, or Zlib — none require license propagation.

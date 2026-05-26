@@ -211,5 +211,9 @@ which documents Bugs #30–#41 closed and the deferred open tier (#32, #34).
 
 ## License
 
-Dual-licensed under MIT or Apache 2.0. Vendored sources keep their original
-licenses (notably `crates/byetex-core/vendor/tree-sitter-latex/LICENSE`).
+Dual-licensed under [MIT](LICENSE-MIT) or [Apache 2.0](LICENSE-APACHE) — your choice.
+
+Vendored and third-party dependency licenses are documented in [NOTICE](NOTICE).
+The only vendored source is `crates/byetex-core/vendor/tree-sitter-latex/`
+(MIT, Patrick Förster 2021). All 150 Rust cargo dependencies are MIT,
+Apache-2.0, Unlicense, or Zlib.
