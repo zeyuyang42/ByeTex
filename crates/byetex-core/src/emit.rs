@@ -1081,6 +1081,27 @@ impl<'a> Emitter<'a> {
 
     fn emit_generic_command(&mut self, node: Node<'_>) -> usize {
         let name = command_name_text(node, self.src);
+
+        // `\ensuremath{X}` — mode-aware inline math guard.
+        // In math: render the argument directly (no extra `$` wrapper).
+        // In text: wrap in Typst inline math `$...$`.
+        // Previously handled as a macro seed with body `$#1$`, which caused
+        // nested `$...$` when expanded inside math mode (Bug #49).
+        if name.as_deref() == Some("\\ensuremath") {
+            if let Some(arg) = first_curly_group(node) {
+                let inner = self.render_math_group(arg);
+                let inner = inner.trim();
+                if self.in_math {
+                    self.out.push_str(inner);
+                } else {
+                    self.out.push('$');
+                    self.out.push_str(inner);
+                    self.out.push('$');
+                }
+            }
+            return node.end_byte();
+        }
+
         if self.in_math {
             return self.emit_math_command(node, name.as_deref());
         }
@@ -1930,7 +1951,7 @@ impl<'a> Emitter<'a> {
                         .get(arg.start_byte() + 1..arg.end_byte() - 1)
                         .unwrap_or("")
                         .trim();
-                    let _ = write!(self.out, " <{}>", key);
+                    let _ = write!(self.out, " <{}>", sanitize_label_key(key));
                 }
                 node.end_byte()
             }
@@ -4339,10 +4360,27 @@ impl<'a> Emitter<'a> {
     fn emit_math_wrap(&mut self, node: Node<'_>, left: &str, right: &str) -> usize {
         if let Some(arg) = first_curly_group(node) {
             let inner = self.render_math_group(arg);
+            let inner_trimmed = inner.trim();
             self.ensure_math_letter_boundary(left);
-            self.out.push_str(left);
-            self.out.push_str(inner.trim());
-            self.out.push_str(right);
+            // In Typst math `func(a,b)` passes two arguments — comma is an
+            // arg separator. When the inner expression contains a comma and
+            // the wrapper is a simple `funcname(` call (no named args already
+            // in `left`), switch to content-block syntax `funcname[inner]`
+            // where commas are inert content, not separators.
+            let prefix = left.strip_suffix('(');
+            if inner_trimmed.contains(',')
+                && prefix.is_some_and(|p| !p.contains(','))
+                && right == ")"
+            {
+                self.out.push_str(prefix.unwrap());
+                self.out.push('[');
+                self.out.push_str(inner_trimmed);
+                self.out.push(']');
+            } else {
+                self.out.push_str(left);
+                self.out.push_str(inner_trimmed);
+                self.out.push_str(right);
+            }
             return node.end_byte();
         }
         // Brace-less form — LaTeX permits `\hat x`, `\mathcal A`,
@@ -8201,6 +8239,37 @@ fn post_process_typography(s: &str) -> String {
                 out.push_str("\\@");
                 prev = Some('@');
             }
+            // `<key>` is Typst's label syntax. Only emit a raw `<` when
+            // the span up to `>` consists entirely of valid Typst label
+            // chars (`[a-zA-Z0-9_:.-]`). Otherwise escape as `\<` to
+            // prevent Typst from misidentifying it as a label (e.g.
+            // `<email@host>`, `<http://url>`).
+            '<' => {
+                let mut lookahead = chars.clone();
+                let mut key_len: usize = 0;
+                let mut found_close = false;
+                'scan: loop {
+                    match lookahead.next() {
+                        Some('>') => {
+                            found_close = true;
+                            break 'scan;
+                        }
+                        Some(c)
+                            if c.is_ascii_alphanumeric()
+                                || matches!(c, '_' | ':' | '.' | '-') =>
+                        {
+                            key_len += 1;
+                        }
+                        _ => break 'scan,
+                    }
+                }
+                if found_close && key_len > 0 {
+                    out.push('<');
+                } else {
+                    out.push_str("\\<");
+                }
+                prev = Some('<');
+            }
             other => {
                 out.push(other);
                 prev = Some(other);
@@ -8306,6 +8375,8 @@ fn extract_label_name_and_end(node: Node<'_>, src: &str) -> Option<(String, usiz
 /// label name. Typst labels can't contain whitespace; collapse runs
 /// of internal whitespace to a single hyphen.
 fn normalize_label_key(raw: &str) -> String {
+    // First collapse whitespace runs to a single `-`, then sanitize any
+    // remaining chars that are not valid in a Typst `<label>` token.
     let mut out = String::with_capacity(raw.len());
     let mut prev_was_dash = false;
     for c in raw.chars() {
@@ -8322,5 +8393,5 @@ fn normalize_label_key(raw: &str) -> String {
     while out.ends_with('-') {
         out.pop();
     }
-    out
+    sanitize_label_key(&out)
 }
