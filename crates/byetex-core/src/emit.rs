@@ -6339,16 +6339,63 @@ fn normalize_graphics_length(v: &str) -> String {
 
 fn parse_column_spec(spec: &str) -> (usize, Vec<String>) {
     let mut aligns = Vec::new();
-    for c in spec.chars() {
-        match c {
-            'l' => aligns.push("left".to_string()),
-            'c' => aligns.push("center".to_string()),
-            'r' => aligns.push("right".to_string()),
-            // Ignore vertical bars and other spec characters.
-            _ => {}
+    let bytes = spec.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] as char {
+            'l' | 'L' => { aligns.push("left".to_string()); i += 1; }
+            'c' | 'C' => { aligns.push("center".to_string()); i += 1; }
+            'r' | 'R' => { aligns.push("right".to_string()); i += 1; }
+            // Paragraph/width columns (p, m, b) take {width} argument — skip
+            // the argument but count the column as left-aligned.
+            'p' | 'm' | 'b' | 'w' | 'W' => {
+                aligns.push("left".to_string());
+                i += 1;
+                if bytes.get(i) == Some(&b'{') {
+                    i = skip_balanced_braces(spec, i);
+                }
+            }
+            // tabularx X column — count as left-aligned.
+            'X' => { aligns.push("left".to_string()); i += 1; }
+            // @{...} and !{...}: inter-column material, not data columns.
+            // >{...} and <{...}: column format decorators (array package).
+            '@' | '!' | '>' | '<' => {
+                i += 1;
+                if bytes.get(i) == Some(&b'{') {
+                    i = skip_balanced_braces(spec, i);
+                }
+            }
+            // Vertical rules and whitespace — ignore.
+            _ => { i += 1; }
         }
     }
     (aligns.len(), aligns)
+}
+
+/// Skip a `{...}` balanced-brace group starting at `start` (where `src[start] == '{'`).
+/// Returns the index one past the closing `}`.
+fn skip_balanced_braces(src: &str, start: usize) -> usize {
+    let bytes = src.as_bytes();
+    if bytes.get(start) != Some(&b'{') {
+        return start;
+    }
+    let mut depth = 1usize;
+    let mut i = start + 1;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return i + 1;
+                }
+            }
+            b'\\' => i += 1, // skip escaped char
+            _ => {}
+        }
+        i += 1;
+    }
+    i
 }
 
 /// Escape unbalanced paired delimiters (`[`, `]`, `(`, `)`) in a Typst math
