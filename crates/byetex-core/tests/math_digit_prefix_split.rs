@@ -92,3 +92,28 @@ fn plain_multi_letter_split_still_works() {
         out.typst
     );
 }
+
+#[test]
+fn hspace_after_letter_does_not_fuse_with_thin() {
+    // LaTeX: $v\hspace{1em}$ — thin space must not fuse with preceding 'v'
+    // producing 'vthin' (unknown variable in Typst). Paper 22728 regression.
+    let src = r"$v\hspace{1em}$";
+    let out = convert(src);
+    assert!(
+        !out.typst.contains("vthin"),
+        "vthin must not appear; hspace must be separated from 'v', got: {}",
+        out.typst
+    );
+}
+
+#[test]
+fn hspace_mid_math_does_not_fuse_identifiers() {
+    // $v\hspace{-0.15em}\in$ — 'v' + thin + 'in' must stay separate
+    let src = r"$v\hspace{-0.15em}\in$";
+    let out = convert(src);
+    assert!(
+        !out.typst.contains("vthin"),
+        "vthin must not appear, got: {}",
+        out.typst
+    );
+}

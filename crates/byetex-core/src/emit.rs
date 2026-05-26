@@ -3883,6 +3883,9 @@ impl<'a> Emitter<'a> {
             // not produce an empty body that Typst rejects. `\vspace` and the
             // zero-width commands are dropped silently.
             "\\hspace" => {
+                // `thin` must not fuse with a preceding identifier letter
+                // (e.g. `v\hspace{...}` → `vthin` = unknown variable).
+                self.ensure_math_letter_boundary("thin");
                 self.out.push_str("thin ");
                 node.end_byte()
             }
