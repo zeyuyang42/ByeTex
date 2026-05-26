@@ -11,7 +11,7 @@
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BYETEX="$REPO_ROOT/target/release/byetex"
-CORPUS="$REPO_ROOT/corpus"
+CORPUS="$REPO_ROOT/corpus/online/arxiv"
 
 # ── flags ────────────────────────────────────────────────────────────────────
 MAX_ERRORS=1
