@@ -5648,6 +5648,12 @@ impl<'a> Emitter<'a> {
                 "label_definition" if label.is_none() => {
                     label = extract_label_name(*child, self.src);
                 }
+                "label_definition" => {
+                    // Extra sibling labels on the same heading: consume
+                    // silently. Typst's "last label wins" rule would drop
+                    // the primary label if these float free; skip them here
+                    // so they never become body content.
+                }
                 // Bug #35: tree-sitter mis-parses curly groups whose
                 // key contains `_` (e.g. `\ref{thm:UAP_general_dim}`
                 // inside the title), leaving an orphan `}` as an
@@ -5675,65 +5681,93 @@ impl<'a> Emitter<'a> {
         // `\ref{thm:UAP_general_dim}` inside the title) and the
         // section node ends prematurely. The associated `\label{...}`
         // then sits as a sibling of the section rather than a child,
-        // and our AST-child-only sweep above doesn't find it. Source-
-        // byte peek for `\label{...}` immediately after this section
-        // node's end so the label attaches to the heading.
-        if label.is_none() {
+        // and our AST-child-only sweep above doesn't find it.
+        //
+        // Additionally, LaTeX allows multiple consecutive \label{}
+        // commands on the same section (all are aliases for the same
+        // location). Typst's "last label wins" rule would silently drop
+        // every label except the last, breaking any reference that used
+        // an earlier label. We therefore scan ALL consecutive sibling
+        // \label{...} commands: the first becomes the heading's label
+        // (kept), and the rest are consumed/skipped so the walker never
+        // re-emits them as standalone labels.
+        {
             let bytes = self.src.as_bytes();
-            let mut i = node.end_byte();
+            let mut i = self.skip_until.max(node.end_byte());
             // Skip whitespace and stray closing braces (the ERROR
             // `}` left behind by the truncated curly group).
             while i < bytes.len() && (bytes[i].is_ascii_whitespace() || bytes[i] == b'}') {
                 i += 1;
             }
             const LABEL_TAG: &[u8] = b"\\label";
-            if bytes.len().saturating_sub(i) >= LABEL_TAG.len()
-                && &bytes[i..i + LABEL_TAG.len()] == LABEL_TAG
-            {
+            loop {
+                if bytes.len().saturating_sub(i) < LABEL_TAG.len()
+                    || &bytes[i..i + LABEL_TAG.len()] != LABEL_TAG
+                {
+                    break;
+                }
                 let mut k = i + LABEL_TAG.len();
                 while k < bytes.len() && bytes[k].is_ascii_whitespace() {
                     k += 1;
                 }
-                if k < bytes.len() && bytes[k] == b'{' {
-                    let key_start = k + 1;
-                    let mut j = key_start;
-                    let mut depth = 1i32;
-                    while j < bytes.len() {
-                        match bytes[j] {
-                            b'\\' if j + 1 < bytes.len() => {
-                                j += 2;
-                                continue;
-                            }
-                            b'{' => depth += 1,
-                            b'}' => {
-                                depth -= 1;
-                                if depth == 0 {
-                                    break;
-                                }
-                            }
-                            _ => {}
+                if k >= bytes.len() || bytes[k] != b'{' {
+                    break;
+                }
+                let key_start = k + 1;
+                let mut j = key_start;
+                let mut depth = 1i32;
+                while j < bytes.len() {
+                    match bytes[j] {
+                        b'\\' if j + 1 < bytes.len() => {
+                            j += 2;
+                            continue;
                         }
-                        j += 1;
-                    }
-                    if j < bytes.len() && bytes[j] == b'}' {
-                        let key = self.src[key_start..j].trim().to_string();
-                        if !key.is_empty() {
-                            label = Some(key);
-                            self.skip_until = self.skip_until.max(j + 1);
+                        b'{' => depth += 1,
+                        b'}' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                break;
+                            }
                         }
+                        _ => {}
                     }
+                    j += 1;
+                }
+                if j >= bytes.len() || bytes[j] != b'}' {
+                    break;
+                }
+                let key = self.src[key_start..j].trim().to_string();
+                if key.is_empty() {
+                    break;
+                }
+                // First label found becomes the heading label; subsequent
+                // ones are consumed silently.
+                if label.is_none() {
+                    label = Some(key);
+                }
+                self.skip_until = self.skip_until.max(j + 1);
+                i = j + 1;
+                // Advance past whitespace to check for another \label.
+                while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                    i += 1;
                 }
             }
         }
 
         if starred {
+            // A starred section with a label must still be referenceable via
+            // @label. Typst's `numbering: none` makes headings unreferenceable
+            // in Typst 0.14+. A function `(..n) => none` is valid, keeps the
+            // heading in the numbering counter (so @ref works), but renders
+            // no visible number.
+            let num_arg = if label.is_some() { "(..n) => none" } else { "none" };
             if level == 1 {
-                let _ = write!(self.out, "#heading(numbering: none)[{}]", title);
+                let _ = write!(self.out, "#heading(numbering: {})[{}]", num_arg, title);
             } else {
                 let _ = write!(
                     self.out,
-                    "#heading(level: {}, numbering: none)[{}]",
-                    level, title
+                    "#heading(level: {}, numbering: {})[{}]",
+                    level, num_arg, title
                 );
             }
         } else {
