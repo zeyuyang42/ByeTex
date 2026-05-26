@@ -6131,7 +6131,9 @@ fn needs_text_escape(kind: &str) -> Option<&'static str> {
 pub(crate) fn sanitize_label_key(key: &str) -> String {
     key.chars()
         .map(|c| {
-            if c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | ':' | '.') {
+            // Typst labels support Unicode alphanumerics, so preserve them.
+            // Only replace characters that Typst rejects in label identifiers.
+            if c.is_alphanumeric() || matches!(c, '_' | '-' | ':' | '.') {
                 c
             } else {
                 '-'

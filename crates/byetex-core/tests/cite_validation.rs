@@ -173,3 +173,27 @@ fn cite_to_bibitem_in_inlined_bbl_resolves() {
     );
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn unicode_cite_key_is_preserved_not_sanitized() {
+    // Bib keys with non-ASCII letters (e.g. `HintermüllerKunisch2004`) must
+    // NOT be mangled to `Hinterm-llerKunisch2004`. Typst labels support
+    // Unicode. Paper 22728 regression.
+    let src = r"\begin{document}
+\cite{HintermüllerKunisch2004}
+\begin{thebibliography}{99}
+\bibitem{HintermüllerKunisch2004} Hintermuller et al.
+\end{thebibliography}
+\end{document}";
+    let out = byetex_core::convert(src, &Default::default());
+    assert!(
+        out.typst.contains("@HintermüllerKunisch2004"),
+        "unicode cite key must be preserved, got: {}",
+        out.typst
+    );
+    assert!(
+        !out.typst.contains("Hinterm-llerKunisch2004"),
+        "mangled key must not appear, got: {}",
+        out.typst
+    );
+}
