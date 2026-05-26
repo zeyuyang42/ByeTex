@@ -32,20 +32,24 @@ subsequent compiles use the local cache. Offline runs of the test plan
 will fail on Scenarios B and D2 unless those packages are already in
 `~/Library/Caches/typst/packages/preview/`.
 
-**Corpus prerequisite (only for Scenario D):** the LaTeX template harvester
-described in `~/.claude/plans/i-want-to-download-flickering-mango.md` populates
-a top-level `templates/` directory with real-world templates from
-latextemplates.com and recent arXiv papers. If you plan to run Scenario D,
-let the harvester finish first. The rest of the scenarios work without it.
+**Corpus prerequisite (only for Scenario D):** the arXiv corpus lives in
+`corpus/` (gitignored). `corpus/manifest.json` (committed) lists known papers;
+5 are marked `pinned:true` and form the regression set. Run:
 
 ```bash
-# Check whether the corpus is ready:
-ls -la templates/latextemplates/ templates/arxiv/ 2>/dev/null && \
-  jq '.entries | length' templates/manifest.json 2>/dev/null
+python scripts/corpus_harvest.py --pinned   # fetch the 5 pinned papers (~25 MB)
 ```
-Expected: at least one entry in `manifest.json` (the small-batch run produces
-~5; the large-batch run ~45). If the directory doesn't exist, Scenario D
-falls back to "bring your own paper".
+
+to populate the regression set. To fetch all 26 manifest papers run without
+`--pinned`. To add new papers from arXiv: `python scripts/corpus_harvest.py --search cs.LG --limit 5`.
+
+Check corpus readiness:
+
+```bash
+python3 -c "import json; d=json.load(open('corpus/manifest.json')); \
+  print(f\"{len(d['papers'])} papers, {sum(p['pinned'] for p in d['papers'])} pinned\")"
+ls corpus/2605.22507/source/ 2>/dev/null && echo "pinned set fetched" || echo "run corpus_harvest.py --pinned"
+```
 
 ---
 

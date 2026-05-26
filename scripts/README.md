@@ -4,85 +4,64 @@ Dev-only helper scripts for the ByeTex project. Not part of the Rust build.
 
 ---
 
-## setup_corpus.py
+## corpus_harvest.py
 
-Populates `corpus/inhouse/` from the committed `tests/inhouse/` source-of-truth.
-Run this once before using the inhouse templates with byetex + typst (so that
-generated outputs go into the gitignored `corpus/` rather than `tests/`).
-
-```bash
-python scripts/setup_corpus.py
-```
-
-Idempotent — re-running refreshes copies without destroying anything.
-
----
-
-## harvest_templates.py
-
-Downloads arXiv source tarballs into `corpus/online/arxiv/<id>/source/` for
-testing the LaTeX→Typst converter against real-world papers. All output is
-gitignored — run the script to populate locally.
+Downloads arXiv source tarballs into `corpus/<id>/source/` for testing the
+LaTeX→Typst converter against real-world papers. Driven by `corpus/manifest.json`
+(committed); payloads are gitignored.
 
 ### Setup
 
 **With [uv](https://github.com/astral-sh/uv) (recommended — no venv needed):**
 
 ```bash
-uv run --with requests python scripts/harvest_templates.py --dry-run
+uv run --with requests python scripts/corpus_harvest.py --pinned
 ```
 
-**With a virtual environment:**
+**With pip:**
 
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r scripts/requirements.txt
-python scripts/harvest_templates.py --dry-run
+pip install requests
+python scripts/corpus_harvest.py --pinned
 ```
 
 ### Usage
 
+**Fetch the 5 pinned regression papers** (used by CI + `template_budgets` tests):
+
+```bash
+uv run --with requests python scripts/corpus_harvest.py --pinned
+```
+
+**Fetch all papers in the manifest** (26 total):
+
+```bash
+uv run --with requests python scripts/corpus_harvest.py
+```
+
 **Dry run** (no downloads — shows what would be fetched):
 
 ```bash
-uv run --with requests python scripts/harvest_templates.py --dry-run
+uv run --with requests python scripts/corpus_harvest.py --dry-run
+uv run --with requests python scripts/corpus_harvest.py --pinned --dry-run
 ```
 
-**Small batch** (5 items — verify before going large):
+**Add new papers from arXiv and fetch them:**
 
 ```bash
-uv run --with requests python scripts/harvest_templates.py --limit 5
-```
-
-**Resume a partial run:**
-
-```bash
-uv run --with requests python scripts/harvest_templates.py --limit 5 --resume
-```
-
-**Larger batch with custom categories:**
-
-```bash
-uv run --with requests python scripts/harvest_templates.py \
-    --no-limit \
-    --arxiv-category cs.LG --arxiv-category math.NA --arxiv-category stat.ML
+uv run --with requests python scripts/corpus_harvest.py --search cs.LG --limit 5
 ```
 
 ### Output layout
 
 ```
 corpus/
-  manifest.json                        # arXiv metadata index (gitignored)
-  inhouse/                             # copied from tests/inhouse/ by setup_corpus.py
-    ieee/  acm/  neurips/  thesis/
-  online/
-    arxiv/                             # downloaded by harvest_templates.py
-      2605.22507/
-        source.tar.gz
-        source/                        # extracted LaTeX files
-        meta.json                      # per-paper metadata
-      2605.22557/
-        ...
+  manifest.json          # committed — source of truth
+  2605.22507/            # gitignored payload
+    source.tar.gz
+    source/              # extracted LaTeX files
+  2605.22557/
+    ...
 ```
 
 ### License note
@@ -95,9 +74,12 @@ which permits this kind of research use.
 
 ## visual_test.py
 
-Runs the visual regression pipeline: for each arXiv paper in `corpus/online/arxiv/`,
+Runs the visual regression pipeline: for each arXiv paper in `corpus/`,
 runs `byetex convert` → `typst compile` → rasterizes both PDFs → builds a
 side-by-side composite PNG for agent visual grading.
+
+The default paper set is the 5 pinned IDs from `corpus/manifest.json`.
+Run `corpus_harvest.py --pinned` first to ensure the payloads are present.
 
 ```bash
 uv run --with requests --with Pillow python scripts/visual_test.py
@@ -107,3 +89,23 @@ uv run --with requests --with Pillow python scripts/visual_test.py --skip-existi
 
 Output goes into `tests/visual/` (gitignored). After the script finishes, read
 each `composite.png` and write findings to `tests/visual/report.md`.
+
+---
+
+## corpus_sweep.sh
+
+Fast PASS/FAIL sweep over all fetched arXiv papers. Converts each entry `.tex`
+via the `byetex` CLI, compiles with `typst`, and reports totals.
+
+```bash
+./scripts/corpus_sweep.sh                 # full sweep
+./scripts/corpus_sweep.sh 2605.22507      # single paper
+./scripts/corpus_sweep.sh --summary       # totals only
+```
+
+---
+
+## render_corpus_summary.py
+
+Updates the warning-count table in `README.md` from `tests/corpus/report.json`.
+Called automatically by CI. Not usually run by hand.

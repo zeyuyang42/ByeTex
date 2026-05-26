@@ -101,11 +101,8 @@ ByeTex/
 │   ├── m3_math/                            ← $x = y^2$, matrices, \frac
 │   └── m4_floats/                          ← tables, figures, citations
 │
-├── tests/inhouse/                          ← committed regression templates
-│   ├── ieee/conference_101719.tex          ← IEEE conference paper
-│   ├── acm/sample-sigconf.tex              ← ACM SIGCONF paper
-│   ├── neurips/neurips_paper.tex           ← NeurIPS-style paper
-│   └── thesis/thesis_skeleton.tex          ← thesis skeleton
+├── corpus/manifest.json                    ← committed manifest of known arXiv papers
+│   (5 marked pinned:true are the regression set; payloads gitignored)
 │
 ├── context/                                ← scraped LaTeX/Typst docs (495 examples)
 │   ├── latex-context.md
@@ -116,7 +113,7 @@ ByeTex/
     └── release.yml                         ← build binaries when you tag a version
 ```
 
-**The mental model**: three Rust crates (libraries) in one workspace. `core` does the conversion. `cli` is what users run. `mcp` is for AI tools. The `skills/` folder has human-readable repair instructions; `tests/inhouse/` has committed full-paper regression templates; `tests/fixtures/` has small targeted snippets. The gitignored `corpus/` holds the broader downloaded test corpus.
+**The mental model**: three Rust crates (libraries) in one workspace. `core` does the conversion. `cli` is what users run. `mcp` is for AI tools. The `skills/` folder has human-readable repair instructions; `tests/fixtures/` has small targeted snippets; `corpus/manifest.json` lists real arXiv papers for regression testing (payloads gitignored, fetched by `scripts/corpus_harvest.py`).
 
 ---
 
@@ -189,16 +186,16 @@ cargo test --workspace
 # 29 golden tests + corpus check + compile check + MCP smoke + schema lock
 ```
 
-Try a real template:
+Try a real arXiv paper:
 
 ```bash
-python scripts/setup_corpus.py
-./target/release/byetex convert corpus/inhouse/ieee/conference_101719.tex
-typst compile corpus/inhouse/ieee/conference_101719.typ
-open corpus/inhouse/ieee/conference_101719.pdf
+python scripts/corpus_harvest.py --pinned   # fetch the 5 regression papers (~25 MB)
+./target/release/byetex convert corpus/2605.22507/source/0-main.tex
+typst compile corpus/2605.22507/source/0-main.typ corpus/2605.22507/source/0-main.pdf
+open corpus/2605.22507/source/0-main.pdf
 ```
 
-That's the IEEE conference paper template — 288 lines of LaTeX become a compilable Typst doc with 16 things flagged for manual review.
+That's a real cs.LG paper — the LaTeX source becomes a compilable Typst doc with ~32 things flagged for manual review.
 
 ---
 

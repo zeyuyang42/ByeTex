@@ -1,0 +1,534 @@
+{
+  "schema_version": 2,
+  "generated_at": "2026-05-27T00:00:00Z",
+  "papers": [
+    {
+      "id": "2605.22821",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "cs.CL",
+      "title": "Tokenisation via Convex Relaxations",
+      "arxiv_published": "2026-05-21T17:59:56Z",
+      "arxiv_authors": [
+        "Jan Tempus",
+        "Philip Whittington",
+        "Craig W. Schmidt",
+        "Dennis Komm",
+        "Tiago Pimentel"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.22821",
+      "download_url": "https://arxiv.org/e-print/2605.22821",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "0f724595088b791d5c6698fb9784ccc7b733b3614f7d3d667f8b024ed120f306",
+      "archive_bytes": 5280120,
+      "license_url": "",
+      "fetched_at": "2026-05-23T13:16:04Z"
+    },
+    {
+      "id": "2605.22736",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "math.OC",
+      "title": "Optimization over the intersection of manifolds",
+      "arxiv_published": "2026-05-21T17:08:00Z",
+      "arxiv_authors": [
+        "Yan Yang",
+        "Bin Gao",
+        "Ya-xiang Yuan"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.22736",
+      "download_url": "https://arxiv.org/e-print/2605.22736",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "44d25481e75a742cf7e9d7372573d650edb860431343a5ebffb050bc79361e2c",
+      "archive_bytes": 581135,
+      "license_url": "",
+      "fetched_at": "2026-05-23T13:16:11Z"
+    },
+    {
+      "id": "2605.22820",
+      "pinned": true,
+      "source": "arxiv",
+      "arxiv_primary_category": "cs.LG",
+      "title": "Integrable Elasticity via Neural Demand Potentials",
+      "arxiv_published": "2026-05-21T17:59:47Z",
+      "arxiv_authors": [
+        "Carlos Heredia",
+        "Daniel Roncel"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.22820",
+      "download_url": "https://arxiv.org/e-print/2605.22820",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "72097525200991506532f5a9ec5a61fd2e87b6e6b62b7f349c0b881ef43cabbf",
+      "archive_bytes": 877950,
+      "license_url": "",
+      "fetched_at": "2026-05-23T13:22:10Z"
+    },
+    {
+      "id": "2605.22817",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "cs.LG",
+      "title": "Vector Policy Optimization: Training for Diversity Improves Test-Time Search",
+      "arxiv_published": "2026-05-21T17:59:26Z",
+      "arxiv_authors": [
+        "Ryan Bahlous-Boldi",
+        "Isha Puri",
+        "Idan Shenfeld",
+        "Akarsh Kumar",
+        "Mehul Damani"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.22817",
+      "download_url": "https://arxiv.org/e-print/2605.22817",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "f34f46d1770501999208cfb86b37b4b488b5c67ae26de9f56f0e4cff520f2028",
+      "archive_bytes": 413362,
+      "license_url": "",
+      "fetched_at": "2026-05-23T13:22:13Z"
+    },
+    {
+      "id": "2605.22814",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "cs.LG",
+      "title": "Remember to be Curious: Episodic Context and Persistent Worlds for 3D Exploration",
+      "arxiv_published": "2026-05-21T17:58:06Z",
+      "arxiv_authors": [
+        "Lily Goli",
+        "Justin Kerr",
+        "Daniele Reda",
+        "Alec Jacobson",
+        "Andrea Tagliasacchi"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.22814",
+      "download_url": "https://arxiv.org/e-print/2605.22814",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "5756adf82b78f568c8a27cddb2ec0d990e23eeb62c2821da712f6bde716d7919",
+      "archive_bytes": 8275624,
+      "license_url": "",
+      "fetched_at": "2026-05-23T13:22:17Z"
+    },
+    {
+      "id": "2605.22800",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "cs.LG",
+      "title": "The Matching Principle: A Geometric Theory of Loss Functions for Nuisance-Robust Representation Learning",
+      "arxiv_published": "2026-05-21T17:53:28Z",
+      "arxiv_authors": [
+        "Vishal Rajput"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.22800",
+      "download_url": "https://arxiv.org/e-print/2605.22800",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "850aafac4fa37bec66e48912fb385895e2dd299ace63eb2fa154f6d33622e518",
+      "archive_bytes": 3084153,
+      "license_url": "",
+      "fetched_at": "2026-05-23T13:22:21Z"
+    },
+    {
+      "id": "2605.22795",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "stat.ML",
+      "title": "Finite-Particle Convergence Rates for Conservative and Non-Conservative Drifting Models",
+      "arxiv_published": "2026-05-21T17:49:09Z",
+      "arxiv_authors": [
+        "Krishnakumar Balasubramanian"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.22795",
+      "download_url": "https://arxiv.org/e-print/2605.22795",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "e98e6fee60c00ca7ece4514b4b5d06fdabf493b41a347db3902aea9b92ee768e",
+      "archive_bytes": 31575,
+      "license_url": "",
+      "fetched_at": "2026-05-23T13:22:24Z"
+    },
+    {
+      "id": "2605.22794",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "cs.AI",
+      "title": "MOSS: Self-Evolution through Source-Level Rewriting in Autonomous Agent Systems",
+      "arxiv_published": "2026-05-21T17:48:33Z",
+      "arxiv_authors": [
+        "Qianshu Cai",
+        "Yonggang Zhang",
+        "Xianzhang Jia",
+        "Wei Xue",
+        "Jun Song"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.22794",
+      "download_url": "https://arxiv.org/e-print/2605.22794",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "f8b1680a4173f46f48ad064cb3e79067e4805ebf1f0bb1932e9a4ef07599a457",
+      "archive_bytes": 24116,
+      "license_url": "",
+      "fetched_at": "2026-05-23T13:22:27Z"
+    },
+    {
+      "id": "2605.22786",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "cs.AI",
+      "title": "LCGuard: Latent Communication Guard for Safe KV Sharing in Multi-Agent Systems",
+      "arxiv_published": "2026-05-21T17:42:12Z",
+      "arxiv_authors": [
+        "Sadia Asif",
+        "Mohammad Mohammadi Amiri",
+        "Momin Abbas",
+        "Prasanna Sattigeri",
+        "Karthikeyan Natesan Ramamurthy"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.22786",
+      "download_url": "https://arxiv.org/e-print/2605.22786",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "8ca7b3f46d1f610917780bee5d98d87054f9ac9d1f92709662f445ef17c1bd73",
+      "archive_bytes": 2159720,
+      "license_url": "",
+      "fetched_at": "2026-05-23T13:22:31Z"
+    },
+    {
+      "id": "2605.22779",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "cs.SE",
+      "title": "FAME: Failure-Aware Mixture-of-Experts for Message-Level Log Anomaly Detection",
+      "arxiv_published": "2026-05-21T17:34:53Z",
+      "arxiv_authors": [
+        "Huanchi Wang",
+        "Zihang Huang",
+        "Yifang Tian",
+        "Kristina Dzeparoska",
+        "Hans-Arno Jacobsen"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.22779",
+      "download_url": "https://arxiv.org/e-print/2605.22779",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "fa1316310d361f3db44ad4c5029da319adc6cc1679c0eb90b587fdb4561a81ec",
+      "archive_bytes": 284808,
+      "license_url": "",
+      "fetched_at": "2026-05-23T13:22:34Z"
+    },
+    {
+      "id": "2605.22776",
+      "pinned": true,
+      "source": "arxiv",
+      "arxiv_primary_category": "cs.LG",
+      "title": "SDPM: Survival Diffusion Probabilistic Model for Continuous-Time Survival Analysis",
+      "arxiv_published": "2026-05-21T17:33:47Z",
+      "arxiv_authors": [
+        "Stanislav R. Kirpichenko",
+        "Andrei V. Konstantinov",
+        "Lev V. Utkin"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.22776",
+      "download_url": "https://arxiv.org/e-print/2605.22776",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "44d98658c1ad64249f8313e9bf39b805628c64ebe930109a89a9139e33e278f0",
+      "archive_bytes": 1034164,
+      "license_url": "",
+      "fetched_at": "2026-05-23T13:22:38Z"
+    },
+    {
+      "id": "2605.22728",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "math.NA",
+      "title": "A $\\operatorname{prox}$-Based Semi-Smooth Newton Method for TV-Minimization",
+      "arxiv_published": "2026-05-21T17:00:56Z",
+      "arxiv_authors": [
+        "S\u00f6ren Bartels",
+        "Alex Kaltenbach"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.22728",
+      "download_url": "https://arxiv.org/e-print/2605.22728",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "e6f75f1c2d85c727a61a2ec8029791ef09f8b8ae5523029a461a6997abb6c202",
+      "archive_bytes": 1225414,
+      "license_url": "",
+      "fetched_at": "2026-05-23T13:22:44Z"
+    },
+    {
+      "id": "2605.22724",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "cs.LG",
+      "title": "Multiple Neural Operators Achieve Near-Optimal Rates for Multi-Task Learning",
+      "arxiv_published": "2026-05-21T16:57:33Z",
+      "arxiv_authors": [
+        "Adrien Weihs",
+        "Hayden Schaeffer"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.22724",
+      "download_url": "https://arxiv.org/e-print/2605.22724",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "73bd2eade82bb15303ae55646a8670589591e5e6402831bce0b4949a9ffeda67",
+      "archive_bytes": 114696,
+      "license_url": "",
+      "fetched_at": "2026-05-23T13:22:47Z"
+    },
+    {
+      "id": "2605.22584",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "math.NA",
+      "title": "On the Regularity and Interpolation of Coupled Cluster Amplitudes in Canonical Orbital Basis",
+      "arxiv_published": "2026-05-21T14:55:39Z",
+      "arxiv_authors": [
+        "Jonas Beck",
+        "Benjamin Stamm"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.22584",
+      "download_url": "https://arxiv.org/e-print/2605.22584",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "87efb492cda035d883e0a6c2e35d56dfe541ace89fbb257d4a56b7e91e4d104e",
+      "archive_bytes": 756701,
+      "license_url": "",
+      "fetched_at": "2026-05-23T13:22:51Z"
+    },
+    {
+      "id": "2605.22557",
+      "pinned": true,
+      "source": "arxiv",
+      "arxiv_primary_category": "cs.LG",
+      "title": "Neural Flow Operators can Approximate any Operator: Abstract Frameworks and Universal Approcimations",
+      "arxiv_published": "2026-05-21T14:39:43Z",
+      "arxiv_authors": [
+        "Shuang Chen",
+        "Juncai He",
+        "Xue-Cheng Tai"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.22557",
+      "download_url": "https://arxiv.org/e-print/2605.22557",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "7703fd43b2496f45e69038b1a402985be958bb4745467553226d603f277297f6",
+      "archive_bytes": 63593,
+      "license_url": "",
+      "fetched_at": "2026-05-23T13:22:54Z"
+    },
+    {
+      "id": "2605.22485",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "math.NA",
+      "title": "Decoupling Runge-Kutta schemes for elliptic-parabolic problems",
+      "arxiv_published": "2026-05-21T13:41:46Z",
+      "arxiv_authors": [
+        "Robert Altmann",
+        "Abdullah Mujahid",
+        "Benjamin Unger"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.22485",
+      "download_url": "https://arxiv.org/e-print/2605.22485",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "a034502caa71de483045de68b06acf6cbef14120a0bffe13a03dd06600ff1e12",
+      "archive_bytes": 36221,
+      "license_url": "",
+      "fetched_at": "2026-05-23T13:22:57Z"
+    },
+    {
+      "id": "2605.22315",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "math.NA",
+      "title": "Schwarz Modulus Based Matrix Splittings with Minimal Polynomial Extrapolation Acceleration for linear complementarity problems arising from American option pricing",
+      "arxiv_published": "2026-05-21T11:01:16Z",
+      "arxiv_authors": [
+        "Martin J. Gande",
+        "Si-Wei Liao",
+        "Liu-Di Lu"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.22315",
+      "download_url": "https://arxiv.org/e-print/2605.22315",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "e25fd70838a4d826bbb12c7c079c099f385a2824d007c1cd423f47001755223d",
+      "archive_bytes": 182575,
+      "license_url": "",
+      "fetched_at": "2026-05-23T13:23:00Z"
+    },
+    {
+      "id": "2605.22312",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "math.NA",
+      "title": "From PDEs constrained optimization to controllability problems via time domain decomposition",
+      "arxiv_published": "2026-05-21T10:59:04Z",
+      "arxiv_authors": [
+        "Pierre-Henri Cocquet",
+        "Liu-Di Lu"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.22312",
+      "download_url": "https://arxiv.org/e-print/2605.22312",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "e2d87a57a02b610ebe157c05df33292d413271036edbbc79fb88006c7c93ccc1",
+      "archive_bytes": 308932,
+      "license_url": "",
+      "fetched_at": "2026-05-23T13:23:04Z"
+    },
+    {
+      "id": "2605.22281",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "math.NA",
+      "title": "Randomized Flexible LSQR and LSMR with applications to inverse problems",
+      "arxiv_published": "2026-05-21T10:27:19Z",
+      "arxiv_authors": [
+        "Alberto Bucci",
+        "Silvia Gazzola",
+        "Leonardo Robol"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.22281",
+      "download_url": "https://arxiv.org/e-print/2605.22281",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "34f44746a4dd1710bce3b9540f0ecf627b4a275734c5caa32a63de0760e66205",
+      "archive_bytes": 6026281,
+      "license_url": "",
+      "fetched_at": "2026-05-23T13:23:07Z"
+    },
+    {
+      "id": "2605.22159",
+      "pinned": true,
+      "source": "arxiv",
+      "arxiv_primary_category": "math.NA",
+      "title": "BEM for variable coefficient second-order problems",
+      "arxiv_published": "2026-05-21T08:28:22Z",
+      "arxiv_authors": [
+        "Benedikt Gr\u00e4\u00dfle",
+        "Stefan A. Sauter"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.22159",
+      "download_url": "https://arxiv.org/e-print/2605.22159",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "f0fa4b4a13f63434ef246ae097babbbd321b969cf838692377e3407cf169c7ca",
+      "archive_bytes": 51702,
+      "license_url": "",
+      "fetched_at": "2026-05-23T13:23:10Z"
+    },
+    {
+      "id": "2605.22765",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "cs.LG",
+      "title": "Uniform Diffusion Models Revisited: Leave-One-Out Denoiser and Absorbing State Reformulation",
+      "arxiv_published": "2026-05-21T17:27:19Z",
+      "arxiv_authors": [
+        "Samson Gourevitch",
+        "Yazid Janati",
+        "Dario Shariatian",
+        "Umut Simsekli",
+        "Eric Moulines"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.22765",
+      "download_url": "https://arxiv.org/e-print/2605.22765",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "0f2d6f594fd46a5ef2e8692cc7d2d267b7b159f9a010a7b2672272913933bb83",
+      "archive_bytes": 4604022,
+      "license_url": "",
+      "fetched_at": "2026-05-23T13:23:28Z"
+    },
+    {
+      "id": "2605.22746",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "cs.LG",
+      "title": "Plug-in Losses for Evidential Deep Learning: A Simplified Framework for Uncertainty Estimation that Includes the Softmax Classifier",
+      "arxiv_published": "2026-05-21T17:15:10Z",
+      "arxiv_authors": [
+        "Berk Hayta",
+        "Hannah Laus",
+        "Simon Mittermaier",
+        "Felix Krahmer"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.22746",
+      "download_url": "https://arxiv.org/e-print/2605.22746",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "c26f11d419dbfe7d8436234f4fc41aeb2a62b00abcf6ef4fb4eda32fbc81d646",
+      "archive_bytes": 339891,
+      "license_url": "",
+      "fetched_at": "2026-05-23T13:23:32Z"
+    },
+    {
+      "id": "2605.22738",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "cs.LG",
+      "title": "Proxy-Based Approximation of Shapley and Banzhaf Interactions",
+      "arxiv_published": "2026-05-21T17:09:45Z",
+      "arxiv_authors": [
+        "Santo M. A. R. Thies",
+        "Hubert Baniecki",
+        "R. Teal Witter",
+        "Eyke H\u00fcllermeier",
+        "Maximilian Muschalik"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.22738",
+      "download_url": "https://arxiv.org/e-print/2605.22738",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "f69c1a004ccb96393f61e55a33153a2c60fe3d5733504a57ee969d67cac9e163",
+      "archive_bytes": 4615581,
+      "license_url": "",
+      "fetched_at": "2026-05-23T13:23:35Z"
+    },
+    {
+      "id": "2605.22579",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "cs.CL",
+      "title": "Beyond Temperature: Hyperfitting as a Late-Stage Geometric Expansion",
+      "arxiv_published": "2026-05-21T14:52:48Z",
+      "arxiv_authors": [
+        "Meimingwei Li",
+        "Yuanhao Ding",
+        "Esteban Garces Arias",
+        "Christian Heumann"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.22579",
+      "download_url": "https://arxiv.org/e-print/2605.22579",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "4eeb168a21975bd4ccfda0abefbeacb9e8c217cc0fc3df813451ed0a5c5d9aff",
+      "archive_bytes": 4474844,
+      "license_url": "",
+      "fetched_at": "2026-05-23T13:23:42Z"
+    },
+    {
+      "id": "2605.22549",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "stat.ML",
+      "title": "A Martingale Kernel Independence Test",
+      "arxiv_published": "2026-05-21T14:31:10Z",
+      "arxiv_authors": [
+        "Felix Laumann",
+        "Zhaolu Liu",
+        "Mauricio Barahona"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.22549",
+      "download_url": "https://arxiv.org/e-print/2605.22549",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "2769bdea4a901b026f09a21374fff5873305efdfb4f11bced5ffbe5fc504466c",
+      "archive_bytes": 71290,
+      "license_url": "",
+      "fetched_at": "2026-05-23T13:23:46Z"
+    },
+    {
+      "id": "2605.22507",
+      "pinned": true,
+      "source": "arxiv",
+      "arxiv_primary_category": "cs.LG",
+      "title": "Generative Modeling by Value-Driven Transport",
+      "arxiv_published": "2026-05-21T13:57:06Z",
+      "arxiv_authors": [
+        "Pablo Moreno-Mu\u00f1oz",
+        "Adrian M\u00fcller",
+        "Gergely Neu"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.22507",
+      "download_url": "https://arxiv.org/e-print/2605.22507",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "7d90c4e81af581a32d26ca0567dcac9578ee8037e3f034ec3cc1b0103d95826b",
+      "archive_bytes": 3386198,
+      "license_url": "",
+      "fetched_at": "2026-05-23T13:23:49Z"
+    }
+  ]
+}

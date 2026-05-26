@@ -36,7 +36,8 @@ from PIL import Image, ImageDraw
 # ─────────────────────────────────────────────────────────────────────────────
 
 REPO_ROOT = Path(__file__).parent.parent.resolve()
-CORPUS_ARXIV = REPO_ROOT / "corpus" / "online" / "arxiv"
+CORPUS_DIR = REPO_ROOT / "corpus"
+MANIFEST_PATH = CORPUS_DIR / "manifest.json"
 
 ARXIV_PDF_URL = "https://arxiv.org/pdf/{id}"
 ARXIV_MIN_DELAY = 3.0
@@ -45,14 +46,16 @@ DEFAULT_UA = (
     "research/testing use only)"
 )
 
-# 5 hand-picked papers: diverse shapes, 3 already have canonical PDFs on disk
-DEFAULT_PAPERS = [
-    "2605.22507",  # stat.ML — multi-file \input, math-heavy; has 0-main.pdf
-    "2605.22557",  # math.NA — math-heavy; has main_sinum.pdf
-    "2605.22776",  # cs.LG  — single-file main_en.tex; needs arXiv PDF
-    "2605.22159",  # math.NA — multi-file + custom \newcommands; needs arXiv PDF
-    "2605.22820",  # cs.LG  — exercises the PDF download path
-]
+
+def load_pinned_ids() -> list[str]:
+    """Return IDs marked pinned:true in corpus/manifest.json."""
+    if not MANIFEST_PATH.exists():
+        return []
+    data = json.loads(MANIFEST_PATH.read_text())
+    return [p["id"] for p in data.get("papers", []) if p.get("pinned")]
+
+
+DEFAULT_PAPERS = load_pinned_ids()
 
 COMPOSITE_CELL_W = 600  # px per column in composite image
 MAX_COMPOSITE_PAGES = 12  # truncate after this many rows to keep file sizes down
@@ -100,9 +103,8 @@ def _now() -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def find_source_dir(arxiv_id: str) -> Path | None:
-    """Find the source/ directory for an arXiv ID under corpus/online/arxiv/."""
-    id_safe = arxiv_id.replace("/", "_")
-    candidate = CORPUS_ARXIV / id_safe / "source"
+    """Find the source/ directory for an arXiv ID under corpus/."""
+    candidate = CORPUS_DIR / arxiv_id / "source"
     return candidate if candidate.exists() else None
 
 
@@ -570,7 +572,7 @@ def process_paper(
     source_dir = find_source_dir(arxiv_id)
     if source_dir is None:
         summary["status"] = "no_source_dir"
-        print(f"  [error] No source dir found under corpus/online/arxiv/", file=sys.stderr)
+        print(f"  [error] No source dir found under corpus/{arxiv_id}/ — run corpus_harvest.py --pinned", file=sys.stderr)
         return summary
 
     toplevel = find_toplevel_tex(source_dir)
@@ -694,7 +696,7 @@ def main() -> None:
     )
     p.add_argument(
         "--papers", nargs="+", default=DEFAULT_PAPERS, metavar="ID",
-        help="arXiv IDs to process (default: 5-paper diversity set)",
+        help="arXiv IDs to process (default: pinned set from corpus/manifest.json)",
     )
     p.add_argument(
         "--out", type=Path, default=Path("tests/visual"), metavar="PATH",
