@@ -872,15 +872,9 @@ pub(crate) static KATEX_BUILTIN: &[(&str, MacroSeed)] = &[
             body: "#1",
         },
     ),
-    // `\ensuremath{X}` — wrap content in inline math. The body uses LaTeX
-    // dollar delimiters which the child emitter converts to Typst `$...$`.
-    (
-        r"\ensuremath",
-        MacroSeed {
-            params: 1,
-            body: r"$#1$",
-        },
-    ),
+    // `\ensuremath` is handled directly in emit.rs (mode-aware: passthrough in
+    // math, $..$ wrapper in text). It was previously a macro seed with body
+    // `$#1$` which created nested `$...$` when used inside math mode (Bug #49).
     // === NeurIPS checklist answer macros ===
     // These appear in NeurIPS checklist papers as fixed labels.
     (
