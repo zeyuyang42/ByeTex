@@ -800,6 +800,13 @@ impl<'a> Emitter<'a> {
             return self.emit_generic_environment(node);
         }
 
+        // Verbatim/listing environments — tree-sitter-latex gives these
+        // their own special node kinds (not "generic_environment"), so
+        // they must be intercepted here.
+        if node.kind() == "listing_environment" {
+            return self.emit_listing_environment(node);
+        }
+
         // Inside math, `\label{...}` is silently lifted out and attached to
         // the enclosing math container as a Typst `<label>`.
         if self.in_math && node.kind() == "label_definition" {
@@ -1346,10 +1353,8 @@ impl<'a> Emitter<'a> {
                 self.out.push('ł');
                 node.end_byte()
             }
-            // `\newline` — explicit line break; `\tabularnewline` is handled
-            // structurally by the table emitter but may surface here in malformed
-            // input; treat as a line break too.
-            Some("\\newline") | Some("\\tabularnewline") => {
+            // `\newline` — explicit line break outside a table.
+            Some("\\newline") => {
                 self.out.push_str("\\ \n");
                 node.end_byte()
             }
@@ -2547,6 +2552,53 @@ impl<'a> Emitter<'a> {
             let escaped = content.replace('\\', "\\\\").replace('"', "\\\"");
             let _ = write!(self.out, "#raw(\"{}\")", escaped);
         }
+        node.end_byte()
+    }
+
+    /// `\begin{lstlisting}[options]...code...\end{lstlisting}` → `#raw("...", block: true)`.
+    /// tree-sitter-latex gives lstlisting a `listing_environment` node kind with a
+    /// `source_code` child containing the raw code (including any `[options]` prefix
+    /// since the listing grammar declares no structured options field).
+    fn emit_listing_environment(&mut self, node: Node<'_>) -> usize {
+        let mut cursor = node.walk();
+        let raw = match node.children(&mut cursor).find(|c| c.kind() == "source_code") {
+            Some(cn) => self.src[cn.start_byte()..cn.end_byte()].to_string(),
+            None => return node.end_byte(),
+        };
+
+        // The source_code span may begin with [key=val,...] (the optional
+        // lstlisting argument that the grammar does not parse as a field).
+        // Strip it and extract `language=` if present.
+        let rest = raw.trim_start_matches('\n');
+        let (lang, code) = if rest.starts_with('[') {
+            let end_bracket = rest.find(']').unwrap_or(rest.len().saturating_sub(1));
+            let options = &rest[1..end_bracket];
+            let lang = options.split(',').find_map(|kv| {
+                let kv = kv.trim();
+                kv.strip_prefix("language")
+                    .map(|r| r.trim().strip_prefix('=').unwrap_or("").trim())
+                    .filter(|v| !v.is_empty())
+                    .map(|v| v.trim_matches('{').trim_matches('}').to_lowercase())
+            });
+            let code = rest[end_bracket + 1..].trim_start_matches('\n');
+            (lang, code.to_string())
+        } else {
+            (None, rest.to_string())
+        };
+
+        let escaped = code
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n");
+
+        let _ = match lang.as_deref() {
+            Some(l) => write!(
+                self.out,
+                "\n#raw(\"{}\", block: true, lang: \"{}\")\n",
+                escaped, l
+            ),
+            None => write!(self.out, "\n#raw(\"{}\", block: true)\n", escaped),
+        };
         node.end_byte()
     }
 
@@ -8288,6 +8340,15 @@ fn post_process_typography(s: &str) -> String {
             in_math = !in_math;
             out.push('$');
             prev = Some('$');
+            // LaTeX math `/` is a plain character; Typst math `/` is a binary
+            // operator that requires a left operand. When the very first char
+            // of a math span is `/`, wrap it in a string literal so Typst
+            // renders it as a glyph rather than an operator: `$/` → `$"/"`.
+            if in_math && chars.peek() == Some(&'/') {
+                chars.next();
+                out.push_str("\"/\"");
+                prev = Some('"');
+            }
             continue;
         }
         if in_math {
