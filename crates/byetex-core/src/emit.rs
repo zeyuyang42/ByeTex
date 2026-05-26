@@ -517,8 +517,23 @@ impl<'a> Emitter<'a> {
     /// the cursor past a node's `end_byte`; downstream trailing-copy logic
     /// must tolerate the resulting reverse range as a no-op.
     fn safe_copy(&mut self, from: usize, to: usize) {
-        if from < to {
-            self.out.push_str(&self.src[from..to]);
+        if from >= to {
+            return;
+        }
+        let text = &self.src[from..to];
+        if self.in_math {
+            self.out.push_str(text);
+            return;
+        }
+        // Escape bare '#' to '\#' for Typst (where '#' starts a code
+        // expression). Already-escaped '\#' is preserved as-is.
+        let mut prev_backslash = false;
+        for ch in text.chars() {
+            if ch == '#' && !prev_backslash {
+                self.out.push('\\');
+            }
+            self.out.push(ch);
+            prev_backslash = ch == '\\';
         }
     }
 
