@@ -199,7 +199,7 @@ fn input_chain_inherits_pre_scanned_macros() {
 #[test]
 #[ignore = "diagnostic probe — run with --ignored when debugging"]
 fn probe_real_header_tex() {
-    // Real-world snippet from corpus/online/arxiv/2605.22507/source/style/header.tex.
+    // Real-world snippet from corpus/2605.22507/source/style/header.tex.
     // Drives `plan_project_from_dir` against an in-memory copy to check
     // whether brace-less defs survive the round trip.
     let dir = tmpdir("probe-real");

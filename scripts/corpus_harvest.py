@@ -3,16 +3,22 @@
 ByeTex corpus harvester — downloads arXiv source tarballs for testing the
 ByeTex LaTeX→Typst converter.
 
-Usage:
-    python scripts/harvest_templates.py --dry-run
-    python scripts/harvest_templates.py --limit 5
-    python scripts/harvest_templates.py --limit 20 --arxiv-category math.NA
-    python scripts/harvest_templates.py --no-limit   # large batch (confirm first)
+The manifest at corpus/manifest.json is the source of truth for known papers.
+Payloads (tarballs + extracted source/) are gitignored and fetched on demand.
 
-Output goes into ./corpus/online/arxiv/<id>/source/ (all gitignored).
-Inhouse hand-written templates live in tests/inhouse/ and are committed.
-Run python scripts/setup_corpus.py first to populate corpus/inhouse/.
-Use --resume to skip items already fetched on a previous run.
+Usage:
+    # Fetch missing payloads for all papers in the manifest:
+    python scripts/corpus_harvest.py
+
+    # Fetch only the 5 pinned regression papers (for CI / template_budgets):
+    python scripts/corpus_harvest.py --pinned
+
+    # Search arXiv for new papers and add them to the manifest:
+    python scripts/corpus_harvest.py --search cs.LG --limit 5
+
+    # Dry-run: show what would be fetched:
+    python scripts/corpus_harvest.py --dry-run
+    python scripts/corpus_harvest.py --pinned --dry-run
 """
 
 import argparse
@@ -35,6 +41,10 @@ import requests
 # Constants
 # ─────────────────────────────────────────────────────────────────────────────
 
+REPO_ROOT = Path(__file__).parent.parent.resolve()
+CORPUS_DIR = REPO_ROOT / "corpus"
+MANIFEST_PATH = CORPUS_DIR / "manifest.json"
+
 DEFAULT_UA = (
     "ByeTex-Harvester/0.1 (+https://github.com/zeyuyang42/ByeTex; "
     "research/testing use only)"
@@ -48,7 +58,6 @@ ARXIV_NS = {
     "atom": "http://www.w3.org/2005/Atom",
     "arxiv": "http://arxiv.org/schemas/atom",
 }
-DEFAULT_ARXIV_CATS = ["cs.LG", "math.NA"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -96,24 +105,24 @@ def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def load_manifest(path: Path) -> dict:
-    if path.exists():
-        return json.loads(path.read_text())
-    return {"version": 1, "generated_at": _now(), "entries": []}
+def load_manifest() -> dict:
+    if MANIFEST_PATH.exists():
+        return json.loads(MANIFEST_PATH.read_text())
+    return {"schema_version": 2, "generated_at": _now(), "papers": []}
 
 
-def flush_manifest(manifest: dict, path: Path) -> None:
+def flush_manifest(manifest: dict) -> None:
     manifest["generated_at"] = _now()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(manifest, indent=2) + "\n")
+    MANIFEST_PATH.parent.mkdir(parents=True, exist_ok=True)
+    MANIFEST_PATH.write_text(json.dumps(manifest, indent=2) + "\n")
 
 
-def is_fetched(manifest: dict, item_id: str, archive: Path) -> bool:
-    return any(e["id"] == item_id for e in manifest["entries"]) and archive.exists()
+def is_present(arxiv_id: str) -> bool:
+    return (CORPUS_DIR / arxiv_id / "source").is_dir()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# arXiv
+# arXiv search
 # ─────────────────────────────────────────────────────────────────────────────
 
 def arxiv_query(
@@ -155,10 +164,27 @@ def arxiv_query(
     return results
 
 
-def arxiv_download_source(
-    session: requests.Session, arxiv_id: str, dest: Path, delay: float
-) -> dict:
+# ─────────────────────────────────────────────────────────────────────────────
+# Download a single arXiv paper
+# ─────────────────────────────────────────────────────────────────────────────
+
+def download_paper(
+    session: requests.Session, arxiv_id: str, delay: float, dry_run: bool
+) -> None:
+    dest = CORPUS_DIR / arxiv_id
+    source_dir = dest / "source"
+
+    if is_present(arxiv_id):
+        print(f"  [skip] {arxiv_id} (already on disk)", flush=True)
+        return
+
     url = f"{ARXIV_EPRINT}/{arxiv_id}"
+
+    if dry_run:
+        print(f"  [dry-run] would fetch {arxiv_id} from {url}")
+        return
+
+    print(f"  fetching {arxiv_id} ...", flush=True)
     dest.mkdir(parents=True, exist_ok=True)
     archive = dest / "source.tar.gz"
 
@@ -179,13 +205,8 @@ def arxiv_download_source(
 
     if magic != b"\x1f\x8b":
         print(f"  [warn] {arxiv_id}: not a gzip file, skipping extraction", file=sys.stderr)
-        return {
-            "archive_filename": "source.tar.gz",
-            "archive_sha256": hasher.hexdigest(),
-            "archive_bytes": nbytes,
-        }
+        return
 
-    source_dir = dest / "source"
     try:
         with tarfile.open(archive, "r:gz") as tf:
             base = str(source_dir.resolve())
@@ -195,99 +216,12 @@ def arxiv_download_source(
                     raise ValueError(f"Tar-slip detected: {member.name!r}")
             tf.extractall(source_dir)
     except tarfile.TarError:
-        # Single .tex file gzipped rather than a tarball
         tex_out = source_dir / f"{arxiv_id.replace('/', '_')}.tex"
         tex_out.parent.mkdir(parents=True, exist_ok=True)
         with gzip.open(archive, "rb") as gz:
             tex_out.write_bytes(gz.read())
 
-    return {
-        "archive_filename": "source.tar.gz",
-        "archive_sha256": hasher.hexdigest(),
-        "archive_bytes": nbytes,
-    }
-
-
-def harvest_arxiv(
-    session: requests.Session,
-    out: Path,
-    manifest: dict,
-    manifest_path: Path,
-    limit: int,
-    delay: float,
-    dry_run: bool,
-    resume: bool,
-    categories: list[str],
-) -> int:
-    actual_delay = max(delay, ARXIV_MIN_DELAY)
-    per_cat = max(1, -((-limit) // len(categories)))
-    count = 0
-
-    for cat in categories:
-        if count >= limit:
-            break
-        n = min(per_cat, limit - count)
-        print(f"  querying arXiv {cat!r} (n={n}) ...", flush=True)
-        try:
-            entries = arxiv_query(session, cat, n, actual_delay)
-        except Exception as exc:
-            print(f"  [error] arXiv query for {cat}: {exc}", file=sys.stderr)
-            continue
-        print(f"  got {len(entries)} result(s)", flush=True)
-
-        for meta in entries:
-            if count >= limit:
-                break
-            arxiv_id = meta["arxiv_id"]
-            item_id = f"arxiv:{arxiv_id}"
-            safe_id = arxiv_id.replace("/", "_")
-            # Flat layout: arxiv/<id>/ (no category subdir)
-            dest = out / "arxiv" / safe_id
-            archive = dest / "source.tar.gz"
-
-            if resume and is_fetched(manifest, item_id, archive):
-                print(f"  [skip] {item_id}", flush=True)
-                continue
-
-            if dry_run:
-                print(f"  [dry-run] {item_id}")
-                print(f"    title:   {meta['title'][:72]}")
-                print(f"    license: {meta['license_url'] or '(unknown)'}")
-                print(f"    source:  {ARXIV_EPRINT}/{arxiv_id}")
-                count += 1
-                continue
-
-            print(f"  fetching {item_id} — {meta['title'][:60]}", flush=True)
-            try:
-                dl = arxiv_download_source(session, arxiv_id, dest, actual_delay)
-            except Exception as exc:
-                print(f"  [error] {arxiv_id}: {exc}", file=sys.stderr)
-                continue
-
-            entry: dict = {
-                "id": item_id,
-                "source": "arxiv",
-                "category": "academic-paper",
-                "arxiv_primary_category": meta["primary_category"],
-                "arxiv_id": arxiv_id,
-                "title": meta["title"],
-                "arxiv_published": meta["published"],
-                "arxiv_authors": meta["authors"][:5],
-                "detail_url": f"{ARXIV_ABS}/{arxiv_id}",
-                "download_url": f"{ARXIV_EPRINT}/{arxiv_id}",
-                "archive_filename": dl["archive_filename"],
-                "archive_sha256": dl["archive_sha256"],
-                "archive_bytes": dl["archive_bytes"],
-                "license_url": meta["license_url"],
-                "fetched_at": _now(),
-            }
-            (dest / "meta.json").write_text(json.dumps(entry, indent=2) + "\n")
-            manifest["entries"].append(entry)
-            flush_manifest(manifest, manifest_path)
-            print(f"  saved: {dest.relative_to(out.parent)}", flush=True)
-            count += 1
-
-    return count
+    print(f"  saved: corpus/{arxiv_id}/", flush=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -299,75 +233,111 @@ def main() -> None:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    mode = p.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--pinned",
+        action="store_true",
+        help="fetch only papers marked pinned:true in the manifest (used by CI)",
+    )
+    mode.add_argument(
+        "--search",
+        metavar="CATEGORY",
+        help="query arXiv for new papers in CATEGORY and add to manifest",
+    )
     p.add_argument(
         "--limit",
         type=int,
         default=5,
         metavar="N",
-        help="max items to fetch; ignored when --no-limit is set (default: 5)",
-    )
-    p.add_argument(
-        "--no-limit",
-        action="store_true",
-        help="fetch all available items (large batch — confirm first)",
+        help="max papers to add when using --search (default: 5)",
     )
     p.add_argument(
         "--dry-run",
         action="store_true",
-        help="resolve URLs and print what would be downloaded; no writes",
-    )
-    p.add_argument(
-        "--out",
-        type=Path,
-        default=Path("corpus/online"),
-        metavar="PATH",
-        help="output directory (default: ./corpus/online)",
+        help="show what would be fetched; no writes",
     )
     p.add_argument(
         "--delay",
         type=float,
         default=2.0,
         metavar="SEC",
-        help="base delay between requests in seconds (default: 2.0; arXiv enforces >=3.0)",
-    )
-    p.add_argument(
-        "--arxiv-category",
-        action="append",
-        dest="arxiv_cats",
-        metavar="CAT",
-        help="arXiv category to harvest (repeatable; default: cs.LG math.NA)",
-    )
-    p.add_argument(
-        "--resume",
-        action="store_true",
-        help="skip items already present in the manifest",
+        help="base delay between arXiv requests (default: 2.0; arXiv enforces >=3.0)",
     )
     p.add_argument("--user-agent", default=DEFAULT_UA, metavar="UA")
     args = p.parse_args()
 
-    if not args.arxiv_cats:
-        args.arxiv_cats = list(DEFAULT_ARXIV_CATS)
-
-    limit = 9999 if args.no_limit else args.limit
-
-    out = args.out.resolve()
-    manifest_path = out.parent / "manifest.json"
-    manifest = load_manifest(manifest_path)
+    delay = max(args.delay, ARXIV_MIN_DELAY)
     session = make_session(args.user_agent)
+    manifest = load_manifest()
 
-    if not args.dry_run:
-        out.mkdir(parents=True, exist_ok=True)
+    if args.search:
+        # ── search mode: query arXiv, add new papers to manifest, then fetch ──
+        existing_ids = {p["id"] for p in manifest["papers"]}
+        print(f"Querying arXiv {args.search!r} for up to {args.limit} new papers ...")
+        try:
+            results = arxiv_query(session, args.search, args.limit * 3, delay)
+        except Exception as exc:
+            print(f"[error] arXiv query failed: {exc}", file=sys.stderr)
+            sys.exit(1)
 
-    print(f"\n=== arXiv (limit={limit}, categories={args.arxiv_cats}) ===")
-    total = harvest_arxiv(
-        session, out, manifest, manifest_path,
-        limit, args.delay, args.dry_run, args.resume, args.arxiv_cats,
-    )
+        added = 0
+        for meta in results:
+            if added >= args.limit:
+                break
+            aid = meta["arxiv_id"]
+            if aid in existing_ids:
+                continue
+            paper = {
+                "id": aid,
+                "pinned": False,
+                "source": "arxiv",
+                "arxiv_primary_category": meta["primary_category"],
+                "title": meta["title"],
+                "arxiv_published": meta["published"],
+                "arxiv_authors": meta["authors"][:5],
+                "detail_url": f"{ARXIV_ABS}/{aid}",
+                "download_url": f"{ARXIV_EPRINT}/{aid}",
+                "archive_filename": "source.tar.gz",
+                "archive_sha256": "",
+                "archive_bytes": 0,
+                "license_url": meta["license_url"],
+                "fetched_at": "",
+            }
+            if not args.dry_run:
+                manifest["papers"].append(paper)
+            print(f"  + {aid}: {meta['title'][:70]}")
+            added += 1
+
+        if not args.dry_run:
+            flush_manifest(manifest)
+            print(f"Manifest updated: {MANIFEST_PATH}")
+
+        papers_to_fetch = [p for p in manifest["papers"] if p["id"] in {
+            m["arxiv_id"] for m in results[:added]
+        }] if not args.dry_run else []
+
+    elif args.pinned:
+        # ── pinned mode: only fetch the pinned regression set ──
+        papers_to_fetch = [p for p in manifest["papers"] if p.get("pinned")]
+        print(f"Fetching {len(papers_to_fetch)} pinned paper(s) ...")
+
+    else:
+        # ── default: fetch all missing payloads ──
+        papers_to_fetch = manifest["papers"]
+        missing = [p for p in papers_to_fetch if not is_present(p["id"])]
+        print(f"{len(papers_to_fetch)} papers in manifest; {len(missing)} missing payload(s).")
+        papers_to_fetch = papers_to_fetch  # download_paper skips present ones
+
+    count = 0
+    for paper in papers_to_fetch:
+        try:
+            download_paper(session, paper["id"], delay, args.dry_run)
+            count += 1
+        except Exception as exc:
+            print(f"  [error] {paper['id']}: {exc}", file=sys.stderr)
 
     verb = "Would fetch" if args.dry_run else "Fetched"
-    print(f"\n{verb} {total} item(s) total.")
-    if not args.dry_run:
-        print(f"Manifest: {manifest_path}")
+    print(f"\n{verb} {count} paper(s).")
 
 
 if __name__ == "__main__":

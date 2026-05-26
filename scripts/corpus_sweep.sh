@@ -11,7 +11,7 @@
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BYETEX="$REPO_ROOT/target/release/byetex"
-CORPUS="$REPO_ROOT/corpus/online/arxiv"
+CORPUS="$REPO_ROOT/corpus"
 
 # ── flags ────────────────────────────────────────────────────────────────────
 MAX_ERRORS=1
@@ -42,6 +42,8 @@ fi
 pass=0; fail=0; skip=0
 
 for paper_dir in "$CORPUS"/*/; do
+  # Skip non-directories (e.g. manifest.json appears as a glob match on some shells)
+  [[ -d "$paper_dir" ]] || continue
   paper_id=$(basename "$paper_dir")
   [[ -n "$FILTER" && "$paper_id" != "$FILTER" ]] && continue
 

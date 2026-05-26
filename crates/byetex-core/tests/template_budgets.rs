@@ -1,17 +1,19 @@
-//! Per-template warning budget regression test.
+//! Per-paper warning-budget regression test.
 //!
-//! For every template under `tests/inhouse/<name>/`, runs `byetex_core::convert`
-//! on the entry `.tex` and asserts the warning count stays at or below the
-//! recorded budget. The budgets are intentionally tight — a regression
-//! (e.g. a refactor that re-warns on previously-handled commands) trips this
+//! For each of the 5 pinned arXiv papers, runs `plan_project` (the same code
+//! path as the CLI) and asserts the warning count stays at or below the
+//! recorded budget.  Budgets are intentionally tight — a regression trips this
 //! test before the change can land.
 //!
-//! Tightening a budget: see T5 in the plan; once `<20` is achievable across
-//! the board, drop each value here to the new ceiling.
+//! **Prerequisites**: run `python scripts/corpus_harvest.py --pinned` before
+//! executing these tests.  The 5 pinned papers are:
+//!   2605.22507  2605.22557  2605.22776  2605.22159  2605.22820
+//!
+//! Tightening a budget: lower the value once the new ceiling is achievable.
 
 use std::path::PathBuf;
 
-use byetex_core::{convert, ConvertOptions};
+use byetex_core::project::plan_project;
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -21,112 +23,70 @@ fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
-fn check_template(rel: &str, budget: usize) {
-    let path = workspace_root().join(rel);
-    let source =
-        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {}", path.display(), e));
-    let out = convert(
-        &source,
-        &ConvertOptions {
-            source_name: Some(rel.to_string()),
-            ..Default::default()
-        },
-    );
-    let count = out.warnings.len();
+fn check_paper(arxiv_id: &str, primary_tex: &str, budget: usize) {
+    let root = workspace_root();
+    let source_dir = root.join("corpus").join(arxiv_id).join("source");
+
+    if !source_dir.is_dir() {
+        panic!(
+            "corpus/{arxiv_id}/source/ is missing.\n\
+             Run `python scripts/corpus_harvest.py --pinned` to fetch the \
+             pinned regression set.",
+        );
+    }
+
+    let tex_path = source_dir.join(primary_tex);
+    if !tex_path.exists() {
+        panic!(
+            "{} not found. The corpus may be corrupted — re-run \
+             `python scripts/corpus_harvest.py --pinned`.",
+            tex_path.display()
+        );
+    }
+
+    let plan = plan_project(&tex_path, false)
+        .unwrap_or_else(|e| panic!("plan_project({arxiv_id}/{primary_tex}): {e}"));
+
+    let count = plan.warnings.len();
+    let rel = format!("corpus/{arxiv_id}/source/{primary_tex}");
     eprintln!("{rel}: {count} warnings (budget {budget})");
     assert!(
         count <= budget,
         "{rel} produced {count} warnings (budget {budget}). \
          Either the budget needs widening with justification, or recent emitter \
          changes regressed coverage.",
-        rel = rel,
-        count = count,
-        budget = budget,
     );
 }
 
-// Baselines captured after T1 land — current as of the v0.2 plan kickoff.
-// These will tighten as T2, T3, T4 patch the highest-recurrence gaps.
-
 // Budgets snapshot:
-//   v0.2 T1 baseline                                       IEEE 43 ACM 22 NeurIPS 37 thesis 19
-//   v0.2 T2 (title block + typography)                     IEEE 43 ACM 16 NeurIPS 34 thesis 15
-//   v0.2 T3 (math splitting + tables + theorems + bib map) IEEE 37 ACM 13 NeurIPS 21 thesis 12
-//   v0.2 T4 (inline cleanup + usepackage allowlist)        IEEE 20 ACM  1 NeurIPS  9 thesis  0
-//   post-merge corpus pass (math accents, escapes, footnote, multirow,
-//   href, url, label, font sizes, appendix, more no-op packages, more
-//   transparent envs)                                      IEEE 17 ACM  0 NeurIPS  1 thesis  0
-//   class-aware template emission (charged-ieee, clean-acmart,
-//   lucky-icml; \IEEEkeywords captured; abstract field captured for
-//   classes that accept it)                                IEEE 16 ACM  0 NeurIPS  1 thesis  0
-//   silent-drop audit: converted previously-silent drops of ACM author-info
-//   fields (\authornote, \email, …) and IEEEtran content commands into
-//   UnsupportedCommand warnings. ACM +3 = \authornote + 2×\email (the
-//   \institution/\city/\country inside \affiliation are consumed by the
-//   \affiliation silent-drop before they reach the dispatcher).
-//                                                          IEEE 16 ACM  3 NeurIPS  1 thesis  0
-//   silent-drop-to-DropOnly audit: \acmConference and 2×\affiliation
-//   now emit DropOnly warnings in ACM template (+3); \tableofcontents
-//   and \listoffigures now emit DropOnly warnings in thesis (+2).
-//                                                          IEEE 16 ACM  6 NeurIPS  1 thesis  2
-//   PR1: font-size family (\small/\large/\Large/…) converted from
-//   UnsupportedCommand to silent drop; text-mode symbols (\texttimes,
-//   \textuparrow, \textdownarrow, \checkmark, \AA, \l, \newline,
-//   \tabularnewline) now emit Unicode directly.
-//                                                          IEEE 13 ACM  6 NeurIPS  1 thesis  2
-//   PR2: \nolinkurl/\hyperlink/\hypertarget as inline wraps; \num/
-//   \texorpdfstring/\ensuremath via KATEX_BUILTIN passthroughs.
-//   No template budget change (none of these appear in the 4 templates).
-//                                                          IEEE 13 ACM  6 NeurIPS  1 thesis  2
-//   PR3: preamble silencing allowlist — \typeout, \theoremstyle,
-//   \crefname/\Crefname, \hypersetup, \enlargethispage, \looseness,
-//   \endcsname, \expandafter, \makeatletter/\makeatother, \addlinespace,
-//   \AddToHook, \FloatBarrier, \colorlet, \ifthenelse/\fi/\else.
-//   No template budget change (none appear in the 4 templates).
-//                                                          IEEE 13 ACM  6 NeurIPS  1 thesis  2
-//   PR5: NeurIPS checklist \answerYes/No/NA/TODO via KATEX_BUILTIN;
-//   \newcommandx/\newsiamremark/\newsiamthm silent-dropped.
-//   No template budget change (none appear in the 4 templates).
-//                                                          IEEE 13 ACM  6 NeurIPS  1 thesis  2
-//   unsupported_environment pass: \newtheorem harvester + theorem_kinds map;
-//   transparent envs (ack, keywords, tcolorbox, IEEEbiography, …); table*,
-//   tblr, wrapfigure, wraptable, algorithm, smallmatrix aliases; theorem_kinds
-//   propagated through \input chains and local .sty files; \newtcolorbox/
-//   \newmdenv harvested as transparent-env sentinel. Corpus: 124 → 0 env
-//   warnings. No template budget change.
-//                                                          IEEE 13 ACM  6 NeurIPS  1 thesis  2
+//   arxiv-baseline-2026-05-27  22507:32  22557:14  22776:134  22159:478  22820:17
 
 #[test]
-fn ieee_template_within_budget() {
-    check_template("tests/inhouse/ieee/conference_101719.tex", 13);
+fn arxiv_2605_22507_within_budget() {
+    // cs.LG — multi-file \input, math-heavy (0-main.tex)
+    check_paper("2605.22507", "0-main.tex", 32);
 }
 
 #[test]
-fn acm_template_within_budget() {
-    check_template("tests/inhouse/acm/sample-sigconf.tex", 6);
+fn arxiv_2605_22557_within_budget() {
+    // math.NA — math-heavy (main_sinum.tex)
+    check_paper("2605.22557", "main_sinum.tex", 14);
 }
 
 #[test]
-fn neurips_template_within_budget() {
-    check_template("tests/inhouse/neurips/neurips_paper.tex", 1);
+fn arxiv_2605_22776_within_budget() {
+    // cs.LG — single-file (main_en.tex)
+    check_paper("2605.22776", "main_en.tex", 134);
 }
 
 #[test]
-fn thesis_template_within_budget() {
-    check_template("tests/inhouse/thesis/thesis_skeleton.tex", 2);
+fn arxiv_2605_22159_within_budget() {
+    // math.NA — multi-file + custom macros (GS4AGBEM.tex)
+    check_paper("2605.22159", "GS4AGBEM.tex", 478);
 }
 
 #[test]
-fn physics_package_within_budget() {
-    check_template("tests/inhouse/physics/paper.tex", 0);
-}
-
-#[test]
-fn bm_package_within_budget() {
-    check_template("tests/inhouse/bm/paper.tex", 0);
-}
-
-#[test]
-fn stmaryrd_package_within_budget() {
-    check_template("tests/inhouse/stmaryrd/paper.tex", 0);
+fn arxiv_2605_22820_within_budget() {
+    // cs.LG — exercises PDF download path (main.tex)
+    check_paper("2605.22820", "main.tex", 17);
 }
