@@ -48,9 +48,9 @@ fn katex_phase3_font_aliases() {
 
 #[test]
 fn katex_phase3_phantom() {
-    // \phantom → hide(...) — preserves space, renders invisible
+    // \phantom → #hide[$y$] — `hide` is a content fn, needs # escape in math
     let src = r"$x + \phantom{y} + z$";
     let out = convert(src);
     assert!(out.warnings.is_empty(), "warnings: {:?}", out.warnings);
-    assert!(out.typst.contains("hide("), "got: {}", out.typst);
+    assert!(out.typst.contains("#hide["), "got: {}", out.typst);
 }

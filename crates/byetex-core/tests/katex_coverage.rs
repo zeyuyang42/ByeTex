@@ -35,6 +35,10 @@ const STRUCTURAL_ARMS: &[&str] = &[
     "\\mathnormal",
     // font / accent / enclosure wraps — all handled via wrap_for_command_name;
     // no entries needed here since the coverage test checks that function directly.
+    // phantom — emits #hide[$inner$] via emit_math_phantom (not in wrap_for_command_name)
+    "\\phantom",
+    "\\hphantom",
+    "\\vphantom",
     // delimiter sizing
     "\\left",
     "\\right",

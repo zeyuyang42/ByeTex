@@ -780,6 +780,16 @@ impl<'a> Emitter<'a> {
             return self.emit_section(node);
         }
 
+        // `\textcolor{color}{content}` — tree-sitter-latex parses this as a
+        // dedicated `color_reference` node. Drop the color arg, emit content.
+        if node.kind() == "color_reference" {
+            return if self.in_math {
+                self.emit_math_textcolor(node)
+            } else {
+                self.emit_textcolor(node)
+            };
+        }
+
         // Backslash commands: look up by name, fall through to warn-and-drop.
         if node.kind() == "generic_command" {
             return self.emit_generic_command(node);
@@ -2549,6 +2559,38 @@ impl<'a> Emitter<'a> {
         node.end_byte()
     }
 
+    /// `\textcolor{color}{content}` / `\colorbox{color}{content}` →
+    /// drops the first `{color}` argument and emits only `{content}`.
+    /// `\textcolor{color}{content}` — tree-sitter-latex `color_reference` node.
+    /// Drops the color arg; emits only the content arg.
+    fn emit_textcolor(&mut self, node: Node<'_>) -> usize {
+        // color_reference children: command token, curly_group_text (color),
+        // curly_group (content).  Find the curly_group (second arg).
+        let mut cursor = node.walk();
+        let content_node = node
+            .children(&mut cursor)
+            .find(|c| c.kind() == "curly_group");
+        if let Some(cnode) = content_node {
+            let content = self.render_curly_group_content(cnode);
+            self.out.push_str(&content);
+        }
+        node.end_byte()
+    }
+
+    /// `\textcolor{color}{content}` in math mode — drops color, renders content
+    /// as math.
+    fn emit_math_textcolor(&mut self, node: Node<'_>) -> usize {
+        let mut cursor = node.walk();
+        let content_node = node
+            .children(&mut cursor)
+            .find(|c| c.kind() == "curly_group");
+        if let Some(cnode) = content_node {
+            let inner = self.render_math_group(cnode);
+            self.out.push_str(inner.trim());
+        }
+        node.end_byte()
+    }
+
     // ─── Environment dispatch & lists ─────────────────────────────────────────
 
     fn emit_generic_environment(&mut self, node: Node<'_>) -> usize {
@@ -2914,11 +2956,14 @@ impl<'a> Emitter<'a> {
         } else {
             kind
         };
+        // Convert the display name through the sub-emitter so LaTeX math
+        // (e.g. `Theorem A$^\star_{\mathrm{global}}$`) becomes valid Typst.
+        let converted_name = self.render_in_sub_emitter(name, false, true);
         let _ = write!(
             self.out,
             "#figure(kind: \"{}\", supplement: [{}], [{}])",
             kind,
-            name,
+            converted_name.trim(),
             inner.trim()
         );
         if let Some(l) = label {
@@ -3686,6 +3731,43 @@ impl<'a> Emitter<'a> {
                 }
                 node.end_byte()
             }
+            // `\mathbf{X}` → bold math; `\mathbb{X}` → blackboard bold (`bb(X)`).
+            "\\mathbf" | "\\bm" | "\\bs" | "\\bold" => self.emit_math_wrap(node, "bold(", ")"),
+            // `\mathds` (dsfont) and `\mathbbold` (bbold) — visually
+            // identical to `\mathbb` for the common single-letter use.
+            "\\mathbb" | "\\mathbbm" | "\\Bbb" | "\\mathds" | "\\mathbbold" => {
+                self.emit_math_wrap(node, "bb(", ")")
+            }
+            "\\mathcal" => self.emit_math_wrap(node, "cal(", ")"),
+            "\\mathfrak" | "\\frak" => self.emit_math_wrap(node, "frak(", ")"),
+            "\\mathscr" => self.emit_math_wrap(node, "scr(", ")"),
+            "\\mathsf" => self.emit_math_wrap(node, "sans(", ")"),
+            "\\mathit" => self.emit_math_wrap(node, "italic(", ")"),
+            "\\mathtt" => self.emit_math_wrap(node, "mono(", ")"),
+            "\\boldsymbol" | "\\pmb" => self.emit_math_wrap(node, "bold(", ")"),
+            // Math accents
+            "\\bar" | "\\overline" => self.emit_math_wrap(node, "overline(", ")"),
+            "\\underline" => self.emit_math_wrap(node, "underline(", ")"),
+            "\\hat" | "\\widehat" => self.emit_math_wrap(node, "hat(", ")"),
+            "\\tilde" | "\\widetilde" => self.emit_math_wrap(node, "tilde(", ")"),
+            "\\vec" | "\\overrightarrow" | "\\Overrightarrow" => {
+                self.emit_math_wrap(node, "arrow(", ")")
+            }
+            "\\dot" => self.emit_math_wrap(node, "dot(", ")"),
+            "\\ddot" => self.emit_math_wrap(node, "dot.double(", ")"),
+            "\\acute" => self.emit_math_wrap(node, "acute(", ")"),
+            "\\grave" => self.emit_math_wrap(node, "grave(", ")"),
+            "\\check" | "\\widecheck" => self.emit_math_wrap(node, "caron(", ")"),
+            "\\breve" => self.emit_math_wrap(node, "breve(", ")"),
+            "\\mathring" => self.emit_math_wrap(node, "circle(", ")"),
+            // `\phantom{X}` in Typst math needs `#hide[$X$]` — `hide` is a
+            // content function, not a math operator, so it requires the `#`
+            // escape and a math content block argument.
+            "\\phantom" | "\\hphantom" | "\\vphantom" => {
+                self.emit_math_phantom(node)
+            }
+            "\\emph" => self.emit_math_wrap(node, "italic(", ")"),
+            "\\mathop" => self.emit_math_wrap(node, "op(", ")"),
             // `\operatorname{name}` → `op("name")` — upright math text.
             "\\operatorname" => self.emit_math_operatorname(node),
             // Math-mode spacing primitives — drop silently.
@@ -4352,6 +4434,18 @@ impl<'a> Emitter<'a> {
             self.skip_until = self.skip_until.max(consumed_end);
         }
         consumed_end
+    }
+
+    /// `\phantom{X}` / `\hphantom{X}` / `\vphantom{X}` → `#hide[$X$]`.
+    /// `hide` is a content function so it needs the `#` escape inside math,
+    /// and the argument must be a math content block `[$...$]`.
+    fn emit_math_phantom(&mut self, node: Node<'_>) -> usize {
+        if let Some(arg) = first_curly_group(node) {
+            let inner = self.render_math_group(arg);
+            let _ = write!(self.out, "#hide[${}$]", inner.trim());
+            return node.end_byte();
+        }
+        node.end_byte()
     }
 
     /// Wrap the first curly_group argument in a Typst math function call:
@@ -7480,8 +7574,13 @@ fn extract_declare_math_operator_from_newcmd(
 fn escape_text_cell(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();
+    let mut in_math = false;
     while let Some(c) = chars.next() {
         match c {
+            '$' => {
+                in_math = !in_math;
+                out.push('$');
+            }
             '\\' => {
                 // Preserve any backslash-escape verbatim — `\_` etc.
                 out.push('\\');
@@ -7490,6 +7589,8 @@ fn escape_text_cell(s: &str) -> String {
                     chars.next();
                 }
             }
+            // Inside math mode, `#func[...]` is valid Typst code — don't escape.
+            '#' if in_math => out.push('#'),
             '_' | '*' | '#' | '@' | '<' | '`' => {
                 out.push('\\');
                 out.push(c);
@@ -7623,7 +7724,6 @@ pub(crate) fn wrap_for_command_name(name: &str) -> Option<(&'static str, &'stati
         "\\check" | "\\widecheck" => ("caron(", ")"),
         "\\breve" => ("breve(", ")"),
         "\\mathring" => ("circle(", ")"),
-        "\\phantom" => ("hide(", ")"),
         "\\overbrace" => ("overbrace(", ")"),
         "\\underbrace" => ("underbrace(", ")"),
         "\\cancel" => ("cancel(", ")"),
