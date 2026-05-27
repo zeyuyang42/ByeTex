@@ -1721,7 +1721,15 @@ impl<'a> Emitter<'a> {
             // Springer/LNCS affiliation
             | Some("\\institute")
             // Springer abstract variant
-            | Some("\\abstract*") => {
+            | Some("\\abstract*")
+            // colortbl / xcolor table-coloring commands — both packages are
+            // in the noop allowlist; Typst has no direct row/cell fill API
+            // at the command level so these are silently dropped.
+            | Some("\\rowcolor")
+            | Some("\\cellcolor")
+            | Some("\\columncolor")
+            | Some("\\arrayrulecolor")
+            | Some("\\doublerulesepcolor") => {
                 node.end_byte()
             }
 
