@@ -8351,7 +8351,10 @@ fn extract_package_names(node: Node<'_>, src: &str) -> Vec<String> {
             let mut sub = child.walk();
             for grandchild in child.children(&mut sub) {
                 if grandchild.kind() == "path" {
-                    out.push(src[grandchild.start_byte()..grandchild.end_byte()].to_string());
+                    let pkg = src[grandchild.start_byte()..grandchild.end_byte()].trim();
+                    if !pkg.is_empty() {
+                        out.push(pkg.to_string());
+                    }
                 }
             }
         }
@@ -8439,6 +8442,30 @@ fn is_known_noop_package(name: &str) -> bool {
         | "neurips_2026" | "iclr2024_conference" | "iclr2025_conference"
         | "iclr_conference" | "icml2024" | "icml2025" | "icml2026"
         | "acmart" | "IEEEtran" | "spconf"
+        // Indexing / nomenclature / cross-reference plumbing.
+        // The package load itself is inert; body calls (\index, \nomenclature)
+        // warn separately on their own merits.
+        | "imakeidx" | "nomencl" | "tocbibind"
+        // Hyphenation / line-break control; stylistic only.
+        | "hyphenat"
+        // Layout / debug / sample-content helpers.
+        | "emptypage" | "subfiles" | "import" | "layout" | "mwe"
+        // pict2e extends kernel `picture` primitives; no new body commands.
+        | "pict2e"
+        // Logo macros (\TeX, \LaTeX family) — handled at command level.
+        | "hologo"
+        // Lua-based rendering backends; pure rendering.
+        | "luacolor" | "lua-ul"
+        // Margin notes — package load is silent; \marginnote calls warn.
+        | "marginnote"
+        // KOMA-Script page headers; Typst `set page(header:)` covers this.
+        | "scrlayer-scrpage"
+        // Language / script packages: the load is silently dropped because
+        // visible effects surface through body commands that warn separately
+        // (\foreignlanguage, \gls, etc.).  Rendering of non-Latin scripts will
+        // diverge unless the user selects an appropriate Typst font.
+        | "polyglossia" | "xeCJK" | "luatexja" | "arabtex"
+        | "glossaries" | "markdown"
     )
 }
 
