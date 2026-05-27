@@ -53,9 +53,7 @@ fn label_with_normal_key_unchanged() {
 
 #[test]
 fn label_in_math_env_with_comma_sanitized() {
-    let out = convert_str(
-        r"\begin{equation} x = y \label{eq:foo,bar} \end{equation}",
-    );
+    let out = convert_str(r"\begin{equation} x = y \label{eq:foo,bar} \end{equation}");
     assert!(
         !out.typst.contains("<eq:foo,bar>"),
         "unsanitized math-env label in output: {}",

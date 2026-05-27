@@ -30,7 +30,9 @@ c & d \tabularnewline
         .warnings
         .iter()
         .filter_map(|w| match &w.category {
-            Category::UnsupportedCommand { name } if name == "\\tabularnewline" => Some(name.clone()),
+            Category::UnsupportedCommand { name } if name == "\\tabularnewline" => {
+                Some(name.clone())
+            }
             _ => None,
         })
         .collect();
@@ -44,7 +46,10 @@ c & d \tabularnewline
     // on the line(s) after `[a], [b]`. We just check both rows are
     // present in the output.
     assert!(
-        out.typst.contains("[a]") && out.typst.contains("[b]") && out.typst.contains("[c]") && out.typst.contains("[d]"),
+        out.typst.contains("[a]")
+            && out.typst.contains("[b]")
+            && out.typst.contains("[c]")
+            && out.typst.contains("[d]"),
         "expected all four cells (a, b, c, d) in:\n{}",
         out.typst
     );
@@ -61,7 +66,9 @@ First line. \tabularnewline Second line.
         .warnings
         .iter()
         .filter_map(|w| match &w.category {
-            Category::UnsupportedCommand { name } if name == "\\tabularnewline" => Some(name.clone()),
+            Category::UnsupportedCommand { name } if name == "\\tabularnewline" => {
+                Some(name.clone())
+            }
             _ => None,
         })
         .collect();

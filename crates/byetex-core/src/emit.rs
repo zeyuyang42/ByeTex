@@ -508,6 +508,7 @@ impl<'a> Emitter<'a> {
         // Done as a final string pass so we don't have to wrangle token-level
         // detection for adjacent `-` / backtick / apostrophe runs.
         self.out = post_process_typography(&self.out);
+        self.out = break_raw_paren_chains(&self.out);
         let class_metadata = self.metadata.class_metadata;
         (self.out, self.warnings, self.asset_refs, class_metadata)
     }
@@ -5077,14 +5078,13 @@ impl<'a> Emitter<'a> {
             .children(&mut cursor)
             .next()
             .map(|c| c.kind().to_string());
-        let (raw_keys, end_after_brace) =
-            match extract_label_ref_keys_and_end(node, self.src) {
-                Some(x) => x,
-                None => {
-                    self.warn_unsupported_command(node);
-                    return node.end_byte();
-                }
-            };
+        let (raw_keys, end_after_brace) = match extract_label_ref_keys_and_end(node, self.src) {
+            Some(x) => x,
+            None => {
+                self.warn_unsupported_command(node);
+                return node.end_byte();
+            }
+        };
         // Sanitize each key independently — `sanitize_label_key` maps
         // non-[A-Za-z0-9_\-:.] chars (incl. commas) to `-`. By splitting
         // first and sanitizing per-key, `\cref{a,b}` → ["a", "b"] rather
@@ -7904,9 +7904,18 @@ fn escape_text_cell(s: &str) -> String {
                     chars.next();
                 }
             }
-            // Inside math mode, `#func[...]` is valid Typst code — don't escape.
-            '#' if in_math => out.push('#'),
-            '_' | '*' | '#' | '@' | '<' | '`' => {
+            '#' => {
+                if in_math
+                    || chars
+                        .peek()
+                        .map_or(false, |c| c.is_ascii_alphabetic() || *c == '_')
+                {
+                    out.push('#');
+                } else {
+                    out.push_str("\\#");
+                }
+            }
+            '_' | '*' | '@' | '<' | '`' => {
                 out.push('\\');
                 out.push(c);
             }
@@ -8734,8 +8743,7 @@ fn post_process_typography(s: &str) -> String {
                             break 'scan;
                         }
                         Some(c)
-                            if c.is_ascii_alphanumeric()
-                                || matches!(c, '_' | ':' | '.' | '-') =>
+                            if c.is_ascii_alphanumeric() || matches!(c, '_' | ':' | '.' | '-') =>
                         {
                             key_len += 1;
                         }
@@ -8753,6 +8761,56 @@ fn post_process_typography(s: &str) -> String {
                 out.push(other);
                 prev = Some(other);
             }
+        }
+    }
+    out
+}
+
+/// Insert `#[]` between `#raw("…")` and an immediately following `(` so that
+/// Typst does not greedily parse the `(…)` as function-call arguments on the
+/// content value returned by `raw(…)`.
+///
+/// In Typst markup mode the expression `#raw("X")(Y)` is parsed as "call the
+/// result of raw("X") with Y as argument", which fails because `content` is
+/// not callable. An empty content block `#[]` breaks the chain: after `]`
+/// Typst is unconditionally back in markup mode and the `(` is literal.
+fn break_raw_paren_chains(s: &str) -> String {
+    let needle = "#raw(\"";
+    if !s.contains(needle) {
+        return s.to_string();
+    }
+    let mut out = String::with_capacity(s.len());
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        // Fast-path: find the next occurrence of `#raw("`.
+        if bytes[i..].starts_with(needle.as_bytes()) {
+            // Scan forward for the closing `")` of the #raw(...) call.
+            let start = i + needle.len();
+            let mut j = start;
+            let mut found_close = false;
+            while j + 1 < bytes.len() {
+                if bytes[j] == b'"' && bytes[j + 1] == b')' {
+                    // Found `")` — the call ends at j+2.
+                    j += 2;
+                    found_close = true;
+                    break;
+                }
+                j += 1;
+            }
+            if found_close && bytes.get(j) == Some(&b'(') {
+                // Emit `#raw("…")` then insert `#[]` before the `(`.
+                out.push_str(&s[i..j]);
+                out.push_str("#[]");
+                i = j; // the `(` is emitted in the normal path below
+            } else {
+                out.push(s[i..].chars().next().unwrap());
+                i += s[i..].chars().next().unwrap().len_utf8();
+            }
+        } else {
+            let c = s[i..].chars().next().unwrap();
+            out.push(c);
+            i += c.len_utf8();
         }
     }
     out

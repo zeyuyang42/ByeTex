@@ -81,7 +81,9 @@ fn angle_brackets_in_math_not_escaped() {
     // In math mode, `<` and `>` are comparison operators — must not be touched
     let out = convert_str(r"We have $x < y > z$ always.");
     assert!(
-        out.typst.contains("x < y > z") || out.typst.contains("x<y>z") || out.typst.contains("x < y"),
+        out.typst.contains("x < y > z")
+            || out.typst.contains("x<y>z")
+            || out.typst.contains("x < y"),
         "math comparison operators should survive: {}",
         out.typst
     );
