@@ -235,6 +235,10 @@ pub(crate) struct Emitter<'a> {
     /// drops them with a `needs_manual_review` warning (the v0.1 behaviour
     /// that runs when `convert()` is called with bare source and no file).
     base_dir: Option<PathBuf>,
+    /// The project root directory — always the top-level document's directory.
+    /// Used as a fallback when resolving `\input{path}` from sub-files, since
+    /// LaTeX resolves include paths relative to the root (not the current file).
+    root_dir: Option<PathBuf>,
     /// Canonicalised paths of files already expanded along the current
     /// expansion chain — used to break `\input` cycles. Each successful
     /// recursive expansion inserts the resolved file's canonical path before
@@ -337,6 +341,7 @@ impl<'a> Emitter<'a> {
             metadata: DocumentMetadata::default(),
             raw_authors: Vec::new(),
             detected_class: DocClass::Unknown,
+            root_dir: base_dir.clone(),
             base_dir,
             visited_includes: visited,
             macros: preseeded_macros,
@@ -2486,7 +2491,17 @@ impl<'a> Emitter<'a> {
             None => return false,
         };
         let snippet = self.src[node.start_byte()..node.end_byte()].to_string();
-        let resolved = match resolve_input_path(&base_dir, &raw_path) {
+        // Try base_dir first (current file's directory), then fall back to
+        // root_dir (the project root). LaTeX resolves \input paths from the
+        // project root, so a path like `appendix/d_lemmas` inside
+        // `appendix/proofs.tex` should resolve to `<root>/appendix/d_lemmas.tex`.
+        let resolved_opt = resolve_input_path(&base_dir, &raw_path).or_else(|| {
+            self.root_dir
+                .as_deref()
+                .filter(|r| *r != base_dir.as_path())
+                .and_then(|r| resolve_input_path(r, &raw_path))
+        });
+        let resolved = match resolved_opt {
             Some(p) => p,
             None => {
                 self.warnings.push(Warning {
@@ -2562,6 +2577,9 @@ impl<'a> Emitter<'a> {
             visited,
             macros,
         );
+        // Propagate the project root so nested \input paths that are
+        // relative to the root (LaTeX convention) resolve correctly.
+        sub.root_dir = self.root_dir.clone();
         // Inherit parent's theorem-kind map so that environments defined in a
         // previously-processed \input file (e.g. macros.tex) are recognisable
         // when they appear in a later sibling include (e.g. sections/04_…tex).
