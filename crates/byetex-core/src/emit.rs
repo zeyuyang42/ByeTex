@@ -1756,7 +1756,27 @@ impl<'a> Emitter<'a> {
             // generic_command nodes.  Silently drop — they are structural
             // markers with no renderable content.
             | Some("\\begin")
-            | Some("\\end") => {
+            | Some("\\end")
+            // Beamer presentation-layer styling — no Typst equivalent.
+            // Silently drop: theme/color/font commands are presentation-only
+            // and the underlying content (if any) is preserved elsewhere.
+            | Some("\\usetheme")
+            | Some("\\usecolortheme")
+            | Some("\\useinnertheme")
+            | Some("\\useoutertheme")
+            | Some("\\usebeamertheme")
+            | Some("\\usebeamercolor")
+            | Some("\\usebeamerfont")
+            | Some("\\setbeamertemplate")
+            | Some("\\setbeamerfont")
+            | Some("\\setbeamercolor")
+            | Some("\\setbeamercovered")
+            | Some("\\AtBeginSection")
+            | Some("\\AtBeginSubsection")
+            | Some("\\titlegraphic")
+            // \subtitle is beamer's title-block subtitle; no Typst subtitle
+            // slot is maintained, so silently drop the content.
+            | Some("\\subtitle") => {
                 node.end_byte()
             }
 
