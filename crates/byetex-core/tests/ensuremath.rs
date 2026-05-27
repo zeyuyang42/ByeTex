@@ -35,9 +35,7 @@ fn ensuremath_in_math_mode_no_nested_dollar() {
 fn ensuremath_via_macro_in_math_no_nested_dollar() {
     // The canonical corpus failure: \cM defined as \ensuremath{\mathcal{M}},
     // then used inside math.
-    let out = convert_str(
-        r"\newcommand{\cM}{\ensuremath{\mathcal{M}}} $A = \cM$",
-    );
+    let out = convert_str(r"\newcommand{\cM}{\ensuremath{\mathcal{M}}} $A = \cM$");
     assert!(
         !out.typst.contains("$$"),
         "nested $$ found in output: {}",

@@ -392,11 +392,7 @@ $\foo$
     let unwanted: Vec<_> = ambiguous_math_messages(&out)
         .into_iter()
         .filter(|m| {
-            m == "\\relax"
-                || m == "\\expandafter"
-                || m == "\\ifx"
-                || m == "\\else"
-                || m == "\\fi"
+            m == "\\relax" || m == "\\expandafter" || m == "\\ifx" || m == "\\else" || m == "\\fi"
         })
         .collect();
     assert!(
