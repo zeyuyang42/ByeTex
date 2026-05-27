@@ -1721,7 +1721,11 @@ impl<'a> Emitter<'a> {
             // Springer/LNCS affiliation
             | Some("\\institute")
             // Springer abstract variant
-            | Some("\\abstract*") => {
+            | Some("\\abstract*")
+            // TOC entry injection — Typst auto-generates ToC from headings so
+            // manual \addcontentsline calls are unnecessary.
+            | Some("\\addcontentsline")
+            | Some("\\addtocontents") => {
                 node.end_byte()
             }
 
