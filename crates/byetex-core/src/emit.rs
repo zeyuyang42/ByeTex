@@ -431,7 +431,7 @@ impl<'a> Emitter<'a> {
                     }
                 }
                 "package_include" => {
-                    if let Some(pkg) = extract_package_name(n, self.src) {
+                    for pkg in extract_package_names(n, self.src) {
                         // Local .sty first so it beats bundled seeds
                         self.expand_local_package(&pkg);
                         // Then seed bundled macros — or_insert loses to any existing entry
@@ -517,8 +517,23 @@ impl<'a> Emitter<'a> {
     /// the cursor past a node's `end_byte`; downstream trailing-copy logic
     /// must tolerate the resulting reverse range as a no-op.
     fn safe_copy(&mut self, from: usize, to: usize) {
-        if from < to {
-            self.out.push_str(&self.src[from..to]);
+        if from >= to {
+            return;
+        }
+        let text = &self.src[from..to];
+        if self.in_math {
+            self.out.push_str(text);
+            return;
+        }
+        // Escape bare '#' to '\#' for Typst (where '#' starts a code
+        // expression). Already-escaped '\#' is preserved as-is.
+        let mut prev_backslash = false;
+        for ch in text.chars() {
+            if ch == '#' && !prev_backslash {
+                self.out.push('\\');
+            }
+            self.out.push(ch);
+            prev_backslash = ch == '\\';
         }
     }
 
@@ -592,7 +607,35 @@ impl<'a> Emitter<'a> {
             //     (recursive partial-skip).
             if self.skip_until < node.end_byte() {
                 if node.child_count() == 0 {
-                    self.safe_copy(self.skip_until, node.end_byte());
+                    // Math-mode `word` tails (e.g. `Np` after `\frac12Np`)
+                    // must go through letter-splitting instead of raw copy.
+                    if self.in_math && node.kind() == "word" {
+                        let tail = &self.src[self.skip_until..node.end_byte()];
+                        let alpha_end = tail
+                            .find(|c: char| !c.is_ascii_alphabetic())
+                            .unwrap_or(tail.len());
+                        let alpha = &tail[..alpha_end];
+                        let rest = &tail[alpha_end..];
+                        if should_split_math_word(alpha) {
+                            self.ensure_math_letter_boundary(tail);
+                            let mut first = true;
+                            for c in alpha.chars() {
+                                if !first {
+                                    self.out.push(' ');
+                                }
+                                self.out.push(c);
+                                first = false;
+                            }
+                            if rest.starts_with(|c: char| c.is_ascii_digit()) {
+                                self.out.push(' ');
+                            }
+                            self.out.push_str(rest);
+                        } else {
+                            self.safe_copy(self.skip_until, node.end_byte());
+                        }
+                    } else {
+                        self.safe_copy(self.skip_until, node.end_byte());
+                    }
                     return node.end_byte();
                 }
                 let mut cursor = node.walk();
@@ -769,6 +812,34 @@ impl<'a> Emitter<'a> {
                 self.out.push_str(tail);
                 return node.end_byte();
             }
+            // Digit-prefix words like "2JX" or "2kg": alpha_end==0 because the
+            // word starts with a digit, so the alpha-split branch never fires.
+            // Extract the digit prefix, then apply the same splitting logic to
+            // the trailing alpha run.
+            if alpha.is_empty() {
+                let digit_end = text
+                    .find(|c: char| !c.is_ascii_digit())
+                    .unwrap_or(text.len());
+                let digit_prefix = &text[..digit_end];
+                let rest = &text[digit_end..];
+                let rest_alpha_end = rest
+                    .find(|c: char| !c.is_ascii_alphabetic())
+                    .unwrap_or(rest.len());
+                let rest_alpha = &rest[..rest_alpha_end];
+                let rest_tail = &rest[rest_alpha_end..];
+                if should_split_math_word(rest_alpha) {
+                    self.out.push_str(digit_prefix);
+                    for c in rest_alpha.chars() {
+                        self.out.push(' ');
+                        self.out.push(c);
+                    }
+                    if rest_tail.starts_with(|c: char| c.is_ascii_digit()) {
+                        self.out.push(' ');
+                    }
+                    self.out.push_str(rest_tail);
+                    return node.end_byte();
+                }
+            }
             // Non-split path: we own the write so the default walker below
             // doesn't double-emit the same bytes.
             self.out.push_str(text);
@@ -798,6 +869,13 @@ impl<'a> Emitter<'a> {
         // \begin{X} ... \end{X}: dispatch by environment name.
         if node.kind() == "generic_environment" {
             return self.emit_generic_environment(node);
+        }
+
+        // Verbatim/listing environments — tree-sitter-latex gives these
+        // their own special node kinds (not "generic_environment"), so
+        // they must be intercepted here.
+        if node.kind() == "listing_environment" {
+            return self.emit_listing_environment(node);
         }
 
         // Inside math, `\label{...}` is silently lifted out and attached to
@@ -948,24 +1026,32 @@ impl<'a> Emitter<'a> {
         // Also: certain ML-conference style packages (`neurips_2024`,
         // `iclr2025_conference`, `icml*`) imply a document class, so we
         // refine `detected_class` even though we drop the package itself.
+        //
+        // Each package in a comma-separated list is handled independently so
+        // that `\usepackage{amsmath,xeCJK}` drops `amsmath` silently and emits
+        // exactly one warning for `xeCJK` (named `usepackage:xeCJK`), rather
+        // than either silently losing the trailing packages or collapsing all
+        // unknowns into a generic `\usepackage` warning.
         if node.kind() == "package_include" {
-            if let Some(pkg) = extract_package_name(node, self.src) {
-                self.detected_class =
-                    std::mem::replace(&mut self.detected_class, DocClass::Unknown)
-                        .refine_from_package(&pkg);
-                // BEFORE the noop-list check: if a local `<pkg>.sty`
-                // (or `.cls`) sits in the source directory, parse it
-                // for `\newcommand` / `\def` and merge the macros
-                // into `self.macros`. This means an
-                // `\usepackage{neurips_2026}` whose `.sty` lives next
-                // to the paper contributes its `\acksection`, etc.
-                // System packages (no local file) are unaffected.
-                self.expand_local_package(&pkg);
-                if is_known_noop_package(&pkg) {
-                    return node.end_byte();
+            let pkgs = extract_package_names(node, self.src);
+            let opts = extract_package_options(node, self.src);
+            if pkgs.is_empty() {
+                // Couldn't parse a name at all (malformed node) — fall back.
+                self.warn_unsupported_command(node);
+            } else {
+                for pkg in &pkgs {
+                    // Class refinement: ml-conference style files can upgrade
+                    // a generic `\documentclass{article}`.
+                    let old = std::mem::replace(&mut self.detected_class, DocClass::Unknown);
+                    self.detected_class = old.refine_from_package(pkg);
+                    // Harvest macros / theorems from a local `<pkg>.sty` if
+                    // present next to the source file.
+                    self.expand_local_package(pkg);
+                    if !is_known_noop_package(pkg) {
+                        self.warn_unsupported_package(node, pkg, opts.as_deref());
+                    }
                 }
             }
-            self.warn_unsupported_command(node);
             return node.end_byte();
         }
 
@@ -1346,10 +1432,8 @@ impl<'a> Emitter<'a> {
                 self.out.push('ł');
                 node.end_byte()
             }
-            // `\newline` — explicit line break; `\tabularnewline` is handled
-            // structurally by the table emitter but may surface here in malformed
-            // input; treat as a line break too.
-            Some("\\newline") | Some("\\tabularnewline") => {
+            // `\newline` — explicit line break outside a table.
+            Some("\\newline") => {
                 self.out.push_str("\\ \n");
                 node.end_byte()
             }
@@ -1465,6 +1549,11 @@ impl<'a> Emitter<'a> {
             }
             // Forced page breaks — Typst's pagination is automatic; warn so the
             // user knows their explicit layout intent was not preserved.
+            //
+            // tree-sitter-latex sometimes attaches the following `{...}` group
+            // as an argument to these argument-less commands (e.g.
+            // `\newpage\n\n{\bibliography{refs}}`). We must emit that group's
+            // content; only the command name itself is dropped.
             Some("\\pagebreak")
             | Some("\\nopagebreak")
             | Some("\\newpage")
@@ -1473,6 +1562,18 @@ impl<'a> Emitter<'a> {
                 if !self.in_math =>
             {
                 self.warn_silently_dropped(node);
+                // tree-sitter-latex sometimes attaches the following `{...}` group
+                // as an argument to these argument-less commands (e.g.
+                // `\newpage\n\n{\bibliography{refs}}`). Emit any `curly_group`
+                // children so that content (bibliography, etc.) is preserved.
+                let mut cursor = node.walk();
+                let groups: Vec<_> = node
+                    .children(&mut cursor)
+                    .filter(|c| c.kind() == "curly_group")
+                    .collect();
+                for g in &groups {
+                    self.emit_node(*g);
+                }
                 consume_trailing_inline_space(self.src, node.end_byte())
             }
             // Layout-only alignment directives — warn so the user knows their
@@ -1564,6 +1665,12 @@ impl<'a> Emitter<'a> {
             | Some("\\fancyfoot")
             | Some("\\fancypagestyle")
             | Some("\\renewpagestyle")
+            // Index / nomenclature / glossary setup calls — no visible body output.
+            // \printindex / \printnomenclature / \printglossary warn via DropOnly below.
+            | Some("\\index")
+            | Some("\\nomenclature")
+            | Some("\\makenomenclature")
+            | Some("\\makeglossaries")
             // Document structure helpers with no Typst equivalent
             | Some("\\numberwithin")
             | Some("\\makeindex")
@@ -1617,6 +1724,44 @@ impl<'a> Emitter<'a> {
             | Some("\\abstract*") => {
                 node.end_byte()
             }
+
+            // Standard LaTeX counter display commands — emit as Typst context
+            // counter expressions.  These never take arguments so they are
+            // a single token; the `#` prefix works in both markup and math mode.
+            Some("\\thepage") => {
+                self.out.push_str("#context counter(page).display()");
+                node.end_byte()
+            }
+            Some("\\thesection") => {
+                self.out.push_str("#context counter(heading.1).display()");
+                node.end_byte()
+            }
+            Some("\\thesubsection") => {
+                self.out.push_str("#context counter(heading.2).display()");
+                node.end_byte()
+            }
+            Some("\\thesubsubsection") => {
+                self.out.push_str("#context counter(heading.3).display()");
+                node.end_byte()
+            }
+            Some("\\thechapter") => {
+                // Chapters are top-level headings in Typst.
+                self.out.push_str("#context counter(heading.1).display()");
+                node.end_byte()
+            }
+            Some("\\thefigure") => {
+                self.out.push_str("#context counter(figure).display()");
+                node.end_byte()
+            }
+            Some("\\thetable") => {
+                self.out.push_str("#context counter(figure.where(kind: table)).display()");
+                node.end_byte()
+            }
+            Some("\\theequation") => {
+                self.out.push_str("#context counter(math.equation).display()");
+                node.end_byte()
+            }
+
             // `\newsiamremark` / `\newsiamthm` (SIAM theorem declarations) —
             // harvest `{name}{Display}` into theorem_kinds so the env is routed
             // correctly when encountered in the body.
@@ -1737,7 +1882,16 @@ impl<'a> Emitter<'a> {
             | Some("\\listoffigures")
             | Some("\\listoftables")
             | Some("\\printbibliography")
-            | Some("\\printindex") => {
+            | Some("\\printindex")
+            // Nomenclature / glossary output commands — generated list is lost.
+            | Some("\\printnomenclature")
+            | Some("\\printglossary")
+            | Some("\\printglossaries")
+            // Book-class structure dividers — affect page numbering / heading
+            // numbering in ways Typst doesn't model; warn so users are aware.
+            | Some("\\frontmatter")
+            | Some("\\mainmatter")
+            | Some("\\backmatter") => {
                 self.warn_silently_dropped(node);
                 consume_trailing_inline_space(self.src, node.end_byte())
             }
@@ -2547,6 +2701,53 @@ impl<'a> Emitter<'a> {
             let escaped = content.replace('\\', "\\\\").replace('"', "\\\"");
             let _ = write!(self.out, "#raw(\"{}\")", escaped);
         }
+        node.end_byte()
+    }
+
+    /// `\begin{lstlisting}[options]...code...\end{lstlisting}` → `#raw("...", block: true)`.
+    /// tree-sitter-latex gives lstlisting a `listing_environment` node kind with a
+    /// `source_code` child containing the raw code (including any `[options]` prefix
+    /// since the listing grammar declares no structured options field).
+    fn emit_listing_environment(&mut self, node: Node<'_>) -> usize {
+        let mut cursor = node.walk();
+        let raw = match node.children(&mut cursor).find(|c| c.kind() == "source_code") {
+            Some(cn) => self.src[cn.start_byte()..cn.end_byte()].to_string(),
+            None => return node.end_byte(),
+        };
+
+        // The source_code span may begin with [key=val,...] (the optional
+        // lstlisting argument that the grammar does not parse as a field).
+        // Strip it and extract `language=` if present.
+        let rest = raw.trim_start_matches('\n');
+        let (lang, code) = if rest.starts_with('[') {
+            let end_bracket = rest.find(']').unwrap_or(rest.len().saturating_sub(1));
+            let options = &rest[1..end_bracket];
+            let lang = options.split(',').find_map(|kv| {
+                let kv = kv.trim();
+                kv.strip_prefix("language")
+                    .map(|r| r.trim().strip_prefix('=').unwrap_or("").trim())
+                    .filter(|v| !v.is_empty())
+                    .map(|v| v.trim_matches('{').trim_matches('}').to_lowercase())
+            });
+            let code = rest[end_bracket + 1..].trim_start_matches('\n');
+            (lang, code.to_string())
+        } else {
+            (None, rest.to_string())
+        };
+
+        let escaped = code
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n");
+
+        let _ = match lang.as_deref() {
+            Some(l) => write!(
+                self.out,
+                "\n#raw(\"{}\", block: true, lang: \"{}\")\n",
+                escaped, l
+            ),
+            None => write!(self.out, "\n#raw(\"{}\", block: true)\n", escaped),
+        };
         node.end_byte()
     }
 
@@ -3770,8 +3971,18 @@ impl<'a> Emitter<'a> {
             "\\mathop" => self.emit_math_wrap(node, "op(", ")"),
             // `\operatorname{name}` → `op("name")` — upright math text.
             "\\operatorname" => self.emit_math_operatorname(node),
-            // Math-mode spacing primitives — drop silently.
-            "\\hspace" | "\\vspace" | "\\!" | "\\linebreak" | "\\nobreak" => node.end_byte(),
+            // Math-mode spacing primitives. `\hspace` emits a thin space so
+            // that content wrapping it (e.g. `\underbrace{\hspace{4cm}}`) does
+            // not produce an empty body that Typst rejects. `\vspace` and the
+            // zero-width commands are dropped silently.
+            "\\hspace" => {
+                // `thin` must not fuse with a preceding identifier letter
+                // (e.g. `v\hspace{...}` → `vthin` = unknown variable).
+                self.ensure_math_letter_boundary("thin");
+                self.out.push_str("thin ");
+                node.end_byte()
+            }
+            "\\vspace" | "\\!" | "\\linebreak" | "\\nobreak" => node.end_byte(),
             // `\tag{...}` adds LaTeX equation labels for presentation only;
             // Typst handles equation numbering itself. Warn so the user knows
             // their custom label text was not preserved.
@@ -5498,6 +5709,12 @@ impl<'a> Emitter<'a> {
                 "label_definition" if label.is_none() => {
                     label = extract_label_name(*child, self.src);
                 }
+                "label_definition" => {
+                    // Extra sibling labels on the same heading: consume
+                    // silently. Typst's "last label wins" rule would drop
+                    // the primary label if these float free; skip them here
+                    // so they never become body content.
+                }
                 // Bug #35: tree-sitter mis-parses curly groups whose
                 // key contains `_` (e.g. `\ref{thm:UAP_general_dim}`
                 // inside the title), leaving an orphan `}` as an
@@ -5525,65 +5742,93 @@ impl<'a> Emitter<'a> {
         // `\ref{thm:UAP_general_dim}` inside the title) and the
         // section node ends prematurely. The associated `\label{...}`
         // then sits as a sibling of the section rather than a child,
-        // and our AST-child-only sweep above doesn't find it. Source-
-        // byte peek for `\label{...}` immediately after this section
-        // node's end so the label attaches to the heading.
-        if label.is_none() {
+        // and our AST-child-only sweep above doesn't find it.
+        //
+        // Additionally, LaTeX allows multiple consecutive \label{}
+        // commands on the same section (all are aliases for the same
+        // location). Typst's "last label wins" rule would silently drop
+        // every label except the last, breaking any reference that used
+        // an earlier label. We therefore scan ALL consecutive sibling
+        // \label{...} commands: the first becomes the heading's label
+        // (kept), and the rest are consumed/skipped so the walker never
+        // re-emits them as standalone labels.
+        {
             let bytes = self.src.as_bytes();
-            let mut i = node.end_byte();
+            let mut i = self.skip_until.max(node.end_byte());
             // Skip whitespace and stray closing braces (the ERROR
             // `}` left behind by the truncated curly group).
             while i < bytes.len() && (bytes[i].is_ascii_whitespace() || bytes[i] == b'}') {
                 i += 1;
             }
             const LABEL_TAG: &[u8] = b"\\label";
-            if bytes.len().saturating_sub(i) >= LABEL_TAG.len()
-                && &bytes[i..i + LABEL_TAG.len()] == LABEL_TAG
-            {
+            loop {
+                if bytes.len().saturating_sub(i) < LABEL_TAG.len()
+                    || &bytes[i..i + LABEL_TAG.len()] != LABEL_TAG
+                {
+                    break;
+                }
                 let mut k = i + LABEL_TAG.len();
                 while k < bytes.len() && bytes[k].is_ascii_whitespace() {
                     k += 1;
                 }
-                if k < bytes.len() && bytes[k] == b'{' {
-                    let key_start = k + 1;
-                    let mut j = key_start;
-                    let mut depth = 1i32;
-                    while j < bytes.len() {
-                        match bytes[j] {
-                            b'\\' if j + 1 < bytes.len() => {
-                                j += 2;
-                                continue;
-                            }
-                            b'{' => depth += 1,
-                            b'}' => {
-                                depth -= 1;
-                                if depth == 0 {
-                                    break;
-                                }
-                            }
-                            _ => {}
+                if k >= bytes.len() || bytes[k] != b'{' {
+                    break;
+                }
+                let key_start = k + 1;
+                let mut j = key_start;
+                let mut depth = 1i32;
+                while j < bytes.len() {
+                    match bytes[j] {
+                        b'\\' if j + 1 < bytes.len() => {
+                            j += 2;
+                            continue;
                         }
-                        j += 1;
-                    }
-                    if j < bytes.len() && bytes[j] == b'}' {
-                        let key = self.src[key_start..j].trim().to_string();
-                        if !key.is_empty() {
-                            label = Some(key);
-                            self.skip_until = self.skip_until.max(j + 1);
+                        b'{' => depth += 1,
+                        b'}' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                break;
+                            }
                         }
+                        _ => {}
                     }
+                    j += 1;
+                }
+                if j >= bytes.len() || bytes[j] != b'}' {
+                    break;
+                }
+                let key = self.src[key_start..j].trim().to_string();
+                if key.is_empty() {
+                    break;
+                }
+                // First label found becomes the heading label; subsequent
+                // ones are consumed silently.
+                if label.is_none() {
+                    label = Some(key);
+                }
+                self.skip_until = self.skip_until.max(j + 1);
+                i = j + 1;
+                // Advance past whitespace to check for another \label.
+                while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                    i += 1;
                 }
             }
         }
 
         if starred {
+            // A starred section with a label must still be referenceable via
+            // @label. Typst's `numbering: none` makes headings unreferenceable
+            // in Typst 0.14+. A function `(..n) => none` is valid, keeps the
+            // heading in the numbering counter (so @ref works), but renders
+            // no visible number.
+            let num_arg = if label.is_some() { "(..n) => none" } else { "none" };
             if level == 1 {
-                let _ = write!(self.out, "#heading(numbering: none)[{}]", title);
+                let _ = write!(self.out, "#heading(numbering: {})[{}]", num_arg, title);
             } else {
                 let _ = write!(
                     self.out,
-                    "#heading(level: {}, numbering: none)[{}]",
-                    level, title
+                    "#heading(level: {}, numbering: {})[{}]",
+                    level, num_arg, title
                 );
             }
         } else {
@@ -5668,6 +5913,27 @@ impl<'a> Emitter<'a> {
             category: Category::UnsupportedCommand { name },
             severity: Severity::Warning,
             message: "command not yet supported by ByeTex; raw source dropped".to_string(),
+            snippet,
+            suggested_skill: None,
+        });
+    }
+
+    /// Emit one `UnsupportedCommand` warning per unknown package, with the
+    /// warning `name` set to `usepackage:<pkg>` so callers can distinguish
+    /// and rank individual packages rather than seeing a generic `\usepackage`.
+    fn warn_unsupported_package(&mut self, node: Node<'_>, pkg: &str, opts: Option<&str>) {
+        let snippet = self.src[node.start_byte()..node.end_byte()].to_string();
+        let message = match opts {
+            Some(o) => format!("package `{pkg}` (options: `{o}`) not supported by ByeTex; dropped"),
+            None => format!("package `{pkg}` not supported by ByeTex; dropped"),
+        };
+        self.warnings.push(Warning {
+            range: range_of(node),
+            category: Category::UnsupportedCommand {
+                name: format!("usepackage:{pkg}"),
+            },
+            severity: Severity::Warning,
+            message,
             snippet,
             suggested_skill: None,
         });
@@ -6013,7 +6279,9 @@ fn needs_text_escape(kind: &str) -> Option<&'static str> {
 pub(crate) fn sanitize_label_key(key: &str) -> String {
     key.chars()
         .map(|c| {
-            if c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | ':' | '.') {
+            // Typst labels support Unicode alphanumerics, so preserve them.
+            // Only replace characters that Typst rejects in label identifiers.
+            if c.is_alphanumeric() || matches!(c, '_' | '-' | ':' | '.') {
                 c
             } else {
                 '-'
@@ -6202,16 +6470,63 @@ fn normalize_graphics_length(v: &str) -> String {
 
 fn parse_column_spec(spec: &str) -> (usize, Vec<String>) {
     let mut aligns = Vec::new();
-    for c in spec.chars() {
-        match c {
-            'l' => aligns.push("left".to_string()),
-            'c' => aligns.push("center".to_string()),
-            'r' => aligns.push("right".to_string()),
-            // Ignore vertical bars and other spec characters.
-            _ => {}
+    let bytes = spec.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] as char {
+            'l' | 'L' => { aligns.push("left".to_string()); i += 1; }
+            'c' | 'C' => { aligns.push("center".to_string()); i += 1; }
+            'r' | 'R' => { aligns.push("right".to_string()); i += 1; }
+            // Paragraph/width columns (p, m, b) take {width} argument — skip
+            // the argument but count the column as left-aligned.
+            'p' | 'm' | 'b' | 'w' | 'W' => {
+                aligns.push("left".to_string());
+                i += 1;
+                if bytes.get(i) == Some(&b'{') {
+                    i = skip_balanced_braces(spec, i);
+                }
+            }
+            // tabularx X column — count as left-aligned.
+            'X' => { aligns.push("left".to_string()); i += 1; }
+            // @{...} and !{...}: inter-column material, not data columns.
+            // >{...} and <{...}: column format decorators (array package).
+            '@' | '!' | '>' | '<' => {
+                i += 1;
+                if bytes.get(i) == Some(&b'{') {
+                    i = skip_balanced_braces(spec, i);
+                }
+            }
+            // Vertical rules and whitespace — ignore.
+            _ => { i += 1; }
         }
     }
     (aligns.len(), aligns)
+}
+
+/// Skip a `{...}` balanced-brace group starting at `start` (where `src[start] == '{'`).
+/// Returns the index one past the closing `}`.
+fn skip_balanced_braces(src: &str, start: usize) -> usize {
+    let bytes = src.as_bytes();
+    if bytes.get(start) != Some(&b'{') {
+        return start;
+    }
+    let mut depth = 1usize;
+    let mut i = start + 1;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return i + 1;
+                }
+            }
+            b'\\' => i += 1, // skip escaped char
+            _ => {}
+        }
+        i += 1;
+    }
+    i
 }
 
 /// Escape unbalanced paired delimiters (`[`, `]`, `(`, `)`) in a Typst math
@@ -8078,18 +8393,39 @@ fn resolve_package_path(base: &Path, pkg: &str) -> Option<PathBuf> {
     None
 }
 
-/// Extract the package name from `\usepackage[opts]{name}`. The container is
-/// `curly_group_path` for single-package form and `curly_group_path_list`
-/// when options are present — accept either.
-fn extract_package_name(node: Node<'_>, src: &str) -> Option<String> {
+/// Extract all package names from `\usepackage[opts]{name}` or
+/// `\usepackage{pkg1,pkg2,...}`. Returns every `path` child found in the
+/// curly group, so a comma-separated list yields multiple entries.
+fn extract_package_names(node: Node<'_>, src: &str) -> Vec<String> {
+    let mut out = Vec::new();
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if matches!(child.kind(), "curly_group_path" | "curly_group_path_list") {
             let mut sub = child.walk();
             for grandchild in child.children(&mut sub) {
                 if grandchild.kind() == "path" {
-                    return Some(src[grandchild.start_byte()..grandchild.end_byte()].to_string());
+                    let pkg = src[grandchild.start_byte()..grandchild.end_byte()].trim();
+                    if !pkg.is_empty() {
+                        out.push(pkg.to_string());
+                    }
                 }
+            }
+        }
+    }
+    out
+}
+
+/// Extract the bracket-group option text from `\usepackage[opts]{...}`,
+/// returning the inner content without the `[` / `]` delimiters.
+/// tree-sitter-latex uses `brack_group_key_value` for this optional argument.
+fn extract_package_options(node: Node<'_>, src: &str) -> Option<String> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "brack_group_key_value" {
+            let text = &src[child.start_byte()..child.end_byte()];
+            let inner = text.trim_start_matches('[').trim_end_matches(']').trim();
+            if !inner.is_empty() {
+                return Some(inner.to_string());
             }
         }
     }
@@ -8159,6 +8495,40 @@ fn is_known_noop_package(name: &str) -> bool {
         | "neurips_2026" | "iclr2024_conference" | "iclr2025_conference"
         | "iclr_conference" | "icml2024" | "icml2025" | "icml2026"
         | "acmart" | "IEEEtran" | "spconf"
+        // Indexing / nomenclature / cross-reference plumbing.
+        // The package load itself is inert; body calls (\index, \nomenclature)
+        // warn separately on their own merits.
+        | "imakeidx" | "nomencl" | "tocbibind"
+        // Hyphenation / line-break control; stylistic only.
+        | "hyphenat"
+        // Layout / debug / sample-content helpers.
+        | "emptypage" | "subfiles" | "import" | "layout" | "mwe"
+        // pict2e extends kernel `picture` primitives; no new body commands.
+        | "pict2e"
+        // Logo macros (\TeX, \LaTeX family) — handled at command level.
+        | "hologo"
+        // Lua-based rendering backends; pure rendering.
+        | "luacolor" | "lua-ul"
+        // Margin notes — package load is silent; \marginnote calls warn.
+        | "marginnote"
+        // KOMA-Script page headers; Typst `set page(header:)` covers this.
+        | "scrlayer-scrpage"
+        // Language / script packages: the load is silently dropped because
+        // visible effects surface through body commands that warn separately
+        // (\foreignlanguage, \gls, etc.).  Rendering of non-Latin scripts will
+        // diverge unless the user selects an appropriate Typst font.
+        | "polyglossia" | "xeCJK" | "luatexja" | "arabtex"
+        | "glossaries" | "markdown"
+        // Font-family selection (cosmetic; same pattern as times/helvet above).
+        | "luaotfload" | "noto" | "bookman" | "tgbonum"
+        // Greek-letter text-mode access; symbol table already covers math mode.
+        | "alphabeta"
+        // OpenType math fonts; load is inert (\setmathfont etc. warn separately).
+        | "unicode-math"
+        // Page-count label (\pageref{LastPage} handling is a separate question).
+        | "lastpage"
+        // Body-command packages; load is inert, body commands warn on their own.
+        | "emoji" | "epigraph" | "shellesc"
     )
 }
 
@@ -8288,6 +8658,15 @@ fn post_process_typography(s: &str) -> String {
             in_math = !in_math;
             out.push('$');
             prev = Some('$');
+            // LaTeX math `/` is a plain character; Typst math `/` is a binary
+            // operator that requires a left operand. When the very first char
+            // of a math span is `/`, wrap it in a string literal so Typst
+            // renders it as a glyph rather than an operator: `$/` → `$"/"`.
+            if in_math && chars.peek() == Some(&'/') {
+                chars.next();
+                out.push_str("\"/\"");
+                prev = Some('"');
+            }
             continue;
         }
         if in_math {

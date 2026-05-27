@@ -5,10 +5,11 @@ Cargo.lock.bak
 # Per-project agent state — Claude Code worktrees, plans, memory.
 /.claude/
 
-# Test corpus — all runtime/download artifacts.
-# Inhouse source-of-truth lives in tests/inhouse/ (committed).
-# Populate with: python scripts/setup_corpus.py && python scripts/harvest_templates.py
-/corpus/
+# Test corpus — manifest is committed; arXiv payloads are gitignored (large binaries).
+# Fetch the regression set with: python scripts/corpus_harvest.py --pinned
+# Fetch everything:              python scripts/corpus_harvest.py
+/corpus/*
+!/corpus/manifest.json
 
 # Generated artifacts during development
 *.typ.swp

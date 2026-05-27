@@ -3,7 +3,7 @@
 //! Before the fix, ByeTex required curly-group arguments for every
 //! `\newcommand` call: `\mat{X}` worked, but `\mat X` produced a
 //! `custom_macro` warning because the AST has no `curly_group` child.
-//! Real arXiv papers (e.g. corpus/online/arxiv/paper) use the brace-less
+//! Real arXiv papers (e.g. corpus/<arxiv-id>) use the brace-less
 //! form pervasively — one paper hit 989 `\mat X`-style calls.
 
 use byetex_core::{convert, Category, ConvertOptions};
@@ -150,7 +150,7 @@ fn braceless_with_nonascii() {
 fn nested_braceless_macros() {
     // `\matuul H` where `\matuul` is defined in terms of `\mat`, which
     // is defined in terms of `\bm`. Mirrors the real arXiv paper
-    // pattern at corpus/online/arxiv/paper/BB-Formats.tex.
+    // pattern at corpus/<arxiv-id>/BB-Formats.tex.
     let src = r"\documentclass{article}
 \newcommand{\mat}[1]{\mathbf{#1}}
 \newcommand{\matuul}[1]{\underline{\underline{\mat{#1}}}}

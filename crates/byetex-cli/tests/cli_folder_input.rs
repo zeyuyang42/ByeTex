@@ -71,7 +71,7 @@ fn cli_convert_project_accepts_a_directory_and_pre_scans_macros() {
 
 #[test]
 fn braceless_user_macros_dont_warn() {
-    // Real arXiv papers (corpus/online/arxiv/paper) heavily use
+    // Real arXiv papers (corpus/<arxiv-id>) heavily use
     // brace-less calls like `$\mat X$` for 1-arg `\newcommand`s. The
     // pre-scan harvests the definition from a sibling `.tex`; the
     // expander must accept the brace-less call form.

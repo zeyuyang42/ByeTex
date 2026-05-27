@@ -27,6 +27,14 @@ jobs:
       - name: Install typst
         uses: typst-community/setup-typst@v5
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Fetch pinned corpus
+        run: pip install requests && python scripts/corpus_harvest.py --pinned
+
       - name: cargo fmt
         run: cargo fmt --all -- --check
 

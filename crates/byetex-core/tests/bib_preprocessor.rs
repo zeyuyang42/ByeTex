@@ -76,6 +76,61 @@ fn strips_stray_at_in_field_position() {
 }
 
 #[test]
+fn drops_bare_at_with_no_entry_type() {
+    // 2605.22724 pattern: a lone `@` left behind after an entry was
+    // deleted — the `@` has no type and no `{`, so it's not a valid
+    // entry.  Typst's parser aborts with `expected identifier`.
+    let src = "@article{good, year = 2024}\n\n@\n\n@article{also_good, year = 2025}\n";
+    let out = preprocess_bib(src);
+    // The bare `@` must be silently dropped, not passed through.
+    assert!(
+        !out.contains("\n@\n"),
+        "bare `@` must be dropped; got:\n{}",
+        out
+    );
+    // The flanking valid entries must survive.
+    assert!(out.contains("@article{good,"), "first entry lost: {}", out);
+    assert!(out.contains("@article{also_good,"), "third entry lost: {}", out);
+}
+
+#[test]
+fn resolves_biblatex_hash_concatenation() {
+    // 2605.22817 pattern: `month = "oct" # "-" # nov` uses BibTeX's
+    // `#` string-concatenation operator. Typst's BibLaTeX parser does
+    // not support `#`. For month fields the range is truncated to the
+    // first component (hayagriva rejects range strings like "oct-nov"
+    // with "missing number"). For other fields the terms are joined.
+    let src = r#"@inproceedings{yang2018hotpotqa,
+    title = {HotpotQA},
+    author = {Yang, Zhilin},
+    month = "oct" # "-" # nov,
+    year = "2018",
+    booktitle = {EMNLP 2018},
+    note = {Version} # { 2}
+}
+"#;
+    let out = preprocess_bib(src);
+    // `#` concatenation must be gone.
+    assert!(
+        !out.contains(" # "),
+        "hash concatenation must be eliminated; got:\n{}",
+        out
+    );
+    // Month range: only the first component survives.
+    assert!(
+        out.contains("month = \"oct\""),
+        "month must be first component only; got:\n{}",
+        out
+    );
+    // Other fields: parts are joined into one quoted string.
+    assert!(
+        out.contains("\"Version 2\""),
+        "non-month # concat must be joined; got:\n{}",
+        out
+    );
+}
+
+#[test]
 fn drops_duplicate_keys() {
     // 2605.22507 pattern: `BM13` defined twice. Typst aborts with
     // `duplicate key`. Keep the first occurrence.
@@ -86,5 +141,44 @@ fn drops_duplicate_keys() {
         count, 1,
         "expected 1 BM13 entry; got {} in:\n{}",
         count, out
+    );
+}
+
+#[test]
+fn drops_bibtex_bdsk_fields() {
+    // 2605.22724 pattern: BibDesk-specific `Bdsk-Url-*` fields whose
+    // URLs contain `$` or `%7D` (URL-encoded chars). Typst's BibLaTeX
+    // parser chokes on `$` inside a braced field value (treats it as
+    // math mode). These fields carry no bibliographic information and
+    // must be dropped by the preprocessor. Also covers `OPTBdsk-*`
+    // (BibDesk's "optional" variant).
+    let src = "@article{x,\n\
+               \tyear = {2017},\n\
+               \tBdsk-Url-1 = {https://doi.org/10.1162/neco%7D$}}\n";
+    let out = preprocess_bib(src);
+    assert!(
+        !out.contains("Bdsk-Url-1"),
+        "Bdsk-Url-1 must be dropped; got:\n{}",
+        out
+    );
+    assert!(
+        out.contains("year = {2017}"),
+        "year field must survive; got:\n{}",
+        out
+    );
+    // OPTBdsk-* variant (BibDesk marks optional fields with OPT prefix)
+    let src2 = "@article{y,\n\
+                \tyear = {2020},\n\
+                \tOPTBdsk-Url-1 = {https://example.com}}\n";
+    let out2 = preprocess_bib(src2);
+    assert!(
+        !out2.contains("OPTBdsk-Url-1"),
+        "OPTBdsk-Url-1 must be dropped; got:\n{}",
+        out2
+    );
+    assert!(
+        out2.contains("year = {2020}"),
+        "year field must survive in OPTBdsk test; got:\n{}",
+        out2
     );
 }
