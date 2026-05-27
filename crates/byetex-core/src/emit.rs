@@ -1724,6 +1724,44 @@ impl<'a> Emitter<'a> {
             | Some("\\abstract*") => {
                 node.end_byte()
             }
+
+            // Standard LaTeX counter display commands — emit as Typst context
+            // counter expressions.  These never take arguments so they are
+            // a single token; the `#` prefix works in both markup and math mode.
+            Some("\\thepage") => {
+                self.out.push_str("#context counter(page).display()");
+                node.end_byte()
+            }
+            Some("\\thesection") => {
+                self.out.push_str("#context counter(heading.1).display()");
+                node.end_byte()
+            }
+            Some("\\thesubsection") => {
+                self.out.push_str("#context counter(heading.2).display()");
+                node.end_byte()
+            }
+            Some("\\thesubsubsection") => {
+                self.out.push_str("#context counter(heading.3).display()");
+                node.end_byte()
+            }
+            Some("\\thechapter") => {
+                // Chapters are top-level headings in Typst.
+                self.out.push_str("#context counter(heading.1).display()");
+                node.end_byte()
+            }
+            Some("\\thefigure") => {
+                self.out.push_str("#context counter(figure).display()");
+                node.end_byte()
+            }
+            Some("\\thetable") => {
+                self.out.push_str("#context counter(figure.where(kind: table)).display()");
+                node.end_byte()
+            }
+            Some("\\theequation") => {
+                self.out.push_str("#context counter(math.equation).display()");
+                node.end_byte()
+            }
+
             // `\newsiamremark` / `\newsiamthm` (SIAM theorem declarations) —
             // harvest `{name}{Display}` into theorem_kinds so the env is routed
             // correctly when encountered in the body.
