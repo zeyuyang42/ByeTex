@@ -1665,6 +1665,12 @@ impl<'a> Emitter<'a> {
             | Some("\\fancyfoot")
             | Some("\\fancypagestyle")
             | Some("\\renewpagestyle")
+            // Index / nomenclature / glossary setup calls — no visible body output.
+            // \printindex / \printnomenclature / \printglossary warn via DropOnly below.
+            | Some("\\index")
+            | Some("\\nomenclature")
+            | Some("\\makenomenclature")
+            | Some("\\makeglossaries")
             // Document structure helpers with no Typst equivalent
             | Some("\\numberwithin")
             | Some("\\makeindex")
@@ -1838,7 +1844,16 @@ impl<'a> Emitter<'a> {
             | Some("\\listoffigures")
             | Some("\\listoftables")
             | Some("\\printbibliography")
-            | Some("\\printindex") => {
+            | Some("\\printindex")
+            // Nomenclature / glossary output commands — generated list is lost.
+            | Some("\\printnomenclature")
+            | Some("\\printglossary")
+            | Some("\\printglossaries")
+            // Book-class structure dividers — affect page numbering / heading
+            // numbering in ways Typst doesn't model; warn so users are aware.
+            | Some("\\frontmatter")
+            | Some("\\mainmatter")
+            | Some("\\backmatter") => {
                 self.warn_silently_dropped(node);
                 consume_trailing_inline_space(self.src, node.end_byte())
             }
