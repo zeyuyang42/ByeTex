@@ -1741,7 +1741,15 @@ impl<'a> Emitter<'a> {
             | Some("\\doublespacing")
             | Some("\\singlespacing")
             | Some("\\onehalfspacing")
-            | Some("\\setstretch") => {
+            | Some("\\setstretch")
+            // colortbl / xcolor table-coloring commands — both packages are
+            // in the noop allowlist; Typst has no direct row/cell fill API
+            // at the command level so these are silently dropped.
+            | Some("\\rowcolor")
+            | Some("\\cellcolor")
+            | Some("\\columncolor")
+            | Some("\\arrayrulecolor")
+            | Some("\\doublerulesepcolor") => {
                 node.end_byte()
             }
 
