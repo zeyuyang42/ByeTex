@@ -1206,14 +1206,18 @@ impl<'a> Emitter<'a> {
         // delimiter scope, so we manually consume the source from the byte
         // after `\verb` to the next occurrence of the delimiter, and skip any
         // tokens the grammar produced inside.
-        if name.as_deref() == Some("\\verb") {
+        if name.as_deref() == Some("\\verb") || name.as_deref() == Some("\\verb*") {
             let bytes = self.src.as_bytes();
             let end = node.end_byte();
             if let Some(&delim) = bytes.get(end) {
                 if let Some(rel) = bytes[end + 1..].iter().position(|&b| b == delim) {
                     let close = end + 1 + rel;
                     let content = &self.src[end + 1..close];
-                    let _ = write!(self.out, "`{}`", content);
+                    // Use #raw(...) rather than backtick syntax so the
+                    // post_process_typography backtick-escape pass does not
+                    // double-escape the delimiters.
+                    let escaped = content.replace('\\', "\\\\").replace('"', "\\\"");
+                    let _ = write!(self.out, "#raw(\"{}\")", escaped);
                     self.skip_until = close + 1;
                     return close + 1;
                 }
