@@ -182,3 +182,89 @@ fn drops_bibtex_bdsk_fields() {
         out2
     );
 }
+
+#[test]
+fn normalizes_year_field_with_month_prefix() {
+    // 2605.22507 pattern: `Year = {February, 1993}` — hayagriva rejects
+    // non-numeric year values with "wrong number of digits". When the
+    // year field contains a 4-digit year embedded in other text, keep
+    // only that year. When there is no recognizable year (e.g. "to
+    // appear"), drop the field entirely to prevent hayagriva from aborting.
+    let src = "@article{x, Year = {February, 1993}}\n";
+    let out = preprocess_bib(src);
+    // Field name case is preserved in output (Year not year)
+    assert!(
+        out.contains("{1993}"),
+        "year with month prefix must be normalized to just the year; got:\n{}",
+        out
+    );
+    assert!(
+        !out.contains("February"),
+        "month name must be stripped from year field; got:\n{}",
+        out
+    );
+
+    // "to appear" — no year number, field must be dropped
+    let src2 = "@article{y, title = {Foo}, Year = {to appear}}\n";
+    let out2 = preprocess_bib(src2);
+    assert!(
+        !out2.contains("to appear"),
+        "non-numeric 'to appear' year must be dropped; got:\n{}",
+        out2
+    );
+
+    // "September, 1989" variant
+    let src3 = "@article{z, Year = {September, 1989}}\n";
+    let out3 = preprocess_bib(src3);
+    assert!(
+        out3.contains("{1989}"),
+        "year with month name must be normalized; got:\n{}",
+        out3
+    );
+}
+
+#[test]
+fn normalizes_month_field_with_range_or_number() {
+    // 2605.22507 pattern: `Month = {May-June}`, `Month = {May 13}`,
+    // `Month = {October 7--10}`. hayagriva rejects these with "missing
+    // number". Keep only the first alphabetic word from the month value.
+    let cases = [
+        ("@article{a, month = {May-June}}", "month = {May}"),
+        ("@article{b, month = {May 13}}", "month = {May}"),
+        ("@article{c, month = {October 7--10}}", "month = {October}"),
+        ("@article{d, month = {nov.}}", "month = {nov}"),
+        // Pure month names should be unchanged
+        ("@article{e, month = {January}}", "month = {January}"),
+        ("@article{f, month = \"Sep\"}", "month = \"Sep\""),
+    ];
+    for (src, expected_fragment) in &cases {
+        let out = preprocess_bib(src);
+        assert!(
+            out.contains(expected_fragment),
+            "month normalization: expected '{}' in output; got:\n{}",
+            expected_fragment,
+            out
+        );
+    }
+}
+
+#[test]
+fn normalizes_day_field_with_range() {
+    // 2605.22507 pattern: `Day = {11--15}` — hayagriva expects a plain
+    // integer for the day field. Keep only the first digit sequence.
+    let src = "@article{a, day = {11--15}, year = {2020}}\n";
+    let out = preprocess_bib(src);
+    assert!(
+        out.contains("day = {11}"),
+        "day range must be normalized to first number; got:\n{}",
+        out
+    );
+    // Pure day value should be unchanged
+    let src2 = "@article{b, day = {15}}\n";
+    let out2 = preprocess_bib(src2);
+    assert!(
+        out2.contains("day = {15}"),
+        "plain day value must be unchanged; got:\n{}",
+        out2
+    );
+}
