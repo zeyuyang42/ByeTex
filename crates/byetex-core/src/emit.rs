@@ -5787,12 +5787,11 @@ impl<'a> Emitter<'a> {
             .into_iter()
             .filter(|r| !r.trim().is_empty())
             .collect();
-        let mut cells = Vec::new();
-        for row in &rows {
-            for cell in row.split('&') {
-                cells.push(cell.trim().to_string());
-            }
-        }
+        // Build per-row cell lists so we can track rowspan/colspan occupancy.
+        let rows_2d: Vec<Vec<String>> = rows
+            .iter()
+            .map(|row| row.split('&').map(|c| c.trim().to_string()).collect())
+            .collect();
 
         self.ensure_paragraph_break();
         let _ = write!(
@@ -5801,41 +5800,57 @@ impl<'a> Emitter<'a> {
             count,
             aligns.join(", ")
         );
-        // Emit cells grouped by row for readability. Skip rows that have no
-        // cells (avoids a trailing lone-comma artifact).
-        let mut idx = 0;
-        for _ in 0..rows.len() {
-            if idx >= cells.len() {
-                break;
-            }
-            self.out.push_str("  ");
-            let mut emitted_any = false;
-            for _ in 0..count {
-                if idx >= cells.len() {
+
+        // rowspan_cols[c] = number of additional rows for which column c is
+        // already occupied by a rowspan cell from a previous row.  When we
+        // encounter a rowspan=N cell at column c we set rowspan_cols[c] = N-1.
+        // Each subsequent visit to that column decrements the counter.
+        let mut rowspan_cols = vec![0usize; count];
+
+        for row_cells in &rows_2d {
+            let mut row_output: Vec<String> = Vec::new();
+            let mut src = row_cells.iter();
+            let mut col = 0usize;
+
+            while col < count {
+                if rowspan_cols[col] > 0 {
+                    // Column is covered by an active rowspan — skip the LaTeX
+                    // placeholder cell (always an empty & in well-formed LaTeX).
+                    src.next();
+                    rowspan_cols[col] -= 1;
+                    col += 1;
+                } else if let Some(cell) = src.next() {
+                    let (cs, rs) = table_cell_span(cell);
+                    if rs > 1 {
+                        // Mark every column this rowspan covers.
+                        for c in col..(col + cs).min(count) {
+                            rowspan_cols[c] = rs - 1;
+                        }
+                    }
+                    row_output.push(cell.clone());
+                    col += cs;
+                } else {
                     break;
                 }
-                if emitted_any {
+            }
+
+            if row_output.is_empty() {
+                continue;
+            }
+            self.out.push_str("  ");
+            for (i, cell) in row_output.iter().enumerate() {
+                if i > 0 {
                     self.out.push_str(", ");
                 }
-                // Cells produced by `\multicolumn` are already a function call
-                // (`table.cell(colspan: N)[...]`) and must not get wrapped in
-                // another `[...]`. Recognize the prefix and emit verbatim.
-                let cell = &cells[idx];
+                // Cells produced by `\multicolumn` / `\multirow` are already
+                // `table.cell(...)` calls and must not be wrapped again.
                 if cell.starts_with("table.cell(") {
                     self.out.push_str(cell);
                 } else {
                     let _ = write!(self.out, "[{}]", escape_text_cell(cell));
                 }
-                emitted_any = true;
-                idx += 1;
             }
-            if emitted_any {
-                self.out.push_str(",\n");
-            } else {
-                // Roll back the leading two-space indent if no cell emitted.
-                self.out.pop();
-                self.out.pop();
-            }
+            self.out.push_str(",\n");
         }
         self.out.push(')');
         node.end_byte()
@@ -8139,6 +8154,30 @@ fn escape_text_cell(s: &str) -> String {
         }
     }
     out
+}
+
+/// Parse the `colspan` and `rowspan` from a Typst `table.cell(...)` string.
+/// Returns `(colspan, rowspan)` — both default to 1 for plain cells.
+fn table_cell_span(cell: &str) -> (usize, usize) {
+    if !cell.starts_with("table.cell(") {
+        return (1, 1);
+    }
+    let after = &cell["table.cell(".len()..];
+    let close = match after.find(')') {
+        Some(i) => i,
+        None => return (1, 1),
+    };
+    let mut colspan = 1usize;
+    let mut rowspan = 1usize;
+    for kv in after[..close].split(',') {
+        let kv = kv.trim();
+        if let Some(v) = kv.strip_prefix("colspan:") {
+            colspan = v.trim().parse().unwrap_or(1);
+        } else if let Some(v) = kv.strip_prefix("rowspan:") {
+            rowspan = v.trim().parse().unwrap_or(1);
+        }
+    }
+    (colspan, rowspan)
 }
 
 fn needs_subscript_parens(rendered: &str) -> bool {
