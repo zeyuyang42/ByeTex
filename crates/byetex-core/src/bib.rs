@@ -296,6 +296,9 @@ fn rewrite_fields(src: &str, strings: &HashMap<String, String>) -> String {
         // braces that confuse Typst's BibLaTeX parser (paper 22724:
         // "unexpected end of file" on `Bdsk-Url-1 = {url%7D$}`).
         let is_bdsk = field_name.starts_with("bdsk-") || field_name.starts_with("optbdsk-");
+        // Checkpoint: if we later decide to drop this field entirely,
+        // truncate `out` back to here (discards seg + whitespace).
+        let out_checkpoint = out.len();
         if !is_bdsk {
             out.push_str(&seg);
         }
@@ -311,7 +314,32 @@ fn rewrite_fields(src: &str, strings: &HashMap<String, String>) -> String {
             break;
         }
         let (value_text, new_i) = read_field_value(bytes, src, strings, j, &field_name);
-        if !is_bdsk {
+        if is_bdsk {
+            i = new_i;
+            continue;
+        }
+        // Year field normalization: some bib files use `Year = {February,
+        // 1993}` or `Year = {to appear}`. hayagriva rejects any non-numeric
+        // year with "wrong number of digits". Extract the 4-digit year when
+        // present; drop the field entirely when no year is found (paper
+        // 2605.22507).
+        if field_name == "year" {
+            match normalize_year_value(&value_text) {
+                YearNorm::Unchanged => out.push_str(&value_text),
+                YearNorm::Replace(s) => out.push_str(&s),
+                YearNorm::Drop => out.truncate(out_checkpoint),
+            }
+        } else if field_name == "month" {
+            // Month field normalization: hayagriva rejects month ranges
+            // like `{May-June}` or `{May 13}` (paper 2605.22507). Keep
+            // only the first alphabetic word from the value.
+            out.push_str(&normalize_month_value(&value_text));
+        } else if field_name == "day" {
+            // Day field normalization: hayagriva expects a plain integer.
+            // Values like `{11--15}` (date ranges) must be reduced to
+            // the first number.
+            out.push_str(&normalize_day_value(&value_text));
+        } else {
             out.push_str(&value_text);
         }
         i = new_i;
@@ -479,6 +507,47 @@ fn read_bib_term(
     }
 }
 
+enum YearNorm {
+    Unchanged,
+    Replace(String),
+    Drop,
+}
+
+/// Normalise a bib `year` field value for Typst's hayagriva parser.
+///
+/// Hayagriva requires a pure integer for the year; values like
+/// `{February, 1993}` or `{to appear}` produce "wrong number of digits".
+/// Returns `Unchanged` when the value is already numeric; `Replace` with
+/// `{YYYY}` when a 4-digit year is embedded in surrounding text; `Drop`
+/// when no year can be extracted (e.g. "to appear", "in press").
+fn normalize_year_value(value_text: &str) -> YearNorm {
+    let v = value_text.trim().trim_end_matches(',');
+    let inner = if (v.starts_with('{') && v.ends_with('}'))
+        || (v.starts_with('"') && v.ends_with('"'))
+    {
+        &v[1..v.len() - 1]
+    } else {
+        v
+    };
+    // Already a valid integer year — no change
+    if !inner.is_empty() && inner.bytes().all(|b| b.is_ascii_digit()) {
+        return YearNorm::Unchanged;
+    }
+    // Look for a 4-digit year (1000–2999) in the surrounding text
+    let b = inner.as_bytes();
+    let mut i = 0;
+    while i + 4 <= b.len() {
+        if b[i..i + 4].iter().all(|c| c.is_ascii_digit()) {
+            let n: u32 = inner[i..i + 4].parse().unwrap_or(0);
+            if (1000..3000).contains(&n) {
+                return YearNorm::Replace(format!("{{{}}}", &inner[i..i + 4]));
+            }
+        }
+        i += 1;
+    }
+    YearNorm::Drop
+}
+
 /// Wrap `s` in double-quotes, escaping inner `"` and `\`.
 fn push_quoted(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
@@ -491,6 +560,50 @@ fn push_quoted(s: &str) -> String {
     }
     out.push('"');
     out
+}
+
+/// Normalise a bib `month` field value for Typst's hayagriva parser.
+///
+/// Hayagriva accepts a month identifier or abbreviation but rejects
+/// ranges (`May-June`), day numbers (`May 13`), or period-suffixed
+/// abbreviations (`nov.`). Returns a cleaned value keeping only the
+/// first consecutive run of alphabetic characters.
+fn normalize_month_value(value_text: &str) -> String {
+    let v = value_text.trim().trim_end_matches(',');
+    let (open, close, inner) = if v.starts_with('{') && v.ends_with('}') {
+        ("{", "}", &v[1..v.len() - 1])
+    } else if v.starts_with('"') && v.ends_with('"') {
+        ("\"", "\"", &v[1..v.len() - 1])
+    } else {
+        return value_text.to_string();
+    };
+    // Take the first run of alphabetic chars.
+    let first_word: String = inner.chars().take_while(|c| c.is_alphabetic()).collect();
+    if first_word.is_empty() || first_word == inner {
+        return value_text.to_string(); // nothing to normalize
+    }
+    format!("{}{}{}", open, first_word, close)
+}
+
+/// Normalise a bib `day` field value for Typst's hayagriva parser.
+///
+/// Hayagriva expects a plain integer (e.g. `15`). Values like `{11--15}`
+/// (date ranges) are normalised to the first digit sequence.
+fn normalize_day_value(value_text: &str) -> String {
+    let v = value_text.trim().trim_end_matches(',');
+    let (open, close, inner) = if v.starts_with('{') && v.ends_with('}') {
+        ("{", "}", &v[1..v.len() - 1])
+    } else if v.starts_with('"') && v.ends_with('"') {
+        ("\"", "\"", &v[1..v.len() - 1])
+    } else {
+        return value_text.to_string();
+    };
+    // Take the first run of decimal digits.
+    let first_num: String = inner.chars().take_while(|c| c.is_ascii_digit()).collect();
+    if first_num.is_empty() || first_num == inner {
+        return value_text.to_string();
+    }
+    format!("{}{}{}", open, first_num, close)
 }
 
 /// Remove stray `@` characters that appear in field-name positions.
