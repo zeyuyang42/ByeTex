@@ -1735,7 +1735,13 @@ impl<'a> Emitter<'a> {
             // TOC entry injection — Typst auto-generates ToC from headings so
             // manual \addcontentsline calls are unnecessary.
             | Some("\\addcontentsline")
-            | Some("\\addtocontents") => {
+            | Some("\\addtocontents")
+            // setspace body commands — line spacing is controlled via
+            // `set par(leading: ...)` in Typst; these switch commands are noops.
+            | Some("\\doublespacing")
+            | Some("\\singlespacing")
+            | Some("\\onehalfspacing")
+            | Some("\\setstretch") => {
                 node.end_byte()
             }
 
