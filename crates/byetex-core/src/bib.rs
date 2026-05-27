@@ -291,18 +291,29 @@ fn rewrite_fields(src: &str, strings: &HashMap<String, String>) -> String {
             .unwrap_or("")
             .trim_start_matches('@')
             .to_ascii_lowercase();
-        out.push_str(&seg);
+        // BibDesk-specific `Bdsk-*` and `OPTBdsk-*` fields carry no
+        // bibliographic information and can contain `$` or URL-encoded
+        // braces that confuse Typst's BibLaTeX parser (paper 22724:
+        // "unexpected end of file" on `Bdsk-Url-1 = {url%7D$}`).
+        let is_bdsk = field_name.starts_with("bdsk-") || field_name.starts_with("optbdsk-");
+        if !is_bdsk {
+            out.push_str(&seg);
+        }
         let mut j = eq + 1;
         // Skip whitespace after `=`.
         while j < bytes.len() && bytes[j].is_ascii_whitespace() {
-            out.push(bytes[j] as char);
+            if !is_bdsk {
+                out.push(bytes[j] as char);
+            }
             j += 1;
         }
         if j >= bytes.len() {
             break;
         }
         let (value_text, new_i) = read_field_value(bytes, src, strings, j, &field_name);
-        out.push_str(&value_text);
+        if !is_bdsk {
+            out.push_str(&value_text);
+        }
         i = new_i;
     }
     out

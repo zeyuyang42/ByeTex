@@ -143,3 +143,42 @@ fn drops_duplicate_keys() {
         count, out
     );
 }
+
+#[test]
+fn drops_bibtex_bdsk_fields() {
+    // 2605.22724 pattern: BibDesk-specific `Bdsk-Url-*` fields whose
+    // URLs contain `$` or `%7D` (URL-encoded chars). Typst's BibLaTeX
+    // parser chokes on `$` inside a braced field value (treats it as
+    // math mode). These fields carry no bibliographic information and
+    // must be dropped by the preprocessor. Also covers `OPTBdsk-*`
+    // (BibDesk's "optional" variant).
+    let src = "@article{x,\n\
+               \tyear = {2017},\n\
+               \tBdsk-Url-1 = {https://doi.org/10.1162/neco%7D$}}\n";
+    let out = preprocess_bib(src);
+    assert!(
+        !out.contains("Bdsk-Url-1"),
+        "Bdsk-Url-1 must be dropped; got:\n{}",
+        out
+    );
+    assert!(
+        out.contains("year = {2017}"),
+        "year field must survive; got:\n{}",
+        out
+    );
+    // OPTBdsk-* variant (BibDesk marks optional fields with OPT prefix)
+    let src2 = "@article{y,\n\
+                \tyear = {2020},\n\
+                \tOPTBdsk-Url-1 = {https://example.com}}\n";
+    let out2 = preprocess_bib(src2);
+    assert!(
+        !out2.contains("OPTBdsk-Url-1"),
+        "OPTBdsk-Url-1 must be dropped; got:\n{}",
+        out2
+    );
+    assert!(
+        out2.contains("year = {2020}"),
+        "year field must survive in OPTBdsk test; got:\n{}",
+        out2
+    );
+}
