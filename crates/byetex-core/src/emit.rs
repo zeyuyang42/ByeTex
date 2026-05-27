@@ -2910,6 +2910,14 @@ impl<'a> Emitter<'a> {
                     self.emit_theorem_env(node, &display)
                 }
             }
+            // tikzpicture: TikZ drawing commands have no Typst equivalent.
+            // tikz package is already nooped; silently drop the environment body.
+            Some("tikzpicture") | Some("tikzpicture*") => node.end_byte(),
+            // multicols: multi-column layout; content is meaningful text, so
+            // pass it through. Column layout itself is lost (Typst handles this
+            // separately via `set page(columns: N)`), but no warning is needed
+            // since the multicols package is already in the noop allowlist.
+            Some("multicols") | Some("multicols*") => self.emit_environment_body(node),
             _ => {
                 self.warn_unsupported_environment(node, env.as_deref());
                 node.end_byte()
