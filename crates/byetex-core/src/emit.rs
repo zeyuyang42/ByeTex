@@ -2757,6 +2757,75 @@ impl<'a> Emitter<'a> {
         if let Some(arg) = first_curly_group(node) {
             let content = self.render_curly_group_content(arg);
             self.out.push_str(&content);
+            return node.end_byte();
+        }
+        // AST-sibling fallback: tree-sitter-latex places the required {content}
+        // as a sibling of the generic_command node when an optional [...] arg is
+        // present (e.g. \makecell[l]{content}). Walk past the command end, skip
+        // any [...] group, then consume the first {content} found in the source.
+        let bytes = self.src.as_bytes();
+        let mut i = node.end_byte();
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        // Skip optional [...]
+        if i < bytes.len() && bytes[i] == b'[' {
+            i += 1;
+            let mut depth = 0i32;
+            while i < bytes.len() {
+                match bytes[i] {
+                    b'[' => {
+                        depth += 1;
+                        i += 1;
+                    }
+                    b']' if depth == 0 => {
+                        i += 1;
+                        break;
+                    }
+                    b']' => {
+                        depth -= 1;
+                        i += 1;
+                    }
+                    _ => {
+                        i += 1;
+                    }
+                }
+            }
+            while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                i += 1;
+            }
+        }
+        if i < bytes.len() && bytes[i] == b'{' {
+            let content_start = i + 1;
+            i += 1;
+            let mut depth = 1i32;
+            while i < bytes.len() {
+                match bytes[i] {
+                    b'\\' if i + 1 < bytes.len() => {
+                        i += 2;
+                        continue;
+                    }
+                    b'{' => {
+                        depth += 1;
+                        i += 1;
+                    }
+                    b'}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            let content_text = &self.src[content_start..i];
+                            i += 1;
+                            let rendered = self.render_in_sub_emitter(content_text, false, false);
+                            self.out.push_str(rendered.trim());
+                            self.skip_until = self.skip_until.max(i);
+                            return i;
+                        }
+                        i += 1;
+                    }
+                    _ => {
+                        i += 1;
+                    }
+                }
+            }
         }
         node.end_byte()
     }
