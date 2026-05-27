@@ -431,7 +431,7 @@ impl<'a> Emitter<'a> {
                     }
                 }
                 "package_include" => {
-                    if let Some(pkg) = extract_package_name(n, self.src) {
+                    for pkg in extract_package_names(n, self.src) {
                         // Local .sty first so it beats bundled seeds
                         self.expand_local_package(&pkg);
                         // Then seed bundled macros — or_insert loses to any existing entry
@@ -1026,24 +1026,32 @@ impl<'a> Emitter<'a> {
         // Also: certain ML-conference style packages (`neurips_2024`,
         // `iclr2025_conference`, `icml*`) imply a document class, so we
         // refine `detected_class` even though we drop the package itself.
+        //
+        // Each package in a comma-separated list is handled independently so
+        // that `\usepackage{amsmath,xeCJK}` drops `amsmath` silently and emits
+        // exactly one warning for `xeCJK` (named `usepackage:xeCJK`), rather
+        // than either silently losing the trailing packages or collapsing all
+        // unknowns into a generic `\usepackage` warning.
         if node.kind() == "package_include" {
-            if let Some(pkg) = extract_package_name(node, self.src) {
-                self.detected_class =
-                    std::mem::replace(&mut self.detected_class, DocClass::Unknown)
-                        .refine_from_package(&pkg);
-                // BEFORE the noop-list check: if a local `<pkg>.sty`
-                // (or `.cls`) sits in the source directory, parse it
-                // for `\newcommand` / `\def` and merge the macros
-                // into `self.macros`. This means an
-                // `\usepackage{neurips_2026}` whose `.sty` lives next
-                // to the paper contributes its `\acksection`, etc.
-                // System packages (no local file) are unaffected.
-                self.expand_local_package(&pkg);
-                if is_known_noop_package(&pkg) {
-                    return node.end_byte();
+            let pkgs = extract_package_names(node, self.src);
+            let opts = extract_package_options(node, self.src);
+            if pkgs.is_empty() {
+                // Couldn't parse a name at all (malformed node) — fall back.
+                self.warn_unsupported_command(node);
+            } else {
+                for pkg in &pkgs {
+                    // Class refinement: ml-conference style files can upgrade
+                    // a generic `\documentclass{article}`.
+                    let old = std::mem::replace(&mut self.detected_class, DocClass::Unknown);
+                    self.detected_class = old.refine_from_package(pkg);
+                    // Harvest macros / theorems from a local `<pkg>.sty` if
+                    // present next to the source file.
+                    self.expand_local_package(pkg);
+                    if !is_known_noop_package(pkg) {
+                        self.warn_unsupported_package(node, pkg, opts.as_deref());
+                    }
                 }
             }
-            self.warn_unsupported_command(node);
             return node.end_byte();
         }
 
@@ -5857,6 +5865,27 @@ impl<'a> Emitter<'a> {
         });
     }
 
+    /// Emit one `UnsupportedCommand` warning per unknown package, with the
+    /// warning `name` set to `usepackage:<pkg>` so callers can distinguish
+    /// and rank individual packages rather than seeing a generic `\usepackage`.
+    fn warn_unsupported_package(&mut self, node: Node<'_>, pkg: &str, opts: Option<&str>) {
+        let snippet = self.src[node.start_byte()..node.end_byte()].to_string();
+        let message = match opts {
+            Some(o) => format!("package `{pkg}` (options: `{o}`) not supported by ByeTex; dropped"),
+            None => format!("package `{pkg}` not supported by ByeTex; dropped"),
+        };
+        self.warnings.push(Warning {
+            range: range_of(node),
+            category: Category::UnsupportedCommand {
+                name: format!("usepackage:{pkg}"),
+            },
+            severity: Severity::Warning,
+            message,
+            snippet,
+            suggested_skill: None,
+        });
+    }
+
     fn warn_silently_dropped(&mut self, node: Node<'_>) {
         let snippet = self.src[node.start_byte()..node.end_byte()].to_string();
         let name = command_name_of(&snippet);
@@ -8311,18 +8340,36 @@ fn resolve_package_path(base: &Path, pkg: &str) -> Option<PathBuf> {
     None
 }
 
-/// Extract the package name from `\usepackage[opts]{name}`. The container is
-/// `curly_group_path` for single-package form and `curly_group_path_list`
-/// when options are present — accept either.
-fn extract_package_name(node: Node<'_>, src: &str) -> Option<String> {
+/// Extract all package names from `\usepackage[opts]{name}` or
+/// `\usepackage{pkg1,pkg2,...}`. Returns every `path` child found in the
+/// curly group, so a comma-separated list yields multiple entries.
+fn extract_package_names(node: Node<'_>, src: &str) -> Vec<String> {
+    let mut out = Vec::new();
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if matches!(child.kind(), "curly_group_path" | "curly_group_path_list") {
             let mut sub = child.walk();
             for grandchild in child.children(&mut sub) {
                 if grandchild.kind() == "path" {
-                    return Some(src[grandchild.start_byte()..grandchild.end_byte()].to_string());
+                    out.push(src[grandchild.start_byte()..grandchild.end_byte()].to_string());
                 }
+            }
+        }
+    }
+    out
+}
+
+/// Extract the bracket-group option text from `\usepackage[opts]{...}`,
+/// returning the inner content without the `[` / `]` delimiters.
+/// tree-sitter-latex uses `brack_group_key_value` for this optional argument.
+fn extract_package_options(node: Node<'_>, src: &str) -> Option<String> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "brack_group_key_value" {
+            let text = &src[child.start_byte()..child.end_byte()];
+            let inner = text.trim_start_matches('[').trim_end_matches(']').trim();
+            if !inner.is_empty() {
+                return Some(inner.to_string());
             }
         }
     }
