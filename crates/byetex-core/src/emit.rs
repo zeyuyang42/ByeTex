@@ -3295,11 +3295,32 @@ impl<'a> Emitter<'a> {
                     label = extract_label_name(*c, self.src);
                     return false;
                 }
+                // tree-sitter-latex may parse `\label{key}` as a
+                // `generic_command` rather than `label_definition` when it
+                // appears inside a user-defined theorem environment body.
+                // Detect and consume it here so it doesn't leak into the
+                // figure content as a text-mode label.
+                if c.kind() == "generic_command" {
+                    let text = self.src.get(c.start_byte()..c.end_byte()).unwrap_or("");
+                    if text.starts_with("\\label") {
+                        if label.is_none() {
+                            if let (Some(s), Some(e)) =
+                                (text.find('{').map(|i| i + 1), text.rfind('}'))
+                            {
+                                let key = text[s..e].trim();
+                                if !key.is_empty() {
+                                    label = Some(sanitize_label_key(key));
+                                }
+                            }
+                        }
+                        return false;
+                    }
+                }
                 !matches!(c.kind(), "begin" | "end")
             })
             .collect();
 
-        let inner = if body.is_empty() {
+        let mut inner = if body.is_empty() {
             String::new()
         } else {
             self.with_sub_buffer(|emitter| {
@@ -3313,6 +3334,17 @@ impl<'a> Emitter<'a> {
                 emitter.safe_copy(last, end);
             })
         };
+
+        // If the label wasn't found as a direct child, it may still have been
+        // emitted into `inner` by a nested environment handler (e.g. a `\label`
+        // inside an `enumerate` item).  Extract any trailing Typst label from
+        // the rendered content and hoist it outside the #figure() call.
+        if label.is_none() {
+            if let (cleaned, Some(key)) = strip_trailing_typst_label(&inner) {
+                inner = cleaned;
+                label = Some(key);
+            }
+        }
 
         self.ensure_paragraph_break();
         // Bug #39: the `kind:` string must be a plain identifier
@@ -8140,6 +8172,42 @@ fn extract_declare_math_operator_from_newcmd(
 /// already balances those, and over-escaping breaks the surrounding
 /// content block.
 // ─── Command dispatch helpers ──────────────────────────────────────────────────
+
+/// Scan `content` from the end for a trailing Typst label `<key>` that was
+/// emitted by a nested `\label{...}` inside a theorem environment body.
+/// Returns `(cleaned_content, Some(key))` if a valid label is found at the
+/// end of the content, or `(content, None)` otherwise.
+///
+/// Valid label keys: start with a letter or digit, contain only
+/// `[a-zA-Z0-9:_.-]`.  The label must NOT be immediately preceded by `$`
+/// or `)` (which would indicate it belongs to a nested equation or figure,
+/// not the theorem itself).
+fn strip_trailing_typst_label(content: &str) -> (String, Option<String>) {
+    let trimmed = content.trim_end();
+    if !trimmed.ends_with('>') {
+        return (content.to_string(), None);
+    }
+    let close = trimmed.len() - 1; // index of '>'
+    let open = match trimmed[..close].rfind('<') {
+        Some(i) => i,
+        None => return (content.to_string(), None),
+    };
+    let key = &trimmed[open + 1..close];
+    if key.is_empty()
+        || !key.starts_with(|c: char| c.is_ascii_alphanumeric())
+        || !key
+            .bytes()
+            .all(|b| matches!(b, b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b':' | b'-' | b'_' | b'.'))
+    {
+        return (content.to_string(), None);
+    }
+    // Don't hoist labels that belong to a preceding equation (`$…$`) or figure (`)`)
+    let before = trimmed[..open].trim_end();
+    if before.ends_with('$') || before.ends_with(')') || before.ends_with(']') {
+        return (content.to_string(), None);
+    }
+    (before.to_string(), Some(key.to_string()))
+}
 
 fn escape_text_cell(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
