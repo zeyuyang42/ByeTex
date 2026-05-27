@@ -9,21 +9,71 @@ that explain how to finish the conversion by hand or with an LLM.
 
 ## What it converts cleanly
 
-- Document classes: `article`, `report`. `\documentclass{...}` and `\usepackage{...}` are noted in warnings.
-- Sectioning: `\part` / `\chapter` / `\section` / `\subsection` / `\subsubsection` / `\paragraph` / `\subparagraph`, including starred forms.
-- Inline formatting: `\emph`, `\textbf`, `\textit`, `\texttt`, `\underline`, `\textsc`.
-- Lists: `itemize`, `enumerate`, `description`.
-- Math: `$...$`, `\[...\]`, `$$...$$`, `equation`/`equation*`, `align`/`align*`, `gather`, `multline`, `cases`, `pmatrix`/`bmatrix`/`vmatrix`/`matrix`.
-- Math symbols: full Greek lower/upper, `\frac`, `\sqrt`, `\binom`, `\sum`, `\int`, `\prod`, common operators (`\cdot`, `\leq`, `\to`, `\infty`, ...), and standard set/logic notation.
-- Tables: `tabular` with `l`/`c`/`r` column specs.
-- Figures: `figure` env + `\includegraphics[width=...]{path}` + `\caption{...}` + `\label{...}`.
-- References: `\label`, `\ref`, `\eqref`, `\pageref`.
-- Citations + bibliography: `\cite`, `\bibliography`, `\bibliographystyle`.
-- Misc: `%` comments (LaTeX-faithfully consumed), `\\` line breaks, `\noindent` / `\indent`.
+**Document classes** — `article`/`report`/`book` (arkheion arXiv template),
+`IEEEtran`/`IEEEconf` (charged-ieee), `acmart` (clean-acmart),
+`revtex4`/`revtex4-1`/`revtex4-2` (revtyp), `elsarticle` (elsearticle),
+`llncs`/`svmult` (Springer LNCS), NeurIPS/ICML/ICLR (detected via style
+packages → lucky-icml). Format options (`sigconf`, `journal`, `conference`,
+…) are forwarded to the matching Typst Universe template.
+
+**Sectioning** — `\part` / `\chapter` / `\section` / `\subsection` /
+`\subsubsection` / `\paragraph` / `\subparagraph`, including starred forms.
+
+**Inline formatting** — emphasis (`\emph`, `\textbf`, `\textit`, `\textsc`,
+`\underline`), monospace (`\texttt`), sub/superscripts
+(`\textsuperscript`/`\textsubscript`), color (`\textcolor`), links
+(`\href`/`\url`), boxes (`\mbox`/`\fbox`), text symbols (`\S`, `\P`,
+`\copyright`, `\ldots`, `\today`, …).
+
+**Lists** — `itemize`, `enumerate`, `description`.
+
+**Math** — any AMSMath display environment (`equation`/`align`/`gather`/
+`multline`/`alignat`/`flalign`/`split`/`cases` and starred variants),
+`subequations` with label staging, matrix family (`matrix`/`pmatrix`/
+`bmatrix`/`vmatrix`/`Vmatrix`/`Bmatrix`/`smallmatrix`), inline `$…$` /
+`\(...\)` / `$$…$$` / `\[…\]`. ~450 symbols/operators: full Greek,
+blackboard/calligraphic/fraktur fonts (`\mathbb`, `\mathcal`, `\mathfrak`,
+`\mathscr`), arrows, accents (`\bar`, `\hat`, `\vec`, `\widehat`, …),
+brackets, layout primitives (`\stackrel`, `\xrightarrow`, `\substack`,
+`\smash`, `\phantom`), and full trig/log function names.
+
+**Tables** — `tabular`/`tabular*`/`array`/`tblr` (tabularray)/`tabularx`/
+`tabulary` with `l`/`c`/`r`/`p{w}`/`m{w}`/`b{w}`/`X` columns,
+`@{}`/`!{}`/`>{}`/`<{}` inter-column decorators, booktabs rules
+(`\toprule`/`\midrule`/`\bottomrule`/`\cmidrule`), `\multicolumn`/
+`\multirow`/`\makecell`.
+
+**Figures & floats** — `figure`/`figure*`, `table`/`table*`, `algorithm`/
+`algorithm*`/`algorithm2e`, `wrapfigure`/`wraptable` (degrade to standard
+float). `\includegraphics[width=…]{path}` + `\caption` + `\label`.
+
+**Theorems** — `theorem`/`lemma`/`corollary`/`proposition`/`definition`/
+`example`/`remark`/`proof` plus user-defined kinds harvested from
+`\newtheorem`, `\newtcolorbox`, `\newmdenv`.
+
+**Code listings** — `lstlisting`/`verbatim`/`minted` → `#raw(…, block: true)`;
+inline `\verb|…|` → `#raw(…)`.
+
+**References** — `\label`, `\ref`, `\eqref`, `\pageref`, `\cref`/`\Cref`
+(cleveref).
+
+**Citations & bibliography** — natbib/biblatex-style `\cite`/`\citet`/`\citep`
+key lists, `\bibliography{…}` with `.bib` preprocessing for Hayagriva,
+`\bibliographystyle{…}` mapped to Typst styles, `.bbl` fallback when only the
+pre-rendered file is bundled. `\bibitem` harvested for key registration.
+
+**Custom macros** — `\newcommand`/`\renewcommand`/`\def`/`\newcommandx`
+pre-scanned from every `.tex`/`.sty`/`.cls` in the project tree before
+conversion.
+
+**Misc** — `%` comments, `\\` line breaks, `\noindent`/`\indent`, `\footnote`,
+`\thepage`/`\thesection`/`\thesubsection`/… → `#context counter(…).display()`,
+`\hologo{…}` logo expansion, counter display commands.
 
 Anything else produces a structured warning categorised as
-`unsupported_command`, `unsupported_environment`, `tikz`, `custom_macro`,
-`parse_error`, `ambiguous_math`, or `needs_manual_review`.
+`unsupported_command`, `unsupported_environment`, `drop_only`,
+`unknown_package`, `tikz`, `custom_macro`, `parse_error`, `ambiguous_math`,
+or `needs_manual_review`.
 
 ## Install
 
@@ -41,6 +91,7 @@ tar -xzf byetex-vX.Y.Z-<target>.tar.gz
 Or via cargo (requires Rust 1.85+):
 
 ```bash
+# --features mcp is needed only if you want `byetex serve` (MCP server).
 cargo install --git https://github.com/zeyuyang42/ByeTex byetex-cli --features mcp
 ```
 
@@ -48,8 +99,8 @@ cargo install --git https://github.com/zeyuyang42/ByeTex byetex-cli --features m
 
 ```bash
 # Convert a LaTeX project FOLDER (recommended for real papers).
-# Auto-detects the entry .tex (the one with \documentclass), pre-scans
-# every .tex/.sty/.cls in the tree for \newcommand/\def, then converts.
+# Auto-detects the entry .tex, pre-scans every .tex/.sty/.cls for
+# \newcommand/\def, then converts.
 byetex convert ./paper-source
 # Writes next to the dir:
 #   paper-source.typ
@@ -58,7 +109,9 @@ byetex convert ./paper-source
 
 # Convert a single LaTeX document.
 byetex convert paper.tex
-# Writes paper.typ, paper.warnings.json, and paper.agent_brief.md.
+
+# Write output to a specific path instead of next to the input.
+byetex convert paper.tex --output /tmp/out.typ
 
 # Skip the brief for batch / CI runs.
 byetex convert paper.tex --no-brief
@@ -70,12 +123,16 @@ cat paper.warnings.json | jq '.[].category.kind' | sort | uniq -c
 byetex skills list
 byetex skills read byetex-using-warnings-json
 
-# Run as an MCP server over stdio.
+# Run as an MCP server over stdio (requires --features mcp at build time).
 byetex serve
 
-# Track regression coverage against a markdown-bundled corpus.
-byetex corpus harvest --source context/latex-context.md --out tests/corpus/
+# Run the regression corpus over the synthetic test corpus.
 byetex corpus run --dir tests/corpus/
+
+# For the arXiv regression corpus (pinned papers from corpus/manifest.json),
+# see scripts/README.md and:
+#   uv run --with requests python scripts/corpus_harvest.py --pinned
+#   ./scripts/corpus_sweep.sh
 ```
 
 ### Project mode
@@ -115,6 +172,20 @@ byetex convert paper.tex --project --project-out /tmp/my-project --force
 typst compile paper.typst-project/main.typ
 ```
 
+### Agent brief
+
+`byetex agent-brief` is like `convert` but also runs `typst compile` and
+captures the compiler log into the brief, giving an LLM a ready-to-patch
+report in one step:
+
+```bash
+byetex agent-brief paper.tex
+byetex agent-brief ./paper-source --project --project-out /tmp/proj
+
+# Skip the typst compile step (produce the brief from warnings only).
+byetex agent-brief paper.tex --no-compile
+```
+
 ## Output contract
 
 Every `byetex convert` writes two files next to the input:
@@ -136,11 +207,11 @@ A representative warning:
     "end_line": 47,  "end_col": 18,
     "byte_start": 1023, "byte_end": 1184
   },
-  "category": { "kind": "tikz" },
+  "category": { "kind": "unsupported_command", "name": "\\chemfig" },
   "severity": "warning",
   "message": "...",
-  "snippet": "\\begin{tikzpicture}...\\end{tikzpicture}",
-  "suggested_skill": "byetex-tikz-to-typst"
+  "snippet": "\\chemfig{...}",
+  "suggested_skill": "byetex-using-warnings-json"
 }
 ```
 
@@ -159,8 +230,8 @@ See [`docs/for-agents.md`](docs/for-agents.md). The short version:
    `byetex skills read <name>`, by opening `skills/<name>.md` on disk, or
    over MCP with the `read_skill` tool.
 4. For interactive use, `byetex serve` exposes the converter and skills as
-   MCP tools (`convert`, `convert_file`, `convert_fragment`, `list_skills`,
-   `read_skill`).
+   six MCP tools: `convert`, `convert_file`, `convert_fragment`,
+   `convert_project`, `list_skills`, `read_skill`.
 
 ## Project layout
 
@@ -169,10 +240,17 @@ ByeTex/
 ├── crates/
 │   ├── byetex-core/    # parser, IR, emitter, warnings, skills
 │   ├── byetex-cli/     # `byetex` binary
-│   └── byetex-mcp/     # rmcp-backed MCP server
-├── context/             # LaTeX & Typst reference docs (corpus source)
-├── skills/              # bundled markdown skills, embedded at build time
-├── tests/fixtures/      # per-milestone golden test inputs
+│   └── byetex-mcp/     # rmcp-backed MCP server (feature: mcp)
+├── corpus/             # arXiv regression corpus
+│   └── manifest.json   # 26 papers (5 pinned); payloads gitignored
+├── scripts/            # corpus_harvest.py, visual_test.py, corpus_sweep.sh,
+│                       # render_corpus_summary.py — see scripts/README.md
+├── skills/             # bundled markdown skills, embedded at build time
+├── tests/
+│   ├── corpus/         # synthetic doc snippets (outputs gitignored)
+│   ├── fixtures/       # per-milestone golden test inputs
+│   └── visual/         # rasterized PDF composites (gitignored)
+├── vendor/             # vendored tree-sitter-latex (MIT, Patrick Förster 2021)
 └── docs/
     ├── for-agents.md
     └── warnings.schema.json
@@ -181,21 +259,21 @@ ByeTex/
 ## Status
 
 <!-- corpus-summary:start -->
-_Last updated: 2026-05-25 (commit 18da6b2)_
+_Last updated: 2026-05-27 (commit 2055d14)_
 
 Corpus pass-rate (clean + warnings): **87%** — 431/495 files.
 
 | Bucket | Count |
 |---|---:|
 | Total | 495 |
-| Clean | 179 |
-| Warnings (≥1, no parse error) | 252 |
+| Clean | 184 |
+| Warnings (≥1, no parse error) | 247 |
 | Parse errors | 64 |
 
 | Warning category | Count |
 |---|---:|
-| `unsupported_command` | 600 |
-| `drop_only` | 69 |
+| `unsupported_command` | 454 |
+| `drop_only` | 87 |
 | `unsupported_environment` | 62 |
 | `ambiguous_math` | 27 |
 | `needs_manual_review` | 7 |
