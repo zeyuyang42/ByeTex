@@ -4921,13 +4921,16 @@ impl<'a> Emitter<'a> {
                 let r = r.trim();
                 // Inside a row, `&` separates value from condition.
                 // Replace with ` quad ` (an em of horizontal space) and
-                // wrap the row in `lr(...)` so internal commas are
+                // wrap the row in `[...]` so internal commas are
                 // preserved as content, not parsed as cases separators.
                 let row = r.replace('&', " quad ");
-                // `lr(...)` accepts arbitrary content; the leading and
-                // trailing single-char delim positions don't matter when
-                // the content already pairs. Use empty fences to keep the
-                // grouping invisible.
+                // Pre-escape any unbalanced parens INSIDE this row before
+                // wrapping it in `[...]`. Without this, an extra `)` from a
+                // malformed LaTeX source (e.g. stray `)` inside `\frac{}{}`)
+                // leaks into the global math body and causes the outer
+                // `cases(...)` closing paren to be incorrectly identified
+                // as unbalanced by `escape_unbalanced_math_brackets`.
+                let row = escape_unbalanced_math_brackets(&row);
                 format!("[{}]", row)
             })
             .filter(|r| r != "[]")
@@ -4984,7 +4987,9 @@ impl<'a> Emitter<'a> {
                 // Cells: `&` separator gets collapsed to `quad`. Wrap
                 // the whole row in `[content]` so internal commas
                 // don't get read as cases() argument separators.
+                // Pre-escape unbalanced parens as in emit_cases_env.
                 let row = r.replace('&', " quad ");
+                let row = escape_unbalanced_math_brackets(&row);
                 format!("[{}]", row)
             })
             .filter(|r| r != "[]")
@@ -6671,11 +6676,20 @@ fn escape_paren_semicolons(body: &str) -> String {
     out
 }
 
+/// `[...]` brackets are treated as content-scope boundaries: parens opened
+/// inside a `[...]` cannot match parens from the outer scope, and vice versa.
+/// This prevents a stray `)` inside a `cases([...])` row from mis-escaping
+/// the closing `)` of the outer `cases(...)` call.
 fn escape_unbalanced_math_brackets(body: &str) -> String {
     let bytes = body.as_bytes();
-    let mut bracket_opens: Vec<usize> = Vec::new();
+    // paren_opens: stack of positions of unclosed `(`.
+    // bracket_paren_depths: for each open `[`, the paren stack depth at entry.
+    //   When `]` closes a `[`, any parens still open inside that scope are
+    //   unmatched (the `[...]` boundary prevents them from matching outside).
     let mut paren_opens: Vec<usize> = Vec::new();
+    let mut bracket_paren_depths: Vec<usize> = Vec::new();
     let mut escapes: Vec<usize> = Vec::new();
+    let mut unmatched_brackets: Vec<usize> = Vec::new();
     let mut i = 0;
     while i < bytes.len() {
         // Skip any backslash-escaped character (including pre-existing
@@ -6685,15 +6699,35 @@ fn escape_unbalanced_math_brackets(body: &str) -> String {
             continue;
         }
         match bytes[i] {
-            b'[' => bracket_opens.push(i),
-            b']' if bracket_opens.pop().is_none() => escapes.push(i),
+            b'[' => {
+                bracket_paren_depths.push(paren_opens.len());
+                unmatched_brackets.push(i);
+            }
+            b']' => {
+                if let Some(depth_at_entry) = bracket_paren_depths.pop() {
+                    unmatched_brackets.pop();
+                    while paren_opens.len() > depth_at_entry {
+                        escapes.push(paren_opens.pop().unwrap());
+                    }
+                } else {
+                    escapes.push(i);
+                }
+            }
             b'(' => paren_opens.push(i),
-            b')' if paren_opens.pop().is_none() => escapes.push(i),
+            b')' => {
+                let floor = bracket_paren_depths.last().copied().unwrap_or(0);
+                if paren_opens.len() > floor {
+                    paren_opens.pop();
+                } else {
+                    escapes.push(i);
+                }
+            }
             _ => {}
         }
         i += 1;
     }
-    escapes.extend(bracket_opens);
+    // Unclosed `(` and `[` remaining after the scan.
+    escapes.extend(unmatched_brackets);
     escapes.extend(paren_opens);
     if escapes.is_empty() {
         return body.to_string();
