@@ -8466,6 +8466,16 @@ fn is_known_noop_package(name: &str) -> bool {
         // diverge unless the user selects an appropriate Typst font.
         | "polyglossia" | "xeCJK" | "luatexja" | "arabtex"
         | "glossaries" | "markdown"
+        // Font-family selection (cosmetic; same pattern as times/helvet above).
+        | "luaotfload" | "noto" | "bookman" | "tgbonum"
+        // Greek-letter text-mode access; symbol table already covers math mode.
+        | "alphabeta"
+        // OpenType math fonts; load is inert (\setmathfont etc. warn separately).
+        | "unicode-math"
+        // Page-count label (\pageref{LastPage} handling is a separate question).
+        | "lastpage"
+        // Body-command packages; load is inert, body commands warn on their own.
+        | "emoji" | "epigraph" | "shellesc"
     )
 }
 
