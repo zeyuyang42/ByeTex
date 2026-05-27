@@ -3729,6 +3729,15 @@ impl<'a> Emitter<'a> {
     // ─── Math environment containers ──────────────────────────────────────────
 
     fn emit_inline_math(&mut self, node: Node<'_>) -> usize {
+        if self.in_math {
+            // Already inside a math container (e.g. a \newcommand body with
+            // `$...$` expanded in math context).  Adding another `$` would
+            // close the outer math and produce "unclosed delimiter" errors.
+            // Emit the body children directly — the outer container handles
+            // post-processing.
+            self.emit_math_children(node);
+            return node.end_byte();
+        }
         self.out.push('$');
         let body_start = self.out.len();
         let was = self.in_math;
