@@ -9113,14 +9113,14 @@ fn post_process_typography(s: &str) -> String {
     out
 }
 
-/// Insert `#[]` between `#raw("…")` and an immediately following `(` so that
-/// Typst does not greedily parse the `(…)` as function-call arguments on the
-/// content value returned by `raw(…)`.
+/// Insert a space between `#raw("…")` and an immediately following `(` so
+/// that Typst does not greedily parse the `(…)` as function-call arguments
+/// on the content value returned by `raw(…)`.
 ///
-/// In Typst markup mode the expression `#raw("X")(Y)` is parsed as "call the
-/// result of raw("X") with Y as argument", which fails because `content` is
-/// not callable. An empty content block `#[]` breaks the chain: after `]`
-/// Typst is unconditionally back in markup mode and the `(` is literal.
+/// In Typst markup mode `#raw("X")(Y)` is parsed as "call the result of
+/// raw("X") with Y as argument", which fails when Y contains characters that
+/// are not valid in code (e.g. `↓`).  A plain space breaks the chain: Typst
+/// only applies function-call syntax to `#expr(` with no intervening space.
 fn break_raw_paren_chains(s: &str) -> String {
     let needle = "#raw(\"";
     if !s.contains(needle) {
@@ -9146,9 +9146,9 @@ fn break_raw_paren_chains(s: &str) -> String {
                 j += 1;
             }
             if found_close && bytes.get(j) == Some(&b'(') {
-                // Emit `#raw("…")` then insert `#[]` before the `(`.
+                // Emit `#raw("…")` then insert a space before the `(`.
                 out.push_str(&s[i..j]);
-                out.push_str("#[]");
+                out.push(' ');
                 i = j; // the `(` is emitted in the normal path below
             } else {
                 out.push(s[i..].chars().next().unwrap());

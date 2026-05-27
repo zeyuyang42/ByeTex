@@ -113,10 +113,21 @@ fn xspace_raw_then_paren_no_code_mode_leak() {
     let t = typst(src);
     // The cell must not contain `#raw("BpB")(` without a separator
     // (that pattern triggers Typst's function-call chaining on the raw value).
-    let bad = t.contains("#raw(\"BpB\")(");
     assert!(
-        !bad,
-        "#raw(\"BpB\")( found — no separator before `(`; Typst will \
-         try to call the raw value as a function; output:\n{t}"
+        !t.contains("#raw(\"BpB\")("),
+        "#raw(\"BpB\")( found — no separator before `(`; output:\n{t}"
+    );
+    // The separator must NOT be `#[]` — `#[](↓)` has the same Typst
+    // function-call chaining problem as `#raw("BpB")(↓)` because Typst
+    // parses the empty content block `[]` as callable and tries to
+    // apply `(↓)` as its arguments.
+    assert!(
+        !t.contains("#raw(\"BpB\")#[]"),
+        "#raw(\"BpB\")#[] found — `#[]` separator still chains into `(↓)`; output:\n{t}"
+    );
+    // A space separator is the correct fix: `#raw("BpB") (↓)`.
+    assert!(
+        t.contains("#raw(\"BpB\") ("),
+        "#raw(\"BpB\") ( (space-separated) not found; output:\n{t}"
     );
 }
