@@ -23,6 +23,15 @@ Cargo.lock.bak
 # Test corpus output (harvested at build time, not source)
 /tests/corpus/c*.tex
 /tests/corpus/report.json
+/tests/corpus/*.typ
+/tests/corpus/*.warnings.json
+/tests/corpus/*.agent_brief.md
+
+# Generated context snapshots
+/context/
+
+# Git worktrees created at repo root
+/byetex-*/
 
 # Visual regression test artifacts (composites, rasterized pages, reports)
 /tests/visual/
