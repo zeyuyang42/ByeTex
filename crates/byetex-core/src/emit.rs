@@ -2695,7 +2695,10 @@ impl<'a> Emitter<'a> {
                         let s = out.as_str();
                         let last_ws = s
                             .rfind(|c: char| c.is_whitespace())
-                            .map(|p| p + 1)
+                            .map(|p| {
+                                // Advance past the (potentially multi-byte) whitespace char.
+                                p + s[p..].chars().next().map_or(1, |c| c.len_utf8())
+                            })
                             .unwrap_or(0);
                         s[last_ws..].contains('.')
                     };
@@ -3623,13 +3626,17 @@ impl<'a> Emitter<'a> {
                 let r = r.trim();
                 // Inside a row, `&` separates value from condition.
                 // Replace with ` quad ` (an em of horizontal space) and
-                // wrap the row in `lr(...)` so internal commas are
+                // wrap the row in `[...]` so internal commas are
                 // preserved as content, not parsed as cases separators.
                 let row = r.replace('&', " quad ");
-                // `lr(...)` accepts arbitrary content; the leading and
-                // trailing single-char delim positions don't matter when
-                // the content already pairs. Use empty fences to keep the
-                // grouping invisible.
+                // Pre-escape any unbalanced parens INSIDE this row before
+                // wrapping it in `[...]`. Without this, an extra `)` from a
+                // malformed LaTeX source (e.g. stray `)` inside `\frac{}{}`)
+                // leaks into the global math body and causes the outer
+                // `cases(...)` closing paren to be incorrectly identified
+                // as unbalanced by `balance_math_brackets`, resulting in
+                // Typst's "unclosed delimiter" error.
+                let row = escape_unbalanced_math_brackets(&row);
                 format!("[{}]", row)
             })
             .filter(|r| r != "[]")
@@ -3681,7 +3688,9 @@ impl<'a> Emitter<'a> {
                 // Cells: `&` separator gets collapsed to `quad`. Wrap
                 // the whole row in `[content]` so internal commas
                 // don't get read as cases() argument separators.
+                // Pre-escape unbalanced parens as in emit_cases_env.
                 let row = r.replace('&', " quad ");
+                let row = escape_unbalanced_math_brackets(&row);
                 format!("[{}]", row)
             })
             .filter(|r| r != "[]")
@@ -4789,11 +4798,21 @@ fn parse_column_spec(spec: &str) -> (usize, Vec<String>) {
 /// otherwise Typst complains about an unclosed delimiter on the *other* one.
 /// Balanced pairs are left untouched. Pre-existing backslash escapes are
 /// skipped so we never double-escape.
+///
+/// `[...]` brackets are treated as content-scope boundaries: parens opened
+/// inside a `[...]` cannot match parens from the outer scope, and vice versa.
+/// This prevents a stray `)` inside a `cases([...])` row from mis-escaping
+/// the closing `)` of the outer `cases(...)` call.
 fn escape_unbalanced_math_brackets(body: &str) -> String {
     let bytes = body.as_bytes();
-    let mut bracket_opens: Vec<usize> = Vec::new();
+    // paren_opens: stack of positions of unclosed `(`.
+    // bracket_paren_depths: for each open `[`, the paren stack depth at entry.
+    //   When `]` closes a `[`, any parens still open inside that scope are
+    //   unmatched (the `[...]` boundary prevents them from matching outside).
     let mut paren_opens: Vec<usize> = Vec::new();
+    let mut bracket_paren_depths: Vec<usize> = Vec::new();
     let mut escapes: Vec<usize> = Vec::new();
+    let mut unmatched_brackets: Vec<usize> = Vec::new(); // unmatched `[` positions
     let mut i = 0;
     while i < bytes.len() {
         // Skip any backslash-escaped character (including pre-existing
@@ -4803,16 +4822,42 @@ fn escape_unbalanced_math_brackets(body: &str) -> String {
             continue;
         }
         match bytes[i] {
-            b'[' => bracket_opens.push(i),
-            b']' if bracket_opens.pop().is_none() => escapes.push(i),
+            b'[' => {
+                // Record paren depth on entering this bracket scope.
+                bracket_paren_depths.push(paren_opens.len());
+                unmatched_brackets.push(i);
+            }
+            b']' => {
+                if let Some(depth_at_entry) = bracket_paren_depths.pop() {
+                    unmatched_brackets.pop();
+                    // Parens still open from INSIDE this `[...]` scope are unmatched.
+                    while paren_opens.len() > depth_at_entry {
+                        escapes.push(paren_opens.pop().unwrap());
+                    }
+                } else {
+                    // No matching `[`.
+                    escapes.push(i);
+                }
+            }
             b'(' => paren_opens.push(i),
-            b')' if paren_opens.pop().is_none() => escapes.push(i),
+            b')' => {
+                // A `)` can only match a `(` from the same bracket scope.
+                // The current bracket scope's floor is the last depth in
+                // bracket_paren_depths (or 0 if not inside any `[...]`).
+                let floor = bracket_paren_depths.last().copied().unwrap_or(0);
+                if paren_opens.len() > floor {
+                    paren_opens.pop();
+                } else {
+                    escapes.push(i);
+                }
+            }
             _ => {}
         }
         i += 1;
     }
-    escapes.extend(bracket_opens);
+    // Unclosed `(` and `[` remaining after the scan.
     escapes.extend(paren_opens);
+    escapes.extend(unmatched_brackets);
     if escapes.is_empty() {
         return body.to_string();
     }
