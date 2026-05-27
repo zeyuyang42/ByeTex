@@ -1721,7 +1721,13 @@ impl<'a> Emitter<'a> {
             // Springer/LNCS affiliation
             | Some("\\institute")
             // Springer abstract variant
-            | Some("\\abstract*") => {
+            | Some("\\abstract*")
+            // setspace body commands — line spacing is controlled via
+            // `set par(leading: ...)` in Typst; these switch commands are noops.
+            | Some("\\doublespacing")
+            | Some("\\singlespacing")
+            | Some("\\onehalfspacing")
+            | Some("\\setstretch") => {
                 node.end_byte()
             }
 
