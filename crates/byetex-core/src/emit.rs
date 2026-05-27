@@ -1971,6 +1971,10 @@ impl<'a> Emitter<'a> {
             Some("\\eTeX") => self.emit_logo(node, "eTeX"),
             Some("\\XeLaTeX") => self.emit_logo(node, "XeLaTeX"),
             Some("\\LuaLaTeX") => self.emit_logo(node, "LuaLaTeX"),
+            // \hologo{Name} / \Hologo{Name}: hologo package function form.
+            // The argument is the logo identifier; map known names to plain
+            // text (same output as the existing dedicated logo commands above).
+            Some("\\hologo") | Some("\\Hologo") => self.emit_hologo(node),
             // Title-block accumulators. `\title`, `\author`, `\date` capture
             // their argument; `\maketitle` emits the assembled block. If
             // \maketitle is never called the block is flushed in `finish()`.
@@ -2619,6 +2623,40 @@ impl<'a> Emitter<'a> {
             return node.end_byte();
         }
         consume_trailing_inline_space(self.src, node.end_byte())
+    }
+
+    /// `\hologo{Name}` / `\Hologo{Name}` → plain text logo string.
+    fn emit_hologo(&mut self, node: Node<'_>) -> usize {
+        if let Some(arg) = first_curly_group(node) {
+            let id = self
+                .src
+                .get(arg.start_byte() + 1..arg.end_byte() - 1)
+                .unwrap_or("")
+                .trim();
+            let text = match id {
+                "TeX" => "TeX",
+                "LaTeX" | "LaTeX2e" => "LaTeX",
+                "LaTeX2" => "LaTeX2",
+                "eTeX" => "eTeX",
+                "pdfTeX" => "pdfTeX",
+                "pdfLaTeX" => "pdfLaTeX",
+                "XeTeX" => "XeTeX",
+                "XeLaTeX" => "XeLaTeX",
+                "LuaTeX" => "LuaTeX",
+                "LuaLaTeX" => "LuaLaTeX",
+                "BibTeX" => "BibTeX",
+                "BibTeX8" => "BibTeX8",
+                "biber" => "Biber",
+                "ConTeXt" => "ConTeXt",
+                "METAPOST" => "METAPOST",
+                "METAFONT" => "METAFONT",
+                other => other,
+            };
+            self.out.push_str(text);
+            return node.end_byte();
+        }
+        self.warn_unsupported_command(node);
+        node.end_byte()
     }
 
     /// Emit the centered Typst title block from any captured \title/\author/\date.
