@@ -65,10 +65,17 @@ pub fn preprocess_bib(input: &str) -> String {
         while i < bytes.len() && bytes[i].is_ascii_whitespace() {
             i += 1;
         }
-        // Must see `{` for a valid entry. Otherwise pass the `@`
-        // through verbatim and move on.
+        // Must see `{` for a valid entry.
         if i >= bytes.len() || bytes[i] != b'{' {
-            out.push('@');
+            // If the entry type is empty (bare `@` with no type, e.g. a
+            // deleted entry left behind), drop it silently — passing it
+            // through would cause Typst's parser to abort with
+            // "expected identifier" (paper 2605.22724).
+            // Otherwise preserve the `@` verbatim (e.g. `@` inside a
+            // comment or preamble text).
+            if !entry_type.is_empty() {
+                out.push('@');
+            }
             pos = next_at + 1;
             continue;
         }
@@ -274,6 +281,16 @@ fn rewrite_fields(src: &str, strings: &HashMap<String, String>) -> String {
         // bib). Typst's parser then thinks a new entry is starting.
         // Strip the `@` when it's part of a field-name token.
         let seg = strip_stray_at_in_field_names(&src[i..=eq]);
+        // Extract the field name for context-sensitive value handling.
+        // `src[i..eq]` contains the tail of the previous value (`,`)
+        // plus whitespace plus the field-name token; take the last
+        // non-whitespace word, then strip any leading `@`.
+        let field_name = src[i..eq]
+            .split_whitespace()
+            .next_back()
+            .unwrap_or("")
+            .trim_start_matches('@')
+            .to_ascii_lowercase();
         out.push_str(&seg);
         let mut j = eq + 1;
         // Skip whitespace after `=`.
@@ -284,67 +301,184 @@ fn rewrite_fields(src: &str, strings: &HashMap<String, String>) -> String {
         if j >= bytes.len() {
             break;
         }
-        match bytes[j] {
-            b'"' => {
-                // Quoted string — pass through up to closing `"`.
-                let end = find_closing(bytes, j, b'"', b'"');
-                out.push_str(&src[j..=end]);
-                i = end + 1;
+        let (value_text, new_i) = read_field_value(bytes, src, strings, j, &field_name);
+        out.push_str(&value_text);
+        i = new_i;
+    }
+    out
+}
+
+/// Read a BibTeX field value starting at `pos`.  Handles the BibTeX
+/// `#` string-concatenation operator (`"oct" # "-" # nov`), which
+/// Typst's BibLaTeX parser does not support.  When `#` is detected
+/// the pieces are merged and returned as a single quoted string.
+/// Without `#`, the original text is returned for quoted/braced/
+/// numeric values (pass-through) while bare identifiers are resolved
+/// and quoted as before.
+///
+/// `field_name` (lowercase) is used for context-sensitive handling:
+/// for `month` fields with `#` concatenation (month ranges like
+/// `"aug" # "-" # sep`) only the first term is kept because Typst's
+/// hayagriva parser rejects range strings like `"aug-sep"`.
+///
+/// Returns `(emitted_text, new_pos)`.
+fn read_field_value(
+    bytes: &[u8],
+    src: &str,
+    strings: &HashMap<String, String>,
+    pos: usize,
+    field_name: &str,
+) -> (String, usize) {
+    // Read the first term and peek for `#`.
+    let (first_content, first_end, first_raw) = read_bib_term(bytes, src, strings, pos);
+
+    let mut k = first_end;
+    while k < bytes.len() && bytes[k].is_ascii_whitespace() {
+        k += 1;
+    }
+    if k >= bytes.len() || bytes[k] != b'#' {
+        // Simple value (no concatenation) — return the raw form so
+        // quoted/braced/number fields pass through unchanged.
+        return (first_raw, first_end);
+    }
+
+    // For `month` fields, BibTeX month ranges (`"aug" # "-" # sep`)
+    // collapse to strings like "aug-sep" that Typst rejects with
+    // "missing number". Keep only the first term and skip the rest
+    // of the concatenation chain.
+    if field_name == "month" {
+        // Consume the full chain so `i` advances past all terms.
+        k += 1; // skip `#`
+        while k < bytes.len() && bytes[k].is_ascii_whitespace() {
+            k += 1;
+        }
+        while k < bytes.len() {
+            let (_, end, _) = read_bib_term(bytes, src, strings, k);
+            k = end;
+            while k < bytes.len() && bytes[k].is_ascii_whitespace() {
+                k += 1;
             }
-            b'{' => {
-                // Braced — pass through.
-                let end = find_matching_brace(bytes, j + 1).unwrap_or(bytes.len() - 1);
-                out.push_str(&src[j..=end]);
-                i = end + 1;
-            }
-            b'0'..=b'9' => {
-                // Number — pass through up to `,` or end.
-                let end = bytes[j..]
-                    .iter()
-                    .position(|&b| b == b',' || b == b'\n')
-                    .map(|p| j + p)
-                    .unwrap_or(bytes.len());
-                out.push_str(&src[j..end]);
-                i = end;
-            }
-            b'a'..=b'z' | b'A'..=b'Z' | b'_' => {
-                // Bare identifier — find end and decide resolution.
-                let id_end = bytes[j..]
-                    .iter()
-                    .position(|&b| {
-                        !(b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b'.')
-                    })
-                    .map(|p| j + p)
-                    .unwrap_or(bytes.len());
-                let ident = &src[j..id_end];
-                let ident_lc = ident.to_ascii_lowercase();
-                if let Some(value) = strings.get(&ident_lc) {
-                    // Resolved: emit as a quoted string. Escape `"`
-                    // and `\` inside the value.
-                    out.push('"');
-                    for c in value.chars() {
-                        if c == '"' || c == '\\' {
-                            out.push('\\');
-                        }
-                        out.push(c);
-                    }
-                    out.push('"');
-                } else {
-                    // Quote-on-miss: wrap the bare identifier so the
-                    // entry parses. We lose semantic content but the
-                    // compile survives.
-                    out.push('"');
-                    out.push_str(ident);
-                    out.push('"');
+            if k < bytes.len() && bytes[k] == b'#' {
+                k += 1;
+                while k < bytes.len() && bytes[k].is_ascii_whitespace() {
+                    k += 1;
                 }
-                i = id_end;
-            }
-            _ => {
-                out.push(bytes[j] as char);
-                i = j + 1;
+            } else {
+                break;
             }
         }
+        return (first_raw, k);
     }
+
+    // `#`-concatenation: accumulate all terms into one string, then
+    // re-emit as a single quoted value.
+    let mut combined = first_content;
+    k += 1; // skip `#`
+    while k < bytes.len() && bytes[k].is_ascii_whitespace() {
+        k += 1;
+    }
+    while k < bytes.len() {
+        let (term, end, _) = read_bib_term(bytes, src, strings, k);
+        combined.push_str(&term);
+        k = end;
+        while k < bytes.len() && bytes[k].is_ascii_whitespace() {
+            k += 1;
+        }
+        if k < bytes.len() && bytes[k] == b'#' {
+            k += 1;
+            while k < bytes.len() && bytes[k].is_ascii_whitespace() {
+                k += 1;
+            }
+        } else {
+            break;
+        }
+    }
+    let mut quoted = String::with_capacity(combined.len() + 2);
+    quoted.push('"');
+    for c in combined.chars() {
+        if c == '"' || c == '\\' {
+            quoted.push('\\');
+        }
+        quoted.push(c);
+    }
+    quoted.push('"');
+    (quoted, k)
+}
+
+/// Read a single BibTeX value term at `pos`.  Returns
+/// `(decoded_content, end_pos, raw_text)`:
+/// - `decoded_content`: the inner text (used when concatenating with `#`)
+/// - `end_pos`: byte position after the term
+/// - `raw_text`: original source text (used for pass-through)
+fn read_bib_term(
+    bytes: &[u8],
+    src: &str,
+    strings: &HashMap<String, String>,
+    pos: usize,
+) -> (String, usize, String) {
+    if pos >= bytes.len() {
+        return (String::new(), pos, String::new());
+    }
+    match bytes[pos] {
+        b'"' => {
+            let end = find_closing(bytes, pos, b'"', b'"');
+            let inner = src[pos + 1..end].to_string();
+            let raw = src[pos..=end].to_string();
+            (inner, end + 1, raw)
+        }
+        b'{' => {
+            let end = find_matching_brace(bytes, pos + 1).unwrap_or(bytes.len() - 1);
+            let inner = src[pos + 1..end].to_string();
+            let raw = src[pos..=end].to_string();
+            (inner, end + 1, raw)
+        }
+        b'0'..=b'9' => {
+            let end = bytes[pos..]
+                .iter()
+                .position(|&b| b == b',' || b == b'\n')
+                .map(|p| pos + p)
+                .unwrap_or(bytes.len());
+            let text = src[pos..end].to_string();
+            (text.clone(), end, text)
+        }
+        b'a'..=b'z' | b'A'..=b'Z' | b'_' => {
+            let id_end = bytes[pos..]
+                .iter()
+                .position(|&b| {
+                    !(b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b'.')
+                })
+                .map(|p| pos + p)
+                .unwrap_or(bytes.len());
+            let ident = &src[pos..id_end];
+            let ident_lc = ident.to_ascii_lowercase();
+            let (content, raw) = if let Some(value) = strings.get(&ident_lc) {
+                let raw = push_quoted(value);
+                (value.clone(), raw)
+            } else {
+                let raw = push_quoted(ident);
+                (ident.to_string(), raw)
+            };
+            (content, id_end, raw)
+        }
+        b => (
+            (b as char).to_string(),
+            pos + 1,
+            (b as char).to_string(),
+        ),
+    }
+}
+
+/// Wrap `s` in double-quotes, escaping inner `"` and `\`.
+fn push_quoted(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        if c == '"' || c == '\\' {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out.push('"');
     out
 }
 

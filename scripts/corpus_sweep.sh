@@ -68,20 +68,23 @@ PYEOF
   fi
 
   stem="${top_tex%.tex}"
+  gen_proj="$src_dir/${stem}.typst-project"
 
-  # Convert
-  rm -f "$src_dir/$stem.typ"
-  (cd "$src_dir" && "$BYETEX" convert "$top_tex" > /dev/null 2>&1) || true
+  # Convert with --project so bib preprocessing and asset copying are
+  # always fresh (prevents stale bib files from masking preprocessor
+  # improvements). The generated project is a sibling of the source
+  # dir; we prefer it over the curated source.typst-project/ for the
+  # compile step.
+  rm -rf "$gen_proj"
+  (cd "$src_dir" && "$BYETEX" convert --project "$top_tex" > /dev/null 2>&1) || true
 
-  if [[ ! -f "$src_dir/$stem.typ" ]]; then
+  if [[ ! -f "$gen_proj/main.typ" ]]; then
     $SUMMARY_ONLY || echo "FAIL(no_typ) $paper_id"
     fail=$((fail+1)); continue
   fi
 
-  cp "$src_dir/$stem.typ" "$proj_dir/main.typ"
-
   # Compile
-  typst_out=$(cd "$proj_dir" && typst compile main.typ main.pdf 2>&1) || true
+  typst_out=$(cd "$gen_proj" && typst compile main.typ main.pdf 2>&1) || true
   errors=$(echo "$typst_out" | grep "^error:" | head -"$MAX_ERRORS")
 
   if [[ -z "$errors" ]]; then
