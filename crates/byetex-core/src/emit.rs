@@ -1721,7 +1721,14 @@ impl<'a> Emitter<'a> {
             // Springer/LNCS affiliation
             | Some("\\institute")
             // Springer abstract variant
-            | Some("\\abstract*") => {
+            | Some("\\abstract*")
+            // Orphaned \begin{X} / \end{X}: tree-sitter-latex did not match
+            // the open/close pair (e.g. the snippet ends before \end{document}
+            // or starts after \begin{document}), so these tokens appear as
+            // generic_command nodes.  Silently drop — they are structural
+            // markers with no renderable content.
+            | Some("\\begin")
+            | Some("\\end") => {
                 node.end_byte()
             }
 
