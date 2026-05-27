@@ -5908,6 +5908,11 @@ impl<'a> Emitter<'a> {
                 "brack_group" => {
                     // Optional short-title arg, e.g. \section[Short]{Long}. Ignore.
                 }
+                "line_comment" | "block_comment" | "comment" => {
+                    // LaTeX `%` comments between the title and the label:
+                    // e.g. `\subsection{T}%\n\label{k}`. Skip so the loop
+                    // reaches the label_definition that follows.
+                }
                 "label_definition" if label.is_none() => {
                     label = extract_label_name(*child, self.src);
                 }
@@ -5957,10 +5962,21 @@ impl<'a> Emitter<'a> {
         {
             let bytes = self.src.as_bytes();
             let mut i = self.skip_until.max(node.end_byte());
-            // Skip whitespace and stray closing braces (the ERROR
-            // `}` left behind by the truncated curly group).
-            while i < bytes.len() && (bytes[i].is_ascii_whitespace() || bytes[i] == b'}') {
-                i += 1;
+            // Skip whitespace, stray closing braces (the ERROR `}` left behind
+            // by a truncated curly group), and LaTeX `%` line comments.
+            // A `%` in LaTeX comments out the rest of the line including the
+            // newline itself, so `\subsection{T}%\n\label{k}` is treated as if
+            // the label is on the same logical line as the heading.
+            while i < bytes.len() {
+                if bytes[i].is_ascii_whitespace() || bytes[i] == b'}' {
+                    i += 1;
+                } else if bytes[i] == b'%' {
+                    while i < bytes.len() && bytes[i] != b'\n' {
+                        i += 1;
+                    }
+                } else {
+                    break;
+                }
             }
             const LABEL_TAG: &[u8] = b"\\label";
             loop {
@@ -6010,9 +6026,17 @@ impl<'a> Emitter<'a> {
                 }
                 self.skip_until = self.skip_until.max(j + 1);
                 i = j + 1;
-                // Advance past whitespace to check for another \label.
-                while i < bytes.len() && bytes[i].is_ascii_whitespace() {
-                    i += 1;
+                // Advance past whitespace and % comments to check for another \label.
+                while i < bytes.len() {
+                    if bytes[i].is_ascii_whitespace() {
+                        i += 1;
+                    } else if bytes[i] == b'%' {
+                        while i < bytes.len() && bytes[i] != b'\n' {
+                            i += 1;
+                        }
+                    } else {
+                        break;
+                    }
                 }
             }
         }
