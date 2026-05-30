@@ -14,11 +14,13 @@
 #
 # Env overrides (used by scripts/tests/corpus_sweep_oracle_test.sh):
 #   BYETEX_BIN         path to the byetex binary (its presence skips the cargo build)
-#   BYETEX_CORPUS_DIR  corpus root to sweep instead of corpus/online/arxiv
+#   BYETEX_CORPUS_DIR  corpus root to sweep instead of corpus/
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BYETEX="${BYETEX_BIN:-$REPO_ROOT/target/release/byetex}"
-CORPUS="${BYETEX_CORPUS_DIR:-$REPO_ROOT/corpus/online/arxiv}"
+# Harvested layout is corpus/<id>/source/ (corpus_harvest.py --pinned). The
+# old corpus/online/arxiv path is stale (predates the inhouse-corpus removal).
+CORPUS="${BYETEX_CORPUS_DIR:-$REPO_ROOT/corpus}"
 
 # ── flags ────────────────────────────────────────────────────────────────────
 MAX_ERRORS=1
@@ -83,10 +85,13 @@ for paper_dir in "$CORPUS"/*/; do
   [[ -n "$FILTER" && "$paper_id" != "$FILTER" ]] && continue
 
   src_dir="$paper_dir/source"
-  proj_dir="$paper_dir/source.typst-project"
   readme="$src_dir/00README.json"
 
-  if [[ ! -f "$readme" || ! -d "$proj_dir" ]]; then
+  # Skip anything that isn't a harvested paper (needs source/00README.json).
+  # We deliberately do NOT require a curated `source.typst-project/` marker:
+  # the freshly-harvested layout (corpus/<id>/source/) has none, and the
+  # sweep regenerates the project from scratch below anyway.
+  if [[ ! -f "$readme" ]]; then
     skip=$((skip+1)); continue
   fi
 
