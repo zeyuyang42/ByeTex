@@ -42,7 +42,9 @@ Recall Assumption \ref{ass:main} above.
     let figure_start = t.find("#figure(").unwrap_or(0);
     let label_pos = t.find("<ass:main>").unwrap_or(usize::MAX);
     // Find the closing ')' of the figure call (approximate: the last ')' before the label).
-    let figure_body_close = t[figure_start..label_pos].rfind(')').map(|i| figure_start + i);
+    let figure_body_close = t[figure_start..label_pos]
+        .rfind(')')
+        .map(|i| figure_start + i);
     assert!(
         figure_body_close.is_some() && label_pos > figure_body_close.unwrap(),
         "label is inside the #figure() content — will cause 'cannot reference text';\noutput:\n{t}"
@@ -65,13 +67,12 @@ By Theorem \ref{thm:direct}.
 ";
     let t = typst(src);
 
-    assert!(
-        t.contains("<thm:direct>"),
-        "label missing;\noutput:\n{t}"
-    );
+    assert!(t.contains("<thm:direct>"), "label missing;\noutput:\n{t}");
     let figure_start = t.find("#figure(").unwrap_or(0);
     let label_pos = t.find("<thm:direct>").unwrap_or(usize::MAX);
-    let figure_body_close = t[figure_start..label_pos].rfind(')').map(|i| figure_start + i);
+    let figure_body_close = t[figure_start..label_pos]
+        .rfind(')')
+        .map(|i| figure_start + i);
     assert!(
         figure_body_close.is_some() && label_pos > figure_body_close.unwrap(),
         "label is inside the figure — regression;\noutput:\n{t}"
@@ -93,13 +94,12 @@ By Lemma \ref{lem:end}.
 ";
     let t = typst(src);
 
-    assert!(
-        t.contains("<lem:end>"),
-        "label missing;\noutput:\n{t}"
-    );
+    assert!(t.contains("<lem:end>"), "label missing;\noutput:\n{t}");
     let figure_start = t.find("#figure(").unwrap_or(0);
     let label_pos = t.find("<lem:end>").unwrap_or(usize::MAX);
-    let figure_body_close = t[figure_start..label_pos].rfind(')').map(|i| figure_start + i);
+    let figure_body_close = t[figure_start..label_pos]
+        .rfind(')')
+        .map(|i| figure_start + i);
     assert!(
         figure_body_close.is_some() && label_pos > figure_body_close.unwrap(),
         "label at end of body not hoisted outside figure;\noutput:\n{t}"

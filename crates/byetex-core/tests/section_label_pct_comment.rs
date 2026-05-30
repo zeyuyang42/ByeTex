@@ -50,10 +50,7 @@ fn pct_comment_with_spaces_before_label() {
         t.contains("= Introduction"),
         "heading missing;\noutput:\n{t}"
     );
-    assert!(
-        t.contains("<sec:intro>"),
-        "label missing;\noutput:\n{t}"
-    );
+    assert!(t.contains("<sec:intro>"), "label missing;\noutput:\n{t}");
     assert!(
         t.contains("= Introduction <sec:intro>"),
         "label not on same line as heading — spaces+% comment not skipped;\noutput:\n{t}"
@@ -67,14 +64,8 @@ fn plain_newline_between_section_and_label_unchanged() {
     let src = "\\begin{document}\n\\subsection{Results}\n\\label{sub:results}\nResult text.\n\\end{document}";
     let t = typst(src);
 
-    assert!(
-        t.contains("== Results"),
-        "heading missing;\noutput:\n{t}"
-    );
-    assert!(
-        t.contains("<sub:results>"),
-        "label missing;\noutput:\n{t}"
-    );
+    assert!(t.contains("== Results"), "heading missing;\noutput:\n{t}");
+    assert!(t.contains("<sub:results>"), "label missing;\noutput:\n{t}");
     assert!(
         t.contains("== Results <sub:results>"),
         "plain-newline regression — label not on same line as heading;\noutput:\n{t}"

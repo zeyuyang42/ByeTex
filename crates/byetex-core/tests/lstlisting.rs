@@ -1,5 +1,5 @@
-/// Tests for lstlisting / code block environments.
-/// These convert verbatim code environments to Typst `#raw(block: true)[...]`.
+//! Tests for lstlisting / code block environments.
+//! These convert verbatim code environments to Typst `#raw(block: true)[...]`.
 
 fn convert(src: &str) -> byetex_core::ConvertOutput {
     byetex_core::convert(src, &Default::default())

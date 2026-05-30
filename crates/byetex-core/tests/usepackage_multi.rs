@@ -3,7 +3,8 @@ use byetex_core::{convert, ConvertOptions};
 fn warnings(src: &str) -> Vec<(String, String)> {
     let opts = ConvertOptions::default();
     let out = convert(src, &opts);
-    out.warnings.into_iter()
+    out.warnings
+        .into_iter()
         .filter_map(|w| {
             if let byetex_core::warnings::Category::UnsupportedCommand { name } = w.category {
                 Some((name, w.message))
@@ -59,29 +60,41 @@ fn multi_two_unknowns() {
 #[test]
 fn whitespace_in_list_trimmed() {
     let names = warning_names(r"\usepackage{amsmath, amssymb}");
-    assert!(names.is_empty(), "space-padded noop list should be silent, got {names:?}");
+    assert!(
+        names.is_empty(),
+        "space-padded noop list should be silent, got {names:?}"
+    );
 }
 
 // Bucket A: imakeidx load is silent — body-level \index calls warn separately.
 #[test]
 fn imakeidx_silent_load() {
     let names = warning_names(r"\usepackage{imakeidx}");
-    assert!(names.is_empty(), "imakeidx load should be silent, got {names:?}");
+    assert!(
+        names.is_empty(),
+        "imakeidx load should be silent, got {names:?}"
+    );
 }
 
 // Bucket B: xeCJK load is silently dropped (body commands warn on their own).
 #[test]
 fn xecjk_silent_load() {
     let names = warning_names(r"\usepackage{xeCJK}");
-    assert!(names.is_empty(), "xeCJK load should be silent, got {names:?}");
+    assert!(
+        names.is_empty(),
+        "xeCJK load should be silent, got {names:?}"
+    );
 }
 
 // Bucket C: circuitikz must still produce a warning — it has real semantic content.
 #[test]
 fn circuitikz_still_warns() {
     let names = warning_names(r"\usepackage{circuitikz}");
-    assert_eq!(names, vec!["usepackage:circuitikz"],
-        "circuitikz should stay a named warning");
+    assert_eq!(
+        names,
+        vec!["usepackage:circuitikz"],
+        "circuitikz should stay a named warning"
+    );
 }
 
 // Options appear in the warning message, not the name.
@@ -105,5 +118,8 @@ fn unknown_with_options_message_contains_option() {
     assert_eq!(ws.len(), 1);
     let (name, msg) = &ws[0];
     assert_eq!(name, "usepackage:chemfig");
-    assert!(msg.contains("draft"), "expected option in message, got: {msg}");
+    assert!(
+        msg.contains("draft"),
+        "expected option in message, got: {msg}"
+    );
 }

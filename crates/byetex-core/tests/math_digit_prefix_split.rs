@@ -1,8 +1,8 @@
-/// Regression tests for digit-prefix math words (Bug #46-style).
-/// LaTeX treats `2JX`, `2kg`, `2Np` in math as digit · letter · letter...
-/// Typst reads them as identifiers → `unknown variable: JX` etc.
-/// The fix: when a word node starts with digits followed by ≥2 alpha chars
-/// that would normally be split, split the alpha portion as usual.
+//! Regression tests for digit-prefix math words (Bug #46-style).
+//! LaTeX treats `2JX`, `2kg`, `2Np` in math as digit · letter · letter...
+//! Typst reads them as identifiers → `unknown variable: JX` etc.
+//! The fix: when a word node starts with digits followed by ≥2 alpha chars
+//! that would normally be split, split the alpha portion as usual.
 
 fn convert(src: &str) -> byetex_core::ConvertOutput {
     byetex_core::convert(src, &Default::default())

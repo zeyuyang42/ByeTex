@@ -1,8 +1,8 @@
-/// Regression tests for sections with multiple consecutive \label{} commands.
-/// LaTeX allows multiple \label{} on the same section (all refer to it).
-/// Typst only supports one label per element (last wins, rest are silently
-/// dropped). ByeTex must consume extra sibling labels so they don't float
-/// free and win via Typst's "last label wins" rule. Paper 22800 regression.
+//! Regression tests for sections with multiple consecutive \label{} commands.
+//! LaTeX allows multiple \label{} on the same section (all refer to it).
+//! Typst only supports one label per element (last wins, rest are silently
+//! dropped). ByeTex must consume extra sibling labels so they don't float
+//! free and win via Typst's "last label wins" rule. Paper 22800 regression.
 
 fn convert(src: &str) -> byetex_core::ConvertOutput {
     byetex_core::convert(src, &Default::default())

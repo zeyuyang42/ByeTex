@@ -77,7 +77,9 @@ fn doctor_skips_gracefully_when_tectonic_unavailable() {
     );
     // Honest unknown — never claim the input is broken when we couldn't check.
     assert!(
-        json.get("input_compiles").map(|v| v.is_null()).unwrap_or(false),
+        json.get("input_compiles")
+            .map(|v| v.is_null())
+            .unwrap_or(false),
         "input_compiles should be null when tectonic is unavailable; got {json}"
     );
 }
@@ -214,7 +216,12 @@ fn doctor_strict_exits_2_on_broken_input() {
         "\\documentclass{article}\n\\begin{document}\n\\undefinedmacro\n\\end{document}\n",
     );
     let input = dir.join("main.tex");
-    let fake = write_fake_tool(&dir, "fake-tectonic.sh", 1, "error: Undefined control sequence");
+    let fake = write_fake_tool(
+        &dir,
+        "fake-tectonic.sh",
+        1,
+        "error: Undefined control sequence",
+    );
 
     let out = Command::new(binary_path())
         .arg("doctor")

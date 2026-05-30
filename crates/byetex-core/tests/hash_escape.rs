@@ -1,6 +1,6 @@
-/// Regression tests for unescaped # in text content.
-/// In Typst, '#' is special (starts function calls). Literal '#' from
-/// LaTeX source must be escaped as '\#'. Paper 22817 regression.
+//! Regression tests for unescaped # in text content.
+//! In Typst, '#' is special (starts function calls). Literal '#' from
+//! LaTeX source must be escaped as '\#'. Paper 22817 regression.
 
 fn convert(src: &str) -> byetex_core::ConvertOutput {
     byetex_core::convert(src, &Default::default())

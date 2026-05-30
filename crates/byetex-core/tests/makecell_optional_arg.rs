@@ -60,7 +60,8 @@ fn makecell_math_converted_inside_optional_arg() {
     assert!(
         count >= 2,
         "expected >= 2 arrow.b conversions (plain + makecell); got {} in:\n{}",
-        count, out
+        count,
+        out
     );
 }
 

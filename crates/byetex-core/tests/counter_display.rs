@@ -8,15 +8,22 @@ fn check(src: &str, expected_substr: &str) {
         expected_substr,
         out.typst
     );
-    let counter_warnings: Vec<_> = out.warnings.iter()
-        .filter(|w| matches!(
-            &w.category,
-            byetex_core::warnings::Category::UnsupportedCommand { name }
-            if name.starts_with("\\the")
-        ))
+    let counter_warnings: Vec<_> = out
+        .warnings
+        .iter()
+        .filter(|w| {
+            matches!(
+                &w.category,
+                byetex_core::warnings::Category::UnsupportedCommand { name }
+                if name.starts_with("\\the")
+            )
+        })
         .collect();
-    assert!(counter_warnings.is_empty(),
-        "expected no \\the* warnings, got: {:?}", counter_warnings);
+    assert!(
+        counter_warnings.is_empty(),
+        "expected no \\the* warnings, got: {:?}",
+        counter_warnings
+    );
 }
 
 #[test]
@@ -26,7 +33,10 @@ fn thepage_emits_counter() {
 
 #[test]
 fn thesection_emits_counter() {
-    check(r"See \S\thesection\ for details.", "counter(heading.1).display()");
+    check(
+        r"See \S\thesection\ for details.",
+        "counter(heading.1).display()",
+    );
 }
 
 #[test]
@@ -46,12 +56,18 @@ fn thefigure_emits_counter() {
 
 #[test]
 fn thetable_emits_counter() {
-    check(r"Table \thetable.", "counter(figure.where(kind: table)).display()");
+    check(
+        r"Table \thetable.",
+        "counter(figure.where(kind: table)).display()",
+    );
 }
 
 #[test]
 fn theequation_emits_counter() {
-    check(r"Equation~(\theequation).", "counter(math.equation).display()");
+    check(
+        r"Equation~(\theequation).",
+        "counter(math.equation).display()",
+    );
 }
 
 // Compound: \thesection.\thesubsection style numbering

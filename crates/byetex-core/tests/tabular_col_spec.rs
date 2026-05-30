@@ -1,6 +1,6 @@
-/// Regression tests for LaTeX tabular column spec parsing.
-/// `parse_column_spec` must handle `p{...}`, `m{...}`, `b{...}` and
-/// other width-argument columns, not just `l`, `c`, `r`.
+//! Regression tests for LaTeX tabular column spec parsing.
+//! `parse_column_spec` must handle `p{...}`, `m{...}`, `b{...}` and
+//! other width-argument columns, not just `l`, `c`, `r`.
 
 fn convert(src: &str) -> byetex_core::ConvertOutput {
     byetex_core::convert(src, &Default::default())

@@ -1,7 +1,7 @@
-/// Regression tests for leading `/` in math mode (Bug: "unexpected slash" in Typst).
-/// In LaTeX, `/` in math mode is a plain slash glyph.
-/// In Typst math, `/` is a binary operator — `$/$` and `$/x$` are syntax errors.
-/// The fix wraps a leading `/` in a string literal: `$/` → `$"/"`.
+//! Regression tests for leading `/` in math mode (Bug: "unexpected slash" in Typst).
+//! In LaTeX, `/` in math mode is a plain slash glyph.
+//! In Typst math, `/` is a binary operator — `$/$` and `$/x$` are syntax errors.
+//! The fix wraps a leading `/` in a string literal: `$/` → `$"/"`.
 
 fn convert(src: &str) -> byetex_core::ConvertOutput {
     byetex_core::convert(src, &Default::default())
