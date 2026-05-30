@@ -1773,6 +1773,11 @@ impl<'a> Emitter<'a> {
                 self.out.push_str("#h(1fr)");
                 node.end_byte()
             }
+            // `\newblock` separates the blocks of a bibliography entry
+            // (author / title / publication). It carries no content and has no
+            // Typst equivalent — drop it silently, leaving the surrounding
+            // whitespace so the reference parts stay separated.
+            Some("\\newblock") => node.end_byte(),
             Some("\\centerline") => self.emit_inline_wrap(node, "#align(center)[", "]"),
             // Text-mode super/subscript wrappers.
             Some("\\textsuperscript") => self.emit_inline_wrap(node, "#super[", "]"),
