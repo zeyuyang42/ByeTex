@@ -18,10 +18,12 @@ Usage:
 
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import random
 from collections import Counter
@@ -184,6 +186,84 @@ def run_typst(typ_path: Path, out_pdf: Path) -> bool:
             print(f"         {result.stderr[:400]}", file=sys.stderr)
         return False
     return out_pdf.exists() and out_pdf.stat().st_size > 0
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tectonic reference renderer (local LaTeX → PDF "truth")
+#
+# Lets us render the *original* LaTeX to PDF locally instead of relying on an
+# arXiv canonical download — so round-trip comparison works for arbitrary
+# inputs and offline. Mirrors the `byetex doctor` shell-out: skip cleanly when
+# tectonic is absent. BYETEX_TECTONIC_BIN overrides the binary (tests / custom
+# installs), matching the Rust side.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def tectonic_bin() -> str:
+    return os.environ.get("BYETEX_TECTONIC_BIN", "tectonic")
+
+
+def tectonic_available() -> bool:
+    try:
+        return subprocess.run(
+            [tectonic_bin(), "--version"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        ).returncode == 0
+    except FileNotFoundError:
+        return False
+
+
+def render_reference_tectonic(toplevel: Path, out_pdf: Path) -> bool:
+    """Render a LaTeX source to PDF with tectonic; return True on success.
+
+    The scratch outputs land in a tempdir anchored inside the source's own
+    directory (kept out of the system temp), and the produced PDF is copied
+    to `out_pdf`.
+    """
+    # Resolve to absolute so --outdir is independent of the subprocess cwd
+    # (we run with cwd=src_dir so \input/\include resolve like the source).
+    src_dir = toplevel.parent.resolve()
+    with tempfile.TemporaryDirectory(dir=src_dir, prefix=".tectonic-out-") as tmp:
+        result = subprocess.run(
+            [tectonic_bin(), "--outdir", str(Path(tmp)), "--keep-logs", toplevel.name],
+            cwd=src_dir, capture_output=True, text=True,
+        )
+        produced = Path(tmp) / (toplevel.stem + ".pdf")
+        if result.returncode != 0 or not produced.exists():
+            print(f"  [warn] tectonic render failed (exit {result.returncode})", file=sys.stderr)
+            if result.stderr:
+                print(f"         {result.stderr[-400:]}", file=sys.stderr)
+            return False
+        out_pdf.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(produced, out_pdf)
+    return out_pdf.exists() and out_pdf.stat().st_size > 0
+
+
+def resolve_truth_source(
+    requested: str, arxiv_id: str, no_download: bool, tectonic_ok: bool
+) -> str:
+    """Decide where the 'truth' PDF comes from: 'arxiv' or 'tectonic'.
+
+    - 'arxiv'/'tectonic' are honored explicitly; an explicit 'tectonic' with
+      no tectonic available is an error (never silently switch sources).
+    - 'auto' prefers the arXiv canonical PDF when downloads are allowed, else
+      renders locally with tectonic if possible, else falls back to the
+      (cached) arXiv path.
+    """
+    if requested == "arxiv":
+        return "arxiv"
+    if requested == "tectonic":
+        if not tectonic_ok:
+            raise ValueError(
+                "--truth-source=tectonic requested but `tectonic` is not available "
+                "(install it or set BYETEX_TECTONIC_BIN)"
+            )
+        return "tectonic"
+    # auto
+    if arxiv_id and not no_download:
+        return "arxiv"
+    if tectonic_ok:
+        return "tectonic"
+    return "arxiv"
 
 
 def rasterize_pdf(pdf: Path, prefix: Path, dpi: int) -> list[Path]:
@@ -584,10 +664,28 @@ def process_paper(
     summary["toplevel_tex"] = toplevel.name
     print(f"  toplevel: {toplevel.name}", flush=True)
 
-    # 2. Acquire truth PDF — always use the arXiv canonical PDF.
-    # Bundled source PDFs are unreliable (often partial/draft artifacts).
+    # 2. Acquire truth PDF — arXiv canonical download or local tectonic render
+    # (see --truth-source). Bundled source PDFs are unreliable, so we never
+    # use those.
     truth_dest = out_dir / "truth.pdf"
-    if truth_dest.exists() and truth_dest.stat().st_size > 10_000:
+    tectonic_ok = tectonic_available()
+    try:
+        truth_source = resolve_truth_source(
+            args.truth_source, arxiv_id, args.no_truth_download, tectonic_ok
+        )
+    except ValueError as e:
+        summary["status"] = "truth_source_unavailable"
+        print(f"  [error] {e}", file=sys.stderr)
+        return summary
+
+    if truth_source == "tectonic":
+        print(f"  rendering truth PDF with tectonic ...", flush=True)
+        if not render_reference_tectonic(toplevel, truth_dest):
+            summary["status"] = "truth_render_failed"
+            return summary
+        summary["truth_source"] = "tectonic"
+        print(f"  truth PDF: rendered locally ({truth_dest.stat().st_size // 1024} KB)", flush=True)
+    elif truth_dest.exists() and truth_dest.stat().st_size > 10_000:
         # Already downloaded in a previous run — reuse.
         summary["truth_source"] = "cached"
         print(f"  truth PDF: cached ({truth_dest.stat().st_size // 1024} KB)", flush=True)
@@ -674,6 +772,20 @@ def process_paper(
             # Fall through to build the composite — it's still useful
             # for diagnosing *why* the structure didn't match.
 
+    # 5c. Optional self-check: render the source with tectonic and compare to
+    # the arXiv truth. A low overlap means the source doesn't reproduce its own
+    # arXiv PDF — i.e. the source itself is suspect, not necessarily ByeTex.
+    if args.tectonic_crosscheck and summary["truth_source"] in ("arxiv_download", "cached") and tectonic_ok:
+        print(f"  tectonic self-check ...", flush=True)
+        ref_pdf = out_dir / "tectonic_ref.pdf"
+        if render_reference_tectonic(toplevel, ref_pdf):
+            tw = tokenize_words(extract_pdf_text(truth_dest))
+            xw = tokenize_words(extract_pdf_text(ref_pdf))
+            uni = tw | xw
+            jac = (len(tw & xw) / len(uni)) if uni else 0.0
+            summary["truth_selfcheck"] = {"word_jaccard": round(jac, 3), "reproduces": jac >= 0.5}
+            print(f"  truth self-check (arXiv vs tectonic): jaccard={jac:.2f}", flush=True)
+
     # 6. Build composite
     print(f"  building composite ...", flush=True)
     build_composite(truth_pages, typst_pages, composite_path, arxiv_id)
@@ -721,6 +833,17 @@ def main() -> None:
     p.add_argument(
         "--no-truth-download", action="store_true",
         help="error if truth PDF is not already on disk",
+    )
+    p.add_argument(
+        "--truth-source", choices=["arxiv", "tectonic", "auto"], default="auto",
+        help="source of the 'truth' PDF: arXiv canonical download, local "
+             "tectonic render, or auto (arXiv when downloadable, else tectonic). "
+             "Default: auto",
+    )
+    p.add_argument(
+        "--tectonic-crosscheck", action="store_true",
+        help="even when arXiv is the truth, also render with tectonic and record "
+             "how well the source reproduces its own arXiv PDF (truth_selfcheck)",
     )
     p.add_argument(
         "--delay", type=float, default=ARXIV_MIN_DELAY, metavar="SEC",
