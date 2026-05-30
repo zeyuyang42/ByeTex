@@ -93,6 +93,32 @@ enum Command {
         #[arg(long, requires = "project")]
         force: bool,
     },
+
+    /// Stage-0 input-validation oracle: compile the INPUT LaTeX with
+    /// `tectonic` to confirm the document itself is valid before/around
+    /// conversion. This distinguishes "the input is broken" from "ByeTex
+    /// has a bug". Writes a `<stem>.doctor.json` sidecar with the verdict.
+    ///
+    /// If `tectonic` is not on PATH the command skips cleanly (exit 0,
+    /// verdict `tectonic_unavailable`) — it never claims the input is
+    /// broken when it could not actually check. Set `BYETEX_TECTONIC_BIN`
+    /// to point at a non-default `tectonic` binary.
+    Doctor {
+        /// Path to the input `.tex` file.
+        input: PathBuf,
+
+        /// Treat a failed input compile as a hard error (exit code 2).
+        /// Without this, a broken input is reported in the sidecar but the
+        /// command still exits 0.
+        #[arg(long)]
+        strict: bool,
+
+        /// Also run the conversion and `typst compile` the output, recording
+        /// whether the generated Typst compiles. Lets the verdict separate
+        /// `input_broken` from `byetex_bug`.
+        #[arg(long)]
+        full: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -186,6 +212,11 @@ fn main() -> Result<()> {
             };
             run_convert_dispatch(input, mode, brief_opts)
         }
+        Command::Doctor {
+            input,
+            strict,
+            full,
+        } => run_doctor(input, strict, full),
     }
 }
 
@@ -199,6 +230,197 @@ struct BriefOpts {
     /// `true` to skip the embedded `typst compile` invocation. `convert`
     /// passes `true` (fast); `agent-brief` passes `false` (full log).
     no_compile: bool,
+}
+
+/// Name of the tectonic binary to invoke. Overridable via
+/// `BYETEX_TECTONIC_BIN` so users can point at a non-default install and
+/// tests can force the "unavailable" path deterministically.
+fn tectonic_bin() -> String {
+    std::env::var("BYETEX_TECTONIC_BIN").unwrap_or_else(|_| "tectonic".to_string())
+}
+
+/// Name of the typst binary to invoke. Overridable via `BYETEX_TYPST_BIN`
+/// (same rationale as [`tectonic_bin`]). Used by `doctor --full`.
+fn typst_bin() -> String {
+    std::env::var("BYETEX_TYPST_BIN").unwrap_or_else(|_| "typst".to_string())
+}
+
+/// Convert `input` and `typst compile` the result, returning whether the
+/// generated Typst compiles. Used by `doctor --full` to tell `input_broken`
+/// apart from `byetex_bug`. The `.typ` is written to a scratch dir anchored
+/// in the input's own directory and removed afterwards.
+fn byetex_output_compiles(input: &Path) -> Result<bool> {
+    let source =
+        std::fs::read_to_string(input).with_context(|| format!("read {}", input.display()))?;
+    let result = byetex_core::convert(
+        &source,
+        &byetex_core::ConvertOptions {
+            source_name: Some(input.display().to_string()),
+            base_dir: input.parent().map(|p| p.to_path_buf()),
+        },
+    );
+
+    let parent = input
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("."));
+    let scratch = tempfile::Builder::new()
+        .prefix(".byetex-doctor-typ-")
+        .tempdir_in(&parent)
+        .with_context(|| format!("creating scratch dir in {}", parent.display()))?;
+    let typ_path = scratch.path().join("main.typ");
+    let pdf_path = scratch.path().join("main.pdf");
+    std::fs::write(&typ_path, &result.typst)
+        .with_context(|| format!("writing {}", typ_path.display()))?;
+
+    let out = std::process::Command::new(typst_bin())
+        .arg("compile")
+        .arg(&typ_path)
+        .arg(&pdf_path)
+        .output()
+        .with_context(|| format!("spawning `{}`", typst_bin()))?;
+    Ok(out.status.success())
+}
+
+/// Whether the tectonic binary responds to `--version`. Mirrors the `typst`
+/// availability probe used by the compile-check tests.
+fn tectonic_available() -> bool {
+    std::process::Command::new(tectonic_bin())
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// Doctor sidecar path for an input: `<stem>.doctor.json` alongside it,
+/// mirroring how warnings land at `<stem>.warnings.json`.
+fn doctor_sidecar_path(input: &Path) -> PathBuf {
+    input.with_extension("doctor.json")
+}
+
+/// Stage-0 oracle: compile the input LaTeX with tectonic and write a
+/// `<stem>.doctor.json` verdict. Skips cleanly when tectonic is absent.
+fn run_doctor(input: PathBuf, strict: bool, full: bool) -> Result<()> {
+    if !tectonic_available() {
+        let sidecar = doctor_sidecar_path(&input);
+        let report = serde_json::json!({
+            "input_compiles": serde_json::Value::Null,
+            "tectonic_log_excerpt": serde_json::Value::Null,
+            "byetex_typst_compiles": serde_json::Value::Null,
+            "verdict": "tectonic_unavailable",
+        });
+        std::fs::write(&sidecar, serde_json::to_string_pretty(&report)?)
+            .with_context(|| format!("writing {}", sidecar.display()))?;
+        eprintln!(
+            "byetex doctor: `{}` not found on PATH — skipping input validation. \
+             Install Tectonic to enable the Stage-0 oracle. Wrote {}.",
+            tectonic_bin(),
+            sidecar.display()
+        );
+        return Ok(());
+    }
+
+    // Tectonic is available: compile the input and report the verdict.
+    // Anchor tectonic's scratch output inside the input's own directory so
+    // nothing lands in the system temp dir; the TempDir is removed on drop.
+    let scratch_parent = input
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("."));
+    let scratch = tempfile::Builder::new()
+        .prefix(".byetex-doctor-")
+        .tempdir_in(&scratch_parent)
+        .with_context(|| format!("creating scratch dir in {}", scratch_parent.display()))?;
+
+    let out = std::process::Command::new(tectonic_bin())
+        .arg("--outdir")
+        .arg(scratch.path())
+        .arg(&input)
+        .output()
+        .with_context(|| format!("spawning `{}`", tectonic_bin()))?;
+
+    // Tectonic has finished; the scratch outputs are no longer needed.
+    // Drop now so the dir is removed even on the `process::exit` path below.
+    drop(scratch);
+
+    let input_compiles = out.status.success();
+    let log = String::from_utf8_lossy(&out.stderr);
+    // Keep only the first few error/warning lines — enough to see why, not
+    // the whole engine transcript.
+    let log_excerpt: Option<String> = if input_compiles {
+        None
+    } else {
+        let lines: Vec<&str> = log
+            .lines()
+            .filter(|l| {
+                let t = l.trim_start();
+                t.starts_with("error:") || t.starts_with("! ") || t.contains("error")
+            })
+            .take(10)
+            .collect();
+        let joined = if lines.is_empty() {
+            log.lines().take(10).collect::<Vec<_>>().join("\n")
+        } else {
+            lines.join("\n")
+        };
+        Some(joined)
+    };
+
+    // With --full, and only when the input itself is valid, also check that
+    // ByeTex's *own* output compiles — that's what separates a real ByeTex
+    // bug from merely-broken input.
+    let byetex_typst_compiles: Option<bool> = if full && input_compiles {
+        Some(byetex_output_compiles(&input)?)
+    } else {
+        None
+    };
+
+    let verdict = if !input_compiles {
+        "input_broken"
+    } else if byetex_typst_compiles == Some(false) {
+        "byetex_bug"
+    } else {
+        "ok"
+    };
+
+    let sidecar = doctor_sidecar_path(&input);
+    let report = serde_json::json!({
+        "input_compiles": input_compiles,
+        "tectonic_log_excerpt": log_excerpt,
+        "byetex_typst_compiles": byetex_typst_compiles,
+        "verdict": verdict,
+    });
+    std::fs::write(&sidecar, serde_json::to_string_pretty(&report)?)
+        .with_context(|| format!("writing {}", sidecar.display()))?;
+
+    match verdict {
+        "ok" => eprintln!("byetex doctor: input compiles ✅ — wrote {}.", sidecar.display()),
+        "byetex_bug" => eprintln!(
+            "byetex doctor: input compiles but ByeTex's output FAILED `typst compile` ❌ \
+             — this is a ByeTex bug. Wrote {}.",
+            sidecar.display()
+        ),
+        _ => eprintln!(
+            "byetex doctor: input FAILED to compile ❌ — the source itself is broken. Wrote {}.",
+            sidecar.display()
+        ),
+    }
+
+    // Attribution-driven exit codes so callers (corpus sweep, CI) can act:
+    //   2 = broken input under --strict (not ByeTex's fault)
+    //   3 = valid input but ByeTex produced output that won't compile
+    if verdict == "byetex_bug" {
+        std::process::exit(3);
+    }
+    if !input_compiles && strict {
+        std::process::exit(2);
+    }
+
+    Ok(())
 }
 
 fn run_corpus(action: CorpusAction) -> Result<()> {
