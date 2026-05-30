@@ -189,12 +189,23 @@ fn drop_only_acm_conference() {
 }
 
 #[test]
-fn drop_only_affiliation() {
+fn affiliation_without_author_warns() {
+    // \affiliation with no preceding \author{} emits UnsupportedCommand
+    // (D6: per-author sibling scope — orphan case falls back to class_metadata).
     let out = convert_str(r"\affiliation{\institution{MIT}}");
-    let names = drop_only_names(&out);
+    let unsupported: Vec<&str> = out
+        .warnings
+        .iter()
+        .filter_map(|w| match &w.category {
+            Category::UnsupportedCommand { name } => Some(name.as_str()),
+            _ => None,
+        })
+        .collect();
     assert!(
-        names.contains(&"\\affiliation"),
-        "warnings: {:?}",
+        unsupported
+            .iter()
+            .any(|n| *n == "\\affiliation" || *n == "\\institution"),
+        "expected UnsupportedCommand warning; warnings: {:?}",
         out.warnings
     );
 }

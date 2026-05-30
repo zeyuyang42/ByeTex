@@ -514,6 +514,25 @@ impl<'a> Emitter<'a> {
         // detection for adjacent `-` / backtick / apostrophe runs.
         self.out = post_process_typography(&self.out);
         self.out = break_raw_paren_chains(&self.out);
+
+        // Prepend `#set document(author: ...)` for PDF metadata. Must come
+        // after authors are materialised (build_template_preamble or
+        // flush_title_block already did that) and after the body is assembled.
+        if !self.metadata.authors.is_empty() {
+            let names: Vec<String> = self
+                .metadata
+                .authors
+                .iter()
+                .map(|a| {
+                    let n = a.name.as_content();
+                    let escaped = n.replace('\\', "\\\\").replace('"', "\\\"");
+                    format!("\"{}\"", escaped)
+                })
+                .collect();
+            let set_doc = format!("#set document(author: ({},))\n", names.join(", "));
+            self.out.insert_str(0, &set_doc);
+        }
+
         let class_metadata = self.metadata.class_metadata;
         (self.out, self.warnings, self.asset_refs, class_metadata)
     }
@@ -1002,10 +1021,17 @@ impl<'a> Emitter<'a> {
                 return node.end_byte();
             }
             "author_declaration" => {
-                // The grammar uses `curly_group_author_list` for the author arg.
+                // Capture raw LaTeX bytes so sub-commands (\email, \thanks,
+                // \And, \corref, \IEEEauthorblockN, …) reach the per-author
+                // parser in class_map.rs intact instead of being intercepted
+                // and consumed by the top-level dispatcher.
                 if let Some(arg) = first_curly_like(node) {
-                    let rendered = self.render_curly_group_content(arg);
-                    self.raw_authors.push(rendered);
+                    let inner = self
+                        .src
+                        .get(arg.start_byte() + 1..arg.end_byte().saturating_sub(1))
+                        .unwrap_or("")
+                        .to_string();
+                    self.raw_authors.push(inner);
                 }
                 return node.end_byte();
             }
@@ -1728,8 +1754,6 @@ impl<'a> Emitter<'a> {
             // Springer/LNCS running-head variants (content appears in full \title / \author)
             | Some("\\title*")
             | Some("\\author*")
-            // Springer/LNCS affiliation
-            | Some("\\institute")
             // Springer abstract variant
             | Some("\\abstract*")
             // TOC entry injection — Typst auto-generates ToC from headings so
@@ -1863,30 +1887,66 @@ impl<'a> Emitter<'a> {
             | Some("\\acmDOI")
             | Some("\\acmISBN")
             | Some("\\acmPrice")
-            | Some("\\acmSubmissionID")
-            | Some("\\affiliation") => {
+            | Some("\\acmSubmissionID") => {
                 self.warn_silently_dropped(node);
                 node.end_byte()
             }
-            // ACM author-info fields. Capture into class_metadata so callers
-            // and class templates can access the values, and warn so the user
-            // knows these fields are not yet fully rendered.
-            Some("\\institution")
-            | Some("\\city")
+            // Per-author sibling-scope attribution (elsearticle / authblk pattern).
+            // Commands like `\author{Alice}\email{a@x} \author{Bob}\email{b@y}`
+            // place per-author fields as siblings of `\author{}` rather than
+            // nested inside it. Append them as raw LaTeX to the most recently
+            // seen \author{} buffer so parse_one_author picks them up at
+            // finish-time. When no \author{} has been seen yet, fall through to
+            // class_metadata (orphan / global scope).
+            Some("\\email")
+            | Some("\\orcid")
+            | Some("\\orcidID")
+            | Some("\\affiliation")
+            | Some("\\affil")
+            | Some("\\address")
+            | Some("\\institution")
+            | Some("\\institute") => {
+                if !self.raw_authors.is_empty() {
+                    if let Some(arg) = first_curly_like(node) {
+                        let cmd = command_name_text(node, self.src).unwrap_or_default();
+                        let inner = self
+                            .src
+                            .get(arg.start_byte() + 1..arg.end_byte().saturating_sub(1))
+                            .unwrap_or("")
+                            .to_string();
+                        if let Some(last) = self.raw_authors.last_mut() {
+                            last.push(' ');
+                            last.push_str(&cmd);
+                            last.push('{');
+                            last.push_str(&inner);
+                            last.push('}');
+                        }
+                    }
+                } else {
+                    // No author context — fall back to class_metadata so
+                    // external callers can still inspect the value.
+                    if let Some(key) = command_name_text(node, self.src) {
+                        let field = key.trim_start_matches('\\').to_string();
+                        if let Some(arg) = first_curly_like(node) {
+                            let content = self.render_curly_group_content(arg);
+                            self.metadata.class_metadata.entry(field).or_insert(content);
+                        }
+                    }
+                    self.warn_unsupported_command(node);
+                }
+                node.end_byte()
+            }
+            // ACM/authblk author-info fields that don't have a per-author
+            // counterpart. Capture into class_metadata for external callers.
+            Some("\\city")
             | Some("\\country")
             | Some("\\state")
             | Some("\\streetaddress")
             | Some("\\postcode")
-            | Some("\\email")
-            | Some("\\orcid")
-            | Some("\\orcidID")
             | Some("\\authornote")
             | Some("\\additionalaffiliation")
             | Some("\\ccsdesc")
             | Some("\\shortauthors")
-            // authblk / other class author-info fields
-            | Some("\\affil")
-            | Some("\\address")
             | Some("\\funding") => {
                 if let Some(key) = command_name_text(node, self.src) {
                     let field = key.trim_start_matches('\\').to_string();
@@ -1898,21 +1958,18 @@ impl<'a> Emitter<'a> {
                 self.warn_unsupported_command(node);
                 node.end_byte()
             }
-            // `\keywords{a, b, c}` and `\IEEEkeywords{...}` — capture into the
-            // title-block field when the class template wants it; otherwise warn
-            // so the user knows the keyword list was lost.
+            // `\keywords{a, b, c}` and `\IEEEkeywords{...}` — always capture
+            // into the title-block field. Template classes render them via the
+            // show_call slot; the rich native renderer in flush_title_block
+            // renders them for Unknown/Lncs/SvMult classes.
             Some("\\keywords") | Some("\\IEEEkeywords") => {
-                if self.detected_class.import_line().is_some() {
-                    if let Some(arg) = first_curly_like(node) {
-                        let rendered = self.render_curly_group_content(arg);
-                        self.metadata.keywords = rendered
-                            .split(',')
-                            .map(|k| k.trim().to_string())
-                            .filter(|k| !k.is_empty())
-                            .collect();
-                    }
-                } else {
-                    self.warn_silently_dropped(node);
+                if let Some(arg) = first_curly_like(node) {
+                    let rendered = self.render_curly_group_content(arg);
+                    self.metadata.keywords = rendered
+                        .split(',')
+                        .map(|k| k.trim().to_string())
+                        .filter(|k| !k.is_empty())
+                        .collect();
                 }
                 node.end_byte()
             }
@@ -2041,9 +2098,14 @@ impl<'a> Emitter<'a> {
                 node.end_byte()
             }
             Some("\\author") => {
+                // Raw-bytes capture — same rationale as `author_declaration` above.
                 if let Some(arg) = first_curly_group(node) {
-                    let rendered = self.render_curly_group_content(arg);
-                    self.raw_authors.push(rendered);
+                    let inner = self
+                        .src
+                        .get(arg.start_byte() + 1..arg.end_byte().saturating_sub(1))
+                        .unwrap_or("")
+                        .to_string();
+                    self.raw_authors.push(inner);
                 }
                 node.end_byte()
             }
@@ -2727,16 +2789,17 @@ impl<'a> Emitter<'a> {
         node.end_byte()
     }
 
-    /// Emit the centered Typst title block from any captured \title/\author/\date.
+    /// Emit the rich native title block from captured \title/\author/\date/
+    /// \begin{abstract}/\keywords. Used for Unknown/Lncs/SvMult classes (no
+    /// Typst Universe template binding).
     fn flush_title_block(&mut self) {
-        // Promote any raw author strings to structured records first,
-        // so the fallback path renders the same set of authors that the
-        // template path would have used.
         self.materialize_authors();
         if self.metadata.is_title_block_empty() {
             return;
         }
         self.ensure_paragraph_break();
+
+        // ── Centred title + author block ──────────────────────────────────
         self.out.push_str("#align(center)[\n");
         if let Some(title) = self.metadata.title.take() {
             let _ = writeln!(
@@ -2745,22 +2808,119 @@ impl<'a> Emitter<'a> {
                 title.as_content()
             );
         }
+
         if !self.metadata.authors.is_empty() {
-            self.out.push_str("  #v(0.6em)\n  ");
-            let names: Vec<String> = self
-                .metadata
-                .authors
+            self.out.push_str("  #v(0.6em)\n");
+            let authors = std::mem::take(&mut self.metadata.authors);
+
+            // Collect per-author affiliation text, deduplicating to assign
+            // superscript indices (1-based, in order of first appearance).
+            let aff_texts: Vec<Option<String>> = authors
                 .iter()
-                .map(|a| a.name.as_content().to_string())
+                .map(|a| aff_display_text(&a.affiliation))
                 .collect();
-            self.out.push_str(&names.join(", "));
+            let mut deduped: Vec<String> = Vec::new();
+            let aff_indices: Vec<Option<usize>> = aff_texts
+                .iter()
+                .map(|at| match at {
+                    None => None,
+                    Some(text) => {
+                        if let Some(pos) = deduped.iter().position(|x| x == text) {
+                            Some(pos)
+                        } else {
+                            deduped.push(text.clone());
+                            Some(deduped.len() - 1)
+                        }
+                    }
+                })
+                .collect();
+            let has_affiliations = !deduped.is_empty();
+
+            // Author name line: "Alice#super[1], Bob#super[2,3]"
+            self.out.push_str("  ");
+            let name_parts: Vec<String> = authors
+                .iter()
+                .zip(aff_indices.iter())
+                .map(|(author, aff_idx)| {
+                    let mut part = author.name.as_content().to_string();
+                    if let Some(idx) = aff_idx {
+                        let _ = write!(part, "#super[{}]", idx + 1);
+                    }
+                    if let Some(orcid) = &author.orcid {
+                        let _ = write!(
+                            part,
+                            " #link(\"https://orcid.org/{orcid}\")[#text(size: 0.75em)[{orcid}]]"
+                        );
+                    }
+                    part
+                })
+                .collect();
+            self.out.push_str(&name_parts.join(", "));
             self.out.push('\n');
-            self.metadata.authors.clear();
+
+            // Grouped affiliation footer
+            if has_affiliations {
+                self.out.push_str("  #v(0.3em)\n  #text(size: 0.9em)[\n");
+                for (i, aff_text) in deduped.iter().enumerate() {
+                    if i + 1 < deduped.len() {
+                        let _ =
+                            writeln!(self.out, "    #super[{}] {} #linebreak()", i + 1, aff_text);
+                    } else {
+                        let _ = writeln!(self.out, "    #super[{}] {}", i + 1, aff_text);
+                    }
+                }
+                self.out.push_str("  ]\n");
+            }
+
+            // Email line (italic, all authors)
+            let emails: Vec<&str> = authors.iter().filter_map(|a| a.email.as_deref()).collect();
+            if !emails.is_empty() {
+                let _ = writeln!(
+                    self.out,
+                    "  #v(0.3em)\n  #text(size: 0.85em, style: \"italic\")[{}]",
+                    emails.join(", ")
+                );
+            }
         }
+
         if let Some(date) = self.metadata.date.take() {
             let _ = write!(self.out, "  #v(0.4em)\n  {}\n", date);
         }
-        self.out.push_str("]\n\n");
+        self.out.push_str("]\n");
+
+        // ── Abstract block ────────────────────────────────────────────────
+        if let Some(abstract_) = self.metadata.r#abstract.take() {
+            if !abstract_.is_empty() {
+                self.out.push_str(
+                    "#v(1em)\n\
+                     #block(\n  \
+                       width: 90%,\n  \
+                       inset: (x: 1em, y: 0.8em),\n  \
+                       radius: 4pt,\n  \
+                       fill: luma(245),\n\
+                     )[\n  ",
+                );
+                let _ = writeln!(self.out, "*Abstract.* {}", abstract_.as_content());
+                self.out.push_str("]\n");
+            }
+        }
+
+        // ── Keywords line ─────────────────────────────────────────────────
+        if !self.metadata.keywords.is_empty() {
+            let kws = self
+                .metadata
+                .keywords
+                .drain(..)
+                .collect::<Vec<_>>()
+                .join(", ");
+            let _ = writeln!(
+                self.out,
+                "#v(0.3em)\n#text(size: 0.9em)[*Keywords:* {}]",
+                kws
+            );
+        }
+
+        self.out.push('\n');
     }
 
     /// Convert the raw `\author{...}` strings collected during the AST
@@ -6413,7 +6573,7 @@ fn needs_empty_base(out: &str) -> bool {
 /// `accent` is the accent character: `'\''` acute, '`' grave, `'"'` diaeresis,
 /// `'^'` circumflex, `'~'` tilde. Returns a `String` so the combining-mark
 /// fallback path (two code points) is representable.
-fn apply_text_accent(accent: char, letter: char) -> String {
+pub(crate) fn apply_text_accent(accent: char, letter: char) -> String {
     let precomposed: Option<char> = match (accent, letter) {
         // Acute (')
         ('\'', 'a') => Some('á'),
@@ -9020,6 +9180,46 @@ fn is_math_function_name(s: &str) -> bool {
 ///   which Typst auto-smart-quotes)
 ///
 /// Single-character contexts inside ``backticked raw blocks'' would normally
+/// Return the display string for an affiliation record, or `None` if the
+/// record carries no renderable text. Prefers structured fields
+/// (department → institution → city → country) and falls back to the raw
+/// blob when no structured fields are populated.
+fn aff_display_text(aff: &Option<crate::document::Affiliation>) -> Option<String> {
+    let aff = aff.as_ref()?;
+    let mut parts: Vec<&str> = Vec::new();
+    if let Some(dept) = &aff.department {
+        let s = dept.as_content();
+        if !s.is_empty() {
+            parts.push(s);
+        }
+    }
+    if let Some(inst) = &aff.institution {
+        let s = inst.as_content();
+        if !s.is_empty() {
+            parts.push(s);
+        }
+    }
+    if let Some(city) = &aff.city {
+        if !city.is_empty() {
+            parts.push(city.as_str());
+        }
+    }
+    if let Some(country) = &aff.country {
+        if !country.is_empty() {
+            parts.push(country.as_str());
+        }
+    }
+    if !parts.is_empty() {
+        return Some(parts.join(", "));
+    }
+    // Fall back to the raw unstructured blob (e.g. from \IEEEauthorblockA or
+    // a plain \affiliation{...} without per-field markers).
+    aff.raw
+        .as_ref()
+        .map(|r| r.as_content().to_string())
+        .filter(|s| !s.is_empty())
+}
+
 /// be preserved, but in our text-mode output the only `\`` we emit comes from
 /// `\texttt{...}` — those wrappers are short and don't typically contain
 /// `--`/`---`/``''. We accept the small risk in v0.2 and revisit if a real
