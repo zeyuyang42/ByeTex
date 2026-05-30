@@ -113,13 +113,17 @@ pub fn preprocess_bib_with_seen(
         } else {
             // Regular entry — rewrite. Drop duplicate-key entries
             // (Typst's parser aborts with `duplicate key "X"` on
-            // collisions; 2605.22507's bib has them).
+            // collisions; 2605.22507's bib has them). Dedup on the
+            // SANITIZED key — that's what gets written and what `@cite`
+            // references resolve against, so two raw keys that sanitize to
+            // the same label (e.g. `K+1` and `K-1`) must collide here too.
             let trimmed = body.trim_start();
-            let key = trimmed
+            let raw_key = trimmed
                 .find(',')
-                .map(|c| trimmed[..c].trim().to_string())
+                .map(|c| trimmed[..c].trim())
                 .unwrap_or_default();
-            if !key.is_empty() && !seen_keys.insert(key.clone()) {
+            let key = crate::emit::sanitize_label_key(raw_key);
+            if !key.is_empty() && !seen_keys.insert(key) {
                 // Already-seen key — skip this entry entirely.
             } else {
                 let rewritten = rewrite_entry(&entry_type, body, &string_defs);
@@ -256,7 +260,11 @@ fn rewrite_entry(entry_type: &str, body: &str, strings: &HashMap<String, String>
     out.push('@');
     out.push_str(entry_type);
     out.push('{');
-    out.push_str(key);
+    // Sanitize the key the same way `\cite` references are (`sanitize_label_key`,
+    // e.g. `+` -> `-`). Otherwise a cite emitted as `@TFM-23a` cannot resolve a
+    // `.bib` entry still keyed `TFM+23a` and Typst aborts with
+    // `label <TFM-23a> does not exist` (2605.22507).
+    out.push_str(&crate::emit::sanitize_label_key(key));
     out.push(',');
     out.push_str(&rewrite_fields(fields_src, strings));
     out.push('}');
