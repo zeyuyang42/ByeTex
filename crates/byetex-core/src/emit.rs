@@ -1342,6 +1342,14 @@ impl<'a> Emitter<'a> {
             }
             return node.end_byte();
         }
+        // Text-mode declarative font-switch group: `{\bf x}` / `{\em y}`. Wrap
+        // the rest of the group in Typst markup and drop the pure-grouping
+        // braces. Non-switch groups fall through to the default walk below.
+        if node.kind() == "curly_group" {
+            if let Some((wrap, switch_end)) = leading_font_switch(node, self.src) {
+                return self.emit_font_switch_group(node, switch_end, wrap);
+            }
+        }
         let mut cursor = node.walk();
         let mut last = node.start_byte();
         for child in node.children(&mut cursor) {
@@ -1764,26 +1772,18 @@ impl<'a> Emitter<'a> {
             // the style of all following text until the group ends — Typst would
             // need a scope wrap, which requires end-of-group tracking we don't yet
             // have. Warn so the caller can see the loss.
-            Some("\\bf") | Some("\\sf") | Some("\\rm") | Some("\\it") | Some("\\tt")
-            | Some("\\sl") | Some("\\sc") | Some("\\em") => {
-                self.warn_unsupported_command(node);
-                node.end_byte()
-            }
-            // NFSS font-switch declarations (LaTeX2e unscoped form). Same issue as
-            // above — silent-drop; these are lower-signal than 2.09 forms since
-            // they appear far less in well-written modern LaTeX.
-            Some("\\bfseries")
-            | Some("\\mdseries")
-            | Some("\\itshape")
-            | Some("\\upshape")
-            | Some("\\slshape")
-            | Some("\\scshape")
-            | Some("\\rmfamily")
-            | Some("\\sffamily")
-            | Some("\\ttfamily")
-            | Some("\\normalfont")
-            | Some("\\boldmath")
-            | Some("\\unboldmath") => node.end_byte(),
+            // Declarative font switches (TeX 2.09 + NFSS forms). The common
+            // `{\bf x}` / `{\em y}` grouped form is wrapped in Typst markup at
+            // the `curly_group` level (see emit_node, where both braces can be
+            // dropped). Reaching one HERE means it's bare or mid-group, where
+            // the scope can't be bounded cleanly — drop it silently (no
+            // warning); the text still flows through.
+            Some("\\bf") | Some("\\bfseries") | Some("\\em") | Some("\\it")
+            | Some("\\itshape") | Some("\\sl") | Some("\\slshape") | Some("\\sf")
+            | Some("\\rm") | Some("\\tt") | Some("\\sc") | Some("\\mdseries")
+            | Some("\\upshape") | Some("\\scshape") | Some("\\rmfamily")
+            | Some("\\sffamily") | Some("\\ttfamily") | Some("\\normalfont")
+            | Some("\\boldmath") | Some("\\unboldmath") => node.end_byte(),
             // Vertical-skip primitives.
             Some("\\smallskip") => {
                 self.out.push_str("#v(0.5em)");
@@ -3195,6 +3195,30 @@ impl<'a> Emitter<'a> {
             self.out.push_str(left);
             self.out.push_str(&content);
             self.out.push_str(right);
+        }
+        node.end_byte()
+    }
+
+    /// A `{\bf ...}` / `{\em ...}` group: the first child is a declarative
+    /// font switch that scopes to the rest of the group. Emit the remaining
+    /// content wrapped in Typst markup, dropping the (pure-grouping) braces.
+    /// Returns the group's end byte (the whole group is consumed).
+    fn emit_font_switch_group(
+        &mut self,
+        node: Node<'_>,
+        switch_end: usize,
+        wrap: (&str, &str),
+    ) -> usize {
+        let content_end = node.end_byte().saturating_sub(1); // exclude the `}`
+        if content_end > switch_end {
+            let rest = self.src[switch_end..content_end].to_string();
+            let rendered = self.render_in_sub_emitter(&rest, false, false);
+            let rendered = rendered.trim();
+            if !rendered.is_empty() {
+                self.out.push_str(wrap.0);
+                self.out.push_str(rendered);
+                self.out.push_str(wrap.1);
+            }
         }
         node.end_byte()
     }
@@ -6836,6 +6860,24 @@ fn command_name_text(node: Node<'_>, src: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// If `node` is a `curly_group` whose first named child is a declarative
+/// bold/italic font switch (`{\bf ..}`, `{\em ..}`), return the Typst wrap
+/// markup and the byte just after the switch command. Other family switches
+/// (`\sc`, `\tt`, ...) have no clean inline equivalent and are not wrapped.
+fn leading_font_switch(node: Node<'_>, src: &str) -> Option<((&'static str, &'static str), usize)> {
+    let mut cursor = node.walk();
+    let first = node.named_children(&mut cursor).next()?;
+    if first.kind() != "generic_command" {
+        return None;
+    }
+    let wrap = match command_name_text(first, src)?.as_str() {
+        "\\bf" | "\\bfseries" => ("*", "*"),
+        "\\em" | "\\it" | "\\itshape" | "\\sl" | "\\slshape" => ("_", "_"),
+        _ => return None,
+    };
+    Some((wrap, first.end_byte()))
 }
 
 /// First `curly_group` child of `node`, if any.
