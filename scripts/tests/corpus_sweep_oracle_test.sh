@@ -57,7 +57,10 @@ chmod +x "$BIN/typst"
 make_paper() {  # <id> <directives>
   local id="$1" directives="$2"
   local src="$CORPUS/$id/source"
-  mkdir -p "$src" "$CORPUS/$id/source.typst-project"
+  # NOTE: deliberately do NOT create a `source.typst-project/` marker — the
+  # freshly-harvested corpus layout (corpus/<id>/source/) has none, so the
+  # sweep must process papers without that gate.
+  mkdir -p "$src"
   printf '%% SWEEP %s\n\\documentclass{article}\n' "$directives" > "$src/main.tex"
   printf '{"sources":[{"usage":"toplevel","filename":"main.tex"}]}\n' > "$src/00README.json"
 }
