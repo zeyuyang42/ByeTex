@@ -1,7 +1,8 @@
 //! End-to-end test of the `.bib` preprocessor on the real-world
 //! patterns that block Typst's BibLaTeX parser.
 
-use byetex_core::bib::preprocess_bib;
+use byetex_core::bib::{preprocess_bib, preprocess_bib_with_seen};
+use std::collections::HashSet;
 
 #[test]
 fn fixes_unresolved_string_with_quote() {
@@ -270,5 +271,45 @@ fn normalizes_day_field_with_range() {
         out2.contains("day = {15}"),
         "plain day value must be unchanged; got:\n{}",
         out2
+    );
+}
+
+#[test]
+fn shared_seen_dedups_keys_across_files() {
+    // 2605.22507 pattern: `\bibliography{refs,ngbib,allbib}` where the same
+    // key lives in more than one `.bib`. Each file is dedup'd internally, but
+    // a key shared ACROSS files must be dropped from all but the first, or
+    // Typst's `#bibliography((...))` aborts with "duplicate bibliography keys".
+    let mut seen = HashSet::new();
+    let file_a = preprocess_bib_with_seen(
+        "@article{Shared, title = {First}}\n@article{OnlyA, title = {A}}\n",
+        &mut seen,
+    );
+    let file_b = preprocess_bib_with_seen(
+        "@article{Shared, title = {Second}}\n@article{OnlyB, title = {B}}\n",
+        &mut seen,
+    );
+    assert!(
+        file_a.contains("{Shared,"),
+        "first file keeps the shared key; got:\n{file_a}"
+    );
+    assert!(
+        !file_b.contains("{Shared,"),
+        "second file must drop the cross-file duplicate key; got:\n{file_b}"
+    );
+    assert!(
+        file_b.contains("{OnlyB,"),
+        "second file keeps its own unique entry; got:\n{file_b}"
+    );
+}
+
+#[test]
+fn preprocess_bib_still_dedups_within_a_single_file() {
+    // Regression: the no-arg wrapper must still dedup within one file.
+    let out = preprocess_bib("@article{K, title = {One}}\n@article{K, title = {Two}}\n");
+    assert_eq!(
+        out.matches("{K,").count(),
+        1,
+        "within-file dedup must still hold; got:\n{out}"
     );
 }
