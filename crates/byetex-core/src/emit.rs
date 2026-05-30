@@ -8756,10 +8756,48 @@ fn strip_trailing_typst_label(content: &str) -> (String, Option<String>) {
 /// already balances those, and over-escaping breaks the surrounding
 /// content block.
 fn escape_text_cell(s: &str) -> String {
+    let chars: Vec<char> = s.chars().collect();
     let mut out = String::with_capacity(s.len());
-    let mut chars = s.chars().peekable();
     let mut in_math = false;
-    while let Some(c) = chars.next() {
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        // `#raw(...)` is Typst code, not markup — copy the whole call verbatim
+        // so markup escaping never touches the raw string literal (e.g. an
+        // underscore inside `#raw("a_b")` must stay `a_b`, not become `a\_b`,
+        // which is not a valid Typst string escape). Track string literals so a
+        // `)` inside the content doesn't end the call early.
+        if !in_math && chars[i..].starts_with(&['#', 'r', 'a', 'w', '(']) {
+            out.push_str("#raw(");
+            i += 5;
+            let mut depth = 1usize;
+            let mut in_str = false;
+            while i < chars.len() && depth > 0 {
+                let ch = chars[i];
+                if in_str {
+                    out.push(ch);
+                    if ch == '\\' && i + 1 < chars.len() {
+                        out.push(chars[i + 1]);
+                        i += 2;
+                        continue;
+                    }
+                    if ch == '"' {
+                        in_str = false;
+                    }
+                    i += 1;
+                } else {
+                    match ch {
+                        '"' => in_str = true,
+                        '(' => depth += 1,
+                        ')' => depth -= 1,
+                        _ => {}
+                    }
+                    out.push(ch);
+                    i += 1;
+                }
+            }
+            continue;
+        }
         match c {
             '$' => {
                 in_math = !in_math;
@@ -8768,15 +8806,15 @@ fn escape_text_cell(s: &str) -> String {
             '\\' => {
                 // Preserve any backslash-escape verbatim — `\_` etc.
                 out.push('\\');
-                if let Some(&next) = chars.peek() {
-                    out.push(next);
-                    chars.next();
+                if i + 1 < chars.len() {
+                    out.push(chars[i + 1]);
+                    i += 1;
                 }
             }
             '#' => {
                 if in_math
                     || chars
-                        .peek()
+                        .get(i + 1)
                         .is_some_and(|c| c.is_ascii_alphabetic() || *c == '_')
                 {
                     out.push('#');
@@ -8790,6 +8828,7 @@ fn escape_text_cell(s: &str) -> String {
             }
             _ => out.push(c),
         }
+        i += 1;
     }
     out
 }
