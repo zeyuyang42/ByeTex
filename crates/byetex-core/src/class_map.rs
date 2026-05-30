@@ -588,8 +588,7 @@ fn parse_one_author(chunk: &str) -> Author {
         // Some commands (\textbf, \textit, \emph) unwrap their body into the
         // name; others are consumed entirely.
         let unwrap_body = matches!(*cmd, "textbf" | "textit" | "emph");
-        loop {
-            let Some(idx) = name.find(&pattern) else { break };
+        while let Some(idx) = name.find(&pattern) {
             let after = idx + pattern.len();
             // Handle optional `[N]` bracket arg before `{body}` (e.g. \affil[1]{text}).
             let body_start = if name[after..].starts_with('[') {
@@ -603,17 +602,19 @@ fn parse_one_author(chunk: &str) -> Author {
             if name[body_start..].starts_with('{') {
                 if let Some(end) = matched_close_brace(&name, body_start) {
                     let body = name[body_start + 1..end].trim().to_string();
-                    let replacement = if unwrap_body { body.clone() } else { String::new() };
+                    let replacement = if unwrap_body {
+                        body.clone()
+                    } else {
+                        String::new()
+                    };
                     match *cmd {
                         "email" => email = Some(body),
                         "affiliation" | "affil" | "institute" | "institution" | "address" => {
                             affiliation_raw = Some(body);
                         }
                         "orcid" | "orcidID" => orcid = Some(body),
-                        "thanks" => {
-                            if body.to_ascii_lowercase().contains("equal") {
-                                equal = true;
-                            }
+                        "thanks" if body.to_ascii_lowercase().contains("equal") => {
+                            equal = true;
                         }
                         _ => {}
                     }
@@ -964,7 +965,7 @@ fn raw_latex_accents_to_unicode(s: &str) -> String {
             // --- accent commands: \' \" \` \^ \~ ---
             '\'' | '"' | '`' | '^' | '~' => {
                 i += 2; // skip \ + accent char
-                // Skip optional whitespace.
+                        // Skip optional whitespace.
                 while i < bytes.len() && bytes[i] == b' ' {
                     i += 1;
                 }
@@ -990,56 +991,101 @@ fn raw_latex_accents_to_unicode(s: &str) -> String {
                 out.push(next);
             }
             // --- named letter commands ---
-            'a' if s[i..].starts_with("\\ae") && !s[i + 3..].starts_with(|c: char| c.is_ascii_alphabetic()) => {
-                out.push('æ'); i += 3;
+            'a' if s[i..].starts_with("\\ae")
+                && !s[i + 3..].starts_with(|c: char| c.is_ascii_alphabetic()) =>
+            {
+                out.push('æ');
+                i += 3;
             }
-            'A' if s[i..].starts_with("\\AE") && !s[i + 3..].starts_with(|c: char| c.is_ascii_alphabetic()) => {
-                out.push('Æ'); i += 3;
+            'A' if s[i..].starts_with("\\AE")
+                && !s[i + 3..].starts_with(|c: char| c.is_ascii_alphabetic()) =>
+            {
+                out.push('Æ');
+                i += 3;
             }
-            'o' if s[i..].starts_with("\\oe") && !s[i + 3..].starts_with(|c: char| c.is_ascii_alphabetic()) => {
-                out.push('œ'); i += 3;
+            'o' if s[i..].starts_with("\\oe")
+                && !s[i + 3..].starts_with(|c: char| c.is_ascii_alphabetic()) =>
+            {
+                out.push('œ');
+                i += 3;
             }
-            'O' if s[i..].starts_with("\\OE") && !s[i + 3..].starts_with(|c: char| c.is_ascii_alphabetic()) => {
-                out.push('Œ'); i += 3;
+            'O' if s[i..].starts_with("\\OE")
+                && !s[i + 3..].starts_with(|c: char| c.is_ascii_alphabetic()) =>
+            {
+                out.push('Œ');
+                i += 3;
             }
-            's' if s[i..].starts_with("\\ss") && !s[i + 3..].starts_with(|c: char| c.is_ascii_alphabetic()) => {
-                out.push('ß'); i += 3;
+            's' if s[i..].starts_with("\\ss")
+                && !s[i + 3..].starts_with(|c: char| c.is_ascii_alphabetic()) =>
+            {
+                out.push('ß');
+                i += 3;
             }
             'o' if i + 2 <= s.len()
-                && !s[i + 2..].starts_with(|c: char| c.is_ascii_alphabetic()) => {
-                out.push('ø'); i += 2;
-                if i < bytes.len() && bytes[i] == b' ' { i += 1; }
+                && !s[i + 2..].starts_with(|c: char| c.is_ascii_alphabetic()) =>
+            {
+                out.push('ø');
+                i += 2;
+                if i < bytes.len() && bytes[i] == b' ' {
+                    i += 1;
+                }
             }
             'O' if i + 2 <= s.len()
-                && !s[i + 2..].starts_with(|c: char| c.is_ascii_alphabetic()) => {
-                out.push('Ø'); i += 2;
-                if i < bytes.len() && bytes[i] == b' ' { i += 1; }
+                && !s[i + 2..].starts_with(|c: char| c.is_ascii_alphabetic()) =>
+            {
+                out.push('Ø');
+                i += 2;
+                if i < bytes.len() && bytes[i] == b' ' {
+                    i += 1;
+                }
             }
             'i' if i + 2 <= s.len()
-                && !s[i + 2..].starts_with(|c: char| c.is_ascii_alphabetic()) => {
-                out.push('ı'); i += 2;
-                if i < bytes.len() && bytes[i] == b' ' { i += 1; }
+                && !s[i + 2..].starts_with(|c: char| c.is_ascii_alphabetic()) =>
+            {
+                out.push('ı');
+                i += 2;
+                if i < bytes.len() && bytes[i] == b' ' {
+                    i += 1;
+                }
             }
             'l' if i + 2 <= s.len()
-                && !s[i + 2..].starts_with(|c: char| c.is_ascii_alphabetic()) => {
-                out.push('ł'); i += 2;
-                if i < bytes.len() && bytes[i] == b' ' { i += 1; }
+                && !s[i + 2..].starts_with(|c: char| c.is_ascii_alphabetic()) =>
+            {
+                out.push('ł');
+                i += 2;
+                if i < bytes.len() && bytes[i] == b' ' {
+                    i += 1;
+                }
             }
             'L' if i + 2 <= s.len()
-                && !s[i + 2..].starts_with(|c: char| c.is_ascii_alphabetic()) => {
-                out.push('Ł'); i += 2;
-                if i < bytes.len() && bytes[i] == b' ' { i += 1; }
+                && !s[i + 2..].starts_with(|c: char| c.is_ascii_alphabetic()) =>
+            {
+                out.push('Ł');
+                i += 2;
+                if i < bytes.len() && bytes[i] == b' ' {
+                    i += 1;
+                }
             }
-            'a' if s[i..].starts_with("\\aa") && !s[i + 3..].starts_with(|c: char| c.is_ascii_alphabetic()) => {
-                out.push('å'); i += 3;
+            'a' if s[i..].starts_with("\\aa")
+                && !s[i + 3..].starts_with(|c: char| c.is_ascii_alphabetic()) =>
+            {
+                out.push('å');
+                i += 3;
             }
-            'A' if s[i..].starts_with("\\AA") && !s[i + 3..].starts_with(|c: char| c.is_ascii_alphabetic()) => {
-                out.push('Å'); i += 3;
+            'A' if s[i..].starts_with("\\AA")
+                && !s[i + 3..].starts_with(|c: char| c.is_ascii_alphabetic()) =>
+            {
+                out.push('Å');
+                i += 3;
             }
             // Cedilla: \c{x} or \c x
-            'c' if s[i..].starts_with("\\c") && !s[i + 2..].starts_with(|c: char| c.is_ascii_alphabetic()) => {
+            'c' if s[i..].starts_with("\\c")
+                && !s[i + 2..].starts_with(|c: char| c.is_ascii_alphabetic()) =>
+            {
                 i += 2;
-                while i < bytes.len() && bytes[i] == b' ' { i += 1; }
+                while i < bytes.len() && bytes[i] == b' ' {
+                    i += 1;
+                }
                 if i < bytes.len() {
                     let letter_start = i;
                     if bytes[i] == b'{' {
@@ -1047,8 +1093,13 @@ fn raw_latex_accents_to_unicode(s: &str) -> String {
                             let inner = &s[i + 1..close];
                             let letter = inner.chars().next().unwrap_or(' ');
                             let cedilla: char = match letter {
-                                'c' => 'ç', 'C' => 'Ç', 's' => 'ş', 'S' => 'Ş',
-                                't' => 'ţ', 'T' => 'Ţ', _ => letter,
+                                'c' => 'ç',
+                                'C' => 'Ç',
+                                's' => 'ş',
+                                'S' => 'Ş',
+                                't' => 'ţ',
+                                'T' => 'Ţ',
+                                _ => letter,
                             };
                             out.push(cedilla);
                             i = close + 1;
@@ -1057,8 +1108,13 @@ fn raw_latex_accents_to_unicode(s: &str) -> String {
                     } else {
                         let letter = s[letter_start..].chars().next().unwrap_or(' ');
                         let cedilla: char = match letter {
-                            'c' => 'ç', 'C' => 'Ç', 's' => 'ş', 'S' => 'Ş',
-                            't' => 'ţ', 'T' => 'Ţ', _ => letter,
+                            'c' => 'ç',
+                            'C' => 'Ç',
+                            's' => 'ş',
+                            'S' => 'Ş',
+                            't' => 'ţ',
+                            'T' => 'Ţ',
+                            _ => letter,
                         };
                         out.push(cedilla);
                         i += letter.len_utf8();
@@ -1067,20 +1123,50 @@ fn raw_latex_accents_to_unicode(s: &str) -> String {
                 }
             }
             // Text-mode special characters
-            '&' => { out.push('&'); i += 2; }
-            '%' => { out.push('%'); i += 2; }
-            '_' => { out.push('_'); i += 2; }
-            '$' => { out.push('$'); i += 2; }
-            '#' => { out.push('#'); i += 2; }
-            '{' => { out.push('{'); i += 2; }
-            '}' => { out.push('}'); i += 2; }
-            ' ' => { out.push(' '); i += 2; }
-            '-' => { i += 2; } // soft hyphen — drop
+            '&' => {
+                out.push('&');
+                i += 2;
+            }
+            '%' => {
+                out.push('%');
+                i += 2;
+            }
+            '_' => {
+                out.push('_');
+                i += 2;
+            }
+            '$' => {
+                out.push('$');
+                i += 2;
+            }
+            '#' => {
+                out.push('#');
+                i += 2;
+            }
+            '{' => {
+                out.push('{');
+                i += 2;
+            }
+            '}' => {
+                out.push('}');
+                i += 2;
+            }
+            ' ' => {
+                out.push(' ');
+                i += 2;
+            }
+            '-' => {
+                i += 2;
+            } // soft hyphen — drop
             _ => {
                 // Unknown command: skip command name, emit nothing (or braced body).
                 i += 1; // skip `\`
-                while i < bytes.len() && bytes[i].is_ascii_alphabetic() { i += 1; }
-                while i < bytes.len() && bytes[i] == b' ' { i += 1; }
+                while i < bytes.len() && bytes[i].is_ascii_alphabetic() {
+                    i += 1;
+                }
+                while i < bytes.len() && bytes[i] == b' ' {
+                    i += 1;
+                }
                 if i < bytes.len() && bytes[i] == b'{' {
                     if let Some(close) = matched_close_brace(s, i) {
                         out.push_str(&raw_latex_accents_to_unicode(&s[i + 1..close]));

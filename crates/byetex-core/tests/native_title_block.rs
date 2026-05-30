@@ -15,9 +15,7 @@ fn opts() -> ConvertOptions {
 
 /// Wrap preamble + body in an amsart document (Unknown class → fallback path).
 fn fallback_doc(preamble: &str, body: &str) -> String {
-    format!(
-        r"\documentclass{{amsart}}{preamble}\begin{{document}}{body}\end{{document}}"
-    )
+    format!(r"\documentclass{{amsart}}{preamble}\begin{{document}}{body}\end{{document}}")
 }
 
 // ─── Test 1 ───────────────────────────────────────────────────────────────────
@@ -118,10 +116,7 @@ fn native_email_rendered() {
     // \email{...} inside \author{} is captured into Author.email, but
     // flush_title_block currently never emits it.
     // post_process_typography escapes @ → \@, so accept either form.
-    let src = fallback_doc(
-        r"\title{T}\author{Alice\email{alice@example.com}}",
-        "Body.",
-    );
+    let src = fallback_doc(r"\title{T}\author{Alice\email{alice@example.com}}", "Body.");
     let out = convert(&src, &opts());
 
     assert!(out.typst.contains("Alice"), "author name should appear");
@@ -162,10 +157,7 @@ fn native_shared_affiliation_deduplicated() {
 fn native_no_affiliation_no_superscripts() {
     // When no author has an affiliation, the title block should render just
     // the names — no `#super[...]` calls, no blank affiliation footer.
-    let src = fallback_doc(
-        r"\title{T}\author{Alice \and Bob \and Carol}",
-        "Body.",
-    );
+    let src = fallback_doc(r"\title{T}\author{Alice \and Bob \and Carol}", "Body.");
     let out = convert(&src, &opts());
 
     assert!(out.typst.contains("Alice"), "Alice should appear");
@@ -186,10 +178,7 @@ fn native_date_rendered() {
     // Date should still appear in the fallback title block after the
     // implementation is expanded. (This tests that the refactor doesn't regress
     // existing date behaviour.)
-    let src = fallback_doc(
-        r"\title{T}\author{Alice}\date{January 2025}",
-        "Body.",
-    );
+    let src = fallback_doc(r"\title{T}\author{Alice}\date{January 2025}", "Body.");
     let out = convert(&src, &opts());
 
     assert!(

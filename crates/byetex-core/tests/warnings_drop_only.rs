@@ -202,7 +202,9 @@ fn affiliation_without_author_warns() {
         })
         .collect();
     assert!(
-        unsupported.iter().any(|n| *n == "\\affiliation" || *n == "\\institution"),
+        unsupported
+            .iter()
+            .any(|n| *n == "\\affiliation" || *n == "\\institution"),
         "expected UnsupportedCommand warning; warnings: {:?}",
         out.warnings
     );

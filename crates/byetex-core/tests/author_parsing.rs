@@ -54,18 +54,19 @@ fn author_corref_and_fnref_stripped() {
         out.typst
     );
 
-    let has_corref_warn = out.warnings.iter().any(|w| {
-        matches!(&w.category, Category::UnsupportedCommand { name } if name == "\\corref")
-    });
+    let has_corref_warn = out.warnings.iter().any(
+        |w| matches!(&w.category, Category::UnsupportedCommand { name } if name == "\\corref"),
+    );
     assert!(
         !has_corref_warn,
         "\\corref inside \\author must not emit UnsupportedCommand; warnings:\n{:#?}",
         out.warnings
     );
 
-    let has_fnref_warn = out.warnings.iter().any(|w| {
-        matches!(&w.category, Category::UnsupportedCommand { name } if name == "\\fnref")
-    });
+    let has_fnref_warn = out
+        .warnings
+        .iter()
+        .any(|w| matches!(&w.category, Category::UnsupportedCommand { name } if name == "\\fnref"));
     assert!(
         !has_fnref_warn,
         "\\fnref inside \\author must not emit UnsupportedCommand; warnings:\n{:#?}",
@@ -76,7 +77,7 @@ fn author_corref_and_fnref_stripped() {
 // ─── Test 2 ───────────────────────────────────────────────────────────────────
 
 #[test]
-fn author_And_separator_splits_into_multiple_authors() {
+fn author_and_separator_splits_into_multiple_authors() {
     // `\And` (NeurIPS-style) is silently consumed by the dispatcher
     // (emit.rs:1700) before the author parser sees it, collapsing all
     // three names into one author entry.
@@ -117,9 +118,7 @@ fn author_ieee_block_name_extracted() {
     // Before fix: author name absent from typst output; two UnsupportedCommand
     //             warnings for \IEEEauthorblockN and \IEEEauthorblockA.
     // After fix:  raw bytes → parse_ieee_block sees the markers → name extracted.
-    let src = format!(
-        r"\documentclass{{IEEEtran}}\author{{\IEEEauthorblockN{{Alice Smith}}\IEEEauthorblockA{{\textit{{Dept of CS}}\\MIT, USA\\alice@mit.edu}}}}\title{{T}}\begin{{document}}Body.\end{{document}}"
-    );
+    let src = r"\documentclass{IEEEtran}\author{\IEEEauthorblockN{Alice Smith}\IEEEauthorblockA{\textit{Dept of CS}\\MIT, USA\\alice@mit.edu}}\title{T}\begin{document}Body.\end{document}".to_string();
     let out = convert(&src, &opts());
 
     assert!(
@@ -184,7 +183,7 @@ fn author_email_not_stored_in_global_metadata() {
     assert!(out.typst.contains("Alice"), "name should survive");
 
     assert!(
-        out.class_metadata.get("email").is_none(),
+        !out.class_metadata.contains_key("email"),
         "email inside \\author should NOT land in global class_metadata; \
          got: {:?}",
         out.class_metadata.get("email")
@@ -214,7 +213,7 @@ fn author_orcid_in_typst_output() {
     assert!(out.typst.contains("Alice"), "name should survive");
 
     assert!(
-        out.class_metadata.get("orcid").is_none(),
+        !out.class_metadata.contains_key("orcid"),
         "orcid inside \\author should NOT land in global class_metadata"
     );
 
@@ -299,9 +298,9 @@ fn author_unknown_subcommand_no_unsupported_command_warning() {
 
     assert!(out.typst.contains("Alice"), "author name should survive");
 
-    let has_unsupported = out.warnings.iter().any(|w| {
-        matches!(&w.category, Category::UnsupportedCommand { name } if name == "\\unknowncmd")
-    });
+    let has_unsupported = out.warnings.iter().any(
+        |w| matches!(&w.category, Category::UnsupportedCommand { name } if name == "\\unknowncmd"),
+    );
     assert!(
         !has_unsupported,
         "\\unknowncmd inside \\author should NOT emit UnsupportedCommand; \

@@ -73,9 +73,8 @@ fn sibling_affil_each_author_gets_own_affiliation() {
 #[test]
 fn sibling_orcid_both_authors_get_orcid() {
     // Each author's ORCID should appear in the output, not just the first.
-    let src = doc(
-        r"\author{Alice}\orcid{0000-0001-0000-0000}\author{Bob}\orcid{0000-0002-0000-0000}",
-    );
+    let src =
+        doc(r"\author{Alice}\orcid{0000-0001-0000-0000}\author{Bob}\orcid{0000-0002-0000-0000}");
     let out = convert(&src, &opts());
 
     assert!(
@@ -100,7 +99,7 @@ fn sibling_affil_not_in_class_metadata() {
     let out = convert(&src, &opts());
 
     assert!(
-        out.class_metadata.get("affil").is_none(),
+        !out.class_metadata.contains_key("affil"),
         "\\affil inside sibling scope should NOT land in class_metadata; \
          got: {:?}",
         out.class_metadata.get("affil")

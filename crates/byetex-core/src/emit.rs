@@ -2815,8 +2815,10 @@ impl<'a> Emitter<'a> {
 
             // Collect per-author affiliation text, deduplicating to assign
             // superscript indices (1-based, in order of first appearance).
-            let aff_texts: Vec<Option<String>> =
-                authors.iter().map(|a| aff_display_text(&a.affiliation)).collect();
+            let aff_texts: Vec<Option<String>> = authors
+                .iter()
+                .map(|a| aff_display_text(&a.affiliation))
+                .collect();
             let mut deduped: Vec<String> = Vec::new();
             let aff_indices: Vec<Option<usize>> = aff_texts
                 .iter()
@@ -2861,12 +2863,8 @@ impl<'a> Emitter<'a> {
                 self.out.push_str("  #v(0.3em)\n  #text(size: 0.9em)[\n");
                 for (i, aff_text) in deduped.iter().enumerate() {
                     if i + 1 < deduped.len() {
-                        let _ = writeln!(
-                            self.out,
-                            "    #super[{}] {} #linebreak()",
-                            i + 1,
-                            aff_text
-                        );
+                        let _ =
+                            writeln!(self.out, "    #super[{}] {} #linebreak()", i + 1, aff_text);
                     } else {
                         let _ = writeln!(self.out, "    #super[{}] {}", i + 1, aff_text);
                     }
@@ -2875,8 +2873,7 @@ impl<'a> Emitter<'a> {
             }
 
             // Email line (italic, all authors)
-            let emails: Vec<&str> =
-                authors.iter().filter_map(|a| a.email.as_deref()).collect();
+            let emails: Vec<&str> = authors.iter().filter_map(|a| a.email.as_deref()).collect();
             if !emails.is_empty() {
                 let _ = writeln!(
                     self.out,
@@ -9217,7 +9214,10 @@ fn aff_display_text(aff: &Option<crate::document::Affiliation>) -> Option<String
     }
     // Fall back to the raw unstructured blob (e.g. from \IEEEauthorblockA or
     // a plain \affiliation{...} without per-field markers).
-    aff.raw.as_ref().map(|r| r.as_content().to_string()).filter(|s| !s.is_empty())
+    aff.raw
+        .as_ref()
+        .map(|r| r.as_content().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 /// be preserved, but in our text-mode output the only `\`` we emit comes from
