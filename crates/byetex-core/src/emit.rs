@@ -1502,6 +1502,92 @@ impl<'a> Emitter<'a> {
             return node.end_byte();
         }
 
+        // `\lstinline` (listings) and `\mintinline` (minted) are INLINE verbatim
+        // commands, like `\verb`, but with a prefix argument:
+        //   `\lstinline[opts]{code}` / `\lstinline[opts]<delim>code<delim>`
+        //   `\mintinline{lang}{code}` / `\mintinline{lang}<delim>code<delim>`
+        // Emit inline `#raw("...")`, carrying `lang:` when a language is known
+        // (lstlisting's block form is handled separately in
+        // `emit_listing_environment`). The code is read straight from the source
+        // bytes so tree-sitter never re-interprets it.
+        if name.as_deref() == Some("\\lstinline") || name.as_deref() == Some("\\mintinline") {
+            let is_mint = name.as_deref() == Some("\\mintinline");
+            let bytes = self.src.as_bytes();
+            // Scan from right after the command NAME, not `node.end_byte()`:
+            // tree-sitter absorbs the first `{...}`/`[...]` group into the
+            // generic_command node, so `end_byte()` already sits past the
+            // `{lang}`/`{code}` we need to read. The command name in the source
+            // is exactly the matched `name` string (`\lstinline`/`\mintinline`).
+            let name_len = name.as_deref().map_or(0, str::len);
+            let mut i = node.start_byte() + name_len;
+            let mut lang: Option<String> = None;
+
+            if is_mint {
+                // minted: the first mandatory `{...}` group is the language.
+                if bytes.get(i) == Some(&b'{') {
+                    let close = skip_balanced_braces(self.src, i);
+                    let l = self.src[i + 1..close.saturating_sub(1)].trim();
+                    if !l.is_empty() {
+                        lang = Some(l.to_lowercase());
+                    }
+                    i = close;
+                }
+            } else if bytes.get(i) == Some(&b'[') {
+                // listings: optional `[key=val,...]`, possibly with `language=`.
+                if let Some(rel) = self.src[i..].find(']') {
+                    let close = i + rel;
+                    lang = self.src[i + 1..close].split(',').find_map(|kv| {
+                        kv.trim()
+                            .strip_prefix("language")
+                            .and_then(|r| r.trim().strip_prefix('='))
+                            .map(|v| {
+                                v.trim()
+                                    .trim_matches(|c| c == '{' || c == '}')
+                                    .to_lowercase()
+                            })
+                            .filter(|v| !v.is_empty())
+                    });
+                    i = close + 1;
+                }
+            }
+
+            // Read the verbatim code: a balanced `{...}` group, or a verb-style
+            // `<delim>...<delim>` run (any non-alphanumeric, non-space delimiter).
+            let body: Option<(String, usize)> = match bytes.get(i) {
+                Some(&b'{') => {
+                    let close = skip_balanced_braces(self.src, i);
+                    Some((self.src[i + 1..close.saturating_sub(1)].to_string(), close))
+                }
+                Some(&delim) if !delim.is_ascii_whitespace() && !delim.is_ascii_alphanumeric() => {
+                    bytes[i + 1..].iter().position(|&b| b == delim).map(|rel| {
+                        let close = i + 1 + rel;
+                        (self.src[i + 1..close].to_string(), close + 1)
+                    })
+                }
+                _ => None,
+            };
+
+            if let Some((code, end)) = body {
+                let escaped = code.replace('\\', "\\\\").replace('"', "\\\"");
+                match lang {
+                    Some(l) => {
+                        let _ = write!(self.out, "#raw(\"{}\", lang: \"{}\")", escaped, l);
+                    }
+                    None => {
+                        let _ = write!(self.out, "#raw(\"{}\")", escaped);
+                    }
+                }
+                // Skip past whatever we consumed AND whatever tree-sitter folded
+                // into the node, so neither the code nor an absorbed `{...}` is
+                // re-emitted.
+                let consumed = end.max(node.end_byte());
+                self.skip_until = consumed;
+                return consumed;
+            }
+            self.warn_unsupported_command(node);
+            return node.end_byte();
+        }
+
         // `\bibitem{key}` inside `thebibliography` becomes a `#figure(...)`
         // with a custom kind so that `@key` references resolve. Typst only
         // allows labels to be referenced on a few element kinds — `figure`
