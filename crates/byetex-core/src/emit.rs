@@ -1473,6 +1473,35 @@ impl<'a> Emitter<'a> {
             return node.end_byte();
         }
 
+        // `\path|...|` (path.sty) is verb-like: it typesets its
+        // delimiter-bounded argument verbatim (allowing line breaks), so it is
+        // rendered the same way as `\verb` — `#raw(...)`. Only the delimited
+        // form is handled; tikz's `\path (a) -- (b);` form (whitespace, `(`, or
+        // `{` immediately after the command) is left to warn rather than be
+        // mis-read as verbatim. tikzpicture bodies are dropped elsewhere, so in
+        // practice only path.sty's form reaches here.
+        if name.as_deref() == Some("\\path") || name.as_deref() == Some("\\path*") {
+            let bytes = self.src.as_bytes();
+            let end = node.end_byte();
+            if let Some(&delim) = bytes.get(end) {
+                let is_verb_delim = !delim.is_ascii_whitespace()
+                    && !delim.is_ascii_alphanumeric()
+                    && !matches!(delim, b'{' | b'(' | b'[');
+                if is_verb_delim {
+                    if let Some(rel) = bytes[end + 1..].iter().position(|&b| b == delim) {
+                        let close = end + 1 + rel;
+                        let content = &self.src[end + 1..close];
+                        let escaped = content.replace('\\', "\\\\").replace('"', "\\\"");
+                        let _ = write!(self.out, "#raw(\"{}\")", escaped);
+                        self.skip_until = close + 1;
+                        return close + 1;
+                    }
+                }
+            }
+            self.warn_unsupported_command(node);
+            return node.end_byte();
+        }
+
         // `\bibitem{key}` inside `thebibliography` becomes a `#figure(...)`
         // with a custom kind so that `@key` references resolve. Typst only
         // allows labels to be referenced on a few element kinds — `figure`
