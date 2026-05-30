@@ -313,3 +313,34 @@ fn preprocess_bib_still_dedups_within_a_single_file() {
         "within-file dedup must still hold; got:\n{out}"
     );
 }
+
+#[test]
+fn entry_keys_are_sanitized_to_match_citation_labels() {
+    // 2605.22507: `\citet{TFM+23a}` emits `@TFM-23a` (sanitize_label_key maps
+    // `+` -> `-`, since `+` is invalid in a Typst label). The `.bib` entry key
+    // must be sanitized the same way or Typst aborts with
+    // `label <TFM-23a> does not exist`.
+    let out = preprocess_bib("@article{TFM+23a, title = {X}, year = {2023}}\n");
+    assert!(
+        out.contains("{TFM-23a,"),
+        "entry key `+` must be sanitized to `-`; got:\n{out}"
+    );
+    assert!(
+        !out.contains("TFM+23a"),
+        "the raw `+` key must not remain; got:\n{out}"
+    );
+}
+
+#[test]
+fn keys_colliding_after_sanitize_are_deduped() {
+    // `K+1` and `K-1` both sanitize to `K-1`; only the first may survive or
+    // Typst sees a duplicate label.
+    let mut seen = HashSet::new();
+    let a = preprocess_bib_with_seen("@article{K+1, title = {A}}\n", &mut seen);
+    let b = preprocess_bib_with_seen("@article{K-1, title = {B}}\n", &mut seen);
+    assert!(a.contains("{K-1,"), "first sanitized key kept; got:\n{a}");
+    assert!(
+        !b.contains("{K-1,"),
+        "second key colliding after sanitize must be dropped; got:\n{b}"
+    );
+}
