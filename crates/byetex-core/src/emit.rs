@@ -47,6 +47,9 @@ pub(crate) struct MacroDef {
 pub(crate) fn harvest_macros_from_source(source: &str) -> HashMap<String, MacroDef> {
     let tree = crate::parser::parse(source);
     let mut out: HashMap<String, MacroDef> = HashMap::new();
+    // `\let\new\old` pairs, resolved after the main pass so `\old` can refer
+    // to a macro harvested later in the (DFS, unordered) walk.
+    let mut lets: Vec<(String, String)> = Vec::new();
     let root = tree.root_node();
     let mut stack: Vec<Node<'_>> = vec![root];
     while let Some(n) = stack.pop() {
@@ -54,6 +57,11 @@ pub(crate) fn harvest_macros_from_source(source: &str) -> HashMap<String, MacroD
             "new_command_definition" => {
                 if let Some((name, def)) = extract_newcommand(n, source) {
                     out.insert(name, def);
+                }
+            }
+            "let_command_definition" => {
+                if let Some(pair) = extract_let(n, source) {
+                    lets.push(pair);
                 }
             }
             "old_command_definition" => {
@@ -91,6 +99,12 @@ pub(crate) fn harvest_macros_from_source(source: &str) -> HashMap<String, MacroD
     // so \token never reaches self.macros and every `$\token$` emits
     // ambiguous_math. This pass closes the gap.
     harvest_wrapper_newcommands(tree.root_node(), source, &mut out);
+    // Resolve `\let` aliases last, once every `\newcommand`/`\def` is in the
+    // table. `or_insert` so an explicit definition always beats an alias.
+    for (new_name, old_name) in lets {
+        let def = let_alias_def(&old_name, &out);
+        out.entry(new_name).or_insert(def);
+    }
     out
 }
 
@@ -169,6 +183,31 @@ fn command_name_text_static(node: Node<'_>, src: &str) -> Option<String> {
         }
     }
     result
+}
+
+/// Pull (`\new`, `\old`) from a `let_command_definition` node. Both names
+/// include the leading backslash. Tree-sitter produces this same node for
+/// both `\let\new\old` and `\let\new=\old`, so the `=` form is free.
+fn extract_let(node: Node<'_>, src: &str) -> Option<(String, String)> {
+    let decl = node.child_by_field_name("declaration")?;
+    let imp = node.child_by_field_name("implementation")?;
+    Some((
+        src[decl.start_byte()..decl.end_byte()].to_string(),
+        src[imp.start_byte()..imp.end_byte()].to_string(),
+    ))
+}
+
+/// The `MacroDef` that `\let\new\old` assigns to `\new`: copy `\old`'s
+/// definition when it's a known user macro (preserves arity), otherwise a
+/// zero-arg alias whose body is `\old`. The body form covers builtins,
+/// math symbols, and forward references — they resolve when `\new` is later
+/// expanded and `\old` is re-parsed in context.
+fn let_alias_def(old_name: &str, table: &HashMap<String, MacroDef>) -> MacroDef {
+    table.get(old_name).cloned().unwrap_or_else(|| MacroDef {
+        params: 0,
+        body: old_name.to_string(),
+        optional_defaults: HashMap::new(),
+    })
 }
 
 /// Sentinel character emitted by `push_math_symbol` immediately after a
@@ -418,6 +457,14 @@ impl<'a> Emitter<'a> {
                 }
                 "old_command_definition" => {
                     let _ = extract_def_and_record(n, self.src, &mut self.macros);
+                }
+                "let_command_definition" => {
+                    // `\let\new\old` — seed the alias so forward references to
+                    // `\new` resolve. The emit pass re-applies in document order.
+                    if let Some((new_name, old_name)) = extract_let(n, self.src) {
+                        let def = let_alias_def(&old_name, &self.macros);
+                        self.macros.entry(new_name).or_insert(def);
+                    }
                 }
                 "generic_command" => {
                     // generic_command does NOT produce \renewcommand/\providecommand/
@@ -1119,6 +1166,16 @@ impl<'a> Emitter<'a> {
             if let Some(end) = extract_def_and_record(node, self.src, &mut self.macros) {
                 self.skip_until = self.skip_until.max(end);
                 return end;
+            }
+            return node.end_byte();
+        }
+        // `\let\new\old` is a definition (a dedicated `let_command_definition`
+        // node). Apply the alias in document order — `\let` reassigns, so this
+        // overwrites — and emit nothing. Prepass already seeded forward refs.
+        if node.kind() == "let_command_definition" {
+            if let Some((new_name, old_name)) = extract_let(node, self.src) {
+                let def = let_alias_def(&old_name, &self.macros);
+                self.macros.insert(new_name, def);
             }
             return node.end_byte();
         }
