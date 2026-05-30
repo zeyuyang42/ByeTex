@@ -6099,6 +6099,9 @@ impl<'a> Emitter<'a> {
     fn emit_figure(&mut self, node: Node<'_>) -> usize {
         let mut graphics: Option<Node<'_>> = None;
         let mut caption: Option<Node<'_>> = None;
+        // `\captionof{type}{cap}` fallback, used only when no real `\caption`
+        // is present (a real \caption always wins regardless of walk order).
+        let mut captionof: Option<Node<'_>> = None;
         let mut label: Option<String> = None;
         let mut nested_tabular: Option<Node<'_>> = None;
 
@@ -6111,6 +6114,16 @@ impl<'a> Emitter<'a> {
                 match child.kind() {
                     "graphics_include" if graphics.is_none() => graphics = Some(child),
                     "caption" if caption.is_none() => caption = Some(child),
+                    // `\captionof{type}{cap}` (caption package) — a caption
+                    // source too. Captured only if no real `\caption` won yet;
+                    // its 2nd arg is the caption, its 1st arg the kind.
+                    "generic_command"
+                        if captionof.is_none()
+                            && command_name_text(child, self.src).as_deref()
+                                == Some("\\captionof") =>
+                    {
+                        captionof = Some(child);
+                    }
                     "label_definition" if label.is_none() => {
                         label = extract_label_name(child, self.src)
                     }
@@ -6173,8 +6186,33 @@ impl<'a> Emitter<'a> {
         self.ensure_paragraph_break();
         self.out.push_str("#figure(\n  ");
         self.out.push_str(&body_str);
-        if let Some(c) = caption {
-            if let Some(arg) = first_curly_group(c) {
+        // A real `\caption` always wins; otherwise fall back to `\captionof`.
+        // For `\captionof{type}{cap}` the caption is the 2nd arg and the 1st
+        // arg (the type) sets the figure kind so refs read "Table N"/"Figure N".
+        if caption.is_none() {
+            if let Some(c) = captionof {
+                if let Some(type_arg) = nth_curly_group(c, 0) {
+                    let ty = self.render_curly_group_content(type_arg);
+                    let kind = match ty.trim() {
+                        "table" => Some("table"),
+                        "figure" => Some("image"),
+                        _ => None,
+                    };
+                    if let Some(k) = kind {
+                        let _ = write!(self.out, ",\n  kind: {}", k);
+                    }
+                }
+            }
+        }
+        let caption_node = caption.or(captionof);
+        if let Some(c) = caption_node {
+            // `\caption{cap}` → 1st group; `\captionof{type}{cap}` → 2nd group.
+            let arg = if c.kind() == "generic_command" {
+                nth_curly_group(c, 1)
+            } else {
+                first_curly_group(c)
+            };
+            if let Some(arg) = arg {
                 let text = self.render_curly_group_content(arg);
                 let _ = write!(self.out, ",\n  caption: [{}]", text);
             }
@@ -6749,6 +6787,17 @@ fn first_curly_group(node: Node<'_>) -> Option<Node<'_>> {
     let result = node
         .children(&mut cursor)
         .find(|child| child.kind() == "curly_group");
+    result
+}
+
+/// The `n`-th (0-based) `curly_group`-family child of `node`. Used to read
+/// `\captionof{type}{caption}`: arg 0 is the type, arg 1 the caption.
+fn nth_curly_group(node: Node<'_>, n: usize) -> Option<Node<'_>> {
+    let mut cursor = node.walk();
+    let result = node
+        .children(&mut cursor)
+        .filter(|child| child.kind().starts_with("curly_group"))
+        .nth(n);
     result
 }
 
