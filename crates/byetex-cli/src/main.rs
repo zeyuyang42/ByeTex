@@ -398,7 +398,10 @@ fn run_doctor(input: PathBuf, strict: bool, full: bool) -> Result<()> {
         .with_context(|| format!("writing {}", sidecar.display()))?;
 
     match verdict {
-        "ok" => eprintln!("byetex doctor: input compiles ✅ — wrote {}.", sidecar.display()),
+        "ok" => eprintln!(
+            "byetex doctor: input compiles ✅ — wrote {}.",
+            sidecar.display()
+        ),
         "byetex_bug" => eprintln!(
             "byetex doctor: input compiles but ByeTex's output FAILED `typst compile` ❌ \
              — this is a ByeTex bug. Wrote {}.",

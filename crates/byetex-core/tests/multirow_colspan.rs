@@ -38,8 +38,7 @@ fn multirow_no_placeholder_cell_in_covered_row() {
     );
     // Row 2: the placeholder for col 1 must be absent; only D and E
     assert!(
-        !t.contains("[D], [E]")
-            || !t.contains("[], [D]"),
+        !t.contains("[D], [E]") || !t.contains("[], [D]"),
         "empty placeholder [] still present before [D];\noutput:\n{t}"
     );
     // Specifically: the second row must NOT start with `[]`

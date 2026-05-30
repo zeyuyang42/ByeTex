@@ -503,7 +503,7 @@ fn content_escape(s: &str) -> String {
                 // Only escape a bare `#` that is NOT part of such a call.
                 if chars
                     .peek()
-                    .map_or(false, |c| c.is_ascii_alphabetic() || *c == '_')
+                    .is_some_and(|c| c.is_ascii_alphabetic() || *c == '_')
                 {
                     out.push('#');
                 } else {

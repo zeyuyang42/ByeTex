@@ -37,6 +37,8 @@ fn addtocontents_no_warning() {
 fn surrounding_text_preserved() {
     let src = r"Before.\addcontentsline{toc}{section}{Intro}After.";
     let out = convert(src, &ConvertOptions::default()).typst;
-    assert!(out.contains("Before") && out.contains("After"),
-        "surrounding text must be preserved, got: {out}");
+    assert!(
+        out.contains("Before") && out.contains("After"),
+        "surrounding text must be preserved, got: {out}"
+    );
 }

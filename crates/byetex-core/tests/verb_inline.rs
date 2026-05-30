@@ -29,12 +29,18 @@ fn verb_bang_delimiter() {
 
 #[test]
 fn verb_no_warning() {
-    assert!(no_verb_warning(r"\verb|code|"), "\\verb should produce no warning");
+    assert!(
+        no_verb_warning(r"\verb|code|"),
+        "\\verb should produce no warning"
+    );
 }
 
 #[test]
 fn verb_star_no_warning() {
-    assert!(no_verb_warning(r"\verb*|code|"), "\\verb* should produce no warning");
+    assert!(
+        no_verb_warning(r"\verb*|code|"),
+        "\\verb* should produce no warning"
+    );
 }
 
 #[test]

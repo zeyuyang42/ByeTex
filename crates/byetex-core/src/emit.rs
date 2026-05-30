@@ -2816,7 +2816,10 @@ impl<'a> Emitter<'a> {
     /// since the listing grammar declares no structured options field).
     fn emit_listing_environment(&mut self, node: Node<'_>) -> usize {
         let mut cursor = node.walk();
-        let raw = match node.children(&mut cursor).find(|c| c.kind() == "source_code") {
+        let raw = match node
+            .children(&mut cursor)
+            .find(|c| c.kind() == "source_code")
+        {
             Some(cn) => self.src[cn.start_byte()..cn.end_byte()].to_string(),
             None => return node.end_byte(),
         };
@@ -3470,9 +3473,9 @@ impl<'a> Emitter<'a> {
         });
     }
 
-    /// Harvest a `theorem_definition` node (`\newtheorem{name}{Display}` and
     // ─── Theorem & tcolorbox macro harvesting ─────────────────────────────────
 
+    /// Harvest a `theorem_definition` node (`\newtheorem{name}{Display}` and
     /// variants) into `self.theorem_kinds` so that `emit_generic_environment`
     /// can route unknown environment names to `emit_theorem_env` instead of
     /// warning.
@@ -3543,6 +3546,8 @@ impl<'a> Emitter<'a> {
 
     // ===== Math mode =====
 
+    // ─── Math primitives & letter-boundary helpers ────────────────────────────
+
     /// Push a math-symbol replacement into `self.out`, prepending a space
     /// when the symbol starts with a letter and the last emitted character
     /// is also a letter. LaTeX writes `t\in[0,T]` with no separator; the
@@ -3550,8 +3555,6 @@ impl<'a> Emitter<'a> {
     /// adjacent letters as a single identifier, so `t` + `in` collapses to
     /// the unknown variable `tin`. Inserting a space recovers the boundary.
     ///
-    // ─── Math primitives & letter-boundary helpers ────────────────────────────
-
     /// Symbols that contain a `.` (e.g. `arrow.r`, `dots.h`, `chevron.l`)
     /// get an additional *trailing* space: Typst treats `arrow.r0` as
     /// `arrow.r` with an unknown `0` modifier, so we need to break the
@@ -4188,9 +4191,7 @@ impl<'a> Emitter<'a> {
             // `\phantom{X}` in Typst math needs `#hide[$X$]` — `hide` is a
             // content function, not a math operator, so it requires the `#`
             // escape and a math content block argument.
-            "\\phantom" | "\\hphantom" | "\\vphantom" => {
-                self.emit_math_phantom(node)
-            }
+            "\\phantom" | "\\hphantom" | "\\vphantom" => self.emit_math_phantom(node),
             "\\emph" => self.emit_math_wrap(node, "italic(", ")"),
             "\\mathop" => self.emit_math_wrap(node, "op(", ")"),
             // `\operatorname{name}` → `op("name")` — upright math text.
@@ -5864,8 +5865,12 @@ impl<'a> Emitter<'a> {
                     let (cs, rs) = table_cell_span(cell);
                     if rs > 1 {
                         // Mark every column this rowspan covers.
-                        for c in col..(col + cs).min(count) {
-                            rowspan_cols[c] = rs - 1;
+                        for slot in rowspan_cols
+                            .iter_mut()
+                            .take((col + cs).min(count))
+                            .skip(col)
+                        {
+                            *slot = rs - 1;
                         }
                     }
                     row_output.push(cell.clone());
@@ -6088,7 +6093,11 @@ impl<'a> Emitter<'a> {
             // in Typst 0.14+. A function `(..n) => none` is valid, keeps the
             // heading in the numbering counter (so @ref works), but renders
             // no visible number.
-            let num_arg = if label.is_some() { "(..n) => none" } else { "none" };
+            let num_arg = if label.is_some() {
+                "(..n) => none"
+            } else {
+                "none"
+            };
             if level == 1 {
                 let _ = write!(self.out, "#heading(numbering: {})[{}]", num_arg, title);
             } else {
@@ -6348,6 +6357,8 @@ fn push_flat<'a>(node: Node<'a>, out: &mut Vec<Node<'a>>) {
     }
 }
 
+// ─── Math / text font helpers ─────────────────────────────────────────────────
+
 /// If `node` is a TeX font-style declaration (`\bf`, `\it`, `\rm`,
 /// `\sf`, `\tt`, ...), return the Typst math wrapper that approximates
 /// its effect. These commands are *declarations* — they scope from
@@ -6359,8 +6370,6 @@ fn push_flat<'a>(node: Node<'a>, out: &mut Vec<Node<'a>>) {
 /// provides: `bold(...)`, `italic(...)`, `upright(...)`, `mono(...)`.
 /// Slant/small-caps don't have direct math equivalents — folded onto
 /// `italic`/`upright` to keep a single round-trip output.
-// ─── Math / text font helpers ─────────────────────────────────────────────────
-
 fn math_font_decl_wrapper(node: Node<'_>, src: &str) -> Option<&'static str> {
     if node.kind() != "generic_command" {
         return None;
@@ -6532,11 +6541,9 @@ fn needs_text_escape(kind: &str) -> Option<&'static str> {
     }
 }
 
-/// Extract the list of citation keys from a `citation` node. Keys are
-/// children of `curly_group_text_list`, separated by `,`.
-/// Replace characters that Typst rejects in `<label>` / `@label`
 // ─── Label, citation & graphics extraction ────────────────────────────────────
 
+/// Replace characters that Typst rejects in `<label>` / `@label`
 /// identifiers with `-`. Typst label identifiers allow ASCII
 /// letters, digits, `_`, `-`, `:`, `.`. LaTeX is more permissive
 /// — `+`, `'`, `*`, etc. appear in real arXiv `\bibitem` keys
@@ -6557,6 +6564,8 @@ pub(crate) fn sanitize_label_key(key: &str) -> String {
         .collect()
 }
 
+/// Extract the list of citation keys from a `citation` node. Keys are
+/// children of `curly_group_text_list`, separated by `,`.
 fn extract_citation_keys(node: Node<'_>, src: &str) -> Vec<String> {
     let mut keys = Vec::new();
     let mut cursor = node.walk();
@@ -6731,19 +6740,28 @@ fn normalize_graphics_length(v: &str) -> String {
     v.to_string()
 }
 
-/// Parse a LaTeX tabular column spec like `lcr` or `|l|c|r|` into a count and
-/// a vector of Typst alignment names (`"left"`, `"center"`, `"right"`).
 // ─── Tabular, math rows & math sanitization ───────────────────────────────────
 
+/// Parse a LaTeX tabular column spec like `lcr` or `|l|c|r|` into a count and
+/// a vector of Typst alignment names (`"left"`, `"center"`, `"right"`).
 fn parse_column_spec(spec: &str) -> (usize, Vec<String>) {
     let mut aligns = Vec::new();
     let bytes = spec.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
         match bytes[i] as char {
-            'l' | 'L' => { aligns.push("left".to_string()); i += 1; }
-            'c' | 'C' => { aligns.push("center".to_string()); i += 1; }
-            'r' | 'R' => { aligns.push("right".to_string()); i += 1; }
+            'l' | 'L' => {
+                aligns.push("left".to_string());
+                i += 1;
+            }
+            'c' | 'C' => {
+                aligns.push("center".to_string());
+                i += 1;
+            }
+            'r' | 'R' => {
+                aligns.push("right".to_string());
+                i += 1;
+            }
             // Paragraph/width columns (p, m, b) take {width} argument — skip
             // the argument but count the column as left-aligned.
             'p' | 'm' | 'b' | 'w' | 'W' => {
@@ -6754,7 +6772,10 @@ fn parse_column_spec(spec: &str) -> (usize, Vec<String>) {
                 }
             }
             // tabularx X column — count as left-aligned.
-            'X' => { aligns.push("left".to_string()); i += 1; }
+            'X' => {
+                aligns.push("left".to_string());
+                i += 1;
+            }
             // @{...} and !{...}: inter-column material, not data columns.
             // >{...} and <{...}: column format decorators (array package).
             '@' | '!' | '>' | '<' => {
@@ -6764,7 +6785,9 @@ fn parse_column_spec(spec: &str) -> (usize, Vec<String>) {
                 }
             }
             // Vertical rules and whitespace — ignore.
-            _ => { i += 1; }
+            _ => {
+                i += 1;
+            }
         }
     }
     (aligns.len(), aligns)
@@ -7576,6 +7599,8 @@ impl BracelessArg {
     }
 }
 
+// ─── Braceless-arg & macro machinery ──────────────────────────────────────────
+
 /// Consume one LaTeX argument starting at byte offset `start` in `src`,
 /// LaTeX-style: leading ASCII whitespace is skipped, then the next token
 /// is read as either a `\command` run, a balanced `{group}`, or one
@@ -7596,8 +7621,6 @@ impl BracelessArg {
 /// `\sqrt`, `\binom`) when filling missing brace-less args: without
 /// this guard, `$\frac{a}$` would greedily eat the closing `$` as the
 /// second argument and break the surrounding math container.
-// ─── Braceless-arg & macro machinery ──────────────────────────────────────────
-
 pub(crate) fn try_consume_math_arg(src: &str, start: usize) -> Option<(BracelessArg, usize)> {
     let bytes = src.as_bytes();
     let mut i = start;
@@ -8161,25 +8184,6 @@ fn extract_declare_math_operator_from_newcmd(
     ))
 }
 
-/// Maps the well-known math wrap commands to their Typst `(left, right)`
-/// delimiter pair. Used by the bare `command_name` branch of
-/// `emit_node` to recover the brace-less form (e.g. `_\mathcal{T}` —
-/// tree-sitter parses the `{T}` as a sibling of the enclosing
-/// subscript, so the command_name itself reaches us without a child).
-/// Decide whether a Typst math-mode subscript/superscript argument
-/// needs an explicit `(...)` wrapper. A single token (one letter or
-/// digit, optionally with one trailing `prime`-style suffix) parses
-/// correctly as `_x` / `^x`; anything more compound (function call,
-/// space-separated tokens, multi-char identifier) needs `_(...)`
-/// because `_cal(T)` reads as `_c · al(T)`.
-/// Escape the handful of ASCII characters that have special meaning
-/// inside a Typst `[...]` content block but commonly appear unescaped
-/// in table cells / caption text: `_` opens italic, `*` opens bold,
-/// `#` opens code context, `<` opens labels, `@` opens references.
-/// Already-escaped `\_` / `\*` / etc. are left alone so this is
-/// idempotent. We don't touch `[`, `]`, `{`, `}` here — the caller
-/// already balances those, and over-escaping breaks the surrounding
-/// content block.
 // ─── Command dispatch helpers ──────────────────────────────────────────────────
 
 /// Scan `content` from the end for a trailing Typst label `<key>` that was
@@ -8204,9 +8208,9 @@ fn strip_trailing_typst_label(content: &str) -> (String, Option<String>) {
     let key = &trimmed[open + 1..close];
     if key.is_empty()
         || !key.starts_with(|c: char| c.is_ascii_alphanumeric())
-        || !key
-            .bytes()
-            .all(|b| matches!(b, b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b':' | b'-' | b'_' | b'.'))
+        || !key.bytes().all(
+            |b| matches!(b, b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b':' | b'-' | b'_' | b'.'),
+        )
     {
         return (content.to_string(), None);
     }
@@ -8218,6 +8222,14 @@ fn strip_trailing_typst_label(content: &str) -> (String, Option<String>) {
     (before.to_string(), Some(key.to_string()))
 }
 
+/// Escape the handful of ASCII characters that have special meaning
+/// inside a Typst `[...]` content block but commonly appear unescaped
+/// in table cells / caption text: `_` opens italic, `*` opens bold,
+/// `#` opens code context, `<` opens labels, `@` opens references.
+/// Already-escaped `\_` / `\*` / etc. are left alone so this is
+/// idempotent. We don't touch `[`, `]`, `{`, `}` here — the caller
+/// already balances those, and over-escaping breaks the surrounding
+/// content block.
 fn escape_text_cell(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();
@@ -8240,7 +8252,7 @@ fn escape_text_cell(s: &str) -> String {
                 if in_math
                     || chars
                         .peek()
-                        .map_or(false, |c| c.is_ascii_alphabetic() || *c == '_')
+                        .is_some_and(|c| c.is_ascii_alphabetic() || *c == '_')
                 {
                     out.push('#');
                 } else {
@@ -8281,6 +8293,12 @@ fn table_cell_span(cell: &str) -> (usize, usize) {
     (colspan, rowspan)
 }
 
+/// Decide whether a Typst math-mode subscript/superscript argument
+/// needs an explicit `(...)` wrapper. A single token (one letter or
+/// digit, optionally with one trailing `prime`-style suffix) parses
+/// correctly as `_x` / `^x`; anything more compound (function call,
+/// space-separated tokens, multi-char identifier) needs `_(...)`
+/// because `_cal(T)` reads as `_c · al(T)`.
 fn needs_subscript_parens(rendered: &str) -> bool {
     if rendered.is_empty() {
         return false;
@@ -8380,6 +8398,11 @@ fn extract_def_and_record(
 
 // ─── Document class, path & package resolution ────────────────────────────────
 
+/// Maps the well-known math wrap commands to their Typst `(left, right)`
+/// delimiter pair. Used by the bare `command_name` branch of
+/// `emit_node` to recover the brace-less form (e.g. `_\mathcal{T}` —
+/// tree-sitter parses the `{T}` as a sibling of the enclosing
+/// subscript, so the command_name itself reaches us without a child).
 pub(crate) fn wrap_for_command_name(name: &str) -> Option<(&'static str, &'static str)> {
     Some(match name {
         // `\mathds` (dsfont) and `\mathbbold` (bbold) — visually
@@ -8485,11 +8508,8 @@ fn extract_latex_include_path(node: Node<'_>, src: &str) -> Option<String> {
     None
 }
 
-/// Resolve an `\input{rel}` style path against `base`. LaTeX accepts both
 // ─── Asset & bibliography filesystem probing ──────────────────────────────────
 
-/// `\input{foo}` (no extension; the `.tex` is implicit) and `\input{foo.tex}`
-/// — try the literal first, then the `.tex`-appended form.
 /// Probe the base directory for an image asset with the given stem/path.
 /// Tries the path as-is first; if it has no extension, probes common formats.
 /// Returns the resolved path on disk, or `None` if nothing is found.
@@ -8718,6 +8738,9 @@ fn probe_bib_on_disk(base: &Path, path: &str) -> Option<PathBuf> {
     None
 }
 
+/// Resolve an `\input{rel}` style path against `base`. LaTeX accepts both
+/// `\input{foo}` (no extension; the `.tex` is implicit) and `\input{foo.tex}`
+/// — try the literal first, then the `.tex`-appended form.
 fn resolve_input_path(base: &Path, raw: &str) -> Option<PathBuf> {
     let raw = raw.trim();
     if raw.is_empty() {

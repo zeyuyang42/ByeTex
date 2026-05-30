@@ -248,5 +248,9 @@ fn no_drop_only_for_math_spacing() {
 #[test]
 fn drop_only_newpage_not_in_output() {
     let out = convert_str("Before\n\\newpage\nAfter");
-    assert!(!out.typst.contains("\\newpage"), "\\newpage must not appear in output: {:?}", out.typst);
+    assert!(
+        !out.typst.contains("\\newpage"),
+        "\\newpage must not appear in output: {:?}",
+        out.typst
+    );
 }

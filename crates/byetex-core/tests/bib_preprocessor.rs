@@ -90,7 +90,11 @@ fn drops_bare_at_with_no_entry_type() {
     );
     // The flanking valid entries must survive.
     assert!(out.contains("@article{good,"), "first entry lost: {}", out);
-    assert!(out.contains("@article{also_good,"), "third entry lost: {}", out);
+    assert!(
+        out.contains("@article{also_good,"),
+        "third entry lost: {}",
+        out
+    );
 }
 
 #[test]

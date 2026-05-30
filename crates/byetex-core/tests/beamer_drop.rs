@@ -18,7 +18,10 @@ fn usetheme_no_warning() {
 
 #[test]
 fn usecolortheme_no_warning() {
-    assert!(no_unsupported_warning(r"\usecolortheme{beaver}", "\\usecolortheme"));
+    assert!(no_unsupported_warning(
+        r"\usecolortheme{beaver}",
+        "\\usecolortheme"
+    ));
 }
 
 #[test]
@@ -31,10 +34,16 @@ fn setbeamertemplate_no_warning() {
 
 #[test]
 fn atbeginsection_no_warning() {
-    assert!(no_unsupported_warning(r"\AtBeginSection[]{\tableofcontents}", "\\AtBeginSection"));
+    assert!(no_unsupported_warning(
+        r"\AtBeginSection[]{\tableofcontents}",
+        "\\AtBeginSection"
+    ));
 }
 
 #[test]
 fn subtitle_no_warning() {
-    assert!(no_unsupported_warning(r"\subtitle{My subtitle}", "\\subtitle"));
+    assert!(no_unsupported_warning(
+        r"\subtitle{My subtitle}",
+        "\\subtitle"
+    ));
 }

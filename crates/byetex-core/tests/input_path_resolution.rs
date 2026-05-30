@@ -82,7 +82,9 @@ fn nested_input_resolves_from_project_root() {
     );
     // Ensure no unresolved-include warning is present
     assert!(
-        !out.warnings.iter().any(|w| w.message.contains("could not resolve")),
+        !out.warnings
+            .iter()
+            .any(|w| w.message.contains("could not resolve")),
         "unexpected unresolved-include warning: {:?}",
         out.warnings
     );

@@ -51,14 +51,8 @@ p(x) = \begin{cases}
 \end{document}";
     let t = typst(src);
 
-    assert!(
-        !t.contains("\\)"),
-        "\\) found in output;\noutput:\n{t}"
-    );
-    assert!(
-        t.contains("cases("),
-        "cases() call missing;\noutput:\n{t}"
-    );
+    assert!(!t.contains("\\)"), "\\) found in output;\noutput:\n{t}");
+    assert!(t.contains("cases("), "cases() call missing;\noutput:\n{t}");
 }
 
 /// Existing case: `\left...\right` NOT inside cases must still work.
@@ -75,10 +69,7 @@ fn left_right_outside_cases_unchanged() {
         !t.contains("\\)"),
         "\\) found outside cases context;\noutput:\n{t}"
     );
-    assert!(
-        t.contains("/ (b)"),
-        "fraction not rendered;\noutput:\n{t}"
-    );
+    assert!(t.contains("/ (b)"), "fraction not rendered;\noutput:\n{t}");
 }
 
 /// Stray `)` inside `\frac` numerator inside `\left...\right` inside `cases`.
@@ -97,10 +88,7 @@ fn stray_paren_in_frac_numerator_inside_left_right_in_cases() {
 \end{document}";
     let t = typst(src);
 
-    assert!(
-        t.contains("cases("),
-        "cases() missing;\noutput:\n{t}"
-    );
+    assert!(t.contains("cases("), "cases() missing;\noutput:\n{t}");
     // The closing `)` of `cases(...)` must NOT be escaped to `\)`.
     let cases_start = t.find("cases(").expect("cases( not found");
     let after_cases = &t[cases_start..];

@@ -483,9 +483,7 @@ fn read_bib_term(
         b'a'..=b'z' | b'A'..=b'Z' | b'_' => {
             let id_end = bytes[pos..]
                 .iter()
-                .position(|&b| {
-                    !(b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b'.')
-                })
+                .position(|&b| !(b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b'.'))
                 .map(|p| pos + p)
                 .unwrap_or(bytes.len());
             let ident = &src[pos..id_end];
@@ -499,11 +497,7 @@ fn read_bib_term(
             };
             (content, id_end, raw)
         }
-        b => (
-            (b as char).to_string(),
-            pos + 1,
-            (b as char).to_string(),
-        ),
+        b => ((b as char).to_string(), pos + 1, (b as char).to_string()),
     }
 }
 
@@ -522,13 +516,12 @@ enum YearNorm {
 /// when no year can be extracted (e.g. "to appear", "in press").
 fn normalize_year_value(value_text: &str) -> YearNorm {
     let v = value_text.trim().trim_end_matches(',');
-    let inner = if (v.starts_with('{') && v.ends_with('}'))
-        || (v.starts_with('"') && v.ends_with('"'))
-    {
-        &v[1..v.len() - 1]
-    } else {
-        v
-    };
+    let inner =
+        if (v.starts_with('{') && v.ends_with('}')) || (v.starts_with('"') && v.ends_with('"')) {
+            &v[1..v.len() - 1]
+        } else {
+            v
+        };
     // Already a valid integer year — no change
     if !inner.is_empty() && inner.bytes().all(|b| b.is_ascii_digit()) {
         return YearNorm::Unchanged;
