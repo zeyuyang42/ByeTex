@@ -70,6 +70,10 @@ fn check_paper(arxiv_id: &str, primary_tex: &str, budget: usize) {
 //     `\verb`, clearing the 60 path warnings. Remaining 23 are dominated by 13
 //     `\linewidth` (from `\begin{minipage}[t]{\linewidth}` in the tables — a
 //     minipage-handling follow-up). Paper still compiles.
+//   2026-05-31  22820:23→10 — `minipage` `{width}` arg now skipped (was leaking
+//     a stray `{}` + a `\linewidth` warning each). The remaining 10 are genuine
+//     unsupported preamble commands (`\DeclareMathAlphabet`, `\newcolumntype`,
+//     `\clearpage`, …). Paper still compiles.
 
 #[test]
 fn arxiv_2605_22507_within_budget() {
@@ -97,7 +101,8 @@ fn arxiv_2605_22159_within_budget() {
 
 #[test]
 fn arxiv_2605_22820_within_budget() {
-    // cs.LG — exercises PDF download path (main.tex); 7 tabularx tables now
-    // rendered + path.sty `\path|...|` cells emitted as #raw (see snapshot).
-    check_paper("2605.22820", "main.tex", 23);
+    // cs.LG — exercises PDF download path (main.tex); 7 tabularx tables
+    // rendered, path.sty `\path|...|` cells as #raw, minipage width arg
+    // skipped (see snapshot).
+    check_paper("2605.22820", "main.tex", 10);
 }

@@ -3426,9 +3426,14 @@ impl<'a> Emitter<'a> {
             Some("subequations") => self.emit_subequations_env(node),
             // Transparent wrappers: emit body, no markup. `\documentclass` etc.
             // already produced warnings as separate top-level commands.
+            // `minipage` is a transparent wrapper too, but it takes a mandatory
+            // `{width}` argument (plus optional `[pos]` groups) that must be
+            // skipped — otherwise the width group leaks as a stray `{}` and the
+            // `\linewidth`/`\textwidth` inside it warns as unsupported.
+            Some("minipage") => self.emit_minipage(node),
             Some("document") | Some("center") | Some("flushleft")
             | Some("flushright") | Some("quote") | Some("quotation") | Some("verse")
-            | Some("titlepage") | Some("minipage")
+            | Some("titlepage")
             // Acknowledgements, keyword-list, and conference-specific metadata
             // blocks that carry plain content with no Typst-renderable structure.
             | Some("ack") | Some("keywords") | Some("MSCcodes") | Some("icmlauthorlist")
@@ -3549,6 +3554,58 @@ impl<'a> Emitter<'a> {
             }
         }
         self.emit_environment_body(env)
+    }
+
+    /// `\begin{minipage}[pos][height][inner-pos]{width} ... \end{minipage}` —
+    /// transparent body wrapper, but the leading optional `[...]` position
+    /// groups and the mandatory `{width}` group must be dropped (not emitted as
+    /// content). Drops everything up to and including the first curly group (the
+    /// width), then emits the remaining children as the body.
+    fn emit_minipage(&mut self, env: Node<'_>) -> usize {
+        while self.out.ends_with('\n') || self.out.ends_with(' ') || self.out.ends_with('\t') {
+            self.out.pop();
+        }
+
+        let mut cursor = env.walk();
+        let children: Vec<Node<'_>> = env
+            .children(&mut cursor)
+            .filter(|c| !matches!(c.kind(), "begin" | "end"))
+            .collect();
+
+        // The mandatory `{width}` is the FIRST curly group among the children;
+        // any optional `[pos]`/`[height]`/`[inner-pos]` groups precede it. The
+        // first such bracket is folded into the `begin` node by tree-sitter, but
+        // additional ones surface as bare `[` / text / `]` tokens — so rather
+        // than enumerate bracket node kinds, drop everything up to AND INCLUDING
+        // the first curly group, then emit the rest as the body. A well-formed
+        // minipage always has the width first, so the first curly group is never
+        // body content; a body that itself starts with `{...}` is preserved
+        // because only that first group is dropped. If there is no curly group
+        // (malformed / width omitted), emit all children.
+        let body_start = children
+            .iter()
+            .position(|c| {
+                matches!(
+                    c.kind(),
+                    "curly_group" | "curly_group_text" | "curly_group_word"
+                )
+            })
+            .map(|i| i + 1)
+            .unwrap_or(0);
+
+        let body = &children[body_start..];
+        if body.is_empty() {
+            return env.end_byte();
+        }
+        let mut last = body[0].start_byte();
+        for child in body {
+            let cs = child.start_byte();
+            self.safe_copy(last, cs);
+            last = self.emit_node(*child);
+        }
+        let end = body.last().unwrap().end_byte();
+        self.safe_copy(last, end);
+        env.end_byte()
     }
 
     /// Emit just the body of an environment (skip `begin` and `end` children).
