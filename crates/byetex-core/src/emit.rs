@@ -210,6 +210,90 @@ fn let_alias_def(old_name: &str, table: &HashMap<String, MacroDef>) -> MacroDef 
     })
 }
 
+/// Byte bounds of a `\ifX ... [\else ...] \fi` conditional, found by scanning
+/// raw source from just after the opening `\ifX`.
+struct CondBounds {
+    /// (start, end) of the matching depth-0 `\else`, if present.
+    else_span: Option<(usize, usize)>,
+    /// Byte where the matching depth-0 `\fi` begins.
+    fi_start: usize,
+    /// Byte just after the matching `\fi`.
+    fi_end: usize,
+}
+
+/// Scan `src` from `start` (just after an opening `\ifX`) for its matching
+/// depth-0 `\else` and `\fi`. Any `\if*` control word opens a nesting level
+/// and `\fi` closes one; `%` line comments are skipped so a `\fi` mentioned
+/// in a comment doesn't terminate the scan. Returns `None` if unbalanced.
+fn find_conditional_bounds(src: &str, start: usize) -> Option<CondBounds> {
+    let bytes = src.as_bytes();
+    let mut i = start;
+    let mut depth: i32 = 0;
+    let mut else_span: Option<(usize, usize)> = None;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'%' => {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            b'\\' => {
+                let cs_start = i;
+                let mut j = i + 1;
+                while j < bytes.len() && bytes[j].is_ascii_alphabetic() {
+                    j += 1;
+                }
+                if j == i + 1 {
+                    // Control symbol (`\\`, `\{`, `\%`, ...): consume both bytes.
+                    i += 2;
+                    continue;
+                }
+                let cs = &src[cs_start..j];
+                if cs == "\\fi" {
+                    if depth == 0 {
+                        return Some(CondBounds {
+                            else_span,
+                            fi_start: cs_start,
+                            fi_end: j,
+                        });
+                    }
+                    depth -= 1;
+                } else if cs == "\\else" && depth == 0 {
+                    else_span = Some((cs_start, j));
+                } else if cs.starts_with("\\if") {
+                    depth += 1;
+                }
+                i = j;
+            }
+            _ => i += 1,
+        }
+    }
+    None
+}
+
+/// Read the `\if<name>` control word following a `\newif` (skipping leading
+/// whitespace). Returns the bare flag name (`foo` for `\iffoo`) and the byte
+/// just after the flag token.
+fn read_newif_flag(src: &str, after_newif: usize) -> Option<(String, usize)> {
+    let bytes = src.as_bytes();
+    let mut i = after_newif;
+    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    if i >= bytes.len() || bytes[i] != b'\\' {
+        return None;
+    }
+    let mut j = i + 1;
+    while j < bytes.len() && bytes[j].is_ascii_alphabetic() {
+        j += 1;
+    }
+    let name = src[i..j].strip_prefix("\\if")?;
+    if name.is_empty() {
+        return None;
+    }
+    Some((name.to_string(), j))
+}
+
 /// Sentinel character emitted by `push_math_symbol` immediately after a
 /// multi-character math identifier so that `collapse_math_spaces` can
 /// later decide whether to insert a real separator (when the next char
@@ -290,6 +374,11 @@ pub(crate) struct Emitter<'a> {
     /// optional-default `\newcommand[1][default]`) are not entered into
     /// this map.
     macros: HashMap<String, MacroDef>,
+    /// `\newif\ifX` boolean flags and their current state. Keyed by the bare
+    /// name (`X`, without the `\if` prefix). `\Xtrue`/`\Xfalse` update the
+    /// state in document order; `\ifX ... \else ... \fi` emits only the taken
+    /// branch. TeX's `\if`-family is otherwise out of scope.
+    newif_flags: HashMap<String, bool>,
     /// `\newtheorem{name}{Display}` declarations harvested as we walk the
     /// source. When `emit_generic_environment` encounters an unknown env name
     /// that matches a key here, it routes to `emit_theorem_env_dyn` instead of
@@ -384,6 +473,7 @@ impl<'a> Emitter<'a> {
             base_dir,
             visited_includes: visited,
             macros: preseeded_macros,
+            newif_flags: HashMap::new(),
             theorem_kinds: HashMap::new(),
             bibliography_keys: std::collections::HashSet::new(),
             asset_refs: Vec::new(),
@@ -622,6 +712,7 @@ impl<'a> Emitter<'a> {
         let mut sub = Emitter::with_includes(src, self.source_name, self.base_dir.clone(), visited);
         sub.in_math = in_math;
         sub.macros = macros;
+        sub.newif_flags = self.newif_flags.clone();
         if increment_depth {
             sub.macro_depth = self.macro_depth + 1;
         }
@@ -1238,8 +1329,76 @@ impl<'a> Emitter<'a> {
 
     // ─── Generic commands & macro expansion ───────────────────────────────────
 
+    /// Handle `\newif` flag machinery: the `\newif\ifX` definition, the
+    /// `\Xtrue`/`\Xfalse` setters, and `\ifX ... [\else ...] \fi` conditionals
+    /// for flags defined via `\newif`. Returns `Some(resume_byte)` when `name`
+    /// is newif machinery (emitting the taken branch and/or updating state),
+    /// or `None` to fall through to normal command dispatch. TeX's builtin
+    /// `\if`-family (`\ifx`, `\ifnum`, `\iftrue`, ...) is left untouched.
+    fn try_newif_command(&mut self, node: Node<'_>, name: Option<&str>) -> Option<usize> {
+        let name = name?;
+
+        // Definition: `\newif\ifX` registers flag X (default false) and skips
+        // past the `\ifX` token so it isn't emitted or warned on.
+        if name == "\\newif" {
+            if let Some((flag, flag_end)) = read_newif_flag(self.src, node.end_byte()) {
+                self.newif_flags.entry(flag).or_insert(false);
+                self.skip_until = self.skip_until.max(flag_end);
+                return Some(flag_end);
+            }
+            return Some(node.end_byte());
+        }
+
+        let bare = name.strip_prefix('\\')?;
+
+        // Setters: `\Xtrue` / `\Xfalse` for a known flag X. Emit nothing.
+        if let Some(flag) = bare.strip_suffix("true") {
+            if self.newif_flags.contains_key(flag) {
+                self.newif_flags.insert(flag.to_string(), true);
+                return Some(node.end_byte());
+            }
+        }
+        if let Some(flag) = bare.strip_suffix("false") {
+            if self.newif_flags.contains_key(flag) {
+                self.newif_flags.insert(flag.to_string(), false);
+                return Some(node.end_byte());
+            }
+        }
+
+        // Conditional: `\ifX ... [\else ...] \fi` for a known flag X. Emit
+        // only the taken branch (re-parsed) and skip the whole region.
+        if let Some(flag) = bare.strip_prefix("if") {
+            if let Some(&state) = self.newif_flags.get(flag) {
+                if let Some(b) = find_conditional_bounds(self.src, node.end_byte()) {
+                    let then_end = b.else_span.map(|(s, _)| s).unwrap_or(b.fi_start);
+                    let kept = if state {
+                        self.src[node.end_byte()..then_end].to_string()
+                    } else if let Some((_, else_end)) = b.else_span {
+                        self.src[else_end..b.fi_start].to_string()
+                    } else {
+                        String::new()
+                    };
+                    if !kept.trim().is_empty() {
+                        let rendered = self.render_in_sub_emitter(&kept, self.in_math, false);
+                        self.out.push_str(rendered.trim_end_matches('\n'));
+                    }
+                    self.skip_until = self.skip_until.max(b.fi_end);
+                    return Some(b.fi_end);
+                }
+                // Unbalanced (no matching \fi): drop just the \ifX token.
+                return Some(node.end_byte());
+            }
+        }
+
+        None
+    }
+
     fn emit_generic_command(&mut self, node: Node<'_>) -> usize {
         let name = command_name_text(node, self.src);
+
+        if let Some(end) = self.try_newif_command(node, name.as_deref()) {
+            return end;
+        }
 
         // `\ensuremath{X}` — mode-aware inline math guard.
         // In math: render the argument directly (no extra `$` wrapper).
