@@ -10,9 +10,12 @@ For each arXiv paper:
   5. Rasterizes both PDFs with pdftoppm
   6. Stacks pages into a side-by-side composite.png for agent visual grading
 
-Usage:
-    uv run --with requests --with Pillow python scripts/visual_test.py
-    uv run --with requests --with Pillow python scripts/visual_test.py --papers 2605.22507
+Usage (add --with numpy --with scikit-image to enable the per-page SSIM
+metric; it degrades to mean_ssim=null if those aren't installed):
+    uv run --with requests --with Pillow --with numpy --with scikit-image \
+        python scripts/visual_test.py
+    uv run --with requests --with Pillow --with numpy --with scikit-image \
+        python scripts/visual_test.py --papers 2605.22507
     uv run --with requests --with Pillow python scripts/visual_test.py --skip-existing
 """
 
@@ -492,6 +495,70 @@ def pdf_structure_compare(
     }
 
 
+def page_image_similarity(truth_pages: list[Path], typst_pages: list[Path]) -> dict:
+    """Per-page SSIM between rasterized truth and typst pages.
+
+    Compares page i to page i up to the shorter list (page-count drift is
+    captured separately by page_ratio). Each pair is greyscaled and resized
+    to a common size before SSIM. Cross-engine renders never reach 1.0
+    (different fonts/justification/float placement), so use this as a
+    *relative* regression detector, not an absolute quality gate.
+
+    Degrades gracefully (mean_ssim=None) when numpy/scikit-image aren't
+    installed, so the rest of the pipeline still runs without those deps.
+    """
+    try:
+        import numpy as np
+        from skimage.metrics import structural_similarity as ssim
+    except ImportError:
+        return {
+            "mean_ssim": None,
+            "per_page_ssim": [],
+            "pages_compared": 0,
+            "skipped": "install numpy + scikit-image for SSIM",
+        }
+
+    n = min(len(truth_pages), len(typst_pages))
+    per_page: list[float] = []
+    for i in range(n):
+        a = Image.open(truth_pages[i]).convert("L")
+        b = Image.open(typst_pages[i]).convert("L")
+        # Resize both to the smaller common dims to avoid upscaling-blur bias.
+        w = min(a.width, b.width)
+        h = min(a.height, b.height)
+        a = a.resize((w, h))
+        b = b.resize((w, h))
+        score = float(ssim(np.asarray(a), np.asarray(b)))
+        per_page.append(round(score, 3))
+
+    mean = round(sum(per_page) / len(per_page), 3) if per_page else 0.0
+    return {"mean_ssim": mean, "per_page_ssim": per_page, "pages_compared": n}
+
+
+# Weights for the single corpus-wide fidelity number. Prose dominates, with
+# structure and visual layout as secondary signals. Tunable as the corpus grows.
+FIDELITY_WEIGHTS = {"word_recall": 0.4, "heading_recall": 0.3, "mean_ssim": 0.3}
+
+
+def aggregate_fidelity_score(papers: dict) -> float | None:
+    """Mean over papers (that carry all three metrics) of the weighted blend
+    0.4*word_recall + 0.3*heading_recall + 0.3*mean_ssim.
+
+    Papers missing any metric are skipped rather than scored as zero, so the
+    number reflects only papers we could actually measure. Returns None when
+    no paper has the full triple. A *relative* regression detector.
+    """
+    scores: list[float] = []
+    for p in papers.values():
+        vals = {k: p.get(k) for k in FIDELITY_WEIGHTS}
+        if any(v is None for v in vals.values()):
+            continue
+        scores.append(sum(FIDELITY_WEIGHTS[k] * vals[k] for k in FIDELITY_WEIGHTS))
+    if not scores:
+        return None
+    return round(sum(scores) / len(scores), 3)
+
+
 def build_composite(
     truth_pages: list[Path],
     typst_pages: list[Path],
@@ -753,15 +820,37 @@ def process_paper(
             word_recall_min=args.min_word_recall,
             heading_recall_min=args.min_heading_recall,
         )
+
+        # Per-page SSIM (visual/layout fidelity). Recorded always; warning-only
+        # — never part of the hard gate, since cross-engine SSIM never hits 1.0.
+        ssim_res = page_image_similarity(truth_pages, typst_pages)
+        structure["mean_ssim"] = ssim_res["mean_ssim"]
+        structure["per_page_ssim"] = ssim_res["per_page_ssim"]
+        structure["ssim_pages_compared"] = ssim_res["pages_compared"]
+        mean_ssim = ssim_res["mean_ssim"]
+        if (
+            args.min_mean_ssim > 0
+            and mean_ssim is not None
+            and mean_ssim < args.min_mean_ssim
+        ):
+            structure["ssim_below_threshold"] = True
+            print(
+                f"  [warn] mean_ssim {mean_ssim:.2f} < {args.min_mean_ssim:.2f} "
+                f"(warning only — not a gate)",
+                flush=True,
+            )
+
         summary["structure"] = structure
         (out_dir / "structure.json").write_text(
             json.dumps(structure, indent=2) + "\n"
         )
         verdict = "ok" if structure["structure_ok"] else "FAIL"
+        ssim_str = f"{mean_ssim:.2f}" if mean_ssim is not None else "n/a"
         print(
             f"  structure: jaccard={structure['word_jaccard']:.2f} "
             f"recall={structure['word_recall']:.2f} "
             f"headings={structure['heading_recall']:.2f} "
+            f"ssim={ssim_str} "
             f"page_ratio={structure['page_ratio']:.2f} → {verdict}",
             flush=True,
         )
@@ -875,6 +964,12 @@ def main() -> None:
         "--min-heading-recall", type=float, default=0.60, metavar="X",
         help="reject when fraction of truth headings substring-matched in typst's headings is below this (default: 0.60)",
     )
+    p.add_argument(
+        "--min-mean-ssim", type=float, default=0.0, metavar="X",
+        help="warning-only: print a notice when a paper's mean per-page SSIM "
+             "is below this (default: 0.0 = off). SSIM is never a hard gate — "
+             "cross-engine renders never reach 1.0.",
+    )
     args = p.parse_args()
 
     out = args.out if args.out.is_absolute() else (REPO_ROOT / args.out)
@@ -908,6 +1003,7 @@ def main() -> None:
             "word_jaccard": structure.get("word_jaccard"),
             "word_recall": structure.get("word_recall"),
             "heading_recall": structure.get("heading_recall"),
+            "mean_ssim": structure.get("mean_ssim"),
             "composite": str(out / arxiv_id.replace("/", "_") / "composite.png")
                 if summary.get("typst_ok") else None,
         }
@@ -921,11 +1017,18 @@ def main() -> None:
     typst_ok_count = sum(
         1 for v in index["papers"].values() if v.get("typst_ok")
     )
+    # Single corpus-wide fidelity number (relative regression detector).
+    fidelity = aggregate_fidelity_score(index["papers"])
+    index["fidelity_score"] = fidelity
+    flush_index(index, index_path)
+
     print(f"\nDone: {ok_count}/{len(args.papers)} fully processed.")
     print(
         f"  Stage counts: typst_ok={typst_ok_count} | "
         f"structure_ok={structure_ok_count} | overall_ok={ok_count}"
     )
+    fidelity_str = f"{fidelity:.3f}" if fidelity is not None else "n/a (no fully-measured papers)"
+    print(f"  Corpus fidelity score (0.4·recall + 0.3·headings + 0.3·ssim): {fidelity_str}")
     print(f"Index: {index_path}")
     print("Next: ask the agent to read each composite.png and write tests/visual/report.md")
 
