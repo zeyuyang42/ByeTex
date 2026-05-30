@@ -442,7 +442,13 @@ pub fn materialize_project(
         ))
     })?;
 
-    // Copy assets.
+    // Copy assets. A single `seen_keys` set is shared across every `.bib`
+    // file so a key defined in more than one of them (e.g. a master
+    // `allbib.bib` re-listing entries from `ngbib.bib`) is emitted only once —
+    // otherwise Typst's `#bibliography((a, b, c))` aborts with "duplicate
+    // bibliography keys". Files are processed in `plan.assets` order, which is
+    // the `\bibliography{...}` order, so the first file wins (matching BibTeX).
+    let mut bib_seen_keys: std::collections::HashSet<String> = std::collections::HashSet::new();
     for asset in &plan.assets {
         // Path-traversal guard: skip any asset whose source escapes base_dir.
         // `asset.source` is already canonicalised by `asset_ref_to_copy`, but
@@ -484,7 +490,7 @@ pub fn materialize_project(
             .is_some_and(|e| e.eq_ignore_ascii_case("bib"));
         if is_bib {
             let raw = std::fs::read_to_string(&asset.source)?;
-            let processed = crate::bib::preprocess_bib(&raw);
+            let processed = crate::bib::preprocess_bib_with_seen(&raw, &mut bib_seen_keys);
             std::fs::write(&dest, processed)?;
         } else {
             std::fs::copy(&asset.source, &dest)?;

@@ -36,8 +36,21 @@ use std::collections::HashMap;
 /// Rewrite a `.bib` source string so Typst's BibLaTeX parser accepts
 /// it. See module docs for the transformations applied.
 pub fn preprocess_bib(input: &str) -> String {
+    let mut seen_keys = std::collections::HashSet::new();
+    preprocess_bib_with_seen(input, &mut seen_keys)
+}
+
+/// Like [`preprocess_bib`], but threads a caller-supplied `seen_keys` set so
+/// duplicate entry keys are dropped ACROSS multiple `.bib` files, not just
+/// within one. The project layer shares a single set across every file a
+/// `\bibliography{a,b,c}` lists — matching BibTeX's first-file-wins rule and
+/// avoiding Typst's "duplicate bibliography keys" abort on `#bibliography((..))`
+/// when, e.g., a master `allbib.bib` re-defines keys also in `ngbib.bib`.
+pub fn preprocess_bib_with_seen(
+    input: &str,
+    seen_keys: &mut std::collections::HashSet<String>,
+) -> String {
     let string_defs = collect_string_defs(input);
-    let mut seen_keys: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut out = String::with_capacity(input.len() + 64);
     let mut pos = 0usize;
     let bytes = input.as_bytes();
