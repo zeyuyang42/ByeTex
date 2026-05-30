@@ -55,6 +55,42 @@ a & b \\
 }
 
 #[test]
+fn array_decorator_prefix_not_counted() {
+    // array-package `>{...}` (and `<{...}`) decorate the *next* column; they
+    // are not data columns themselves. `>{\centering}p{5cm}` is ONE column,
+    // not zero. Paper 22724 regression (bug #51).
+    let src = r"\begin{tabular}{>{\centering}p{5cm}}
+a \\
+\end{tabular}";
+    let out = convert(src);
+    assert!(
+        out.typst.contains("columns: 1"),
+        ">{{...}}p decorator must yield 1 column, got: {}",
+        out.typst
+    );
+    assert!(
+        !out.typst.contains("columns: 0"),
+        "0-column table must not appear, got: {}",
+        out.typst
+    );
+}
+
+#[test]
+fn array_decorators_with_multiple_columns() {
+    // Realistic tabularx row: a centered para column, a raw `>{}` decorator
+    // before a plain column, and a trailing `<{}` decorator. 3 data columns.
+    let src = r"\begin{tabularx}{\textwidth}{>{\centering\arraybackslash}p{3cm} >{\bfseries}l r<{\%}}
+a & b & c \\
+\end{tabularx}";
+    let out = convert(src);
+    assert!(
+        out.typst.contains("columns: 3"),
+        "decorated 3-column tabularx must yield 3 columns, got: {}",
+        out.typst
+    );
+}
+
+#[test]
 fn plain_lcr_still_works() {
     let src = r"\begin{tabular}{|l|c|r|}
 a & b & c \\

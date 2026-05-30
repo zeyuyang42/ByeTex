@@ -3430,6 +3430,11 @@ impl<'a> Emitter<'a> {
             // (which is text-mode-only and breaks the surrounding `$...$`).
             Some("array") if self.in_math => self.emit_array_in_math(node),
             Some("tabular") | Some("tabular*") | Some("array")
+            // tabularx / tabulary: same layout shape as tabular, but take a
+            // leading {width} argument before the column spec. emit_tabular
+            // already skips that width group (see `needs_skip`); without this
+            // dispatch arm the env fell through and its whole body was dropped.
+            | Some("tabularx") | Some("tabulary")
             // tblr (tabularray): same layout shape as tabular; leading
             // key=value options group is ignored if emit_tabular trips on it.
             | Some("tblr")
@@ -6083,7 +6088,11 @@ impl<'a> Emitter<'a> {
                     "generic_environment" => {
                         if matches!(
                             environment_name(child, self.src).as_deref(),
-                            Some("tabular") | Some("tabular*") | Some("array")
+                            Some("tabular")
+                                | Some("tabular*")
+                                | Some("tabularx")
+                                | Some("tabulary")
+                                | Some("array")
                         ) && nested_tabular.is_none()
                         {
                             nested_tabular = Some(child);

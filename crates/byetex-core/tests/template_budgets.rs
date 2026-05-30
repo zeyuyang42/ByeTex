@@ -60,6 +60,12 @@ fn check_paper(arxiv_id: &str, primary_tex: &str, budget: usize) {
 
 // Budgets snapshot:
 //   arxiv-baseline-2026-05-27  22507:32  22557:14  22776:134  22159:478  22820:17
+//   2026-05-31  22820:17→83 — tabularx/tabulary now dispatch to emit_tabular
+//     (previously dropped wholesale). 22820 has 7 tabularx tables whose cells
+//     were silently discarded; rendering them recovers the content (paper still
+//     compiles) but surfaces pre-existing unhandled commands inside the cells:
+//     60 `\path|...|` (path package, verb-like) + 13 `\linewidth`. Those are
+//     tracked as a separate warning-reduction follow-up, not tabularx defects.
 
 #[test]
 fn arxiv_2605_22507_within_budget() {
@@ -87,6 +93,7 @@ fn arxiv_2605_22159_within_budget() {
 
 #[test]
 fn arxiv_2605_22820_within_budget() {
-    // cs.LG — exercises PDF download path (main.tex)
-    check_paper("2605.22820", "main.tex", 17);
+    // cs.LG — exercises PDF download path (main.tex); 7 tabularx tables now
+    // rendered (see budget-snapshot note above).
+    check_paper("2605.22820", "main.tex", 83);
 }
