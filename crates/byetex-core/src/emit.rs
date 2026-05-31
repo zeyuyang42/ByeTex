@@ -1371,6 +1371,15 @@ impl<'a> Emitter<'a> {
             return node.end_byte();
         }
 
+        // `\usetikzlibrary{...}` — preamble plumbing for TikZ, no Typst
+        // equivalent. tree-sitter-latex gives this its own `tikz_library_import`
+        // node kind (not a `generic_command`), so without this arm it would
+        // fall through to the default verbatim copy and leak into the body.
+        // Drop it silently, like `\usepackage{tikz}`.
+        if node.kind() == "tikz_library_import" {
+            return node.end_byte();
+        }
+
         // `\documentclass[opts]{class}` — capture the class (drives author
         // parsing) and scalar layout options (font/paper size). The source
         // line itself is dropped from the output.
