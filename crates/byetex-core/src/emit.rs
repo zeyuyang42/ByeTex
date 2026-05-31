@@ -39,6 +39,33 @@ pub(crate) struct MacroDef {
     pub optional_defaults: HashMap<usize, String>,
 }
 
+/// Walk `source` once and collect every label key referenced by a
+/// `\ref`/`\cref`/`\eqref`/`\autoref`/`\pageref` (all `label_reference`
+/// nodes), sanitized. Used by the project-mode pre-scan so a `\ref` in one
+/// file is known when the labelled section in another file is emitted.
+pub(crate) fn harvest_referenced_labels_from_source(source: &str) -> HashSet<String> {
+    let tree = crate::parser::parse(source);
+    let mut out: HashSet<String> = HashSet::new();
+    let mut stack: Vec<Node<'_>> = vec![tree.root_node()];
+    while let Some(n) = stack.pop() {
+        if n.kind() == "label_reference" {
+            if let Some((keys, _)) = extract_label_ref_keys_and_end(n, source) {
+                for k in keys {
+                    let s = sanitize_label_key(&k);
+                    if !s.is_empty() {
+                        out.insert(s);
+                    }
+                }
+            }
+        }
+        let mut cursor = n.walk();
+        for c in n.children(&mut cursor) {
+            stack.push(c);
+        }
+    }
+    out
+}
+
 /// Walk `source` once and collect every `\newcommand` / `\def`
 /// declaration into a fresh table. Used by the project-mode pre-scan
 /// (see `project::harvest_project_macros`) so macros defined in
@@ -379,6 +406,12 @@ pub(crate) struct Emitter<'a> {
     /// state in document order; `\ifX ... \else ... \fi` emits only the taken
     /// branch. TeX's `\if`-family is otherwise out of scope.
     newif_flags: HashMap<String, bool>,
+    /// Sanitized label keys referenced anywhere by `\ref`/`\cref`/`\eqref`/
+    /// `\autoref`/`\pageref`. Populated before emit (prepass on the main tree
+    /// plus a project-wide pre-scan). When a section/figure carries multiple
+    /// `\label` aliases — and Typst keeps only one per element — we attach the
+    /// alias that is actually referenced so the reference resolves.
+    referenced_labels: HashSet<String>,
     /// `\newtheorem{name}{Display}` declarations harvested as we walk the
     /// source. When `emit_generic_environment` encounters an unknown env name
     /// that matches a key here, it routes to `emit_theorem_env_dyn` instead of
@@ -474,6 +507,7 @@ impl<'a> Emitter<'a> {
             visited_includes: visited,
             macros: preseeded_macros,
             newif_flags: HashMap::new(),
+            referenced_labels: HashSet::new(),
             theorem_kinds: HashMap::new(),
             bibliography_keys: std::collections::HashSet::new(),
             asset_refs: Vec::new(),
@@ -488,6 +522,13 @@ impl<'a> Emitter<'a> {
     /// Walk the entire AST *before* `emit_root`, harvesting ALL macro
     /// definitions into `self.macros`. This ensures macros used before their
     /// definition (forward references) are available at emit time.
+    /// Seed labels referenced across the whole project (from a pre-scan of
+    /// every source file) so cross-file `\ref`s inform multi-label attachment
+    /// even when the `\ref` and the labelled section live in different files.
+    pub(crate) fn seed_referenced_labels(&mut self, refs: HashSet<String>) {
+        self.referenced_labels.extend(refs);
+    }
+
     pub(crate) fn prepass_collect(&mut self, root: Node<'_>) {
         // PR-3: harvest bibliography keys from any `.bib` file in
         // base_dir so `emit_citation` can validate `\cite{key}` calls
@@ -554,6 +595,18 @@ impl<'a> Emitter<'a> {
                     if let Some((new_name, old_name)) = extract_let(n, self.src) {
                         let def = let_alias_def(&old_name, &self.macros);
                         self.macros.entry(new_name).or_insert(def);
+                    }
+                }
+                "label_reference" => {
+                    // Record which labels are `\ref`'d so multi-label sections
+                    // can attach the referenced alias (see emit_section).
+                    if let Some((keys, _)) = extract_label_ref_keys_and_end(n, self.src) {
+                        for k in keys {
+                            let s = sanitize_label_key(&k);
+                            if !s.is_empty() {
+                                self.referenced_labels.insert(s);
+                            }
+                        }
                     }
                 }
                 "generic_command" => {
@@ -732,6 +785,7 @@ impl<'a> Emitter<'a> {
         sub.in_math = in_math;
         sub.macros = macros;
         sub.newif_flags = self.newif_flags.clone();
+        sub.referenced_labels = self.referenced_labels.clone();
         if increment_depth {
             sub.macro_depth = self.macro_depth + 1;
         }
@@ -3035,6 +3089,10 @@ impl<'a> Emitter<'a> {
         // previously-processed \input file (e.g. macros.tex) are recognisable
         // when they appear in a later sibling include (e.g. sections/04_…tex).
         sub.theorem_kinds = self.theorem_kinds.clone();
+        // Inherit project-wide referenced labels so a `\section` with multiple
+        // `\label`s in this included file attaches the alias that some other
+        // file `\ref`s (see pick_label_to_attach).
+        sub.referenced_labels = self.referenced_labels.clone();
         sub.emit_root(tree.root_node());
         // Merge the child's body and state back into the parent.
         if !self.out.ends_with('\n') && !self.out.is_empty() {
@@ -6542,6 +6600,19 @@ impl<'a> Emitter<'a> {
 
     // ─── Sectioning ───────────────────────────────────────────────────────────
 
+    /// Of several `\label` aliases on one element, choose the one to attach
+    /// (Typst keeps a single label per element): the first alias that is
+    /// referenced anywhere by a `\ref`-family command, else the first label.
+    /// Matching is on the sanitized key, since that's what both `<label>` and
+    /// `@ref` use.
+    fn pick_label_to_attach(&self, labels: &[String]) -> Option<String> {
+        labels
+            .iter()
+            .find(|l| self.referenced_labels.contains(&sanitize_label_key(l)))
+            .or_else(|| labels.first())
+            .cloned()
+    }
+
     fn emit_section(&mut self, node: Node<'_>) -> usize {
         let kind = node.kind();
         let level = section_level(kind);
@@ -6554,7 +6625,10 @@ impl<'a> Emitter<'a> {
         // Everything after the first body-shaped child is the section's content.
         let mut starred = false;
         let mut title = String::new();
-        let mut label: Option<String> = None;
+        // All `\label` aliases on this heading. Typst keeps only one label per
+        // element, so after collection we attach the alias that is actually
+        // `\ref`'d (or the first when none is referenced).
+        let mut labels: Vec<String> = Vec::new();
         let mut body_start_idx = children.len();
 
         for (i, child) in children.iter().enumerate() {
@@ -6583,14 +6657,14 @@ impl<'a> Emitter<'a> {
                     // e.g. `\subsection{T}%\n\label{k}`. Skip so the loop
                     // reaches the label_definition that follows.
                 }
-                "label_definition" if label.is_none() => {
-                    label = extract_label_name(*child, self.src);
-                }
                 "label_definition" => {
-                    // Extra sibling labels on the same heading: consume
-                    // silently. Typst's "last label wins" rule would drop
-                    // the primary label if these float free; skip them here
-                    // so they never become body content.
+                    // Collect every label alias (the chosen one is decided
+                    // after the full sweep — see pick_label_to_attach).
+                    if let Some(k) = extract_label_name(*child, self.src) {
+                        if !labels.contains(&k) {
+                            labels.push(k);
+                        }
+                    }
                 }
                 // Bug #35: tree-sitter mis-parses curly groups whose
                 // key contains `_` (e.g. `\ref{thm:UAP_general_dim}`
@@ -6689,10 +6763,10 @@ impl<'a> Emitter<'a> {
                 if key.is_empty() {
                     break;
                 }
-                // First label found becomes the heading label; subsequent
-                // ones are consumed silently.
-                if label.is_none() {
-                    label = Some(key);
+                // Collect every consecutive sibling label alias; consume them
+                // all so none leaks as body content.
+                if !labels.contains(&key) {
+                    labels.push(key);
                 }
                 self.skip_until = self.skip_until.max(j + 1);
                 i = j + 1;
@@ -6711,13 +6785,17 @@ impl<'a> Emitter<'a> {
             }
         }
 
+        // Pick the single label to attach: the first alias that is `\ref`'d
+        // anywhere (so the reference resolves), else the first label.
+        let chosen_label = self.pick_label_to_attach(&labels);
+
         if starred {
             // A starred section with a label must still be referenceable via
             // @label. Typst's `numbering: none` makes headings unreferenceable
             // in Typst 0.14+. A function `(..n) => none` is valid, keeps the
             // heading in the numbering counter (so @ref works), but renders
             // no visible number.
-            let num_arg = if label.is_some() {
+            let num_arg = if chosen_label.is_some() {
                 "(..n) => none"
             } else {
                 "none"
@@ -6737,7 +6815,7 @@ impl<'a> Emitter<'a> {
             }
             let _ = write!(self.out, " {}", title);
         }
-        if let Some(l) = &label {
+        if let Some(l) = &chosen_label {
             let _ = write!(self.out, " <{}>", l);
         }
         self.out.push_str("\n\n");

@@ -7,11 +7,11 @@
 //!
 //! The materializer lives in `byetex-cli` to keep IO out of the library crate.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::emit::MacroDef;
-use crate::{convert, convert_with_macros, AssetKind, AssetRef, ConvertOptions, Warning};
+use crate::{convert_with_macros, AssetKind, AssetRef, ConvertOptions, Warning};
 
 /// A single file that must be copied from the source project into the output.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -125,7 +125,11 @@ pub fn plan_project(main_tex: &Path, no_toml: bool) -> Result<ProjectPlan, Proje
         source_name: Some(main_tex.display().to_string()),
         base_dir: Some(base_dir.clone()),
     };
-    let out = convert(&source, &opts);
+    // Pre-scan sibling files for `\ref` targets so cross-file multi-label
+    // sections attach the referenced alias (the `\ref` and the labelled
+    // `\section` often live in different `\input`'d files).
+    let refs = harvest_project_referenced_labels(&base_dir).unwrap_or_default();
+    let out = convert_with_macros(&source, &opts, HashMap::new(), refs);
 
     let assets = out
         .asset_refs
@@ -323,6 +327,23 @@ pub(crate) fn harvest_project_macros(
     Ok(merged)
 }
 
+/// Pre-scan every `.tex` in the tree for labels referenced by
+/// `\ref`/`\cref`/`\eqref`/... so a reference in one file informs which alias
+/// a multi-`\label` section in another file should attach. Unreadable files
+/// are skipped silently.
+pub(crate) fn harvest_project_referenced_labels(
+    dir: &Path,
+) -> Result<HashSet<String>, ProjectError> {
+    let files = walk_project_files(dir, &["tex"])?;
+    let mut refs: HashSet<String> = HashSet::new();
+    for path in files {
+        if let Ok(source) = std::fs::read_to_string(&path) {
+            refs.extend(crate::emit::harvest_referenced_labels_from_source(&source));
+        }
+    }
+    Ok(refs)
+}
+
 /// Plan a conversion when the caller has a project directory rather
 /// than a specific main `.tex` file.
 ///
@@ -339,13 +360,14 @@ pub(crate) fn harvest_project_macros(
 pub fn plan_project_from_dir(dir: &Path, no_toml: bool) -> Result<ProjectPlan, ProjectError> {
     let entry = detect_entry_file(dir)?;
     let preseeded = harvest_project_macros(dir)?;
+    let refs = harvest_project_referenced_labels(dir).unwrap_or_default();
 
     let source = std::fs::read_to_string(&entry)?;
     let opts = ConvertOptions {
         source_name: Some(entry.display().to_string()),
         base_dir: Some(dir.to_path_buf()),
     };
-    let out = convert_with_macros(&source, &opts, preseeded);
+    let out = convert_with_macros(&source, &opts, preseeded, refs);
 
     let assets = out
         .asset_refs
