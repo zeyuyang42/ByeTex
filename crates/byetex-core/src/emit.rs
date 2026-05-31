@@ -358,18 +358,23 @@ const MATH_WORD_BOUNDARY: char = '\u{17}';
 
 /// Self-contained "clean neutral article" preamble (Task 1). Emits only native
 /// Typst set/show rules — no `@preview` imports, compiles on stock Typst with
-/// no packages or `typst.toml`. Intentionally source-agnostic with fixed
-/// sensible defaults; Task 2 will layer source-derived geometry (columns,
-/// margins, font size) on top. Heading *numbering* is set by `finish()`, not
-/// here, so there is a single `#set heading(numbering)` site.
-fn build_neutral_preamble() -> &'static str {
-    "#set page(paper: \"us-letter\", margin: (x: 1in, y: 1in))\n\
-     #set text(font: \"New Computer Modern\", size: 11pt)\n\
-     #set par(justify: true, leading: 0.65em, first-line-indent: 1.2em)\n\
-     #show heading.where(level: 1): set text(size: 1.3em, weight: \"bold\")\n\
-     #show heading.where(level: 2): set text(size: 1.15em, weight: \"bold\")\n\
-     #show heading.where(level: 3): set text(size: 1em, weight: \"bold\")\n\
-     #show heading: it => block(above: 1.2em, below: 0.6em, it)\n\n"
+/// no packages or `typst.toml`. Scalar layout (paper size, font size) is taken
+/// from `layout` when the source's `\documentclass` requested it (Task 2),
+/// otherwise the neutral defaults (us-letter, 11pt) are kept. Heading
+/// *numbering* is set by `finish()`, not here, so there is a single
+/// `#set heading(numbering)` site.
+fn build_neutral_preamble(layout: &crate::class_map::Layout) -> String {
+    let paper = layout.paper.unwrap_or("us-letter");
+    let font_size = layout.font_size.unwrap_or("11pt");
+    format!(
+        "#set page(paper: \"{paper}\", margin: (x: 1in, y: 1in))\n\
+         #set text(font: \"New Computer Modern\", size: {font_size})\n\
+         #set par(justify: true, leading: 0.65em, first-line-indent: 1.2em)\n\
+         #show heading.where(level: 1): set text(size: 1.3em, weight: \"bold\")\n\
+         #show heading.where(level: 2): set text(size: 1.15em, weight: \"bold\")\n\
+         #show heading.where(level: 3): set text(size: 1em, weight: \"bold\")\n\
+         #show heading: it => block(above: 1.2em, below: 0.6em, it)\n\n"
+    )
 }
 
 pub(crate) struct Emitter<'a> {
@@ -420,9 +425,12 @@ pub(crate) struct Emitter<'a> {
     /// detection and `\input` expansion have completed.
     raw_authors: Vec<String>,
     /// LaTeX document class detected from `\documentclass[opts]{class}` and
-    /// refined by `\usepackage{...}` calls. Drives the Typst Universe template
-    /// import emitted in `finish()`.
+    /// refined by `\usepackage{...}` calls. Drives per-class author parsing and
+    /// retained as a layout hint.
     detected_class: DocClass,
+    /// Scalar layout overrides (font size, paper size) derived from the
+    /// `\documentclass[opts]`; applied on top of the neutral preamble.
+    layout: crate::class_map::Layout,
     /// Directory used to resolve `\input{...}` / `\include{...}` paths. When
     /// `Some`, the emitter expands those directives inline; when `None`, it
     /// drops them with a `needs_manual_review` warning (the v0.1 behaviour
@@ -555,6 +563,7 @@ impl<'a> Emitter<'a> {
             metadata: DocumentMetadata::default(),
             raw_authors: Vec::new(),
             detected_class: DocClass::Unknown,
+            layout: crate::class_map::Layout::default(),
             root_dir: base_dir.clone(),
             base_dir,
             visited_includes: visited,
@@ -733,7 +742,7 @@ impl<'a> Emitter<'a> {
             let title_block = std::mem::take(&mut self.out);
             // Self-contained preamble first, then this document's numbering
             // rules (LaTeX numbers sections by default), then title + body.
-            self.out.push_str(build_neutral_preamble());
+            self.out.push_str(&build_neutral_preamble(&self.layout));
             self.out.push_str("#set heading(numbering: \"1.\")\n");
             if self.needs_equation_numbering {
                 self.out.push_str("#set math.equation(numbering: \"(1)\")\n");
@@ -1343,12 +1352,13 @@ impl<'a> Emitter<'a> {
             return node.end_byte();
         }
 
-        // `\documentclass[opts]{class}` — capture class + options so we can
-        // emit the matching Typst Universe template in `finish()`. The
-        // source line itself is dropped from the output.
+        // `\documentclass[opts]{class}` — capture the class (drives author
+        // parsing) and scalar layout options (font/paper size). The source
+        // line itself is dropped from the output.
         if node.kind() == "class_include" {
             self.saw_document_class = true;
             let (class, opts) = extract_class_and_options(node, self.src);
+            self.layout = crate::class_map::Layout::from_class_options(&opts);
             if let Some(c) = class {
                 self.detected_class = DocClass::from_class(&c, &opts);
             }
