@@ -83,7 +83,7 @@ pub enum AssetKind {
 }
 
 pub fn convert(source: &str, opts: &ConvertOptions) -> ConvertOutput {
-    convert_with_macros(source, opts, HashMap::new())
+    convert_with_macros(source, opts, HashMap::new(), HashSet::new())
 }
 
 /// Internal variant of [`convert`] that lets the project layer pre-seed
@@ -99,6 +99,7 @@ pub(crate) fn convert_with_macros(
     source: &str,
     opts: &ConvertOptions,
     preseeded_macros: HashMap<String, emit::MacroDef>,
+    preseeded_refs: HashSet<String>,
 ) -> ConvertOutput {
     let tree = parser::parse(source);
     let source_name = opts.source_name.as_deref().unwrap_or("<input>");
@@ -110,6 +111,9 @@ pub(crate) fn convert_with_macros(
         visited,
         preseeded_macros,
     );
+    // Seed project-wide referenced labels before the prepass so a `\ref` in
+    // one file informs multi-label attachment for a section in another.
+    emitter.seed_referenced_labels(preseeded_refs);
     let root = tree.root_node();
     emitter.prepass_collect(root);
     emitter.emit_root(root);
