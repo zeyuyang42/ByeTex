@@ -5,7 +5,9 @@
 //! is `<tischrödi>`. But `post_process_typography`'s `<…>` guard used to accept
 //! only ASCII label chars, so it escaped `<tischrödi>` → `\<tischrödi>` (literal
 //! text). The matching `@tischrödi` reference then aborted compilation with
-//! "label does not exist". arXiv:2605.22584 and 2605.22738 hit this.
+//! "label does not exist". arXiv:2605.22738 hit this (now fixed); 2605.22584
+//! also had two `ö` labels fixed here, though it still fails for an unrelated
+//! comma-in-label-name bug (`\label{calc_annihi,crea}`).
 
 use byetex_core::{convert, ConvertOptions};
 

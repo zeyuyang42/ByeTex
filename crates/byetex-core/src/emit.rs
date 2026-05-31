@@ -9401,11 +9401,12 @@ fn strip_trailing_typst_label(content: &str) -> (String, Option<String>) {
         None => return (content.to_string(), None),
     };
     let key = &trimmed[open + 1..close];
+    // Use the same valid-label-char test as `sanitize_label_key` / the
+    // typography guard (Unicode-aware) so a hoisted theorem label with a
+    // non-ASCII letter is recognised consistently.
     if key.is_empty()
-        || !key.starts_with(|c: char| c.is_ascii_alphanumeric())
-        || !key.bytes().all(
-            |b| matches!(b, b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b':' | b'-' | b'_' | b'.'),
-        )
+        || !key.starts_with(|c: char| c.is_alphanumeric())
+        || !key.chars().all(is_typst_label_char)
     {
         return (content.to_string(), None);
     }
