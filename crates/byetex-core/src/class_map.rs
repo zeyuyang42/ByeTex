@@ -128,6 +128,24 @@ impl DocClass {
         }
         self
     }
+
+    /// Whether this class lays out its body in two columns by default (absent an
+    /// explicit `onecolumn`/`twocolumn` override). Conservative: only the
+    /// classes that are reliably two-column return `true`.
+    pub fn default_two_column(&self) -> bool {
+        match self {
+            // IEEEtran is two-column for conference, journal and technote.
+            Self::IeeeTran { .. } => true,
+            // acmart: the proceedings formats are two-column; the journal /
+            // manuscript formats (acmsmall/acmlarge/acmtog/manuscript) are not.
+            Self::AcmArt { format } => {
+                matches!(format.as_str(), "sigconf" | "sigplan" | "sigchi" | "sigchi-a")
+            }
+            // ICML camera-ready is two-column.
+            Self::Icml => true,
+            _ => false,
+        }
+    }
 }
 
 /// Scalar, source-derived layout overrides for the neutral preamble (Task 2,
@@ -140,6 +158,10 @@ pub(crate) struct Layout {
     pub paper: Option<&'static str>,
     /// Base font size from `\documentclass[10pt|11pt|12pt]`.
     pub font_size: Option<&'static str>,
+    /// Explicit column request from `\documentclass[twocolumn|onecolumn]`.
+    /// `Some(true)` = twocolumn, `Some(false)` = onecolumn, `None` = defer to
+    /// the class default ([`DocClass::default_two_column`]).
+    pub two_column: Option<bool>,
 }
 
 impl Layout {
@@ -153,9 +175,20 @@ impl Layout {
                 layout.paper = Some(p);
             } else if let Some(s) = map_font_size_option(opt) {
                 layout.font_size = Some(s);
+            } else if opt == "twocolumn" {
+                layout.two_column = Some(true);
+            } else if opt == "onecolumn" {
+                layout.two_column = Some(false);
             }
         }
         layout
+    }
+
+    /// Resolve the effective column count given the detected class: an explicit
+    /// `twocolumn`/`onecolumn` option wins, otherwise fall back to the class's
+    /// own default.
+    pub fn is_two_column(&self, class: &DocClass) -> bool {
+        self.two_column.unwrap_or_else(|| class.default_two_column())
     }
 }
 

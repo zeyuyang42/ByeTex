@@ -748,8 +748,20 @@ impl<'a> Emitter<'a> {
                 self.out.push_str("#set math.equation(numbering: \"(1)\")\n");
             }
             self.out.push('\n');
+            // The title block stays full-width; a two-column document wraps only
+            // the body in `#columns(2)[...]` (mirrors LaTeX's full-width title
+            // over a two-column body).
             self.out.push_str(&title_block);
-            self.out.push_str(&body);
+            if self.layout.is_two_column(&self.detected_class) {
+                self.out.push_str("#columns(2)[\n");
+                self.out.push_str(body.trim_start_matches('\n'));
+                if !self.out.ends_with('\n') {
+                    self.out.push('\n');
+                }
+                self.out.push_str("]\n");
+            } else {
+                self.out.push_str(&body);
+            }
             // Numbering is fully emitted above; don't double-prepend below.
             self.needs_heading_numbering = false;
             self.needs_equation_numbering = false;
