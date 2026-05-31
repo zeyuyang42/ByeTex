@@ -2194,13 +2194,21 @@ impl<'a> Emitter<'a> {
             // verbatim through the default copy path. The region never produces
             // renderable body content, so skip it wholesale by jumping the
             // cursor past the matching `\makeatother` (via `skip_until`).
-            // `\newcommand`-family macros defined inside are still harvested by
-            // the independent source prepass, so their body uses keep expanding.
-            // If there's no matching `\makeatother`, just drop the lone token so
-            // we don't swallow the rest of the document.
+            //
+            // But definitions inside the region (macros, `\def`, `\let`,
+            // `\newtheorem`, `\newif` flags, tcolorbox/siam envs) must still be
+            // registered before we stop walking it — the emit walk normally does
+            // that node-by-node as it renders, and `\input` child emitters have
+            // no prepass to fall back on (so e.g. a `\newcommand` inside a
+            // `\makeatletter` block of an `\input`ed file would otherwise be
+            // dropped). `harvest_definitions` re-parses the region and registers
+            // them, parent-wins. If there's no matching `\makeatother`, drop just
+            // the lone token so we don't swallow the rest of the document.
             Some("\\makeatletter") => {
                 if let Some(end) = find_makeatother_end(self.src, node.end_byte()) {
-                    self.skip_until = end;
+                    let region = &self.src[node.end_byte()..end];
+                    self.harvest_definitions(region);
+                    self.skip_until = self.skip_until.max(end);
                     end
                 } else {
                     node.end_byte()
@@ -2412,14 +2420,14 @@ impl<'a> Emitter<'a> {
             // harvest `{name}{Display}` into theorem_kinds so the env is routed
             // correctly when encountered in the body.
             Some("\\newsiamremark") | Some("\\newsiamthm") => {
-                self.harvest_generic_theorem_cmd(node);
+                self.harvest_generic_theorem_cmd(node, self.src);
                 node.end_byte()
             }
             // \newtcolorbox{name}{opts} / \newmdenv{name}{opts}: harvest the
             // env name only. The body of any `\begin{name}...\end{name}` is
             // then passed through transparently (empty display = transparent sentinel).
             Some("\\newtcolorbox") | Some("\\newmdenv") => {
-                self.harvest_tcolorbox_decl(node);
+                self.harvest_tcolorbox_decl(node, self.src);
                 node.end_byte()
             }
             // `\newcommandx` (xargs/xargspec package) parses as a bare
@@ -4315,18 +4323,90 @@ impl<'a> Emitter<'a> {
         }
     }
 
+    /// Harvest every definition (macros, `\def`, `\let`, theorems, `\newif`
+    /// flags, tcolorbox/siam envs) from a standalone `source` fragment into the
+    /// emitter's tables, parent-wins (existing entries are never overwritten).
+    ///
+    /// Used to register the contents of a skipped `\makeatletter ... \makeatother`
+    /// region: the normal emit walk performs these registrations node-by-node as
+    /// it renders, but the region is skipped from rendering, and `\input` child
+    /// emitters run no prepass to fall back on. `source` is parsed as its own
+    /// fragment, so all byte offsets stay self-consistent.
+    fn harvest_definitions(&mut self, source: &str) {
+        let tree = crate::parser::parse(source);
+        let mut stack: Vec<Node<'_>> = vec![tree.root_node()];
+        while let Some(n) = stack.pop() {
+            match n.kind() {
+                "new_command_definition" => {
+                    if let Some((name, def)) = extract_newcommand(n, source) {
+                        self.macros.entry(name).or_insert(def);
+                    }
+                }
+                "old_command_definition" => {
+                    let mut harvested: HashMap<String, MacroDef> = HashMap::new();
+                    let _ = extract_def_and_record(n, source, &mut harvested);
+                    for (k, v) in harvested {
+                        self.macros.entry(k).or_insert(v);
+                    }
+                }
+                "let_command_definition" => {
+                    if let Some((new_name, old_name)) = extract_let(n, source) {
+                        let def = let_alias_def(&old_name, &self.macros);
+                        self.macros.entry(new_name).or_insert(def);
+                    }
+                }
+                "theorem_definition" => {
+                    if let Some((name, display)) = extract_theorem_def(n, source) {
+                        self.theorem_kinds.entry(name).or_insert(display);
+                    }
+                }
+                "generic_command" => {
+                    match command_name_text(n, source).as_deref() {
+                        Some("\\newif") => {
+                            if let Some((flag, _)) = read_newif_flag(source, n.end_byte()) {
+                                self.newif_flags.entry(flag).or_insert(false);
+                            }
+                        }
+                        Some("\\newcommandx") => {
+                            if let Some((name, def)) = extract_newcommandx(n, source) {
+                                self.macros.entry(name).or_insert(def);
+                            }
+                        }
+                        Some("\\newtcolorbox") | Some("\\newmdenv") => {
+                            self.harvest_tcolorbox_decl(n, source);
+                        }
+                        Some("\\newsiamremark") | Some("\\newsiamthm") => {
+                            self.harvest_generic_theorem_cmd(n, source);
+                        }
+                        _ => {}
+                    }
+                    let mut cursor = n.walk();
+                    for c in n.children(&mut cursor) {
+                        stack.push(c);
+                    }
+                }
+                _ => {
+                    let mut cursor = n.walk();
+                    for c in n.children(&mut cursor) {
+                        stack.push(c);
+                    }
+                }
+            }
+        }
+    }
+
     /// Harvest `\newtcolorbox{name}{opts}` and `\newmdenv{name}{opts}`: record
     /// the env name in `theorem_kinds` with an empty-string sentinel so that
     /// any `\begin{name}...\end{name}` is treated as transparent (body
     /// pass-through) rather than triggering an `UnsupportedEnvironment` warning.
-    fn harvest_tcolorbox_decl(&mut self, node: Node<'_>) {
+    fn harvest_tcolorbox_decl(&mut self, node: Node<'_>, source: &str) {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             if matches!(
                 child.kind(),
                 "curly_group" | "curly_group_text" | "curly_group_text_list"
             ) {
-                let raw = &self.src[child.start_byte()..child.end_byte()];
+                let raw = &source[child.start_byte()..child.end_byte()];
                 let name = raw
                     .trim_matches(|c: char| c == '{' || c == '}')
                     .trim()
@@ -4344,7 +4424,7 @@ impl<'a> Emitter<'a> {
     /// `\newsiamthm{name}{Display}`) from a generic_command node into
     /// `self.theorem_kinds`. These commands share the same two-curly-group
     /// signature as `\newtheorem`.
-    fn harvest_generic_theorem_cmd(&mut self, node: Node<'_>) {
+    fn harvest_generic_theorem_cmd(&mut self, node: Node<'_>, source: &str) {
         let mut cursor = node.walk();
         let mut groups: Vec<(usize, usize)> = Vec::new();
         for child in node.children(&mut cursor) {
@@ -4361,11 +4441,11 @@ impl<'a> Emitter<'a> {
         let [name_range, display_range] = groups.as_slice() else {
             return;
         };
-        let name = self.src[name_range.0..name_range.1]
+        let name = source[name_range.0..name_range.1]
             .trim_matches(|c: char| c == '{' || c == '}')
             .trim()
             .to_string();
-        let display = self.src[display_range.0..display_range.1]
+        let display = source[display_range.0..display_range.1]
             .trim_matches(|c: char| c == '{' || c == '}')
             .trim()
             .to_string();
@@ -9481,14 +9561,44 @@ pub(crate) fn wrap_for_command_name(name: &str) -> Option<(&'static str, &'stati
     })
 }
 
-/// Byte offset just past the first `\makeatother` at or after `from`, or `None`
-/// if there is no closing `\makeatother`. Used to skip a `\makeatletter` region
-/// wholesale.
+/// Byte offset just past the first `\makeatother` *control word* at or after
+/// `from`, or `None` if there is no closing `\makeatother`. Used to skip a
+/// `\makeatletter` region wholesale.
+///
+/// Scans like [`find_conditional_bounds`]: `%` line comments are skipped (so a
+/// `\makeatother` mentioned in a comment doesn't end the region early), and the
+/// match is on the whole control word (so `\makeatotherwise` is not mistaken
+/// for the closer).
 fn find_makeatother_end(src: &str, from: usize) -> Option<usize> {
-    const CLOSE: &str = "\\makeatother";
-    src.get(from..)
-        .and_then(|tail| tail.find(CLOSE))
-        .map(|i| from + i + CLOSE.len())
+    let bytes = src.as_bytes();
+    let mut i = from;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'%' => {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            b'\\' => {
+                let cs_start = i;
+                let mut j = i + 1;
+                while j < bytes.len() && bytes[j].is_ascii_alphabetic() {
+                    j += 1;
+                }
+                if j == i + 1 {
+                    // Control symbol (`\\`, `\{`, `\%`, ...): consume both bytes.
+                    i += 2;
+                    continue;
+                }
+                if &src[cs_start..j] == "\\makeatother" {
+                    return Some(j);
+                }
+                i = j;
+            }
+            _ => i += 1,
+        }
+    }
+    None
 }
 
 fn extract_class_and_options(node: Node<'_>, src: &str) -> (Option<String>, Vec<String>) {
