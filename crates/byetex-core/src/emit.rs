@@ -7744,7 +7744,7 @@ fn extract_citation_keys(node: Node<'_>, src: &str) -> Vec<String> {
 fn label_ref_splits_on_comma(node: Node<'_>) -> bool {
     matches!(
         node.child(0).map(|c| c.kind()),
-        Some("\\cref" | "\\Cref" | "\\cpageref" | "\\Cpageref" | "\\labelcref")
+        Some("\\cref" | "\\Cref" | "\\cpageref" | "\\Cpageref" | "\\labelcref" | "\\labelcpageref")
     )
 }
 
