@@ -366,8 +366,9 @@ const MATH_WORD_BOUNDARY: char = '\u{17}';
 fn build_neutral_preamble(layout: &crate::class_map::Layout) -> String {
     let paper = layout.paper.unwrap_or("us-letter");
     let font_size = layout.font_size.unwrap_or("11pt");
+    let margin = layout.margin.to_typst_value();
     format!(
-        "#set page(paper: \"{paper}\", margin: (x: 1in, y: 1in))\n\
+        "#set page(paper: \"{paper}\", margin: {margin})\n\
          #set text(font: \"New Computer Modern\", size: {font_size})\n\
          #set par(justify: true, leading: 0.65em, first-line-indent: 1.2em)\n\
          #show heading.where(level: 1): set text(size: 1.3em, weight: \"bold\")\n\
@@ -1353,6 +1354,12 @@ impl<'a> Emitter<'a> {
                     // a generic `\documentclass{article}`.
                     let old = std::mem::replace(&mut self.detected_class, DocClass::Unknown);
                     self.detected_class = old.refine_from_package(pkg);
+                    // `geometry` package options set the page margins / paper.
+                    if pkg == "geometry" {
+                        if let Some(o) = opts.as_deref() {
+                            self.layout.apply_geometry(o);
+                        }
+                    }
                     // Harvest macros / theorems from a local `<pkg>.sty` if
                     // present next to the source file.
                     self.expand_local_package(pkg);
@@ -2130,6 +2137,16 @@ impl<'a> Emitter<'a> {
             | Some("\\addtolength")
             | Some("\\settowidth")
             | Some("\\bibliographystyle") => {
+                node.end_byte()
+            }
+            // `\geometry{key=val,...}` — page margins / paper size. Parse the
+            // raw argument into the layout (same keys as the geometry package
+            // options); drop the command itself.
+            Some("\\geometry") => {
+                if let Some(arg) = first_curly_group(node) {
+                    let raw = self.curly_group_inner_trimmed(arg);
+                    self.layout.apply_geometry(raw);
+                }
                 node.end_byte()
             }
             // Preamble plumbing with no visible rendered effect — drop silently.
