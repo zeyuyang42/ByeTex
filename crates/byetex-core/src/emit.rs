@@ -6327,7 +6327,10 @@ impl<'a> Emitter<'a> {
         // `\captionof{type}{cap}` fallback, used only when no real `\caption`
         // is present (a real \caption always wins regardless of walk order).
         let mut captionof: Option<Node<'_>> = None;
-        let mut label: Option<String> = None;
+        // All `\label`s in the float (a main label plus subfigure labels, or
+        // two `\captionof` blocks). Typst keeps one per element, so we attach
+        // the referenced alias and anchor the other referenced ones.
+        let mut labels: Vec<String> = Vec::new();
         let mut nested_tabular: Option<Node<'_>> = None;
 
         // Walk the entire subtree because IEEE-style templates often wrap
@@ -6349,8 +6352,12 @@ impl<'a> Emitter<'a> {
                     {
                         captionof = Some(child);
                     }
-                    "label_definition" if label.is_none() => {
-                        label = extract_label_name(child, self.src)
+                    "label_definition" => {
+                        if let Some(k) = extract_label_name(child, self.src) {
+                            if !labels.contains(&k) {
+                                labels.push(k);
+                            }
+                        }
                     }
                     "generic_environment" => {
                         if matches!(
@@ -6443,8 +6450,20 @@ impl<'a> Emitter<'a> {
             }
         }
         self.out.push_str(",\n)");
-        if let Some(l) = label {
+        // Attach the referenced alias (or the first label); then give every
+        // OTHER referenced label its own hidden, referenceable anchor — a
+        // single float (subfigures, or two `\captionof`s) can be `\ref`'d
+        // under several labels, but Typst allows only one label per element.
+        let primary = self.pick_label_to_attach(&labels);
+        if let Some(l) = &primary {
             let _ = write!(self.out, " <{}>", l);
+        }
+        for l in &labels {
+            if Some(l) != primary.as_ref()
+                && self.referenced_labels.contains(&sanitize_label_key(l))
+            {
+                let _ = write!(self.out, "\n#hide[#figure([]) <{}>]", l);
+            }
         }
         node.end_byte()
     }
