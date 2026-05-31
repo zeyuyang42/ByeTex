@@ -753,6 +753,9 @@ impl<'a> Emitter<'a> {
             if self.used_text_label_anchor {
                 self.out
                     .push_str("#show figure.where(kind: \"anchor\"): it => none\n");
+                // Emitted here; clear so the fragment-preamble block below
+                // (which runs unconditionally) doesn't prepend it a second time.
+                self.used_text_label_anchor = false;
             }
             if self.needs_equation_numbering {
                 self.out
@@ -1243,7 +1246,7 @@ impl<'a> Emitter<'a> {
                     self.used_text_label_anchor = true;
                     let _ = write!(
                         self.out,
-                        " #figure(kind: \"anchor\", supplement: none, numbering: \"1\", [])<{}>",
+                        " #box[#figure(kind: \"anchor\", supplement: none, numbering: \"1\", [])<{}>]",
                         key
                     );
                     self.skip_until = self.skip_until.max(end);
@@ -2800,7 +2803,7 @@ impl<'a> Emitter<'a> {
                         self.used_text_label_anchor = true;
                         let _ = write!(
                             self.out,
-                            " #figure(kind: \"anchor\", supplement: none, numbering: \"1\", [])<{}>",
+                            " #box[#figure(kind: \"anchor\", supplement: none, numbering: \"1\", [])<{}>]",
                             key
                         );
                     }

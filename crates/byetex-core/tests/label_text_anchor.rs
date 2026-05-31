@@ -30,6 +30,13 @@ fn label_on_list_item_emits_referenceable_anchor() {
         t.contains("kind: \"anchor\""),
         "a label on a list item must emit a referenceable anchor figure;\noutput:\n{t}"
     );
+    // The anchor must be wrapped in an inline `#box[...]` so a block-level
+    // figure does not split the surrounding paragraph / list item.
+    assert!(
+        t.contains("#box[#figure(kind: \"anchor\""),
+        "the anchor figure must be wrapped in an inline #box to avoid a \
+         spurious paragraph break;\noutput:\n{t}"
+    );
     assert!(
         t.contains("<a:one>"),
         "the anchor must carry the sanitized label key;\noutput:\n{t}"
@@ -64,6 +71,20 @@ fn section_label_stays_bare_not_anchor() {
     assert!(
         !t.contains("kind: \"anchor\""),
         "a section label must NOT use an anchor;\noutput:\n{t}"
+    );
+}
+
+/// A full document (with a `\documentclass`) emits the anchor show rule
+/// exactly once — not duplicated by the fragment-preamble fallback path.
+#[test]
+fn full_document_emits_show_rule_once() {
+    let src = "\\documentclass{article}\n\\begin{document}\n\
+        Text. \\label{x:one}\nSee \\ref{x:one}.\n\\end{document}";
+    let t = typst(src);
+    let count = t.matches("#show figure.where(kind: \"anchor\")").count();
+    assert_eq!(
+        count, 1,
+        "the anchor show rule must appear exactly once (got {count});\noutput:\n{t}"
     );
 }
 
