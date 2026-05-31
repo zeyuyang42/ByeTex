@@ -2158,6 +2158,25 @@ impl<'a> Emitter<'a> {
                 }
                 node.end_byte()
             }
+            // `\makeatletter ... \makeatother` brackets low-level TeX where `@`
+            // is a letter: internal macro definitions, `\newcount`, `\csname`,
+            // counter resets like `\rc@count=1`. tree-sitter-latex can't parse
+            // these primitives, so their fragments (`=1`, `{}`, `rc@X@#1`) leak
+            // verbatim through the default copy path. The region never produces
+            // renderable body content, so skip it wholesale by jumping the
+            // cursor past the matching `\makeatother` (via `skip_until`).
+            // `\newcommand`-family macros defined inside are still harvested by
+            // the independent source prepass, so their body uses keep expanding.
+            // If there's no matching `\makeatother`, just drop the lone token so
+            // we don't swallow the rest of the document.
+            Some("\\makeatletter") => {
+                if let Some(end) = find_makeatother_end(self.src, node.end_byte()) {
+                    self.skip_until = end;
+                    end
+                } else {
+                    node.end_byte()
+                }
+            }
             // Preamble plumbing with no visible rendered effect — drop silently.
             // • Debug/logging: \typeout writes to the .log; no output.
             // • Theorem styles: \theoremstyle{plain|definition|…} — Typst theorem
@@ -2190,7 +2209,6 @@ impl<'a> Emitter<'a> {
             | Some("\\looseness")
             | Some("\\endcsname")
             | Some("\\expandafter")
-            | Some("\\makeatletter")
             | Some("\\makeatother")
             | Some("\\addlinespace")
             | Some("\\AddToHook")
@@ -9411,6 +9429,16 @@ pub(crate) fn wrap_for_command_name(name: &str) -> Option<(&'static str, &'stati
         "\\mathop" => ("op(", ")"),
         _ => return None,
     })
+}
+
+/// Byte offset just past the first `\makeatother` at or after `from`, or `None`
+/// if there is no closing `\makeatother`. Used to skip a `\makeatletter` region
+/// wholesale.
+fn find_makeatother_end(src: &str, from: usize) -> Option<usize> {
+    const CLOSE: &str = "\\makeatother";
+    src.get(from..)
+        .and_then(|tail| tail.find(CLOSE))
+        .map(|i| from + i + CLOSE.len())
 }
 
 fn extract_class_and_options(node: Node<'_>, src: &str) -> (Option<String>, Vec<String>) {
