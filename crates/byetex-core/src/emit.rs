@@ -356,6 +356,22 @@ fn read_newif_flag(src: &str, after_newif: usize) -> Option<(String, usize)> {
 /// legitimate use in either LaTeX source or rendered Typst.
 const MATH_WORD_BOUNDARY: char = '\u{17}';
 
+/// Self-contained "clean neutral article" preamble (Task 1). Emits only native
+/// Typst set/show rules — no `@preview` imports, compiles on stock Typst with
+/// no packages or `typst.toml`. Intentionally source-agnostic with fixed
+/// sensible defaults; Task 2 will layer source-derived geometry (columns,
+/// margins, font size) on top. Heading *numbering* is set by `finish()`, not
+/// here, so there is a single `#set heading(numbering)` site.
+fn build_neutral_preamble() -> &'static str {
+    "#set page(paper: \"us-letter\", margin: (x: 1in, y: 1in))\n\
+     #set text(font: \"New Computer Modern\", size: 11pt)\n\
+     #set par(justify: true, leading: 0.65em, first-line-indent: 1.2em)\n\
+     #show heading.where(level: 1): set text(size: 1.3em, weight: \"bold\")\n\
+     #show heading.where(level: 2): set text(size: 1.15em, weight: \"bold\")\n\
+     #show heading.where(level: 3): set text(size: 1em, weight: \"bold\")\n\
+     #show heading: it => block(above: 1.2em, below: 0.6em, it)\n\n"
+}
+
 pub(crate) struct Emitter<'a> {
     out: String,
     warnings: Vec<Warning>,
@@ -439,6 +455,10 @@ pub(crate) struct Emitter<'a> {
     /// `\label` aliases — and Typst keeps only one per element — we attach the
     /// alias that is actually referenced so the reference resolves.
     referenced_labels: HashSet<String>,
+    /// True once a `\documentclass` is seen — i.e. this is a full document
+    /// (not a bare fragment). Gates the self-generated neutral preamble so
+    /// fragment conversions stay preamble-free.
+    saw_document_class: bool,
     /// `\newtheorem{name}{Display}` declarations harvested as we walk the
     /// source. When `emit_generic_environment` encounters an unknown env name
     /// that matches a key here, it routes to `emit_theorem_env_dyn` instead of
@@ -541,6 +561,7 @@ impl<'a> Emitter<'a> {
             macros: preseeded_macros,
             newif_flags: HashMap::new(),
             referenced_labels: HashSet::new(),
+            saw_document_class: false,
             theorem_kinds: HashMap::new(),
             bibliography_keys: std::collections::HashSet::new(),
             asset_refs: Vec::new(),
@@ -698,27 +719,36 @@ impl<'a> Emitter<'a> {
         Vec<crate::AssetRef>,
         std::collections::HashMap<String, String>,
     ) {
-        // If `\documentclass` mapped to a known Typst Universe template,
-        // prepend the `#import` + `#show:` pair so the converted PDF gets
-        // that class's full visual identity (columns, font, headings, title
-        // block). Otherwise fall back to the hand-rolled centered title.
-        let template_preamble = self.build_template_preamble();
-        if let Some(p) = template_preamble {
+        // A full document (had a `\documentclass`, or carries title/authors)
+        // is rendered with the self-generated, self-contained neutral preamble
+        // + generalized title block — no Typst Universe import. Bare fragments
+        // (no documentclass, no title) get neither, so fragment conversions
+        // stay preamble-free.
+        let is_document = self.saw_document_class
+            || !self.metadata.is_title_block_empty()
+            || !self.raw_authors.is_empty();
+        if is_document {
             let body = std::mem::take(&mut self.out);
-            self.out.push_str(&p);
+            self.flush_title_block(); // prepends title/authors/abstract/keywords (no-op if empty)
+            let title_block = std::mem::take(&mut self.out);
+            // Self-contained preamble first, then this document's numbering
+            // rules (LaTeX numbers sections by default), then title + body.
+            self.out.push_str(build_neutral_preamble());
+            self.out.push_str("#set heading(numbering: \"1.\")\n");
+            if self.needs_equation_numbering {
+                self.out.push_str("#set math.equation(numbering: \"(1)\")\n");
+            }
+            self.out.push('\n');
+            self.out.push_str(&title_block);
             self.out.push_str(&body);
-        } else if !self.metadata.is_title_block_empty() || !self.raw_authors.is_empty() {
-            // Pre-pend rather than append: insert at the start of `out` so the
-            // title block lives at the top of the document.
-            let body = std::mem::take(&mut self.out);
-            self.flush_title_block();
-            self.out.push_str(&body);
+            // Numbering is fully emitted above; don't double-prepend below.
+            self.needs_heading_numbering = false;
+            self.needs_equation_numbering = false;
         }
 
-        // Conditional Typst preamble for documents that use references. LaTeX
-        // numbers sections and equations by default; Typst does not. Without
-        // this preamble, `@sec:foo` etc. fail with "cannot reference X without
-        // numbering".
+        // Numbering preamble for bare fragments (no neutral preamble): heading
+        // numbering only when a fragment references a heading; equation
+        // numbering stays demand-driven.
         let mut preamble = String::new();
         if self.needs_heading_numbering {
             preamble.push_str("#set heading(numbering: \"1.\")\n");
@@ -1317,6 +1347,7 @@ impl<'a> Emitter<'a> {
         // emit the matching Typst Universe template in `finish()`. The
         // source line itself is dropped from the output.
         if node.kind() == "class_include" {
+            self.saw_document_class = true;
             let (class, opts) = extract_class_and_options(node, self.src);
             if let Some(c) = class {
                 self.detected_class = DocClass::from_class(&c, &opts);
@@ -3256,7 +3287,9 @@ impl<'a> Emitter<'a> {
 
         if !self.metadata.authors.is_empty() {
             self.out.push_str("  #v(0.6em)\n");
-            let authors = std::mem::take(&mut self.metadata.authors);
+            // Clone (not take): `finish()` still needs `metadata.authors` to
+            // emit `#set document(author: …)` for the PDF metadata field.
+            let authors = self.metadata.authors.clone();
 
             // Collect per-author affiliation text, deduplicating to assign
             // superscript indices (1-based, in order of first appearance).
@@ -3287,7 +3320,7 @@ impl<'a> Emitter<'a> {
                 .iter()
                 .zip(aff_indices.iter())
                 .map(|(author, aff_idx)| {
-                    let mut part = author.name.as_content().to_string();
+                    let mut part = escape_text_for_typst_content(author.name.as_content());
                     if let Some(idx) = aff_idx {
                         let _ = write!(part, "#super[{}]", idx + 1);
                     }
@@ -3307,6 +3340,7 @@ impl<'a> Emitter<'a> {
             if has_affiliations {
                 self.out.push_str("  #v(0.3em)\n  #text(size: 0.9em)[\n");
                 for (i, aff_text) in deduped.iter().enumerate() {
+                    let aff_text = escape_text_for_typst_content(aff_text);
                     if i + 1 < deduped.len() {
                         let _ =
                             writeln!(self.out, "    #super[{}] {} #linebreak()", i + 1, aff_text);
@@ -3323,7 +3357,7 @@ impl<'a> Emitter<'a> {
                 let _ = writeln!(
                     self.out,
                     "  #v(0.3em)\n  #text(size: 0.85em, style: \"italic\")[{}]",
-                    emails.join(", ")
+                    escape_text_for_typst_content(&emails.join(", "))
                 );
             }
         }
@@ -3607,12 +3641,12 @@ impl<'a> Emitter<'a> {
             Some("itemize") => self.emit_simple_list(node, "-"),
             Some("enumerate") => self.emit_simple_list(node, "+"),
             Some("description") => self.emit_description(node),
-            // Abstract: capture into a title-block field when the class's
-            // template accepts an `abstract:` parameter (IEEE, NeurIPS).
-            // For acmart and unknown classes the abstract stays inline.
+            // Abstract: capture into the title-block field. The generated
+            // title block renders it for every class now, so capture it
+            // unconditionally (and consume the inline body so it isn't shown
+            // twice).
             Some("abstract") => {
-                if self.detected_class.wants_abstract_field() && self.metadata.r#abstract.is_none()
-                {
+                if self.metadata.r#abstract.is_none() {
                     let body = self.render_env_body_to_string(node);
                     self.metadata.r#abstract = Some(Content::Typst(body.trim().to_string()));
                     node.end_byte()
@@ -3620,10 +3654,9 @@ impl<'a> Emitter<'a> {
                     self.emit_environment_body(node)
                 }
             }
-            // IEEEtran's keywords env. Same capture-or-drop dance as abstract.
+            // IEEEtran's keywords env. Same capture-into-title-block as abstract.
             Some("IEEEkeywords") => {
-                if self.detected_class.import_line().is_some() && self.metadata.keywords.is_empty()
-                {
+                if self.metadata.keywords.is_empty() {
                     let body = self.render_env_body_to_string(node);
                     self.metadata.keywords = body
                         .trim()
@@ -3951,31 +3984,6 @@ impl<'a> Emitter<'a> {
             }
         }
         None
-    }
-
-    /// Build the `#import "@preview/X:V": fn` + `#show: fn.with(...)` pair
-    /// that styles the converted document as the LaTeX class would. Returns
-    /// `None` for unknown classes (caller falls back to the hand-rolled
-    /// centered title block).
-    fn build_template_preamble(&mut self) -> Option<String> {
-        let import_line = self.detected_class.import_line()?;
-        // Run the class-aware author parser now that detection has
-        // settled (it may have been refined by a `\usepackage{neurips_*}`).
-        self.materialize_authors();
-        // Bare-bones documents (no title, no authors) skip the template
-        // preamble. Emitting an empty `arkheion.with(title: [], authors:
-        // ())` block would force a blank title page and trip the
-        // template's required-field assertions.
-        if self.metadata.is_title_block_empty() {
-            return None;
-        }
-        let show_call = self.detected_class.show_call(&self.metadata)?;
-        let mut s = String::new();
-        s.push_str(import_line);
-        s.push('\n');
-        s.push_str(&show_call);
-        s.push('\n');
-        Some(s)
     }
 
     /// Close any in-flight `\bibitem{key}` by emitting `]) <key>` so the label
@@ -7353,6 +7361,27 @@ pub(crate) fn apply_text_accent(accent: char, letter: char) -> String {
         s.push(m);
     }
     s
+}
+
+/// Escape a plain-text string (author name, affiliation, email, date) for
+/// emission into a Typst *content* slot `[...]`. These strings come straight
+/// from `parse_authors` / `metadata` as raw text, so — unlike body text — they
+/// never pass through the token-level [`needs_text_escape`] path. Without this,
+/// an author email like `stas@math.uzh.ch` makes Typst parse `@math.uzh.ch` as
+/// a reference (→ "label does not exist"), and a stray `#` / `[` / `<` / `` ` ``
+/// terminates or corrupts the slot.
+fn escape_text_for_typst_content(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        if matches!(
+            ch,
+            '\\' | '#' | '[' | ']' | '@' | '<' | '`' | '*' | '_' | '$'
+        ) {
+            out.push('\\');
+        }
+        out.push(ch);
+    }
+    out
 }
 
 /// If `kind` is a token that's literal in LaTeX text mode but markup in

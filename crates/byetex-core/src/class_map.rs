@@ -1,21 +1,21 @@
-//! Map `\documentclass[opts]{class}` (and class-style `\usepackage{neurips_*}`
-//! / `iclr*` / `icml*` packages) into a Typst Universe template binding.
+//! Recognize `\documentclass[opts]{class}` (and class-style
+//! `\usepackage{neurips_*}` / `iclr*` / `icml*` packages) so we can parse the
+//! source's author block correctly and retain its layout hints.
 //!
-//! The classes we recognize each have a community-maintained Typst template
-//! that mimics the LaTeX class's visual identity. By emitting an
-//! `#import "@preview/X:V": fn` + `#show: fn.with(...)` pair we get correct
-//! page geometry, column count, fonts, heading style, and title block —
-//! everything `\documentclass` controls in LaTeX, in one package.
-//!
-//! Truly unknown classes return `DocClass::Unknown` and ByeTex falls back
-//! to the hand-rolled title block (`#align(center)[...]`) and Typst's
-//! defaults. Plain `\documentclass{article}` (the common arxiv preprint
-//! shape) is routed to `ArxivArticle` and gets the `arkheion` template.
+//! ByeTex renders every document with one self-generated neutral preamble
+//! (see `emit::build_neutral_preamble`); it does NOT bind a Typst Universe
+//! template. `DocClass` survives for two reasons:
+//!   1. Author-block parsing is class-specific (IEEE `\IEEEauthorblockN`,
+//!      NeurIPS multi-line, the generic `\and` form) — `parse_authors`
+//!      dispatches on the detected class to populate `DocumentMetadata`.
+//!   2. The retained payloads (`paper_type`, `format`, ...) are the
+//!      source-derived layout hints that Task 2 (layout fidelity) will read
+//!      to reintroduce columns / geometry on top of the neutral base.
 
 #[allow(unused_imports)]
 use crate::document::{Author, Content, DocumentMetadata};
 
-/// Document classes we know how to map to a Typst template.
+/// Document classes we recognize, for author parsing and layout hints.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum DocClass {
     IeeeTran {
@@ -129,379 +129,8 @@ impl DocClass {
         self
     }
 
-    /// `#import "@preview/X:V": fn` line for this class, or `None` if no
-    /// template is bound.
-    pub fn import_line(&self) -> Option<&'static str> {
-        Some(match self {
-            Self::IeeeTran { .. } => "#import \"@preview/charged-ieee:0.1.4\": ieee",
-            Self::AcmArt { .. } => "#import \"@preview/clean-acmart:0.0.1\": acmart",
-            Self::Neurips | Self::Iclr | Self::Icml => {
-                "#import \"@preview/lucky-icml:0.7.0\": icml2025 as conf"
-            }
-            Self::RevTeX => "#import \"@preview/revtyp:0.14.0\": revtyp",
-            Self::ElsArticle { .. } => "#import \"@preview/elsearticle:3.1.0\": elsearticle",
-            // `arkheion` is purpose-built for arxiv-style preprints —
-            // single column, sans-serif title block with affiliations,
-            // abstract, keywords. Covers most plain `\documentclass{article}`
-            // arxiv papers.
-            Self::ArxivArticle => "#import \"@preview/arkheion:0.1.2\": arkheion",
-            // `llncs` / `svmult` — Springer LNCS / multi-author classes.
-            // No verified Typst Universe template covers them yet, so
-            // fall through to the hand-rolled title block. (When a
-            // suitable template appears — `lncs` v0.1.x has been
-            // proposed but not published — re-bind here.)
-            Self::Lncs | Self::SvMult => return None,
-            Self::Unknown => return None,
-        })
-    }
-
-    /// Whether the abstract should be captured into `metadata.r#abstract`
-    /// rather than being emitted inline as body content.
-    ///
-    /// Returns `true` for all classes whose title-block renderer (either a
-    /// Typst Universe template or the rich native renderer in
-    /// `flush_title_block`) accepts the abstract as a named field.
-    /// `AcmArt` and `RevTeX` are the only exceptions: their templates render
-    /// the `abstract` environment directly from body content.
-    pub fn wants_abstract_field(&self) -> bool {
-        !matches!(self, Self::AcmArt { .. } | Self::RevTeX)
-    }
-
-    /// Build the `#show: fn.with(...)` call from captured title-block data.
-    /// Each template has its own argument shape; we emit only the fields it
-    /// actually accepts, in the records it actually expects.
-    pub fn show_call(&self, meta: &DocumentMetadata) -> Option<String> {
-        let title = meta
-            .title
-            .as_ref()
-            .map(Content::as_content)
-            .unwrap_or("")
-            .to_string();
-        let abstract_ = meta
-            .r#abstract
-            .as_ref()
-            .map(Content::as_content)
-            .unwrap_or("")
-            .to_string();
-        let keywords_csv = meta.keywords.join(", ");
-        match self {
-            Self::IeeeTran { .. } => Some(ieee_show_call(
-                &title,
-                &meta.authors,
-                &abstract_,
-                &keywords_csv,
-            )),
-            Self::AcmArt { .. } => Some(acmart_show_call(&title, &meta.authors, &keywords_csv)),
-            Self::Neurips | Self::Iclr | Self::Icml => Some(icml_show_call(
-                &title,
-                &meta.authors,
-                &abstract_,
-                &keywords_csv,
-            )),
-            Self::RevTeX => Some(revtyp_show_call(&title, &meta.authors)),
-            Self::ElsArticle { format } => Some(elsearticle_show_call(
-                &title,
-                &meta.authors,
-                &abstract_,
-                &keywords_csv,
-                format.as_deref(),
-            )),
-            Self::ArxivArticle => Some(arkheion_show_call(
-                &title,
-                &meta.authors,
-                &abstract_,
-                &keywords_csv,
-                meta.date.as_deref(),
-            )),
-            // Lncs and SvMult reach flush_title_block (import_line returns None).
-            Self::Lncs | Self::SvMult | Self::Unknown => None,
-        }
-    }
 }
 
-// ---------------------------------------------------------------------------
-// Show-call scaffolding helpers
-// ---------------------------------------------------------------------------
-//
-// Each `*_show_call` builder below emits a Typst `#show: X.with(...)` block.
-// The structural skeleton is identical across templates (header, title slot,
-// authors block, optional abstract slot, optional keywords slot, closer);
-// only the per-author record shape genuinely differs. The helpers in this
-// section absorb the skeleton so each builder reads as just its
-// distinguishing parts.
-
-/// Start a show-call: `#show: <template>.with(\n  title: [<escaped>],\n`.
-fn show_call_open(template_fn: &str, title: &str) -> String {
-    let mut s = String::new();
-    s.push_str(&format!("#show: {}.with(\n", template_fn));
-    s.push_str(&format!("  title: [{}],\n", content_escape(title)));
-    s
-}
-
-/// Emit `  abstract: [<escaped>],\n` when `abstract_` is non-empty.
-fn push_abstract_slot(s: &mut String, abstract_: &str) {
-    if !abstract_.is_empty() {
-        s.push_str(&format!("  abstract: [{}],\n", content_escape(abstract_)));
-    }
-}
-
-/// Emit `  <slot_name>: (<csv as tuple>,),\n` when `csv` is non-empty.
-/// Two slot names are in use: `keywords` (most templates) and `index-terms`
-/// (IEEE). Picking the slot name per-class avoids interpolation surprises.
-fn push_csv_slot(s: &mut String, slot_name: &str, csv: &str) {
-    if !csv.is_empty() {
-        s.push_str(&format!("  {}: ({},),\n", slot_name, quote_csv(csv)));
-    }
-}
-
-/// `charged-ieee` 0.1.4 signature (verified against the cached package):
-///   ieee(title, authors: array of records, abstract, index-terms, paper-size,
-///        bibliography, figure-supplement, body)
-/// Author record: `(name, department?, organization?, location?, email?)`.
-fn ieee_show_call(title: &str, authors: &[Author], abstract_: &str, keywords: &str) -> String {
-    let mut s = show_call_open("ieee", title);
-    s.push_str("  authors: (\n");
-    for a in authors {
-        s.push_str("    (");
-        // charged-ieee uses author.name in `set document(author: ...)` which
-        // requires a str, not content. Use a string literal.
-        s.push_str(&format!("name: \"{}\"", string_escape(a.name.as_content())));
-        if let Some(aff) = &a.affiliation {
-            if let Some(dept) = &aff.department {
-                s.push_str(&format!(
-                    ", department: [{}]",
-                    content_escape(dept.as_content())
-                ));
-            }
-            if let Some(inst) = &aff.institution {
-                s.push_str(&format!(
-                    ", organization: [{}]",
-                    content_escape(inst.as_content())
-                ));
-            }
-            let loc = match (&aff.city, &aff.country) {
-                (Some(c), Some(co)) => Some(format!("{}, {}", c, co)),
-                (Some(c), None) => Some(c.clone()),
-                (None, Some(co)) => Some(co.clone()),
-                (None, None) => aff.raw.as_ref().map(|c| c.as_content().to_string()),
-            };
-            if let Some(loc) = loc {
-                // charged-ieee expects location as a str, not content.
-                s.push_str(&format!(", location: \"{}\"", string_escape(&loc)));
-            }
-        }
-        if let Some(email) = &a.email {
-            s.push_str(&format!(", email: \"{}\"", string_escape(email)));
-        }
-        s.push_str("),\n");
-    }
-    s.push_str("  ),\n");
-    push_abstract_slot(&mut s, abstract_);
-    push_csv_slot(&mut s, "index-terms", keywords);
-    s.push_str(")\n");
-    s
-}
-
-/// `clean-acmart` 0.0.1 signature (verified):
-///   acmart(title, authors: array, affiliations: array, keywords: array of
-///          strings, conference: dict, doi, isbn, price, copyright, review, body)
-/// No `abstract` parameter — the abstract goes in the body.
-fn acmart_show_call(title: &str, authors: &[Author], keywords: &str) -> String {
-    let mut s = show_call_open("acmart", title);
-    s.push_str("  authors: (\n");
-    for a in authors {
-        let aff = a
-            .affiliation
-            .as_ref()
-            .and_then(|aff| aff.institution.as_ref().or(aff.raw.as_ref()))
-            .map(|c| c.as_content().to_string())
-            .unwrap_or_default();
-        let email = a.email.clone().unwrap_or_default();
-        s.push_str(&format!(
-            "    (name: [{}], affiliation: [{}], email: [{}]),\n",
-            content_escape(a.name.as_content()),
-            content_escape(&aff),
-            content_escape(&email),
-        ));
-    }
-    s.push_str("  ),\n");
-    push_csv_slot(&mut s, "keywords", keywords);
-    s.push_str(")\n");
-    s
-}
-
-/// `lucky-icml` 0.7.0 signature: the `authors` arg is a *tuple* of
-/// `(authors-array, affls-dict)`. Passing `accepted: none` skips the
-/// anonymous-override path that would otherwise replace authors when
-/// `accepted: false` (the default).
-fn icml_show_call(title: &str, authors: &[Author], abstract_: &str, keywords: &str) -> String {
-    let mut s = show_call_open("conf", title);
-    s.push_str("  authors: (\n");
-    s.push_str("    (\n");
-    for a in authors {
-        // `affl: ()` (empty array) avoids the template's affls-dict lookup
-        // assertion. Same for note/email — empty defaults all the way down.
-        s.push_str(&format!(
-            "      (name: \"{}\", affl: (), email: \"{}\", equal: {}, note: \"\"),\n",
-            a.name.as_string_literal(),
-            string_escape(a.email.as_deref().unwrap_or("")),
-            a.equal_contribution,
-        ));
-    }
-    s.push_str("    ),\n");
-    s.push_str("    (:),\n"); // empty affiliations map
-    s.push_str("  ),\n");
-    push_abstract_slot(&mut s, abstract_);
-    push_csv_slot(&mut s, "keywords", keywords);
-    s.push_str("  accepted: none,\n");
-    s.push_str(")\n");
-    s
-}
-
-fn revtyp_show_call(title: &str, authors: &[Author]) -> String {
-    let mut s = show_call_open("revtyp", title);
-    s.push_str("  authors: (\n");
-    for a in authors {
-        let aff = a
-            .affiliation
-            .as_ref()
-            .and_then(|aff| aff.institution.as_ref().or(aff.raw.as_ref()))
-            .map(|c| c.as_string_literal())
-            .unwrap_or_default();
-        s.push_str(&format!(
-            "    (name: \"{}\", affiliation: \"{}\"),\n",
-            a.name.as_string_literal(),
-            aff,
-        ));
-    }
-    s.push_str("  ),\n");
-    s.push_str(")\n");
-    s
-}
-
-fn elsearticle_show_call(
-    title: &str,
-    authors: &[Author],
-    abstract_: &str,
-    keywords: &str,
-    format: Option<&str>,
-) -> String {
-    let mut s = show_call_open("elsearticle", title);
-    s.push_str("  authors: (\n");
-    for a in authors {
-        s.push_str(&format!(
-            "    (name: \"{}\"),\n",
-            a.name.as_string_literal()
-        ));
-    }
-    s.push_str("  ),\n");
-    push_abstract_slot(&mut s, abstract_);
-    push_csv_slot(&mut s, "keywords", keywords);
-    if let Some(fmt) = format {
-        s.push_str(&format!("  format: \"{}\",\n", string_escape(fmt)));
-    }
-    s.push_str(")\n");
-    s
-}
-
-/// `arkheion` 0.1.2 signature (verified against the cached package):
-///   arkheion(title, authors: array, abstract, keywords, date)
-/// Author record: `(name, email, affiliation, orcid)`.
-fn arkheion_show_call(
-    title: &str,
-    authors: &[Author],
-    abstract_: &str,
-    keywords: &str,
-    date: Option<&str>,
-) -> String {
-    let mut s = show_call_open("arkheion", title);
-    s.push_str("  authors: (\n");
-    for a in authors {
-        // For string-literal slots, run raw values through string_escape so
-        // a `"` or `\` in email/affiliation/orcid doesn't terminate the slot
-        // prematurely. Only the `name` slot went through escape before.
-        let aff = a
-            .affiliation
-            .as_ref()
-            .and_then(|aff| aff.institution.as_ref().or(aff.raw.as_ref()))
-            .map(|c| c.as_string_literal())
-            .unwrap_or_default();
-        let email = a.email.as_deref().map(string_escape).unwrap_or_default();
-        let orcid = a.orcid.as_deref().map(string_escape).unwrap_or_default();
-        s.push_str(&format!(
-            "    (name: \"{}\", email: \"{}\", affiliation: \"{}\", orcid: \"{}\"),\n",
-            a.name.as_string_literal(),
-            email,
-            aff,
-            orcid,
-        ));
-    }
-    s.push_str("  ),\n");
-    push_abstract_slot(&mut s, abstract_);
-    push_csv_slot(&mut s, "keywords", keywords);
-    if let Some(d) = date {
-        s.push_str(&format!("  date: \"{}\",\n", string_escape(d)));
-    }
-    s.push_str(")\n");
-    s
-}
-
-/// `lncs` 0.1.0 signature: simpler `(title, authors, abstract)` plus
-/// optional affiliation tuple. Single column, sans-serif title block.
-/// `"foo, bar"` → `"\"foo\", \"bar\""` for embedding as a Typst tuple of strings.
-fn quote_csv(s: &str) -> String {
-    s.split(',')
-        .map(|p| format!("\"{}\"", string_escape(p.trim())))
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
-/// Escape a string for embedding inside a Typst `"..."` literal.
-fn string_escape(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('"', "\\\"")
-}
-
-/// Escape a string for embedding inside a Typst `[...]` content block.
-/// Closes (`]`) and backslashes are the only characters that can break
-/// the surrounding bracket structure or be interpreted as Typst escapes;
-/// markup like `_italic_` or `*bold*` is left alone so Content::Typst
-/// renderings still display correctly. Hash (`#`) at the start of a token
-/// would introduce a code injection, but inside an author-name slot it
-/// reads as a literal sigil; escape it conservatively to avoid surprises.
-fn content_escape(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let mut chars = s.chars().peekable();
-    while let Some(c) = chars.next() {
-        match c {
-            '\\' => {
-                // Pass through backslash sequences verbatim — `\_`, `\[`, `\#` etc.
-                // are already Typst escape sequences produced by the emitter.
-                out.push('\\');
-                if let Some(&next) = chars.peek() {
-                    out.push(next);
-                    chars.next();
-                }
-            }
-            '#' => {
-                // `#` followed by a letter or `_` is a Typst function-call prefix
-                // (`#raw(...)`, `#link(...)`, `#table(...)`) generated by ByeTex.
-                // Only escape a bare `#` that is NOT part of such a call.
-                if chars
-                    .peek()
-                    .is_some_and(|c| c.is_ascii_alphabetic() || *c == '_')
-                {
-                    out.push('#');
-                } else {
-                    out.push_str("\\#");
-                }
-            }
-            // `[` and `]` are valid Typst content-block delimiters; ByeTex's
-            // emitter already escapes user-literal brackets when needed.
-            other => out.push(other),
-        }
-    }
-    out
-}
 
 /// Public entry point: turn raw `\author{...}` strings (one per call in
 /// the source) into structured `Author` records. The generic parser
@@ -1228,14 +857,12 @@ mod tests {
     fn ieee_conference_detected() {
         let c = DocClass::from_class("IEEEtran", &["conference".to_string()]);
         assert!(matches!(c, DocClass::IeeeTran { .. }));
-        assert!(c.import_line().is_some());
     }
 
     #[test]
     fn acm_sigconf_detected() {
         let c = DocClass::from_class("acmart", &["sigconf".to_string()]);
         assert!(matches!(c, DocClass::AcmArt { .. }));
-        assert!(c.import_line().is_some());
     }
 
     #[test]
@@ -1248,33 +875,12 @@ mod tests {
     fn unknown_class_falls_through() {
         let c = DocClass::from_class("foo", &[]);
         assert_eq!(c, DocClass::Unknown);
-        assert!(c.import_line().is_none());
     }
 
     #[test]
-    fn show_call_with_ieee_record_shape() {
-        let c = DocClass::IeeeTran {
-            paper_type: "conference".to_string(),
-        };
-        let meta = DocumentMetadata {
-            title: Some(Content::Typst("The Title".to_string())),
-            authors: parse_authors(&["Alice".to_string()], &c),
-            ..Default::default()
-        };
-        let s = c.show_call(&meta).unwrap();
-        // `paper-type` is NOT a charged-ieee argument; we only emit the
-        // fields the real signature accepts.
-        assert!(s.contains("title: [The Title]"));
-        // charged-ieee uses author.name in `set document` which requires str.
-        assert!(s.contains("name: \"Alice\""));
-        assert!(!s.contains("paper-type"));
-    }
-
-    #[test]
-    fn arxiv_article_routes_to_arkheion() {
+    fn arxiv_article_detected() {
         let c = DocClass::from_class("article", &[]);
         assert!(matches!(c, DocClass::ArxivArticle));
-        assert!(c.import_line().unwrap().contains("arkheion"));
     }
 
     #[test]
@@ -1326,92 +932,5 @@ mod tests {
         assert!(a.equal_contribution, "expected equal_contribution true");
         assert_eq!(a.email.as_deref(), Some("alice@x.org"));
         assert!(a.name.as_content().trim().starts_with("Alice"));
-    }
-
-    // ------------------------------------------------------------------
-    // Byte-stable show-call snapshots
-    // ------------------------------------------------------------------
-    //
-    // These tests pin the literal `#show: X.with(...)` output of every
-    // class's builder. They protect against silent drift when the
-    // scaffolding helpers (`show_call_open`, `push_abstract_slot`,
-    // `push_csv_slot`) are touched. If you intentionally change the
-    // output, update the expected string here AND verify the new
-    // form parses against the upstream template.
-
-    fn one_author() -> Vec<Author> {
-        vec![Author {
-            name: Content::Typst("Alice".to_string()),
-            ..Default::default()
-        }]
-    }
-
-    #[test]
-    fn snapshot_ieee_minimal() {
-        let s = ieee_show_call("T", &one_author(), "", "");
-        assert_eq!(
-            s,
-            "#show: ieee.with(\n  title: [T],\n  authors: (\n    (name: \"Alice\"),\n  ),\n)\n"
-        );
-    }
-
-    #[test]
-    fn snapshot_acmart_minimal() {
-        let s = acmart_show_call("T", &one_author(), "");
-        assert_eq!(
-            s,
-            "#show: acmart.with(\n  title: [T],\n  authors: (\n    (name: [Alice], affiliation: [], email: []),\n  ),\n)\n"
-        );
-    }
-
-    #[test]
-    fn snapshot_icml_minimal() {
-        let s = icml_show_call("T", &one_author(), "", "");
-        assert_eq!(
-            s,
-            "#show: conf.with(\n  title: [T],\n  authors: (\n    (\n      (name: \"Alice\", affl: (), email: \"\", equal: false, note: \"\"),\n    ),\n    (:),\n  ),\n  accepted: none,\n)\n"
-        );
-    }
-
-    #[test]
-    fn snapshot_revtyp_minimal() {
-        let s = revtyp_show_call("T", &one_author());
-        assert_eq!(
-            s,
-            "#show: revtyp.with(\n  title: [T],\n  authors: (\n    (name: \"Alice\", affiliation: \"\"),\n  ),\n)\n"
-        );
-    }
-
-    #[test]
-    fn snapshot_elsearticle_minimal() {
-        let s = elsearticle_show_call("T", &one_author(), "", "", None);
-        assert_eq!(
-            s,
-            "#show: elsearticle.with(\n  title: [T],\n  authors: (\n    (name: \"Alice\"),\n  ),\n)\n"
-        );
-    }
-
-    #[test]
-    fn snapshot_arkheion_minimal() {
-        let s = arkheion_show_call("T", &one_author(), "", "", None);
-        assert_eq!(
-            s,
-            "#show: arkheion.with(\n  title: [T],\n  authors: (\n    (name: \"Alice\", email: \"\", affiliation: \"\", orcid: \"\"),\n  ),\n)\n"
-        );
-    }
-
-    #[test]
-    fn snapshot_with_abstract_and_keywords() {
-        // Exercise the full slot scaffold on ieee (which uses
-        // `index-terms` not `keywords`) and arkheion (with optional
-        // date + keywords).
-        let ieee = ieee_show_call("T", &one_author(), "An abstract.", "ml, nlp");
-        assert!(ieee.contains("  abstract: [An abstract.],\n"));
-        assert!(ieee.contains("  index-terms: (\"ml\", \"nlp\",),\n"));
-
-        let ark = arkheion_show_call("T", &one_author(), "abs", "kw", Some("2026-05-24"));
-        assert!(ark.contains("  abstract: [abs],\n"));
-        assert!(ark.contains("  keywords: (\"kw\",),\n"));
-        assert!(ark.contains("  date: \"2026-05-24\",\n"));
     }
 }

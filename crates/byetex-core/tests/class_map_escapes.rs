@@ -1,11 +1,11 @@
-//! Regression tests: title/abstract slots in class-aware show-calls
-//! must be escaped against the Typst content-block delimiters
-//! (`]`, `\`, `#`, `[`) — otherwise a paper with a `]` in its title
-//! breaks the entire `#show: X.with(...)` block.
+//! Regression tests: title/abstract content emitted into the generated
+//! neutral title block (`#align(center)[ #text(...)[<title>] ]`) must be
+//! escaped against the Typst content-block delimiters (`]`, `\`, `#`, `[`) —
+//! otherwise a paper with a `]` in its title would terminate the `[...]`
+//! slot prematurely and break the whole document.
 //!
-//! Author slots have been escaped for a while via `content_escape` /
-//! `string_escape`; this file guards the title and abstract slots
-//! after they were brought into line.
+//! (ByeTex no longer binds a Typst Universe template / `#show:` block; these
+//! slots now live in the self-generated title block.)
 
 use byetex_core::{convert, ConvertOptions};
 
@@ -21,8 +21,8 @@ fn convert_str(src: &str) -> byetex_core::ConvertOutput {
 
 #[test]
 fn ieee_title_with_bracket_is_escaped() {
-    // IEEE templates route title through `[content]` slots; an
-    // unescaped `]` would terminate the slot prematurely.
+    // The title is rendered into a `[content]` slot in the title block;
+    // an unescaped `]` would terminate the slot prematurely.
     let src = r"\documentclass[conference]{IEEEtran}
 \title{Foo [Bar] baz}
 \author{Alice}
@@ -35,6 +35,12 @@ fn ieee_title_with_bracket_is_escaped() {
     assert!(
         out.typst.contains(r"\]"),
         "expected `\\]` in title slot; got:\n{}",
+        out.typst
+    );
+    // And it must land inside the generated title block.
+    assert!(
+        out.typst.contains("#align(center)"),
+        "expected a title block; got:\n{}",
         out.typst
     );
 }
@@ -58,10 +64,10 @@ We discuss \#1 reasons.
 }
 
 #[test]
-fn arxiv_title_with_backslash_does_not_break_show_call() {
-    // arxiv (arkheion) does pass title through a `[content]` slot.
-    // A stray `\` from a TeX command leaking into the rendered
-    // title must be escaped so the show-call remains parseable.
+fn arxiv_title_with_backslash_does_not_break_title_block() {
+    // The title is passed through a `[content]` slot in the title block.
+    // Inline math (`\(...\)`) must be converted to a Typst math span, not
+    // leaked as a stray `\` that would break the slot.
     let src = r"\documentclass{article}
 \title{Heat \(\mathcal{H}\) equation}
 \author{Carol}
@@ -72,23 +78,17 @@ Brief.
 \maketitle
 \end{document}";
     let out = convert_str(src);
-    // Sanity: there's a show-call block, and the title appears.
-    // The exact escape sequence depends on what the title-content
-    // renderer produced; the critical assertion is that we don't
-    // see a stray un-escaped `]` from the title in the slot.
-    let show_block = out
+    // The generated title block carries the title, with the math rendered
+    // as a Typst math span (no leaked `\(` / `\)` delimiters).
+    let title_line = out
         .typst
         .lines()
-        .skip_while(|l| !l.contains("#show:"))
-        .take_while(|l| !l.starts_with(')'))
-        .collect::<Vec<_>>()
-        .join("\n");
-    // The show block must contain `title:` and must NOT have an
-    // unbalanced `[`/`]` pair on the title line.
+        .find(|l| l.contains("size: 1.5em") && l.contains("Heat"))
+        .unwrap_or_else(|| panic!("no title line in:\n{}", out.typst));
     assert!(
-        show_block.contains("title:"),
-        "no title slot in:\n{}",
-        show_block
+        title_line.contains("$") && !title_line.contains(r"\("),
+        "title math should be a `$...$` span, not leaked `\\(`; got:\n{}",
+        title_line
     );
 }
 
@@ -118,5 +118,36 @@ We compare [baseline] vs ours.
         !has_parse_error,
         "unexpected parse_error: {:?}",
         out.warnings
+    );
+}
+
+#[test]
+fn author_email_at_sign_is_escaped_in_title_block() {
+    // Regression: an author string carrying an email-like `@` is rendered
+    // into the `[...]` content slot of the title block. An un-escaped `@`
+    // makes Typst parse `@math.uzh.ch` as a *reference*, breaking compilation
+    // with "label does not exist". It must be emitted as `\@`.
+    let src = r"\documentclass{article}
+\title{T}
+\author{Stas (stas@math.uzh.ch)}
+\begin{document}
+\maketitle
+\end{document}";
+    let out = convert_str(src);
+    // The title block (content) carries the escaped form.
+    assert!(
+        out.typst.contains(r"\@math.uzh.ch"),
+        "author `@` must be escaped to `\\@` in the title block; got:\n{}",
+        out.typst
+    );
+    // And no bare `@math.uzh.ch` reference leaked into the content.
+    let in_title_block = out
+        .typst
+        .lines()
+        .any(|l| l.contains("stas") && l.contains(r"\@") && !l.starts_with("#set document"));
+    assert!(
+        in_title_block,
+        "expected the escaped email on the author line; got:\n{}",
+        out.typst
     );
 }

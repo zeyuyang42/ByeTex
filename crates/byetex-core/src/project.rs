@@ -174,22 +174,15 @@ fn asset_ref_to_copy(r: &AssetRef, _base_dir: &Path) -> AssetCopy {
     AssetCopy { source, rel_dest }
 }
 
-/// Peek at the generated Typst source to detect a `@preview/...` import line
-/// and, if found, build a minimal `typst.toml` manifest.
-fn derive_manifest(typst: &str) -> Option<String> {
-    let pkg_name = typst.lines().take(8).find_map(|l| {
-        let prefix = "#import \"@preview/";
-        l.find(prefix).map(|i| {
-            let rest = &l[i + prefix.len()..];
-            rest.split('"').next().unwrap_or("").to_string()
-        })
-    })?;
-    // Strip the version suffix (e.g. "charged-ieee:0.1.4" → "charged-ieee").
-    let name = pkg_name.split(':').next().unwrap_or(&pkg_name);
-    Some(format!(
-        "[package]\nname = \"{}\"\nversion = \"0.1.0\"\nentrypoint = \"main.typ\"\n",
-        name
-    ))
+/// Whether the generated Typst source needs a `typst.toml` manifest.
+///
+/// ByeTex now self-generates a fully self-contained preamble (no
+/// `#import "@preview/..."`), so the output never depends on a Typst Universe
+/// package and never needs a manifest. Kept as a function (rather than inlining
+/// `None`) so the `ProjectPlan.manifest` field and the `no_toml` switch stay
+/// meaningful if a future change reintroduces a package dependency.
+fn derive_manifest(_typst: &str) -> Option<String> {
+    None
 }
 
 // ---------------------------------------------------------------------------
