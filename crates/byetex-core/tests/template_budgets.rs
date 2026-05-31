@@ -74,29 +74,34 @@ fn check_paper(arxiv_id: &str, primary_tex: &str, budget: usize) {
 //     a stray `{}` + a `\linewidth` warning each). The remaining 10 are genuine
 //     unsupported preamble commands (`\DeclareMathAlphabet`, `\newcolumntype`,
 //     `\clearpage`, …). Paper still compiles.
+//   2026-05-31  \DeclareMathOperator harvested at emit time (so operators
+//     defined in an \input'd file register): 22159:478→38, 22557:14→2,
+//     22507:32→30. (22159's ~7 operators alone accounted for ~348 warnings.)
+//     22776:134→14 tightened to current actual (prior fixes). All budgets
+//     below set to the measured current counts.
 
 #[test]
 fn arxiv_2605_22507_within_budget() {
     // cs.LG — multi-file \input, math-heavy (0-main.tex)
-    check_paper("2605.22507", "0-main.tex", 32);
+    check_paper("2605.22507", "0-main.tex", 30);
 }
 
 #[test]
 fn arxiv_2605_22557_within_budget() {
     // math.NA — math-heavy (main_sinum.tex)
-    check_paper("2605.22557", "main_sinum.tex", 14);
+    check_paper("2605.22557", "main_sinum.tex", 2);
 }
 
 #[test]
 fn arxiv_2605_22776_within_budget() {
     // cs.LG — single-file (main_en.tex)
-    check_paper("2605.22776", "main_en.tex", 134);
+    check_paper("2605.22776", "main_en.tex", 14);
 }
 
 #[test]
 fn arxiv_2605_22159_within_budget() {
     // math.NA — multi-file + custom macros (GS4AGBEM.tex)
-    check_paper("2605.22159", "GS4AGBEM.tex", 478);
+    check_paper("2605.22159", "GS4AGBEM.tex", 38);
 }
 
 #[test]
