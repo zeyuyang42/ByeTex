@@ -435,6 +435,12 @@ pub(crate) struct Emitter<'a> {
     /// and overflow the stack. The cap is generous enough for legitimate
     /// nested expansions but stops adversarial inputs cold.
     macro_depth: u32,
+    /// True while emitting a `minipage` body. Inside a minipage a `\\` is an
+    /// intra-box line break, not a table row separator, so the `\\` handler
+    /// emits a Typst `#linebreak()` instead of the bare `\` that the table
+    /// row-splitter (`split_math_rows`) keys on — otherwise a minipage used as
+    /// a table cell mis-splits across rows.
+    in_minipage: bool,
 }
 
 /// Maximum allowed `\newcommand` expansion depth (see `Emitter::macro_depth`).
@@ -512,6 +518,7 @@ impl<'a> Emitter<'a> {
             bibliography_keys: std::collections::HashSet::new(),
             asset_refs: Vec::new(),
             macro_depth: 0,
+            in_minipage: false,
         }
     }
 
@@ -1783,10 +1790,17 @@ impl<'a> Emitter<'a> {
             // overloading ambiguity of `\\` at the end of optional-arg
             // brackets.
             Some("\\\\") | Some("\\tabularnewline") => {
-                if !self.out.ends_with(' ') && !self.out.ends_with('\n') {
-                    self.out.push(' ');
+                if self.in_minipage {
+                    // Intra-minipage line break — emit a Typst `#linebreak()`
+                    // rather than the bare `\` the table row-splitter keys on,
+                    // so a minipage used as a table cell isn't split into rows.
+                    self.out.push_str("#linebreak()");
+                } else {
+                    if !self.out.ends_with(' ') && !self.out.ends_with('\n') {
+                        self.out.push(' ');
+                    }
+                    self.out.push('\\');
                 }
-                self.out.push('\\');
                 node.end_byte()
             }
             // Layout-only commands: drop silently and eat the trailing space
@@ -3733,6 +3747,15 @@ impl<'a> Emitter<'a> {
         while self.out.ends_with('\n') || self.out.ends_with(' ') || self.out.ends_with('\t') {
             self.out.pop();
         }
+        // If stripping whitespace exposed a trailing `\` row-break marker (the
+        // previous table row ended with `\\` right before this minipage), keep a
+        // space after it: `split_math_rows` only treats `\` as a row break when
+        // it is followed by whitespace, and fusing `\` into the minipage's
+        // leading `#raw(...)` would both swallow the row break and corrupt the
+        // call into `\#raw(...)`.
+        if self.out.ends_with('\\') {
+            self.out.push(' ');
+        }
 
         let mut cursor = env.walk();
         let children: Vec<Node<'_>> = env
@@ -3765,6 +3788,11 @@ impl<'a> Emitter<'a> {
         if body.is_empty() {
             return env.end_byte();
         }
+        // Within the minipage body a `\\` is an intra-box line break, not a
+        // table row separator — flag it so the `\\` handler emits `#linebreak()`.
+        // Save/restore for correct nesting (minipage inside minipage).
+        let was_in_minipage = self.in_minipage;
+        self.in_minipage = true;
         let mut last = body[0].start_byte();
         for child in body {
             let cs = child.start_byte();
@@ -3773,6 +3801,7 @@ impl<'a> Emitter<'a> {
         }
         let end = body.last().unwrap().end_byte();
         self.safe_copy(last, end);
+        self.in_minipage = was_in_minipage;
         env.end_byte()
     }
 
@@ -6501,7 +6530,13 @@ impl<'a> Emitter<'a> {
             .filter(|c| !matches!(c.kind(), "begin" | "end" | "curly_group"))
             .collect();
 
-        // Render body to a string, then parse rows + cells.
+        // Render body to a string, then parse rows + cells. Clear `in_minipage`
+        // around the body: this table's own row-break `\\` must stay the bare
+        // `\` that `split_math_rows` keys on, even when the table is itself
+        // nested inside a minipage (otherwise the inner rows would collapse into
+        // `#linebreak()`s and cells would be dropped).
+        let saved_in_minipage = self.in_minipage;
+        self.in_minipage = false;
         let body_str = if body.is_empty() {
             String::new()
         } else {
@@ -6516,6 +6551,7 @@ impl<'a> Emitter<'a> {
                 emitter.safe_copy(last, end);
             })
         };
+        self.in_minipage = saved_in_minipage;
 
         // Strip \hline (already emitted as raw text by the default emitter).
         let cleaned = body_str.replace("\\hline", "");
