@@ -159,17 +159,30 @@ def ensure_byetex(profile: str) -> Path:
 def run_byetex(
     byetex_bin: Path, source_dir: Path, toplevel: Path
 ) -> tuple[Path | None, Path | None]:
-    """Run byetex convert; return (typ_path, warnings_path) or (None, None)."""
+    """Run `byetex convert --project` and return (main.typ, warnings.json)
+    from the generated project, or (None, None).
+
+    Project mode (not flat `convert`) is what the corpus papers actually use:
+    it pre-scans sibling files for macros and referenced labels, preprocesses
+    `.bib`, and copies assets next to `main.typ`. Flat convert would miss the
+    cross-file pre-scans and mis-resolve assets, under-representing quality.
+    """
+    proj_rel = f"{toplevel.stem}.typst-project"
+    proj_dir = source_dir / proj_rel
+    shutil.rmtree(proj_dir, ignore_errors=True)
     result = subprocess.run(
-        [str(byetex_bin), "convert", toplevel.name],
+        [
+            str(byetex_bin), "convert", "--project", toplevel.name,
+            "--project-out", proj_rel, "--force", "--no-brief",
+        ],
         cwd=source_dir,
         capture_output=True,
         text=True,
     )
-    typ_path = source_dir / (toplevel.stem + ".typ")
-    warn_path = source_dir / (toplevel.stem + ".warnings.json")
+    typ_path = proj_dir / "main.typ"
+    warn_path = proj_dir / "warnings.json"
     if not typ_path.exists() or typ_path.stat().st_size == 0:
-        print(f"  [warn] byetex produced no .typ output", file=sys.stderr)
+        print(f"  [warn] byetex --project produced no main.typ", file=sys.stderr)
         if result.stderr:
             print(f"         stderr: {result.stderr[:300]}", file=sys.stderr)
         return None, None
