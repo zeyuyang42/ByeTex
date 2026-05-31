@@ -63,8 +63,11 @@ fn raisebox_unwraps_second_arg() {
     let src = r"\documentclass{article}\begin{document}$\raisebox{1pt}{X}$\end{document}";
     let out = convert_str(src);
     assert_eq!(ambiguous_for(&out, "raisebox"), 0);
+    // Scope the check to the math span — the neutral preamble legitimately
+    // contains `size: 11pt`, which would false-match a bare `contains("1pt")`.
+    let math = out.typst.split('$').nth(1).unwrap_or("");
     assert!(
-        out.typst.contains("X") && !out.typst.contains("1pt"),
+        math.contains("X") && !math.contains("1pt"),
         "expected `X` without offset `1pt`; got:\n{}",
         out.typst
     );

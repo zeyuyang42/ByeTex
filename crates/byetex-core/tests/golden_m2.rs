@@ -110,11 +110,22 @@ fn m2_misc_linebreaks() {
 
 #[test]
 fn m2_misc_full_article() {
-    // v0.2: `\documentclass` is silently dropped (always); `\usepackage` is
-    // silently dropped when the package is in the known-noop allowlist
-    // (inputenc is). The resulting Typst is clean — no warnings.
+    // A `\documentclass` document gets the self-generated neutral preamble
+    // (page/text/par + heading show-rules) followed by `#set heading` numbering,
+    // then the title block (empty here — no title/author) and the body.
+    // `\usepackage{inputenc}` is silently dropped (known-noop allowlist).
     insta::assert_snapshot!(run("m2_misc/full_article.tex"), @r#"
     ==== TYPST ====
+    #set page(paper: "us-letter", margin: (x: 1in, y: 1in))
+    #set text(font: "New Computer Modern", size: 11pt)
+    #set par(justify: true, leading: 0.65em, first-line-indent: 1.2em)
+    #show heading.where(level: 1): set text(size: 1.3em, weight: "bold")
+    #show heading.where(level: 2): set text(size: 1.15em, weight: "bold")
+    #show heading.where(level: 3): set text(size: 1em, weight: "bold")
+    #show heading: it => block(above: 1.2em, below: 0.6em, it)
+
+    #set heading(numbering: "1.")
+
     = Introduction <sec:intro>
 
     This article demonstrates *several* features at once: _italics_,
