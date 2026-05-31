@@ -193,3 +193,30 @@ fn makeatother_prefixed_command_is_not_treated_as_closer() {
     );
     assert!(out.typst.contains("Clean body."), "body lost; got:\n{}", out.typst);
 }
+
+// ── #4: unmatched \makeatletter (no closing \makeatother) ──────────────────────
+
+#[test]
+fn unmatched_makeatletter_in_fragment_does_not_leak() {
+    // A fragment (no \documentclass) that opens \makeatletter and never closes
+    // it — valid TeX, the @-catcode just persists to end of input. Treat the
+    // remainder as internals and skip it, so the low-level TeX doesn't leak.
+    let src = "\\makeatletter\n\\newcount\\rc@count\n\\rc@count=1\\relax\n";
+    let out = convert_str(src);
+    assert!(
+        !out.typst.contains("=1") && !out.typst.contains("rc@count"),
+        "unmatched \\makeatletter in a fragment leaked internals; got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn unmatched_makeatletter_in_main_document_keeps_body() {
+    // A full document (\documentclass present) with an unmatched \makeatletter
+    // must NOT have its body swallowed — stay conservative there.
+    let src = "\\documentclass{article}\n\\makeatletter\n\
+               \\begin{document}\n\\section{Intro}\nReal body content.\n\\end{document}";
+    let out = convert_str(src);
+    assert!(out.typst.contains("= Intro"), "body heading lost; got:\n{}", out.typst);
+    assert!(out.typst.contains("Real body content."), "body lost; got:\n{}", out.typst);
+}
