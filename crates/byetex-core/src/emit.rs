@@ -473,6 +473,11 @@ pub(crate) struct Emitter<'a> {
     /// that matches a key here, it routes to `emit_theorem_env_dyn` instead of
     /// `warn_unsupported_environment`.
     theorem_kinds: HashMap<String, String>,
+    /// Declared mandatory-argument count for custom `\newenvironment`s, keyed by
+    /// env name. At a use site `\begin{name}{a}{b}` the args are leading
+    /// `curly_group` children; `emit_environment_body` drops this many so they
+    /// don't leak into the passed-through body.
+    env_arg_counts: HashMap<String, usize>,
     /// Set of bibliography keys that are defined either by a `.bib`
     /// file in `base_dir` or by a `\bibitem{key}` somewhere in the
     /// document. Populated by `harvest_bib_keys_from_dir` in the
@@ -577,6 +582,7 @@ impl<'a> Emitter<'a> {
             referenced_labels: HashSet::new(),
             saw_document_class: false,
             theorem_kinds: HashMap::new(),
+            env_arg_counts: HashMap::new(),
             bibliography_keys: std::collections::HashSet::new(),
             asset_refs: Vec::new(),
             macro_depth: 0,
@@ -3162,6 +3168,7 @@ impl<'a> Emitter<'a> {
         let tree = crate::parser::parse(&source);
         let mut harvested: HashMap<String, MacroDef> = HashMap::new();
         let mut harvested_theorems: HashMap<String, String> = HashMap::new();
+        let mut harvested_env_argc: HashMap<String, usize> = HashMap::new();
         let root = tree.root_node();
         let mut stack: Vec<Node<'_>> = vec![root];
         while let Some(n) = stack.pop() {
@@ -3183,7 +3190,10 @@ impl<'a> Emitter<'a> {
                     // `\newenvironment{name}{...}{...}` in a local .sty/.cls or
                     // \input'd file — register as a transparent (empty-display)
                     // kind so its body passes through when used.
-                    if let Some(name) = extract_environment_def_name(n, &source) {
+                    if let Some((name, nargs)) = extract_environment_def(n, &source) {
+                        if nargs > 0 {
+                            harvested_env_argc.entry(name.clone()).or_insert(nargs);
+                        }
                         harvested_theorems.entry(name).or_default();
                     }
                 }
@@ -3201,6 +3211,9 @@ impl<'a> Emitter<'a> {
         }
         for (k, v) in harvested_theorems {
             self.theorem_kinds.entry(k).or_insert(v);
+        }
+        for (k, v) in harvested_env_argc {
+            self.env_arg_counts.entry(k).or_insert(v);
         }
     }
 
@@ -3307,6 +3320,7 @@ impl<'a> Emitter<'a> {
         // previously-processed \input file (e.g. macros.tex) are recognisable
         // when they appear in a later sibling include (e.g. sections/04_…tex).
         sub.theorem_kinds = self.theorem_kinds.clone();
+        sub.env_arg_counts = self.env_arg_counts.clone();
         // Inherit project-wide referenced labels so a `\section` with multiple
         // `\label`s in this included file attaches the alias that some other
         // file `\ref`s (see pick_label_to_attach).
@@ -3347,6 +3361,9 @@ impl<'a> Emitter<'a> {
         // Same for theorem-kind declarations (`\newtheorem` et al.).
         for (k, v) in sub.theorem_kinds.drain() {
             self.theorem_kinds.entry(k).or_insert(v);
+        }
+        for (k, v) in sub.env_arg_counts.drain() {
+            self.env_arg_counts.entry(k).or_insert(v);
         }
         true
     }
@@ -4021,10 +4038,33 @@ impl<'a> Emitter<'a> {
         }
 
         let mut cursor = env.walk();
-        let body: Vec<Node<'_>> = env
+        let mut body: Vec<Node<'_>> = env
             .children(&mut cursor)
             .filter(|c| !matches!(c.kind(), "begin" | "end"))
             .collect();
+
+        // For a custom `\newenvironment` that takes mandatory arguments, the
+        // use-site args (`\begin{name}{a}{b}`) appear as leading `curly_group`
+        // children. Drop the first N (N = declared arg count) so they don't
+        // leak into the passed-through body. Only a contiguous leading run is
+        // skipped, so a `curly_group` that is real content (after any text) is
+        // never mistaken for an argument. (Optional `[..]` args parse inside the
+        // `begin` node and are already excluded.)
+        if let Some(name) = environment_name(env, self.src) {
+            if let Some(&nargs) = self.env_arg_counts.get(&name) {
+                let mut remaining = nargs;
+                let mut leading = true;
+                body.retain(|c| {
+                    if leading && remaining > 0 && c.kind() == "curly_group" {
+                        remaining -= 1;
+                        false
+                    } else {
+                        leading = false;
+                        true
+                    }
+                });
+            }
+        }
 
         if body.is_empty() {
             return env.end_byte();
@@ -4365,10 +4405,11 @@ impl<'a> Emitter<'a> {
     /// `name` is registered with the empty-display sentinel so the env body is
     /// passed through transparently when used (see [`harvest_tcolorbox_decl`]).
     fn harvest_environment_definition(&mut self, node: Node<'_>) {
-        if let Some(name) = extract_environment_def_name(node, self.src) {
-            if !name.is_empty() {
-                self.theorem_kinds.entry(name).or_default();
+        if let Some((name, nargs)) = extract_environment_def(node, self.src) {
+            if nargs > 0 {
+                self.env_arg_counts.entry(name.clone()).or_insert(nargs);
             }
+            self.theorem_kinds.entry(name).or_default();
         }
     }
 
@@ -8782,11 +8823,13 @@ fn substitute_macro_args(body: &str, args: &[String]) -> String {
     out
 }
 
-/// Extract the env name from an `environment_definition` node
-/// (`\newenvironment{name}{begindef}{enddef}` / `\renewenvironment`). The
-/// grammar exposes the name as a `name:`-field `curly_group_text`; fall back to
-/// the first `curly_group_text`/`curly_group_word` child if the field is absent.
-fn extract_environment_def_name(node: Node<'_>, src: &str) -> Option<String> {
+/// Extract `(name, nargs)` from an `environment_definition` node
+/// (`\newenvironment{name}[nargs][default]{begindef}{enddef}` /
+/// `\renewenvironment`). The grammar exposes the name as a `name:`-field
+/// `curly_group_text` (fall back to the first `curly_group_text`/
+/// `curly_group_word` child) and the argument count as an `argc:`-field
+/// `brack_group_argc`. `nargs` is 0 when the env takes no arguments.
+fn extract_environment_def(node: Node<'_>, src: &str) -> Option<(String, usize)> {
     let name_node = match node.child_by_field_name("name") {
         Some(n) => n,
         None => {
@@ -8802,10 +8845,19 @@ fn extract_environment_def_name(node: Node<'_>, src: &str) -> Option<String> {
         .trim()
         .to_string();
     if name.is_empty() {
-        None
-    } else {
-        Some(name)
+        return None;
     }
+    let nargs = node
+        .child_by_field_name("argc")
+        .and_then(|argc| {
+            src[argc.start_byte()..argc.end_byte()]
+                .trim_matches(|c: char| c == '[' || c == ']')
+                .trim()
+                .parse::<usize>()
+                .ok()
+        })
+        .unwrap_or(0);
+    Some((name, nargs))
 }
 
 /// Extract `(env_name, display_name)` from a `theorem_definition` node.

@@ -46,6 +46,50 @@ fn newenvironment_body_and_label_survive() {
     );
 }
 
+/// A custom env that takes mandatory arguments must not leak the use-site
+/// argument groups (`\begin{name}{arg}`) into the passed-through body.
+#[test]
+fn newenvironment_use_site_args_do_not_leak() {
+    let src = "\\newenvironment{myb}[1]{Start #1:}{:End}\n\
+        \\begin{myb}{Hello}\nInner content.\n\\end{myb}";
+    let t = typst(src);
+    assert!(
+        t.contains("Inner content."),
+        "the body must pass through;\noutput:\n{t}"
+    );
+    // The `{Hello}` mandatory argument must NOT appear as stray content.
+    assert!(
+        !t.contains("{Hello}") && !t.contains("Hello"),
+        "the use-site argument must not leak into the body;\noutput:\n{t}"
+    );
+}
+
+/// Two-argument env with an optional arg: `\begin{name}[opt]{a}{b}` — neither
+/// the optional nor the mandatory args leak.
+#[test]
+fn newenvironment_two_args_do_not_leak() {
+    let src = "\\newenvironment{myc}[2][d]{A#1#2}{Z}\n\
+        \\begin{myc}[x]{y}\nReal body.\n\\end{myc}";
+    let t = typst(src);
+    assert!(t.contains("Real body."), "body preserved;\noutput:\n{t}");
+    assert!(
+        !t.contains("{y}") && !t.contains("Real body.\ny"),
+        "mandatory arg must not leak;\noutput:\n{t}"
+    );
+}
+
+/// A zero-arg env whose body legitimately starts with a `{...}` group must keep
+/// that group (it is content, not an argument).
+#[test]
+fn zero_arg_env_keeps_leading_curly_content() {
+    let src = "\\newenvironment{plain}{}{}\n\\begin{plain}\n{grouped text} after.\n\\end{plain}";
+    let t = typst(src);
+    assert!(
+        t.contains("grouped text") && t.contains("after."),
+        "a leading content group in a zero-arg env must be preserved;\noutput:\n{t}"
+    );
+}
+
 /// `\renewenvironment` is handled the same way.
 #[test]
 fn renewenvironment_body_survives() {
