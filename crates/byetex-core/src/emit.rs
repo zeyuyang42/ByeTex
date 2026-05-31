@@ -1499,6 +1499,18 @@ impl<'a> Emitter<'a> {
             self.harvest_theorem_definition(node);
             return node.end_byte();
         }
+        // `\newenvironment{name}{begindef}{enddef}` (and `\renewenvironment`)
+        // parse as a dedicated `environment_definition` node. We can't replay
+        // the LaTeX begin/end definitions in Typst, but dropping the env body
+        // outright loses real content (text, `\label`s). Register `name` as a
+        // transparent kind (empty-display sentinel) so any later
+        // `\begin{name}...\end{name}` passes its body through instead of
+        // warning + dropping. The definition node itself emits nothing (without
+        // this arm its raw source leaks into the body).
+        if node.kind() == "environment_definition" {
+            self.harvest_environment_definition(node);
+            return node.end_byte();
+        }
 
         // Other "command-shaped" nodes (citation, includes, etc.) — warn until
         // the relevant later milestone implements them.
@@ -3167,6 +3179,14 @@ impl<'a> Emitter<'a> {
                         harvested_theorems.entry(name).or_insert(display);
                     }
                 }
+                "environment_definition" => {
+                    // `\newenvironment{name}{...}{...}` in a local .sty/.cls or
+                    // \input'd file — register as a transparent (empty-display)
+                    // kind so its body passes through when used.
+                    if let Some(name) = extract_environment_def_name(n, &source) {
+                        harvested_theorems.entry(name).or_default();
+                    }
+                }
                 _ => {
                     let mut cursor = n.walk();
                     for c in n.children(&mut cursor) {
@@ -4336,6 +4356,18 @@ impl<'a> Emitter<'a> {
                     self.theorem_kinds.entry(name).or_default();
                 }
                 break;
+            }
+        }
+    }
+
+    /// Harvest a `\newenvironment{name}{begindef}{enddef}` /
+    /// `\renewenvironment` node (tree-sitter `environment_definition`). The env
+    /// `name` is registered with the empty-display sentinel so the env body is
+    /// passed through transparently when used (see [`harvest_tcolorbox_decl`]).
+    fn harvest_environment_definition(&mut self, node: Node<'_>) {
+        if let Some(name) = extract_environment_def_name(node, self.src) {
+            if !name.is_empty() {
+                self.theorem_kinds.entry(name).or_default();
             }
         }
     }
@@ -8748,6 +8780,32 @@ fn substitute_macro_args(body: &str, args: &[String]) -> String {
         }
     }
     out
+}
+
+/// Extract the env name from an `environment_definition` node
+/// (`\newenvironment{name}{begindef}{enddef}` / `\renewenvironment`). The
+/// grammar exposes the name as a `name:`-field `curly_group_text`; fall back to
+/// the first `curly_group_text`/`curly_group_word` child if the field is absent.
+fn extract_environment_def_name(node: Node<'_>, src: &str) -> Option<String> {
+    let name_node = match node.child_by_field_name("name") {
+        Some(n) => n,
+        None => {
+            let mut cursor = node.walk();
+            let found = node
+                .children(&mut cursor)
+                .find(|c| matches!(c.kind(), "curly_group_text" | "curly_group_word"));
+            found?
+        }
+    };
+    let name = src[name_node.start_byte()..name_node.end_byte()]
+        .trim_matches(|c: char| c == '{' || c == '}')
+        .trim()
+        .to_string();
+    if name.is_empty() {
+        None
+    } else {
+        Some(name)
+    }
 }
 
 /// Extract `(env_name, display_name)` from a `theorem_definition` node.
