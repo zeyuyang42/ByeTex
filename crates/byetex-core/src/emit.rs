@@ -7690,17 +7690,19 @@ fn needs_text_escape(kind: &str) -> Option<&'static str> {
 /// like `DFG+:InverseInequalitiesNonquasiuniform2004` (Bug #42).
 /// Apply this symmetrically at BOTH the bibitem-define and
 /// citation/ref-use sites so the rewritten labels match.
+/// Whether `c` is valid inside a Typst `<…>` label identifier. Typst accepts
+/// Unicode alphanumerics plus `_ - : .`. This is the single source of truth for
+/// both `sanitize_label_key` (which rewrites invalid chars on the definition
+/// side) and `post_process_typography`'s `<…>` guard (which decides whether an
+/// angle span is a real label or literal text) — the two MUST agree, or a label
+/// emitted with e.g. `ö` gets escaped to literal text and its `@ref` dangles.
+pub(crate) fn is_typst_label_char(c: char) -> bool {
+    c.is_alphanumeric() || matches!(c, '_' | '-' | ':' | '.')
+}
+
 pub(crate) fn sanitize_label_key(key: &str) -> String {
     key.chars()
-        .map(|c| {
-            // Typst labels support Unicode alphanumerics, so preserve them.
-            // Only replace characters that Typst rejects in label identifiers.
-            if c.is_alphanumeric() || matches!(c, '_' | '-' | ':' | '.') {
-                c
-            } else {
-                '-'
-            }
-        })
+        .map(|c| if is_typst_label_char(c) { c } else { '-' })
         .collect()
 }
 
@@ -9411,11 +9413,12 @@ fn strip_trailing_typst_label(content: &str) -> (String, Option<String>) {
         None => return (content.to_string(), None),
     };
     let key = &trimmed[open + 1..close];
+    // Use the same valid-label-char test as `sanitize_label_key` / the
+    // typography guard (Unicode-aware) so a hoisted theorem label with a
+    // non-ASCII letter is recognised consistently.
     if key.is_empty()
-        || !key.starts_with(|c: char| c.is_ascii_alphanumeric())
-        || !key.bytes().all(
-            |b| matches!(b, b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b':' | b'-' | b'_' | b'.'),
-        )
+        || !key.starts_with(|c: char| c.is_alphanumeric())
+        || !key.chars().all(is_typst_label_char)
     {
         return (content.to_string(), None);
     }
@@ -10445,9 +10448,10 @@ fn post_process_typography(s: &str) -> String {
                             found_close = true;
                             break 'scan;
                         }
-                        Some(c)
-                            if c.is_ascii_alphanumeric() || matches!(c, '_' | ':' | '.' | '-') =>
-                        {
+                        // Must match `sanitize_label_key` exactly (Unicode
+                        // alphanumerics included) so a label emitted with e.g.
+                        // `ö` is recognised here as a label, not escaped.
+                        Some(c) if is_typst_label_char(c) => {
                             key_len += 1;
                         }
                         _ => break 'scan,
