@@ -2220,15 +2220,27 @@ impl<'a> Emitter<'a> {
             // no prepass to fall back on (so e.g. a `\newcommand` inside a
             // `\makeatletter` block of an `\input`ed file would otherwise be
             // dropped). `harvest_definitions` re-parses the region and registers
-            // them, parent-wins. If there's no matching `\makeatother`, drop just
-            // the lone token so we don't swallow the rest of the document.
+            // them, parent-wins.
             Some("\\makeatletter") => {
                 if let Some(end) = find_makeatother_end(self.src, node.end_byte()) {
                     let region = &self.src[node.end_byte()..end];
                     self.harvest_definitions(region);
                     self.skip_until = self.skip_until.max(end);
                     end
+                } else if !self.saw_document_class {
+                    // Unmatched `\makeatletter` in a fragment with no
+                    // `\documentclass` (e.g. an `\input`ed macro helper relying
+                    // on the at-letter catcode persisting to end of input). The
+                    // remainder is internals — harvest its definitions, then skip
+                    // to EOF so the low-level TeX doesn't leak.
+                    let rest = &self.src[node.end_byte()..];
+                    self.harvest_definitions(rest);
+                    self.skip_until = self.src.len();
+                    self.src.len()
                 } else {
+                    // Unmatched, but inside a full document — stay conservative
+                    // and drop only the lone token; the body and `\title` /
+                    // `\author` metadata that follow must still be processed.
                     node.end_byte()
                 }
             }
