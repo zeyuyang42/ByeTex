@@ -6881,6 +6881,13 @@ impl<'a> Emitter<'a> {
         // anywhere (so the reference resolves), else the first label.
         let chosen_label = self.pick_label_to_attach(&labels);
 
+        // A heading's `==` markers are only recognised by Typst at the start of
+        // a line. If the previous content left the cursor mid-line (e.g. a
+        // theorem/remark env ending in `<rem:foo>`), the markers would be glued
+        // on as plain text and any attached `<label>` would bind to text — so
+        // `@label` would fail with `cannot reference text`. Force a break first.
+        self.ensure_paragraph_break();
+
         if starred {
             // A starred section with a label must still be referenceable via
             // @label. Typst's `numbering: none` makes headings unreferenceable
