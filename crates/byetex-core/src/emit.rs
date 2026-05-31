@@ -7606,6 +7606,34 @@ fn parse_column_spec(spec: &str) -> (usize, Vec<String>) {
                 aligns.push("left".to_string());
                 i += 1;
             }
+            // array-package repeat: `*{N}{cols}` expands `cols` N times.
+            // Without this the inner spec was counted once (or mis-counted),
+            // undercounting columns — so `\multicolumn` header rows summed to
+            // more than `columns:` and Typst aborted with "colspan exceeds
+            // available columns" (arXiv:2605.22724).
+            '*' => {
+                i += 1;
+                let count = if bytes.get(i) == Some(&b'{') {
+                    let close = skip_balanced_braces(spec, i);
+                    let n = spec[i + 1..close.saturating_sub(1)]
+                        .trim()
+                        .parse()
+                        .unwrap_or(0);
+                    i = close;
+                    n
+                } else {
+                    0
+                };
+                if bytes.get(i) == Some(&b'{') {
+                    let close = skip_balanced_braces(spec, i);
+                    let inner = &spec[i + 1..close.saturating_sub(1)];
+                    i = close;
+                    let (_, inner_aligns) = parse_column_spec(inner);
+                    for _ in 0..count {
+                        aligns.extend(inner_aligns.iter().cloned());
+                    }
+                }
+            }
             // @{...} and !{...}: inter-column material, not data columns.
             // >{...} and <{...}: column format decorators (array package).
             '@' | '!' | '>' | '<' => {
