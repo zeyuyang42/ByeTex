@@ -497,6 +497,10 @@ pub(crate) struct Emitter<'a> {
     /// row-splitter (`split_math_rows`) keys on — otherwise a minipage used as
     /// a table cell mis-splits across rows.
     in_minipage: bool,
+    /// Set when an inline `\label` in text/list context emits a hidden
+    /// `kind: "anchor"` figure so the label is referenceable. Gates the
+    /// `#show figure.where(kind: "anchor"): it => none` rule in `finish()`.
+    used_text_label_anchor: bool,
 }
 
 /// Maximum allowed `\newcommand` expansion depth (see `Emitter::macro_depth`).
@@ -577,6 +581,7 @@ impl<'a> Emitter<'a> {
             asset_refs: Vec::new(),
             macro_depth: 0,
             in_minipage: false,
+            used_text_label_anchor: false,
         }
     }
 
@@ -745,8 +750,16 @@ impl<'a> Emitter<'a> {
             // rules (LaTeX numbers sections by default), then title + body.
             self.out.push_str(&build_neutral_preamble(&self.layout));
             self.out.push_str("#set heading(numbering: \"1.\")\n");
+            if self.used_text_label_anchor {
+                self.out
+                    .push_str("#show figure.where(kind: \"anchor\"): it => none\n");
+                // Emitted here; clear so the fragment-preamble block below
+                // (which runs unconditionally) doesn't prepend it a second time.
+                self.used_text_label_anchor = false;
+            }
             if self.needs_equation_numbering {
-                self.out.push_str("#set math.equation(numbering: \"(1)\")\n");
+                self.out
+                    .push_str("#set math.equation(numbering: \"(1)\")\n");
             }
             self.out.push('\n');
             // The title block stays full-width; a two-column document wraps only
@@ -772,6 +785,9 @@ impl<'a> Emitter<'a> {
         // numbering only when a fragment references a heading; equation
         // numbering stays demand-driven.
         let mut preamble = String::new();
+        if self.used_text_label_anchor {
+            preamble.push_str("#show figure.where(kind: \"anchor\"): it => none\n");
+        }
         if self.needs_heading_numbering {
             preamble.push_str("#set heading(numbering: \"1.\")\n");
         }
@@ -1215,11 +1231,24 @@ impl<'a> Emitter<'a> {
             "bibtex_include" => return self.emit_bibliography(node),
             "bibstyle_include" => return self.emit_bibstyle(node),
             "graphics_include" => return self.emit_graphics_include(node),
-            // Orphan `\label{X}` outside any section/equation/figure — emit
-            // the Typst label syntax so subsequent `@X` references resolve.
+            // Orphan `\label{X}` outside any section/equation/figure. A bare
+            // `<X>` here would attach to the surrounding paragraph text or list
+            // item, which Typst can't reference ("cannot reference text"), or —
+            // when the enclosing env was dropped — never be emitted at all
+            // ("label does not exist"). Emit a hidden, self-numbered anchor
+            // figure instead: it IS referenceable and, via the `kind: "anchor"`
+            // show rule added in `finish()`, renders nothing. Its own per-kind
+            // counter leaves real figure/table numbering untouched. (Section,
+            // figure, and math labels are absorbed by their own handlers and
+            // never reach this arm.)
             "label_definition" => {
                 if let Some((key, end)) = extract_label_name_and_end(node, self.src) {
-                    let _ = write!(self.out, " <{}>", key);
+                    self.used_text_label_anchor = true;
+                    let _ = write!(
+                        self.out,
+                        " #box[#figure(kind: \"anchor\", supplement: none, numbering: \"1\", [])<{}>]",
+                        key
+                    );
                     self.skip_until = self.skip_until.max(end);
                     return end;
                 }
@@ -2769,12 +2798,33 @@ impl<'a> Emitter<'a> {
             // label so subsequent `\ref{X}` resolves. Typst syntax: `<x>`.
             Some("\\label") => {
                 if let Some(arg) = first_curly_group(node) {
-                    let key = self
+                    let raw = self
                         .src
                         .get(arg.start_byte() + 1..arg.end_byte() - 1)
                         .unwrap_or("")
                         .trim();
-                    let _ = write!(self.out, " <{}>", sanitize_label_key(key));
+                    let key = sanitize_label_key(raw);
+                    if self.in_math {
+                        // Inside math the bare label attaches to the equation,
+                        // which is referenceable — keep the existing behaviour.
+                        let _ = write!(self.out, " <{}>", key);
+                    } else {
+                        // In text / list / inline context a bare `<key>` would
+                        // attach to non-referenceable paragraph text (Typst
+                        // aborts with "cannot reference text"), or — when the
+                        // enclosing env was dropped — never be emitted at all
+                        // ("label does not exist"). Emit a hidden, self-numbered
+                        // anchor figure instead: it IS referenceable and, thanks
+                        // to the `kind: "anchor"` show rule in `finish()`, renders
+                        // nothing. Its own per-kind counter leaves real figure/
+                        // table numbering untouched.
+                        self.used_text_label_anchor = true;
+                        let _ = write!(
+                            self.out,
+                            " #box[#figure(kind: \"anchor\", supplement: none, numbering: \"1\", [])<{}>]",
+                            key
+                        );
+                    }
                 }
                 node.end_byte()
             }
