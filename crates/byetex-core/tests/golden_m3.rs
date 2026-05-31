@@ -1457,9 +1457,11 @@ fn m3_cref_multi_key_with_whitespace() {
 }
 
 #[test]
-fn m3_eqref_multi_key_wraps_in_one_paren_pair() {
-    // `\eqref{eqn:a,eqn:b}` → `(@eqn:a, @eqn:b)` — a single outer pair
-    // of parens wrapping the comma-separated list, matching LaTeX convention.
+fn m3_eqref_comma_is_single_literal_key() {
+    // amsmath's `\eqref` is single-key — it does NOT support a comma-separated
+    // list (only cleveref `\cref` does). So `\eqref{eqn:a,eqn:b}` is ONE label
+    // literally named `eqn:a,eqn:b`; the comma sanitizes to `-`, matching a
+    // `\label{eqn:a,eqn:b}` → `<eqn:a-eqn:b>` definition (arXiv:2605.22584).
     let out = convert(
         "Eq. \\eqref{eqn:a,eqn:b} and \\eqref{eqn:c}.\n",
         &ConvertOptions {
@@ -1467,16 +1469,16 @@ fn m3_eqref_multi_key_wraps_in_one_paren_pair() {
             ..Default::default()
         },
     );
-    // Both keys appear.
+    // The comma-containing key is one sanitized reference, wrapped in parens.
     assert!(
-        out.typst.contains("@eqn:a") && out.typst.contains("@eqn:b"),
-        "expected both `@eqn:a` and `@eqn:b`; got:\n{}",
+        out.typst.contains("(@eqn:a-eqn:b)"),
+        "expected single literal key `(@eqn:a-eqn:b)`; got:\n{}",
         out.typst
     );
-    // The multi-key list is wrapped in exactly one pair of parens.
+    // It must NOT have split into two separate references.
     assert!(
-        out.typst.contains("(@eqn:a") && out.typst.contains("@eqn:b)"),
-        "expected outer parens around multi-key eqref; got:\n{}",
+        !out.typst.contains("@eqn:a,") && !out.typst.contains("@eqn:b)"),
+        "a single-key eqref must not split on the comma; got:\n{}",
         out.typst
     );
     // Single-key eqref regression: `\eqref{eqn:c}` must still produce `(@eqn:c)`.

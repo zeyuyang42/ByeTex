@@ -7735,7 +7735,21 @@ fn extract_citation_keys(node: Node<'_>, src: &str) -> Vec<String> {
 /// the key contains underscores (same bug as `extract_label_name`).
 ///
 /// Returns all comma-separated keys; single-key refs return a one-element Vec.
+/// cleveref commands that take a comma-separated LIST of labels in one brace
+/// (`\cref{a,b}` → two refs). For every other reference command (`\ref`,
+/// `\eqref`, `\pageref`, `\autoref`, …) a comma is part of a single literal
+/// label name (`\label{calc_annihi,crea}` / `\eqref{calc_annihi,crea}`), so the
+/// brace content must NOT be split — otherwise the ref keys (`calc_annihi`,
+/// `crea`) diverge from the sanitized label key (`calc_annihi-crea`).
+fn label_ref_splits_on_comma(node: Node<'_>) -> bool {
+    matches!(
+        node.child(0).map(|c| c.kind()),
+        Some("\\cref" | "\\Cref" | "\\cpageref" | "\\Cpageref" | "\\labelcref")
+    )
+}
+
 fn extract_label_ref_keys_and_end(node: Node<'_>, src: &str) -> Option<(Vec<String>, usize)> {
+    let split = label_ref_splits_on_comma(node);
     let bytes = src.as_bytes();
     let mut cursor = node.walk();
     let mut open: Option<usize> = None;
@@ -7763,11 +7777,22 @@ fn extract_label_ref_keys_and_end(node: Node<'_>, src: &str) -> Option<(Vec<Stri
                 depth -= 1;
                 if depth == 0 {
                     let inner = &src[start..i];
-                    let keys: Vec<String> = inner
-                        .split(',')
-                        .map(|k| normalize_label_key(k.trim()))
-                        .filter(|k| !k.is_empty())
-                        .collect();
+                    let keys: Vec<String> = if split {
+                        inner
+                            .split(',')
+                            .map(|k| normalize_label_key(k.trim()))
+                            .filter(|k| !k.is_empty())
+                            .collect()
+                    } else {
+                        // Single literal key: keep any comma (it becomes `-` via
+                        // sanitize, matching the `\label` key).
+                        let key = normalize_label_key(inner.trim());
+                        if key.is_empty() {
+                            Vec::new()
+                        } else {
+                            vec![key]
+                        }
+                    };
                     return Some((keys, i + 1));
                 }
             }
