@@ -7725,29 +7725,47 @@ fn extract_citation_keys(node: Node<'_>, src: &str) -> Vec<String> {
     keys
 }
 
-/// Extract the key from a `label_reference` node (`\ref{x}`, `\eqref{x}`)
-/// plus the byte offset just past the closing `}` so callers can
-/// `skip_until` over the part of the source tree-sitter dropped when
-/// the key contains underscores (same bug as `extract_label_name`).
-/// Extract the keys from a `label_reference` node (`\ref{x}`, `\cref{a,b}`)
-/// plus the byte offset just past the closing `}` so callers can
-/// `skip_until` over the part of the source tree-sitter dropped when
-/// the key contains underscores (same bug as `extract_label_name`).
+/// Whether `node`'s reference command takes a comma-separated LIST of labels in
+/// one brace — i.e. cleveref's `\cref{a,b}` → two refs. For every other
+/// reference command (`\ref`, `\eqref`, `\pageref`, `\autoref`, …) a comma is
+/// part of a single literal label name (`\label{calc_annihi,crea}`), so the
+/// brace must NOT be split — otherwise the ref keys diverge from the sanitized
+/// label key (`calc_annihi-crea`).
 ///
-/// Returns all comma-separated keys; single-key refs return a one-element Vec.
-/// cleveref commands that take a comma-separated LIST of labels in one brace
-/// (`\cref{a,b}` → two refs). For every other reference command (`\ref`,
-/// `\eqref`, `\pageref`, `\autoref`, …) a comma is part of a single literal
-/// label name (`\label{calc_annihi,crea}` / `\eqref{calc_annihi,crea}`), so the
-/// brace content must NOT be split — otherwise the ref keys (`calc_annihi`,
-/// `crea`) diverge from the sanitized label key (`calc_annihi-crea`).
+/// The starred forms (`\cref*`, `\Cref*`, …) behave identically to the
+/// unstarred ones, so the trailing `*` is ignored — matching against the bare
+/// name keeps every starred variant covered without enumerating each one.
+///
+/// NOTE: `emit_label_reference` separately switches on the same command kind to
+/// pick the render form (`\eqref` paren-wrap, etc.); a new comma-list command
+/// must be added here, and given a render arm there if it needs special output.
 fn label_ref_splits_on_comma(node: Node<'_>) -> bool {
+    let Some(kind) = node.child(0).map(|c| c.kind()) else {
+        return false;
+    };
+    let base = kind.strip_suffix('*').unwrap_or(kind);
     matches!(
-        node.child(0).map(|c| c.kind()),
-        Some("\\cref" | "\\Cref" | "\\cpageref" | "\\Cpageref" | "\\labelcref" | "\\labelcpageref")
+        base,
+        "\\cref"
+            | "\\Cref"
+            | "\\cpageref"
+            | "\\Cpageref"
+            | "\\labelcref"
+            | "\\labelcpageref"
+            | "\\namecrefs"
+            | "\\nameCrefs"
+            | "\\lcnamecrefs"
     )
 }
 
+/// Extract the key(s) from a `label_reference` node (`\ref{x}`, `\cref{a,b}`)
+/// plus the byte offset just past the closing `}` so callers can `skip_until`
+/// over the part of the source tree-sitter dropped when the key contains
+/// underscores (same bug as `extract_label_name`).
+///
+/// Returns all comma-separated keys for a comma-list command (see
+/// [`label_ref_splits_on_comma`]); every other ref returns a one-element Vec
+/// with the comma kept as a literal label char.
 fn extract_label_ref_keys_and_end(node: Node<'_>, src: &str) -> Option<(Vec<String>, usize)> {
     let split = label_ref_splits_on_comma(node);
     let bytes = src.as_bytes();
