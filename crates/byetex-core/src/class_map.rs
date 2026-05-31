@@ -162,6 +162,58 @@ pub(crate) struct Layout {
     /// `Some(true)` = twocolumn, `Some(false)` = onecolumn, `None` = defer to
     /// the class default ([`DocClass::default_two_column`]).
     pub two_column: Option<bool>,
+    /// Page margins from the `geometry` package (`\usepackage[...]{geometry}`
+    /// and `\geometry{...}`). All `None` → the neutral default margin.
+    pub margin: Margin,
+}
+
+/// Page margins parsed from `geometry` keys. Each side may be set individually;
+/// `uniform` (the `margin=` key) is the fallback for any side left unset.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub(crate) struct Margin {
+    pub uniform: Option<String>,
+    pub top: Option<String>,
+    pub bottom: Option<String>,
+    pub left: Option<String>,
+    pub right: Option<String>,
+}
+
+impl Margin {
+    fn is_empty(&self) -> bool {
+        *self == Margin::default()
+    }
+
+    /// Whether any per-side key (not just `margin=`) was set.
+    fn has_sides(&self) -> bool {
+        self.top.is_some()
+            || self.bottom.is_some()
+            || self.left.is_some()
+            || self.right.is_some()
+    }
+
+    /// The value for Typst's `page(margin: ...)`. With nothing set this is the
+    /// neutral default (`(x: 1in, y: 1in)`); a lone `margin=` becomes a uniform
+    /// length; per-side keys become a dict, each side falling back to the
+    /// `margin=` value and then to `1in`.
+    pub fn to_typst_value(&self) -> String {
+        if self.is_empty() {
+            return "(x: 1in, y: 1in)".to_string();
+        }
+        if !self.has_sides() {
+            return self
+                .uniform
+                .clone()
+                .unwrap_or_else(|| "(x: 1in, y: 1in)".to_string());
+        }
+        let fallback = self.uniform.as_deref().unwrap_or("1in");
+        format!(
+            "(top: {}, bottom: {}, left: {}, right: {})",
+            self.top.as_deref().unwrap_or(fallback),
+            self.bottom.as_deref().unwrap_or(fallback),
+            self.left.as_deref().unwrap_or(fallback),
+            self.right.as_deref().unwrap_or(fallback),
+        )
+    }
 }
 
 impl Layout {
@@ -190,6 +242,76 @@ impl Layout {
     pub fn is_two_column(&self, class: &DocClass) -> bool {
         self.two_column.unwrap_or_else(|| class.default_two_column())
     }
+
+    /// Merge `geometry` options (from `\usepackage[...]{geometry}` or
+    /// `\geometry{...}`) into this layout. Called in source order, so a later
+    /// call overrides an earlier key. Keys whose value isn't a Typst-expressible
+    /// absolute length (e.g. `0.8\textwidth`) are skipped silently.
+    pub fn apply_geometry(&mut self, opts: &str) {
+        for token in split_top_level_commas(opts) {
+            let token = token.trim();
+            if token.is_empty() {
+                continue;
+            }
+            match token.split_once('=') {
+                Some((key, val)) => {
+                    let key = key.trim();
+                    let len = match sanitize_length(val.trim()) {
+                        Some(l) => l,
+                        None => continue,
+                    };
+                    match key {
+                        "margin" => self.margin.uniform = Some(len),
+                        "top" | "tmargin" => self.margin.top = Some(len),
+                        "bottom" | "bmargin" => self.margin.bottom = Some(len),
+                        "left" | "lmargin" | "inner" => self.margin.left = Some(len),
+                        "right" | "rmargin" | "outer" => self.margin.right = Some(len),
+                        "hmargin" => {
+                            self.margin.left = Some(len.clone());
+                            self.margin.right = Some(len);
+                        }
+                        "vmargin" => {
+                            self.margin.top = Some(len.clone());
+                            self.margin.bottom = Some(len);
+                        }
+                        // textwidth/textheight/paperwidth/... need arithmetic
+                        // against the paper size — not yet supported.
+                        _ => {}
+                    }
+                }
+                // A bare flag: paper size (landscape etc. not yet supported).
+                None => {
+                    if let Some(p) = map_paper_option(token) {
+                        self.paper = Some(p);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Split a geometry option string on top-level commas. (Geometry values don't
+/// nest braces in practice, so a plain split is sufficient and keeps `=` values
+/// intact.)
+fn split_top_level_commas(s: &str) -> impl Iterator<Item = &str> {
+    s.split(',')
+}
+
+/// Validate a LaTeX length and return it in a Typst-compatible form, or `None`
+/// if it isn't an absolute length Typst understands. Accepts a decimal number
+/// followed by one of Typst's length units (in/cm/mm/pt/em); rejects relative
+/// or macro-based lengths like `0.8\textwidth` or `2\baselineskip`.
+fn sanitize_length(v: &str) -> Option<String> {
+    let v = v.trim();
+    for unit in ["in", "cm", "mm", "pt", "em"] {
+        if let Some(num) = v.strip_suffix(unit) {
+            let num = num.trim();
+            if !num.is_empty() && num.parse::<f64>().is_ok() {
+                return Some(format!("{num}{unit}"));
+            }
+        }
+    }
+    None
 }
 
 /// Map a LaTeX paper-size class option to its Typst `page(paper: ...)` name.
@@ -988,6 +1110,43 @@ mod tests {
     #[test]
     fn layout_default_when_empty() {
         assert_eq!(Layout::from_class_options(&[]), Layout::default());
+    }
+
+    #[test]
+    fn sanitize_length_accepts_typst_units_rejects_relative() {
+        assert_eq!(sanitize_length("1.5in").as_deref(), Some("1.5in"));
+        assert_eq!(sanitize_length(" 25mm ").as_deref(), Some("25mm"));
+        assert_eq!(sanitize_length("2cm").as_deref(), Some("2cm"));
+        assert_eq!(sanitize_length("0.8\\textwidth"), None);
+        assert_eq!(sanitize_length("3"), None); // no unit
+        assert_eq!(sanitize_length("10bp"), None); // unit Typst lacks
+    }
+
+    #[test]
+    fn apply_geometry_uniform_then_default_value() {
+        let mut l = Layout::default();
+        l.apply_geometry("margin=1in");
+        assert_eq!(l.margin.to_typst_value(), "1in");
+    }
+
+    #[test]
+    fn apply_geometry_command_merges_over_package() {
+        let mut l = Layout::default();
+        l.apply_geometry("margin=1in"); // package
+        l.apply_geometry("top=2cm"); // \geometry command
+        assert_eq!(
+            l.margin.to_typst_value(),
+            "(top: 2cm, bottom: 1in, left: 1in, right: 1in)"
+        );
+    }
+
+    #[test]
+    fn apply_geometry_paper_flag_and_empty_default() {
+        let mut l = Layout::default();
+        l.apply_geometry("a4paper");
+        assert_eq!(l.paper, Some("a4"));
+        // No margin keys → the neutral default value.
+        assert_eq!(l.margin.to_typst_value(), "(x: 1in, y: 1in)");
     }
 
     #[test]
