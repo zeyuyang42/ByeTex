@@ -82,8 +82,35 @@ pub(crate) fn harvest_macros_from_source(source: &str) -> HashMap<String, MacroD
     while let Some(n) = stack.pop() {
         match n.kind() {
             "new_command_definition" => {
-                if let Some((name, def)) = extract_newcommand(n, source) {
-                    out.insert(name, def);
+                // tree-sitter uses `new_command_definition` for \newcommand,
+                // \renewcommand, \providecommand AND \DeclareMathOperator. The
+                // last needs its own extractor (operator body, not a `#1`-param
+                // macro); without dispatching, an \input'd `\DeclareMathOperator`
+                // was mis-harvested and the operator emitted `ambiguous_math` at
+                // every use. Mirror `prepass_collect`'s dispatch here.
+                let cmd_token = new_command_token_kind(n);
+                match cmd_token.as_deref() {
+                    Some("\\DeclareMathOperator") | Some("\\DeclareMathOperator*") => {
+                        let starred = cmd_token.as_deref().is_some_and(|s| s.ends_with('*'));
+                        if let Some((name, def)) =
+                            extract_declare_math_operator_from_newcmd(n, source, starred)
+                        {
+                            out.insert(name, def);
+                        }
+                    }
+                    Some("\\providecommand") | Some("\\providecommand*") => {
+                        if let Some((name, def)) = extract_newcommand(n, source) {
+                            // \providecommand: no-op if already defined.
+                            if !out.contains_key(&name) && lookup_math_symbol(&name).is_none() {
+                                out.insert(name, def);
+                            }
+                        }
+                    }
+                    _ => {
+                        if let Some((name, def)) = extract_newcommand(n, source) {
+                            out.insert(name, def);
+                        }
+                    }
                 }
             }
             "let_command_definition" => {
@@ -1321,9 +1348,19 @@ impl<'a> Emitter<'a> {
                     }
                 }
                 Some("\\DeclareMathOperator") | Some("\\DeclareMathOperator*") => {
-                    // Harvested in prepass_collect with correct \operatorname body.
-                    // Do not re-harvest here — extract_newcommand would give the wrong
-                    // body (just the display text, not \operatorname{...}).
+                    // Harvest with the correct `\operatorname{...}` body (NOT
+                    // `extract_newcommand`, which would keep only the display
+                    // text). The top-level prepass also seeds this, but sub-
+                    // emitters for `\input`ed files do not run a prepass — they
+                    // rely on emit-time harvesting — so an operator defined in an
+                    // included file (e.g. `newcommands.tex`) would otherwise never
+                    // register and warn `ambiguous_math` at every use.
+                    let starred = cmd_token.as_deref().is_some_and(|s| s.ends_with('*'));
+                    if let Some((name, def)) =
+                        extract_declare_math_operator_from_newcmd(node, self.src, starred)
+                    {
+                        self.macros.entry(name).or_insert(def);
+                    }
                 }
                 _ => {
                     // \newcommand (and any other variant) — always overwrites.
