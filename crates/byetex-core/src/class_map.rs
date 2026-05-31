@@ -128,7 +128,58 @@ impl DocClass {
         }
         self
     }
+}
 
+/// Scalar, source-derived layout overrides for the neutral preamble (Task 2,
+/// layout fidelity). Each `None` field falls back to the neutral default in
+/// `emit::build_neutral_preamble`, so a document that doesn't request a size /
+/// paper keeps the Task 1 baseline (us-letter, 11pt).
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub(crate) struct Layout {
+    /// Typst paper name from `\documentclass[a4paper|letterpaper|...]`.
+    pub paper: Option<&'static str>,
+    /// Base font size from `\documentclass[10pt|11pt|12pt]`.
+    pub font_size: Option<&'static str>,
+}
+
+impl Layout {
+    /// Derive scalar overrides from the `\documentclass[opts]` option list.
+    /// Class-specific options (e.g. `conference`, `sigconf`) are ignored here —
+    /// they are handled by [`DocClass::from_class`].
+    pub fn from_class_options(opts: &[String]) -> Self {
+        let mut layout = Layout::default();
+        for opt in opts {
+            if let Some(p) = map_paper_option(opt) {
+                layout.paper = Some(p);
+            } else if let Some(s) = map_font_size_option(opt) {
+                layout.font_size = Some(s);
+            }
+        }
+        layout
+    }
+}
+
+/// Map a LaTeX paper-size class option to its Typst `page(paper: ...)` name.
+fn map_paper_option(opt: &str) -> Option<&'static str> {
+    Some(match opt {
+        "a4paper" => "a4",
+        "a5paper" => "a5",
+        "b5paper" => "iso-b5",
+        "letterpaper" => "us-letter",
+        "legalpaper" => "us-legal",
+        "executivepaper" => "us-executive",
+        _ => return None,
+    })
+}
+
+/// Map a LaTeX base font-size class option to a Typst `text(size: ...)` value.
+fn map_font_size_option(opt: &str) -> Option<&'static str> {
+    Some(match opt {
+        "10pt" => "10pt",
+        "11pt" => "11pt",
+        "12pt" => "12pt",
+        _ => return None,
+    })
 }
 
 
@@ -869,6 +920,41 @@ mod tests {
     fn neurips_via_package() {
         let c = DocClass::from_class("article", &[]).refine_from_package("neurips_2024");
         assert!(matches!(c, DocClass::Neurips));
+    }
+
+    fn opts(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn layout_from_options_maps_font_and_paper() {
+        let l = Layout::from_class_options(&opts(&["12pt", "a4paper"]));
+        assert_eq!(l.font_size, Some("12pt"));
+        assert_eq!(l.paper, Some("a4"));
+    }
+
+    #[test]
+    fn layout_ignores_class_specific_options() {
+        // `conference` / `sigconf` are class options, not layout scalars.
+        let l = Layout::from_class_options(&opts(&["conference", "sigconf"]));
+        assert_eq!(l, Layout::default());
+    }
+
+    #[test]
+    fn layout_paper_aliases() {
+        assert_eq!(
+            Layout::from_class_options(&opts(&["letterpaper"])).paper,
+            Some("us-letter")
+        );
+        assert_eq!(
+            Layout::from_class_options(&opts(&["b5paper"])).paper,
+            Some("iso-b5")
+        );
+    }
+
+    #[test]
+    fn layout_default_when_empty() {
+        assert_eq!(Layout::from_class_options(&[]), Layout::default());
     }
 
     #[test]
