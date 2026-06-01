@@ -445,6 +445,13 @@ pub(crate) struct Emitter<'a> {
     /// Used as a fallback when resolving `\input{path}` from sub-files, since
     /// LaTeX resolves include paths relative to the root (not the current file).
     root_dir: Option<PathBuf>,
+    /// Search directories declared by `\graphicspath{{dir1/}{dir2/}}` (relative
+    /// to the project root), in declaration order. `\includegraphics{name}` is
+    /// probed against these (after base_dir/root_dir) so a bare image name whose
+    /// file lives in a graphicspath dir resolves instead of going "missing".
+    /// Collected during emission (the directive may sit in an `\input`-ed
+    /// preamble) and merged across the `\input` sub-emitter boundary.
+    graphics_paths: Vec<String>,
     /// Canonicalised paths of files already expanded along the current
     /// expansion chain — used to break `\input` cycles. Each successful
     /// recursive expansion inserts the resolved file's canonical path before
@@ -579,6 +586,7 @@ impl<'a> Emitter<'a> {
             detected_class: DocClass::Unknown,
             layout: crate::class_map::Layout::default(),
             root_dir: base_dir.clone(),
+            graphics_paths: Vec::new(),
             base_dir,
             visited_includes: visited,
             macros: preseeded_macros,
@@ -2720,6 +2728,23 @@ impl<'a> Emitter<'a> {
                 }
                 node.end_byte()
             }
+            // `\graphicspath{{dir1/}{dir2/}}` — register the search dirs so bare
+            // `\includegraphics{name}` resolves against them (D7). Renders
+            // nothing; the dirs feed `emit_graphics_include`'s probe list.
+            Some("\\graphicspath") => {
+                if let Some(arg) = first_curly_group(node) {
+                    let raw = self
+                        .src
+                        .get(arg.start_byte() + 1..arg.end_byte().saturating_sub(1))
+                        .unwrap_or("");
+                    for dir in parse_graphicspath_dirs(raw) {
+                        if !self.graphics_paths.contains(&dir) {
+                            self.graphics_paths.push(dir);
+                        }
+                    }
+                }
+                node.end_byte()
+            }
             Some("\\author") => {
                 // Raw-bytes capture — same rationale as `author_declaration` above.
                 if let Some(arg) = first_curly_group(node) {
@@ -3399,6 +3424,9 @@ impl<'a> Emitter<'a> {
         // Propagate the project root so nested \input paths that are
         // relative to the root (LaTeX convention) resolve correctly.
         sub.root_dir = self.root_dir.clone();
+        // Pass down any \graphicspath dirs seen so far (e.g. preamble loaded
+        // before this include) so figures in the included file can use them.
+        sub.graphics_paths = self.graphics_paths.clone();
         // Inherit parent's theorem-kind map so that environments defined in a
         // previously-processed \input file (e.g. macros.tex) are recognisable
         // when they appear in a later sibling include (e.g. sections/04_…tex).
@@ -3416,6 +3444,14 @@ impl<'a> Emitter<'a> {
         self.out.push_str(&sub.out);
         self.warnings.append(&mut sub.warnings);
         self.asset_refs.append(&mut sub.asset_refs);
+        // Merge back any \graphicspath dirs the included file declared (e.g. a
+        // preamble.tex pulled in via \input) so LATER figures in the parent
+        // resolve against them too.
+        for dir in sub.graphics_paths.drain(..) {
+            if !self.graphics_paths.contains(&dir) {
+                self.graphics_paths.push(dir);
+            }
+        }
         self.needs_heading_numbering |= sub.needs_heading_numbering;
         self.needs_equation_numbering |= sub.needs_equation_numbering;
         // Merge the included file's metadata into the parent, parent
@@ -6662,6 +6698,21 @@ impl<'a> Emitter<'a> {
                     v.push(r.clone());
                 }
             }
+            // `\graphicspath` search dirs, resolved relative to the project root
+            // (then base_dir as a fallback). LaTeX searches these for a bare
+            // `\includegraphics{name}` whose file isn't directly under the
+            // current/root dir (D7).
+            for gp in &self.graphics_paths {
+                if let Some(ref r) = self.root_dir {
+                    v.push(r.join(gp));
+                }
+                if let Some(ref b) = self.base_dir {
+                    let cand = b.join(gp);
+                    if !v.contains(&cand) {
+                        v.push(cand);
+                    }
+                }
+            }
             v
         };
         if let Some(source_path) =
@@ -8054,6 +8105,44 @@ fn extract_bib_paths(node: Node<'_>, src: &str) -> Vec<String> {
 }
 
 /// Extract the path argument from a `graphics_include` (`\includegraphics{X}`).
+/// Parse the inner argument of `\graphicspath{{dir1/}{dir2/}}` — i.e. the text
+/// between the OUTER braces — into a list of search directories. Each dir is a
+/// `{...}`-wrapped group; brace nesting is honored. Trailing slashes are kept
+/// as written (joined with the image name later). A malformed/empty arg yields
+/// no dirs. Example: `{figures/main/}{figures/tasks/}` → ["figures/main/",
+/// "figures/tasks/"].
+fn parse_graphicspath_dirs(inner: &str) -> Vec<String> {
+    let bytes = inner.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'{' {
+            let mut depth = 1;
+            let start = i + 1;
+            let mut j = start;
+            while j < bytes.len() && depth > 0 {
+                match bytes[j] {
+                    b'{' => depth += 1,
+                    b'}' => depth -= 1,
+                    _ => {}
+                }
+                if depth == 0 {
+                    break;
+                }
+                j += 1;
+            }
+            let dir = inner[start..j].trim();
+            if !dir.is_empty() {
+                out.push(dir.to_string());
+            }
+            i = j + 1;
+        } else {
+            i += 1;
+        }
+    }
+    out
+}
+
 fn extract_graphics_path(node: Node<'_>, src: &str) -> Option<String> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
