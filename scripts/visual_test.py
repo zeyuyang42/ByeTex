@@ -366,6 +366,128 @@ def tokenize_words(text: str) -> set[str]:
     }
 
 
+# ── Source-anchored truth extraction (D4) ───────────────────────────────────────
+# The `pdftotext`-of-PDF heading/float extraction is noisy on math-heavy papers
+# (equation fragments masquerade as headings). Since we have the LaTeX source,
+# derive the truth heading list and float counts directly from it: ordered,
+# clean, and free of equation residue. The source must be the WHOLE project
+# (toplevel + every `\input`-ed file) concatenated — corpus papers keep their
+# sections in separate files (0 in the toplevel, 7-23 includes).
+
+_SECTION_RE = re.compile(r"\\(?:sub){0,2}section\*?\s*\{", re.IGNORECASE)
+_FIGURE_ENV_RE = re.compile(r"\\begin\s*\{\s*figure\*?\s*\}")
+_TABLE_ENV_RE = re.compile(r"\\begin\s*\{\s*table\*?\s*\}")
+
+
+def _strip_comments(tex: str) -> str:
+    """Drop LaTeX `%` comments (an unescaped `%` to end of line)."""
+    out = []
+    for line in tex.splitlines():
+        i = 0
+        cut = None
+        while i < len(line):
+            if line[i] == "\\":
+                i += 2
+                continue
+            if line[i] == "%":
+                cut = i
+                break
+            i += 1
+        out.append(line if cut is None else line[:cut])
+    return "\n".join(out)
+
+
+def _balanced_group(tex: str, open_idx: int) -> tuple[str, int] | None:
+    """Given the index of a `{`, return (inner_text, index_past_close) honoring
+    nested braces, or None if unbalanced."""
+    depth = 0
+    i = open_idx
+    while i < len(tex):
+        c = tex[i]
+        if c == "\\":
+            i += 2
+            continue
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return tex[open_idx + 1 : i], i + 1
+        i += 1
+    return None
+
+
+def _clean_heading_title(raw: str) -> str:
+    """Normalise a raw `\\section{...}` argument to a comparable title:
+    drop `\\label{}`/`\\texorpdfstring`-pdf-arg, strip inline math, remove
+    remaining control sequences, collapse whitespace, lowercase."""
+    s = raw
+    # \texorpdfstring{pdf}{tex} -> keep the PDF (first) arg, which is what renders.
+    def _texor(m):
+        rest = s[m.end() - 1 :]
+        g = _balanced_group(rest, 0)
+        return g[0] if g else ""
+    while True:
+        m = re.search(r"\\texorpdfstring\s*\{", s)
+        if not m:
+            break
+        g1 = _balanced_group(s, m.end() - 1)
+        if not g1:
+            break
+        pdf_arg, after = g1
+        # skip the second {tex} arg if present
+        tail = s[after:]
+        g2_idx = tail.find("{")
+        consumed_to = after
+        if g2_idx != -1 and tail[:g2_idx].strip() == "":
+            g2 = _balanced_group(tail, g2_idx)
+            if g2:
+                consumed_to = after + g2[1]
+        s = s[: m.start()] + pdf_arg + s[consumed_to:]
+    # Drop \label{...} entirely.
+    while True:
+        m = re.search(r"\\label\s*\{", s)
+        if not m:
+            break
+        g = _balanced_group(s, m.end() - 1)
+        if not g:
+            break
+        s = s[: m.start()] + s[g[1] :]
+    # Strip inline math `$...$`.
+    s = re.sub(r"\$[^$]*\$", " ", s)
+    # Remaining control sequences: keep any brace argument's text, drop the cmd.
+    s = re.sub(r"\\[a-zA-Z]+\s*", " ", s)
+    s = s.replace("{", " ").replace("}", " ")
+    return " ".join(s.split()).lower()
+
+
+def source_headings(tex: str) -> list[str]:
+    """Ordered, cleaned `\\section`/`\\subsection`/`\\subsubsection` titles from
+    LaTeX source (comments removed). The source-anchored truth heading list."""
+    body = _strip_comments(tex)
+    out: list[str] = []
+    for m in _SECTION_RE.finditer(body):
+        g = _balanced_group(body, m.end() - 1)
+        if not g:
+            continue
+        title = _clean_heading_title(g[0])
+        if title:
+            out.append(title)
+        if len(out) >= MAX_HEADINGS:
+            break
+    return out
+
+
+def source_float_counts(tex: str) -> dict:
+    """Count `figure`/`table` (and starred) environments in LaTeX source
+    (comments removed). The source-anchored truth float counts."""
+    body = _strip_comments(tex)
+    return {
+        "figures": len(_FIGURE_ENV_RE.findall(body)),
+        "tables": len(_TABLE_ENV_RE.findall(body)),
+    }
+
+
 def extract_pdf_headings(text: str) -> list[str]:
     """Heuristically pull section-heading-like lines out of `pdftotext`
     output.
