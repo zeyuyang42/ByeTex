@@ -6724,6 +6724,42 @@ impl<'a> Emitter<'a> {
 
     /// `\begin{figure}...\caption{X}...\label{fig:y}...\end{figure}` →
     /// `#figure(image(...), caption: [X]) <fig:y>`.
+    /// Render one `subfigure` environment as a Typst figure panel:
+    /// `figure(image("..."), caption: [sub-caption])`. Returns `None` when the
+    /// subfigure has no `\includegraphics` (nothing to show). The panel is bare
+    /// (no `#`) so it can sit inside a `grid(...)` argument. Subfigure `\label`s
+    /// are NOT attached here — `emit_figure` collects every subfigure label
+    /// into its outer set and anchors the referenced ones (so a `\ref` to a
+    /// dropped/image-less panel still resolves).
+    fn render_subfigure_panel(&mut self, node: Node<'_>) -> Option<String> {
+        let mut graphics: Option<Node<'_>> = None;
+        let mut caption: Option<Node<'_>> = None;
+        let mut stack = vec![node];
+        while let Some(n) = stack.pop() {
+            let mut cursor = n.walk();
+            for child in n.children(&mut cursor) {
+                match child.kind() {
+                    "graphics_include" if graphics.is_none() => graphics = Some(child),
+                    "caption" if caption.is_none() => caption = Some(child),
+                    _ => stack.push(child),
+                }
+            }
+        }
+        let g = graphics?;
+        let img = self.with_sub_buffer(|e| {
+            e.emit_graphics_include(g);
+        });
+        let mut panel = format!("figure({}", img.trim());
+        if let Some(c) = caption {
+            if let Some(arg) = first_curly_group(c) {
+                let text = self.render_curly_group_content(arg);
+                let _ = write!(panel, ", caption: [{}]", text);
+            }
+        }
+        panel.push(')');
+        Some(panel)
+    }
+
     fn emit_figure(&mut self, node: Node<'_>) -> usize {
         let mut graphics: Option<Node<'_>> = None;
         let mut caption: Option<Node<'_>> = None;
@@ -6739,6 +6775,10 @@ impl<'a> Emitter<'a> {
         // separate file (`\begin{table}{\input{results}}...`), so when no inline
         // tabular is found we resolve these to recover the table body.
         let mut includes: Vec<Node<'_>> = Vec::new();
+        // `subfigure` environments — each holds its own `\includegraphics` and
+        // sub-`\caption`. A figure with N subfigures must emit ALL N images, not
+        // just one (Bug D5); collected here and rendered as a grid of panels.
+        let mut subfigures: Vec<Node<'_>> = Vec::new();
 
         // Walk the entire subtree because IEEE-style templates often wrap
         // `\includegraphics` in `\centerline{...}` or `\centering{...}`.
@@ -6768,8 +6808,38 @@ impl<'a> Emitter<'a> {
                         }
                     }
                     "generic_environment" => {
+                        let env = environment_name(child, self.src);
                         if matches!(
-                            environment_name(child, self.src).as_deref(),
+                            env.as_deref(),
+                            Some("subfigure") | Some("subcaptionblock") | Some("subfloat")
+                        ) {
+                            // Capture the whole subfigure as a panel; do NOT
+                            // descend for graphics/caption (those belong to the
+                            // panel). BUT still collect its `\label`s into the
+                            // outer set: a subfigure may be `\ref`'d, and if it
+                            // has no image its panel is dropped — its label must
+                            // still be anchored by the outer figure or the
+                            // reference dangles ("label does not exist").
+                            let mut sc = child.walk();
+                            let mut sub_stack: Vec<Node<'_>> = child.children(&mut sc).collect();
+                            while let Some(sn) = sub_stack.pop() {
+                                if sn.kind() == "label_definition" {
+                                    if let Some(k) = extract_label_name(sn, self.src) {
+                                        if !labels.contains(&k) {
+                                            labels.push(k);
+                                        }
+                                    }
+                                }
+                                let mut c2 = sn.walk();
+                                for gc in sn.children(&mut c2) {
+                                    sub_stack.push(gc);
+                                }
+                            }
+                            subfigures.push(child);
+                            continue;
+                        }
+                        if matches!(
+                            env.as_deref(),
                             Some("tabular")
                                 | Some("tabular*")
                                 | Some("tabularx")
@@ -6789,8 +6859,28 @@ impl<'a> Emitter<'a> {
         // Whether the float's body is a tabular (vs an image): when it is, the
         // emitted `#figure` must carry `kind: table` so Typst captions/refs read
         // "Table N" rather than the default "Figure N".
+        // Render subfigure panels up front (Bug D5): each becomes its own
+        // `figure(image(...), caption: [..])`. Empty when there are no
+        // subfigures or none yields an image — in which case we fall back to
+        // the single-graphic / tabular / placeholder chain below.
+        let panels: Vec<String> = subfigures
+            .iter()
+            .filter_map(|sf| self.render_subfigure_panel(*sf))
+            .collect();
+
         let mut body_is_table = false;
-        let body_str = if let Some(g) = graphics {
+        let body_str = if !panels.is_empty() {
+            // Multi-panel figure: lay the panels out in a grid so every image
+            // survives. A single surviving panel collapses to just that panel.
+            if panels.len() == 1 {
+                panels.into_iter().next().unwrap()
+            } else {
+                format!(
+                    "grid(\n  columns: 2,\n  gutter: 0.5em,\n  {}\n)",
+                    panels.join(",\n  ")
+                )
+            }
+        } else if let Some(g) = graphics {
             self.with_sub_buffer(|emitter| {
                 emitter.emit_graphics_include(g);
             })
