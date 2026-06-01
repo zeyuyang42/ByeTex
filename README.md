@@ -259,20 +259,20 @@ ByeTex/
 ## Status
 
 <!-- corpus-summary:start -->
-_Last updated: 2026-06-01 (commit ba214f6)_
+_Last updated: 2026-06-01 (commit 5e9c7c7)_
 
 Corpus pass-rate (clean + warnings): **87%** — 431/495 files.
 
 | Bucket | Count |
 |---|---:|
 | Total | 495 |
-| Clean | 197 |
-| Warnings (≥1, no parse error) | 234 |
+| Clean | 200 |
+| Warnings (≥1, no parse error) | 231 |
 | Parse errors | 64 |
 
 | Warning category | Count |
 |---|---:|
-| `unsupported_command` | 418 |
+| `unsupported_command` | 413 |
 | `drop_only` | 87 |
 | `unsupported_environment` | 52 |
 | `ambiguous_math` | 27 |
