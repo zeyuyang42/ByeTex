@@ -18,6 +18,7 @@ use crate::class_map::DocClass;
 use crate::document::{Content, DocumentMetadata};
 use crate::warnings::{Category, Range, Severity, Warning};
 
+mod boundary;
 mod escape;
 pub(crate) use escape::{escape_text_for_typst_content, needs_text_escape, is_typst_label_char, sanitize_label_key, escape_paren_semicolons, escape_unbalanced_math_brackets, strip_trailing_typst_label, escape_text_cell};
 
@@ -1124,7 +1125,7 @@ impl<'a> Emitter<'a> {
                 // `_{i0}`) become Typst identifier lookups that fail.
                 // Insert a separator between alpha and digit tail so
                 // they parse as separate atoms.
-                if tail.starts_with(|c: char| c.is_ascii_digit()) {
+                if boundary::starts_with_digit(tail) {
                     self.out.push(' ');
                 }
                 self.out.push_str(tail);
@@ -1134,7 +1135,7 @@ impl<'a> Emitter<'a> {
             // the splitting branch, an `i0`-style word with a 1-char
             // alpha prefix needs the same separator before the digit
             // tail to keep Typst from reading `i0` as an identifier.
-            if !alpha.is_empty() && tail.starts_with(|c: char| c.is_ascii_digit()) {
+            if !alpha.is_empty() && boundary::starts_with_digit(tail) {
                 self.out.push_str(alpha);
                 self.out.push(' ');
                 self.out.push_str(tail);
@@ -1161,7 +1162,7 @@ impl<'a> Emitter<'a> {
                         self.out.push(' ');
                         self.out.push(c);
                     }
-                    if rest_tail.starts_with(|c: char| c.is_ascii_digit()) {
+                    if boundary::starts_with_digit(rest_tail) {
                         self.out.push(' ');
                     }
                     self.out.push_str(rest_tail);
@@ -4573,12 +4574,7 @@ impl<'a> Emitter<'a> {
         //   sentinel followed by anything else (letter/digit/end of
         //   buffer) → replace with a single ASCII space so the two
         //   identifiers stay separate.
-        let multi_char_letterish = typst.chars().count() > 1
-            && typst
-                .chars()
-                .last()
-                .is_some_and(|c| c.is_ascii_alphanumeric());
-        if multi_char_letterish {
+        if boundary::needs_trailing_sentinel(typst, true) {
             self.out.push(MATH_WORD_BOUNDARY);
         }
     }
@@ -4591,13 +4587,7 @@ impl<'a> Emitter<'a> {
     /// `emit_math_wrap`'s `bb(` followed the `in` from `\in` with no
     /// separator. Callers invoke this before the letter-starting prefix.
     fn ensure_math_letter_boundary(&mut self, next: &str) {
-        let starts_with_letter = next.chars().next().is_some_and(|c| c.is_ascii_alphabetic());
-        let prev_is_letter = self
-            .out
-            .chars()
-            .last()
-            .is_some_and(|c| c.is_ascii_alphabetic());
-        if starts_with_letter && prev_is_letter {
+        if boundary::starts_with_letter(next) && boundary::ends_with_letter(&self.out) {
             self.out.push(' ');
         }
     }
@@ -4699,7 +4689,7 @@ impl<'a> Emitter<'a> {
                     // function call (e.g. `arrow.r(` → function call). `)`, `,`
                     // and other punct are fine without a separator.
                     let next_is_call_open = next == '(';
-                    if next.is_ascii_alphanumeric() || (prev_token_dotted && next_is_call_open) {
+                    if boundary::is_word_char(next) || (prev_token_dotted && next_is_call_open) {
                         out.push(' ');
                     }
                     // else: drop the sentinel — Typst already tokenizes
@@ -6011,11 +6001,7 @@ impl<'a> Emitter<'a> {
                     // chars after `_`. Drop a MATH_WORD_BOUNDARY
                     // sentinel so `collapse_math_spaces` inserts a
                     // separator when the next token is letter/digit.
-                    if trimmed
-                        .chars()
-                        .last()
-                        .is_some_and(|c| c.is_ascii_alphanumeric())
-                    {
+                    if boundary::needs_trailing_sentinel(trimmed, false) {
                         self.out.push(MATH_WORD_BOUNDARY);
                     }
                 }
