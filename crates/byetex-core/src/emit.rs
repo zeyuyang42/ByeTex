@@ -7909,12 +7909,22 @@ fn first_curly_like(node: Node<'_>) -> Option<Node<'_>> {
     result
 }
 
-/// True if the last emitted bytes look like "we just opened math and haven't
-/// written a base symbol yet", in which case a subscript or superscript needs
-/// an empty-string base to be valid Typst.
+/// True if the last emitted bytes look like "there is no base symbol for a
+/// following attachment", in which case a subscript or superscript needs an
+/// empty-string base to be valid Typst.
+///
+/// Two cases: (1) we just opened math (`$`) and haven't written a base yet
+/// (a floating `{}^{a}` footnote marker); (2) the attachment directly follows
+/// an opening delimiter `(`/`[`/`{` — the isotope/prescript idiom
+/// `\mu(^{233}\mathrm{U})` (corpus 2605.31203), where `^` would otherwise be
+/// `(^...)` and Typst rejects it with `unexpected hat`.
 fn needs_empty_base(out: &str) -> bool {
     let trimmed = out.trim_end_matches([' ', '\t']);
-    trimmed.ends_with('$') || trimmed.ends_with("$ ")
+    trimmed.ends_with('$')
+        || trimmed.ends_with("$ ")
+        || trimmed.ends_with('(')
+        || trimmed.ends_with('[')
+        || trimmed.ends_with('{')
 }
 
 /// Map a LaTeX text accent + base letter to the precomposed Unicode codepoint.
