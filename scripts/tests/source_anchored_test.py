@@ -71,6 +71,26 @@ check(vt.source_float_counts("no floats here") == {"figures": 0, "tables": 0},
       "no floats -> zeros")
 
 
+# ── typ_headings: byetex's OWN .typ output headings (clean, marker-based) ────────
+# The typst side must be anchored too, else clean-truth vs noisy-pdftotext-typst
+# creates false misses. byetex emits `= H`, `== H <label>` markers.
+typ = """#set page(paper: "us-letter")
+= Introduction <sec:intro>
+Body text = not a heading (no leading marker).
+== Related Work
+=== Phase 0: warm start
+text == still not a heading
+= Conclusions <sec:conc>
+"""
+th = vt.typ_headings(typ)
+check(th == ["introduction", "related work", "phase 0: warm start", "conclusions"],
+      f"typ headings from = / == markers, label stripped, lowercased; got {th}")
+# A leading-marker line is required; inline '=' must not match.
+check("not a heading" not in " ".join(th) and "still not a heading" not in " ".join(th),
+      f"inline '=' must not be taken as a heading; got {th}")
+check(vt.typ_headings("no headings here\njust text") == [], "no markers -> []")
+
+
 if fails:
     print(f"\nTEST FAILED ({len(fails)} assertion(s))")
     sys.exit(1)

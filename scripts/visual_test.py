@@ -141,6 +141,49 @@ def find_existing_truth_pdf(source_dir: Path) -> Path | None:
     return pdfs[0] if pdfs else None
 
 
+_INPUT_RE = re.compile(r"\\(?:input|include|subfile)\s*\{([^}]+)\}")
+
+
+def collect_project_source(toplevel: Path) -> str:
+    """Concatenate the toplevel .tex and every file it pulls in via
+    `\\input`/`\\include`/`\\subfile`, transitively. Corpus papers keep their
+    sections in separate files (0 in the toplevel, 7-23 includes), so the
+    source-anchored truth metrics (source_headings / source_float_counts) need
+    the whole project, not just the entry file. Resolution mirrors byetex:
+    relative to the including file's dir, then the project root. Best-effort —
+    unreadable/missing includes are skipped; visited files aren't re-read."""
+    root = toplevel.parent
+    visited: set[Path] = set()
+    parts: list[str] = []
+
+    def resolve(raw: str, base: Path) -> Path | None:
+        raw = raw.strip()
+        for cand_dir in (base, root):
+            for name in (raw, raw + ".tex"):
+                p = (cand_dir / name)
+                if p.is_file():
+                    return p.resolve()
+        return None
+
+    def walk(path: Path) -> None:
+        rp = path.resolve()
+        if rp in visited or not rp.is_file():
+            return
+        visited.add(rp)
+        try:
+            text = rp.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return
+        parts.append(text)
+        for m in _INPUT_RE.finditer(_strip_comments(text)):
+            child = resolve(m.group(1), rp.parent)
+            if child is not None:
+                walk(child)
+
+    walk(toplevel)
+    return "\n".join(parts)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Pipeline steps
 # ─────────────────────────────────────────────────────────────────────────────
@@ -488,6 +531,34 @@ def source_float_counts(tex: str) -> dict:
     }
 
 
+_TYP_HEADING_RE = re.compile(r"^(={1,6})\s+(.+?)\s*$")
+_TYP_LABEL_RE = re.compile(r"\s*<[^>]+>\s*$")  # trailing `<label>` anchor
+
+
+def typ_headings(typ_text: str) -> list[str]:
+    """Ordered, cleaned headings from byetex's OWN generated Typst, keyed on the
+    line-leading `=`/`==`/... markers byetex emits (with optional trailing
+    `<label>`). This anchors the TYPST side the same way `source_headings`
+    anchors the truth side, so heading_recall compares clean-vs-clean instead of
+    clean-truth-vs-noisy-pdftotext. Strips the `<label>`, residual inline math,
+    and `*bold*`/`_emph_` markup; lowercases; collapses whitespace."""
+    out: list[str] = []
+    for line in typ_text.splitlines():
+        m = _TYP_HEADING_RE.match(line.rstrip())
+        if not m:
+            continue
+        title = _TYP_LABEL_RE.sub("", m.group(2))
+        title = re.sub(r"\$[^$]*\$", " ", title)        # inline math
+        title = re.sub(r"[*_`#]", "", title)             # typst markup chars
+        title = title.replace("\\", "")
+        title = " ".join(title.split()).lower()
+        if title:
+            out.append(title)
+        if len(out) >= MAX_HEADINGS:
+            break
+    return out
+
+
 def extract_pdf_headings(text: str) -> list[str]:
     """Heuristically pull section-heading-like lines out of `pdftotext`
     output.
@@ -667,9 +738,16 @@ def pdf_structure_compare(
     jaccard_min: float,
     word_recall_min: float,
     heading_recall_min: float,
+    source_tex: str | None = None,
+    typst_tex: str | None = None,
 ) -> dict:
     """Compute the structural-similarity dict and gate it against the
     configured thresholds. See the plan doc for metric definitions.
+
+    When `source_tex` (the concatenated project LaTeX) is given, the TRUTH
+    headings and TRUTH float counts are taken from the source (D4: noise-free,
+    ordered) instead of from `pdftotext` of the rendered PDF, which misfires on
+    math-heavy papers. The typst side is always measured from its rendered PDF.
     """
     truth_text = extract_pdf_text(truth_pdf)
     typst_text = extract_pdf_text(typst_pdf)
@@ -680,8 +758,18 @@ def pdf_structure_compare(
     word_jaccard = (len(intersect) / len(union)) if union else 0.0
     word_recall = (len(intersect) / len(truth_words)) if truth_words else 0.0
 
-    truth_headings = extract_pdf_headings(truth_text)
-    typst_headings = extract_pdf_headings(typst_text)
+    # Truth headings: source-anchored when available, else pdftotext heuristic.
+    truth_from_source = source_tex is not None
+    if truth_from_source:
+        truth_headings = source_headings(source_tex)
+    else:
+        truth_headings = extract_pdf_headings(truth_text)
+    # Typst side: prefer byetex's OWN `.typ` markers (clean) over pdftotext of
+    # its PDF (noisy) — so a source-anchored truth is compared clean-vs-clean.
+    if typst_tex is not None:
+        typst_headings = typ_headings(typst_tex)
+    else:
+        typst_headings = extract_pdf_headings(typst_text)
     h_recall = heading_recall(truth_headings, typst_headings)
 
     # Phase-2a structural metrics (reported; not yet gated — thresholds will be
@@ -689,6 +777,21 @@ def pdf_structure_compare(
     wc_ratio = word_count_ratio(truth_text, typst_text)
     h_seq = heading_sequence_score(truth_headings, typst_headings)
     floats = float_count_ratio(truth_text, typst_text)
+    if truth_from_source:
+        # Override the truth float counts with the source-anchored ones (the
+        # typst counts and ratios are recomputed against them).
+        src_floats = source_float_counts(source_tex)
+        floats = dict(floats)
+        floats["truth_figures"] = src_floats["figures"]
+        floats["truth_tables"] = src_floats["tables"]
+        floats["figure_ratio"] = (
+            floats["typst_figures"] / src_floats["figures"]
+            if src_floats["figures"] else None
+        )
+        floats["table_ratio"] = (
+            floats["typst_tables"] / src_floats["tables"]
+            if src_floats["tables"] else None
+        )
 
     page_ratio = (typst_pages / truth_pages) if truth_pages > 0 else 0.0
 
@@ -1053,6 +1156,11 @@ def process_paper(
             jaccard_min=args.min_word_jaccard,
             word_recall_min=args.min_word_recall,
             heading_recall_min=args.min_heading_recall,
+            # Source-anchored truth headings/float counts (D4): noise-free,
+            # ordered, from the project LaTeX rather than pdftotext of the PDF.
+            source_tex=collect_project_source(toplevel),
+            # Byetex's own .typ heading markers (clean) for the typst side.
+            typst_tex=typ_path.read_text(encoding="utf-8", errors="replace"),
         )
 
         # Per-page SSIM (visual/layout fidelity). Recorded always; warning-only
