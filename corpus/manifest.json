@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "generated_at": "2026-05-27T00:00:00Z",
+  "generated_at": "2026-06-01T23:14:54Z",
   "papers": [
     {
       "id": "2605.22821",
@@ -529,6 +529,622 @@
       "archive_bytes": 3386198,
       "license_url": "",
       "fetched_at": "2026-05-23T13:23:49Z"
+    },
+    {
+      "id": "2605.31604",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "cs.CV",
+      "title": "Representation Forcing for Bottleneck-Free Unified Multimodal Models",
+      "arxiv_published": "2026-05-29T17:59:55Z",
+      "arxiv_authors": [
+        "Yuqing Wang",
+        "Zhijie Lin",
+        "Ceyuan Yang",
+        "Yang Zhao",
+        "Fei Xiao"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.31604",
+      "download_url": "https://arxiv.org/e-print/2605.31604",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "",
+      "archive_bytes": 0,
+      "license_url": "",
+      "fetched_at": ""
+    },
+    {
+      "id": "2605.31603",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "cs.CV",
+      "title": "Lumos-Nexus: Efficient Frequency Bridging with Homogeneous Latent Space for Video Unified Models",
+      "arxiv_published": "2026-05-29T17:59:50Z",
+      "arxiv_authors": [
+        "Jiazheng Xing",
+        "Hangjie Yuan",
+        "Lingling Cai",
+        "Xinyu Liu",
+        "Yujie Wei"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.31603",
+      "download_url": "https://arxiv.org/e-print/2605.31603",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "",
+      "archive_bytes": 0,
+      "license_url": "",
+      "fetched_at": ""
+    },
+    {
+      "id": "2605.31598",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "cs.CV",
+      "title": "Linear Scaling Video VLMs for Long Video Understanding",
+      "arxiv_published": "2026-05-29T17:59:02Z",
+      "arxiv_authors": [
+        "Cristobal Eyzaguirre",
+        "Jiajun Wu",
+        "Juan Carlos Niebles"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.31598",
+      "download_url": "https://arxiv.org/e-print/2605.31598",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "",
+      "archive_bytes": 0,
+      "license_url": "",
+      "fetched_at": ""
+    },
+    {
+      "id": "2605.31597",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "cs.CV",
+      "title": "SOCO: Benchmarking Semantic Object Correspondence in Vision Foundation Models",
+      "arxiv_published": "2026-05-29T17:58:48Z",
+      "arxiv_authors": [
+        "Olaf D\u00fcnkel",
+        "Basavaraj Sunagad",
+        "Haoran Wang",
+        "David T. Hoffmann",
+        "Christian Theobalt"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.31597",
+      "download_url": "https://arxiv.org/e-print/2605.31597",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "",
+      "archive_bytes": 0,
+      "license_url": "",
+      "fetched_at": ""
+    },
+    {
+      "id": "2605.31596",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "cs.CV",
+      "title": "KLIP: localized distribution shift detection via KL-divergence with diffusion priors in Inverse Problems",
+      "arxiv_published": "2026-05-29T17:58:01Z",
+      "arxiv_authors": [
+        "Alireza Kheirandish",
+        "Jihoon Hong",
+        "Sara Fridovich-Keil"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.31596",
+      "download_url": "https://arxiv.org/e-print/2605.31596",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "",
+      "archive_bytes": 0,
+      "license_url": "",
+      "fetched_at": ""
+    },
+    {
+      "id": "2605.31586",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "cs.CL",
+      "title": "Language Models Learn Constructional Semantics, Not To Mention Syntax: Investigating LM Understanding of Paired-Focus Constructions",
+      "arxiv_published": "2026-05-29T17:54:00Z",
+      "arxiv_authors": [
+        "Wesley Scivetti",
+        "Ethan Wilcox",
+        "Nathan Schneider",
+        "Kanishka Misra",
+        "Leonie Weissweiler"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.31586",
+      "download_url": "https://arxiv.org/e-print/2605.31586",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "",
+      "archive_bytes": 0,
+      "license_url": "",
+      "fetched_at": ""
+    },
+    {
+      "id": "2605.31584",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "cs.CL",
+      "title": "LongTraceRL: Learning Long-Context Reasoning from Search Agent Trajectories with Rubric Rewards",
+      "arxiv_published": "2026-05-29T17:51:40Z",
+      "arxiv_authors": [
+        "Nianyi Lin",
+        "Jiajie Zhang",
+        "Lei Hou",
+        "Juanzi Li"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.31584",
+      "download_url": "https://arxiv.org/e-print/2605.31584",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "",
+      "archive_bytes": 0,
+      "license_url": "",
+      "fetched_at": ""
+    },
+    {
+      "id": "2605.31564",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "cs.CL",
+      "title": "What Gets Unmasked First? Trajectory Analysis of Diffusion Models for Graph-to-Text Generation",
+      "arxiv_published": "2026-05-29T17:29:35Z",
+      "arxiv_authors": [
+        "Qing Wang",
+        "Jacob Devasier",
+        "Chengkai Li"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.31564",
+      "download_url": "https://arxiv.org/e-print/2605.31564",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "",
+      "archive_bytes": 0,
+      "license_url": "",
+      "fetched_at": ""
+    },
+    {
+      "id": "2605.31563",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "cs.CL",
+      "title": "Disagreeing Rationales: Rethinking Classification and Explainability Evaluation in Hate Speech Detection",
+      "arxiv_published": "2026-05-29T17:29:28Z",
+      "arxiv_authors": [
+        "Benedetta Muscato",
+        "Beiduo Chen",
+        "Gizem Gezici",
+        "Barbara Plank",
+        "Fosca Giannotti"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.31563",
+      "download_url": "https://arxiv.org/e-print/2605.31563",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "",
+      "archive_bytes": 0,
+      "license_url": "",
+      "fetched_at": ""
+    },
+    {
+      "id": "2605.31561",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "cs.CL",
+      "title": "What Am I Missing? Question-Answering as Hidden State Probing",
+      "arxiv_published": "2026-05-29T17:27:07Z",
+      "arxiv_authors": [
+        "Chu Fei Luo",
+        "Samuel Dahan",
+        "Xiaodan Zhu"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.31561",
+      "download_url": "https://arxiv.org/e-print/2605.31561",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "",
+      "archive_bytes": 0,
+      "license_url": "",
+      "fetched_at": ""
+    },
+    {
+      "id": "2605.31567",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "stat.ME",
+      "title": "Addressing errors in multiple variables using generalized raking and cumulative probability models",
+      "arxiv_published": "2026-05-29T17:34:03Z",
+      "arxiv_authors": [
+        "Eric S. Kawaguchi",
+        "Chun Li",
+        "Frank E. Harrell",
+        "Pamela A. Shaw",
+        "Thomas Lumley"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.31567",
+      "download_url": "https://arxiv.org/e-print/2605.31567",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "",
+      "archive_bytes": 0,
+      "license_url": "",
+      "fetched_at": ""
+    },
+    {
+      "id": "2605.31443",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "stat.ME",
+      "title": "Modeling Covariate Transition for Efficient Estimation of Longitudinal Treatment Effects in Randomized Experiments",
+      "arxiv_published": "2026-05-29T15:40:07Z",
+      "arxiv_authors": [
+        "Naoki Chihara",
+        "Tatsushi Oka",
+        "Yasuko Matsubara",
+        "Yasushi Sakurai",
+        "Shota Yasui"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.31443",
+      "download_url": "https://arxiv.org/e-print/2605.31443",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "",
+      "archive_bytes": 0,
+      "license_url": "",
+      "fetched_at": ""
+    },
+    {
+      "id": "2605.31440",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "stat.ME",
+      "title": "Synthetic Data Generation With Incomplete Survey Data Under Informative Sampling",
+      "arxiv_published": "2026-05-29T15:36:39Z",
+      "arxiv_authors": [
+        "Ayat Almomani",
+        "Won Chang",
+        "Youngdeok Hwang",
+        "Young Min Kim",
+        "Hang J. Kim"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.31440",
+      "download_url": "https://arxiv.org/e-print/2605.31440",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "",
+      "archive_bytes": 0,
+      "license_url": "",
+      "fetched_at": ""
+    },
+    {
+      "id": "2605.31394",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "stat.ME",
+      "title": "A Dynamic Latent Space Model for Healthcare Mobility Networks: the Italian National Health Service case",
+      "arxiv_published": "2026-05-29T14:58:50Z",
+      "arxiv_authors": [
+        "Cecilia Manente",
+        "Marco Alf\u00f2",
+        "Silvia D'Angelo"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.31394",
+      "download_url": "https://arxiv.org/e-print/2605.31394",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "",
+      "archive_bytes": 0,
+      "license_url": "",
+      "fetched_at": ""
+    },
+    {
+      "id": "2605.31345",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "stat.ML",
+      "title": "Log-Ratio Propagation on the Simplex: A Theory of Cellwise Contamination for Compositional Data",
+      "arxiv_published": "2026-05-29T14:22:23Z",
+      "arxiv_authors": [
+        "Matthias Templ"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.31345",
+      "download_url": "https://arxiv.org/e-print/2605.31345",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "",
+      "archive_bytes": 0,
+      "license_url": "",
+      "fetched_at": ""
+    },
+    {
+      "id": "2605.31579",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "eess.SP",
+      "title": "Functional Multi-Target Detection via Bispectrum Inversion",
+      "arxiv_published": "2026-05-29T17:47:45Z",
+      "arxiv_authors": [
+        "Anna Little",
+        "Daniel Sanz-Alonso",
+        "Mikhail Sweeney",
+        "Ruiyi Yang"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.31579",
+      "download_url": "https://arxiv.org/e-print/2605.31579",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "",
+      "archive_bytes": 0,
+      "license_url": "",
+      "fetched_at": ""
+    },
+    {
+      "id": "2605.31549",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "cs.IT",
+      "title": "Microwave Linear Analog Computer (MiLAC) for Simultaneous Active and Passive Beamforming",
+      "arxiv_published": "2026-05-29T17:08:33Z",
+      "arxiv_authors": [
+        "Matteo Nerini",
+        "Bruno Clerckx"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.31549",
+      "download_url": "https://arxiv.org/e-print/2605.31549",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "",
+      "archive_bytes": 0,
+      "license_url": "",
+      "fetched_at": ""
+    },
+    {
+      "id": "2605.31526",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "cs.IT",
+      "title": "Distributionally Robust Physical-Layer Security for Satellite Communication via Aerial Reconfigurable Intelligent Surface",
+      "arxiv_published": "2026-05-29T16:40:02Z",
+      "arxiv_authors": [
+        "Zhaole Wang",
+        "Xiao Tang",
+        "Naijin Liu",
+        "Jinxin Liu",
+        "Qinghe Du"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.31526",
+      "download_url": "https://arxiv.org/e-print/2605.31526",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "",
+      "archive_bytes": 0,
+      "license_url": "",
+      "fetched_at": ""
+    },
+    {
+      "id": "2605.31510",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "eess.SP",
+      "title": "Cooperative Uplink Channel Estimation in User-Centric Cell-free Massive MIMO Communication Networks",
+      "arxiv_published": "2026-05-29T16:29:33Z",
+      "arxiv_authors": [
+        "Pourya Behmandpoor",
+        "Marc Moonen"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.31510",
+      "download_url": "https://arxiv.org/e-print/2605.31510",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "",
+      "archive_bytes": 0,
+      "license_url": "",
+      "fetched_at": ""
+    },
+    {
+      "id": "2605.31499",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "eess.SP",
+      "title": "Perceptual-Quality based AMC for Enhanced mmWave Spectral Efficiency: Concept and Experiment",
+      "arxiv_published": "2026-05-29T16:21:17Z",
+      "arxiv_authors": [
+        "K\u0131van\u00e7 De\u011firmenci",
+        "Hasan Atalay G\u00fcnel",
+        "Mohaned Chraiti",
+        "\u00d6zg\u00fcr Er\u00e7etin",
+        "Ali Ghrayeb"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.31499",
+      "download_url": "https://arxiv.org/e-print/2605.31499",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "",
+      "archive_bytes": 0,
+      "license_url": "",
+      "fetched_at": ""
+    },
+    {
+      "id": "2605.31244",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "cs.LG",
+      "title": "Spectral Reach: Understanding Neural Scaling as Progress into the Spectral Tail",
+      "arxiv_published": "2026-05-29T12:43:51Z",
+      "arxiv_authors": [
+        "Konstantin Nikolaou",
+        "Jonas Scheunemann",
+        "Sven Krippendorf",
+        "Samuel Tovey",
+        "Christian Holm"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.31244",
+      "download_url": "https://arxiv.org/e-print/2605.31244",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "",
+      "archive_bytes": 0,
+      "license_url": "",
+      "fetched_at": ""
+    },
+    {
+      "id": "2605.31203",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "physics.chem-ph",
+      "title": "Rigorous extension of semilocal collinear functionals to noncollinear DFT using $SU(2)$ rotations",
+      "arxiv_published": "2026-05-29T12:09:02Z",
+      "arxiv_authors": [
+        "Konstantin Gaul"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.31203",
+      "download_url": "https://arxiv.org/e-print/2605.31203",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "",
+      "archive_bytes": 0,
+      "license_url": "",
+      "fetched_at": ""
+    },
+    {
+      "id": "2605.31063",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "stat.ML",
+      "title": "Free energy Estimation on Any State Space",
+      "arxiv_published": "2026-05-29T09:34:53Z",
+      "arxiv_authors": [
+        "Jiajun He",
+        "Zijing Ou",
+        "Francisco Vargas",
+        "Yingzhen Li",
+        "Jos\u00e9 Miguel Hern\u00e1ndez-Lobato"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.31063",
+      "download_url": "https://arxiv.org/e-print/2605.31063",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "",
+      "archive_bytes": 0,
+      "license_url": "",
+      "fetched_at": ""
+    },
+    {
+      "id": "2605.31011",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "physics.flu-dyn",
+      "title": "amerta: A Python Library for Idealized 1D Saint--Venant Dam-Break Simulation",
+      "arxiv_published": "2026-05-29T08:43:13Z",
+      "arxiv_authors": [
+        "Dasapta E. Irawan",
+        "Sandy H. S. Herho",
+        "Iwan P. Anwar",
+        "Faruq Khadami",
+        "Astyka Pamumpuni"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.31011",
+      "download_url": "https://arxiv.org/e-print/2605.31011",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "",
+      "archive_bytes": 0,
+      "license_url": "",
+      "fetched_at": ""
+    },
+    {
+      "id": "2605.31009",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "physics.acc-ph",
+      "title": "Explicit Turn Resolution with Anisotropic Homogenisation for Efficient 3D Magneto-Thermal Finite-Element Simulation of Large-Scale No-Insulation HTS Magnets",
+      "arxiv_published": "2026-05-29T08:42:10Z",
+      "arxiv_authors": [
+        "Louis Denis",
+        "Erik Schnaubelt",
+        "Julien Dular",
+        "Mariusz Wozniak",
+        "Beno\u00eet Vanderheyden"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.31009",
+      "download_url": "https://arxiv.org/e-print/2605.31009",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "",
+      "archive_bytes": 0,
+      "license_url": "",
+      "fetched_at": ""
+    },
+    {
+      "id": "2605.31306",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "math.OC",
+      "title": "Posterior and Likelihood Sensitivity in Bayesian Distributionally Robust Optimization",
+      "arxiv_published": "2026-05-29T13:39:12Z",
+      "arxiv_authors": [
+        "Jun-ya Gotoh",
+        "Andrew E. B. Lim",
+        "Michael Jong Kim"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.31306",
+      "download_url": "https://arxiv.org/e-print/2605.31306",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "",
+      "archive_bytes": 0,
+      "license_url": "",
+      "fetched_at": ""
+    },
+    {
+      "id": "2605.31072",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "econ.TH",
+      "title": "Comparing Market Mechanism Efficiencies",
+      "arxiv_published": "2026-05-29T09:39:06Z",
+      "arxiv_authors": [
+        "Irene Aldridge"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.31072",
+      "download_url": "https://arxiv.org/e-print/2605.31072",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "",
+      "archive_bytes": 0,
+      "license_url": "",
+      "fetched_at": ""
+    },
+    {
+      "id": "2605.30843",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "cs.LG",
+      "title": "A Lecture Note on Offline RL and IRL, Part II: Foundations of Inverse Reinforcement Learning and Dynamic Discrete Choice Models",
+      "arxiv_published": "2026-05-29T05:02:06Z",
+      "arxiv_authors": [
+        "Enoch Hyunwook Kang"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.30843",
+      "download_url": "https://arxiv.org/e-print/2605.30843",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "",
+      "archive_bytes": 0,
+      "license_url": "",
+      "fetched_at": ""
+    },
+    {
+      "id": "2605.30718",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "econ.EM",
+      "title": "Moment-Based Inference for Regression with Latent Dirichlet Covariates",
+      "arxiv_published": "2026-05-29T01:24:17Z",
+      "arxiv_authors": [
+        "Ziyu Jiang"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.30718",
+      "download_url": "https://arxiv.org/e-print/2605.30718",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "",
+      "archive_bytes": 0,
+      "license_url": "",
+      "fetched_at": ""
+    },
+    {
+      "id": "2605.30609",
+      "pinned": false,
+      "source": "arxiv",
+      "arxiv_primary_category": "econ.EM",
+      "title": "Rectified Linear Unit Regression",
+      "arxiv_published": "2026-05-28T22:02:55Z",
+      "arxiv_authors": [
+        "Tatsushi Oka"
+      ],
+      "detail_url": "https://arxiv.org/abs/2605.30609",
+      "download_url": "https://arxiv.org/e-print/2605.30609",
+      "archive_filename": "source.tar.gz",
+      "archive_sha256": "",
+      "archive_bytes": 0,
+      "license_url": "",
+      "fetched_at": ""
     }
   ]
 }
