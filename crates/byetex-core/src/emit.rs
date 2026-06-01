@@ -19,7 +19,7 @@ use crate::document::{Content, DocumentMetadata};
 use crate::warnings::{Category, Range, Severity, Warning};
 
 mod escape;
-use escape::{escape_text_for_typst_content, needs_text_escape, is_typst_label_char, sanitize_label_key, escape_paren_semicolons, escape_unbalanced_math_brackets, strip_trailing_typst_label, escape_text_cell};
+pub(crate) use escape::{escape_text_for_typst_content, needs_text_escape, is_typst_label_char, sanitize_label_key, escape_paren_semicolons, escape_unbalanced_math_brackets, strip_trailing_typst_label, escape_text_cell};
 
 /// A `\newcommand` definition harvested from the input. `body` is the
 /// raw LaTeX source between the outer curly braces; expansion inlines
