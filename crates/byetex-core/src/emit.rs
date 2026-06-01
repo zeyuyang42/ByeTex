@@ -18,6 +18,7 @@ use crate::class_map::DocClass;
 use crate::document::{Content, DocumentMetadata};
 use crate::warnings::{Category, Range, Severity, Warning};
 
+mod boundary;
 mod escape;
 pub(crate) use escape::{escape_text_for_typst_content, needs_text_escape, is_typst_label_char, sanitize_label_key, escape_paren_semicolons, escape_unbalanced_math_brackets, strip_trailing_typst_label, escape_text_cell};
 
