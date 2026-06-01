@@ -451,6 +451,90 @@ def heading_recall(truth: list[str], typst: list[str]) -> float:
     return matched / len(truth)
 
 
+# ── Phase-2a structural fidelity metrics ────────────────────────────────────────
+# These complement the set-based word_recall / heading_recall, which are blind to
+# content *volume* (deletion/duplication), heading *order*, and dropped *floats* —
+# the exact structural failures that compile-rate and word/heading recall miss.
+
+def _word_count(text: str) -> int:
+    """Number of prose tokens (same tokenization rule as tokenize_words, but
+    counting occurrences rather than the unique set)."""
+    return len(re.findall(r"[A-Za-z]{%d,}" % MIN_WORD_LEN, text))
+
+
+def word_recall_set(truth_text: str, typst_text: str) -> float:
+    """Set-based word recall: |truth∩typst| / |truth| over UNIQUE tokens. This
+    is the existing word_recall computed inline in pdf_structure_compare, pulled
+    out so its blind spot (it ignores deletion/duplication of already-present
+    words) can be asserted directly against word_count_ratio in tests."""
+    t = tokenize_words(truth_text)
+    if not t:
+        return 0.0
+    return len(t & tokenize_words(typst_text)) / len(t)
+
+
+def word_count_ratio(truth_text: str, typst_text: str):
+    """typst prose-token COUNT / truth prose-token count. Catches what the
+    set-based recall cannot: a deleted paragraph drops the ratio below 1.0 even
+    when its words appear elsewhere, and a duplicated block (e.g. a leaked author
+    list) pushes it above 1.0. Returns None when truth has no prose tokens
+    (ratio undefined — never divides by zero)."""
+    truth_n = _word_count(truth_text)
+    if truth_n == 0:
+        return None
+    return _word_count(typst_text) / truth_n
+
+
+def heading_sequence_score(truth: list[str], typst: list[str]):
+    """Length of the longest IN-ORDER matched subsequence of truth headings
+    present in typst, divided by the number of truth headings. Unlike
+    heading_recall (a set membership fraction), this penalizes reordered or
+    flattened structure: headings must appear in the same relative order to
+    count. Matching uses the same _heading_match (substring/synonym) as recall.
+    Returns 1.0 when there are no truth headings (nothing to recall), matching
+    heading_recall's convention."""
+    if not truth:
+        return 1.0
+    n, m = len(truth), len(typst)
+    # Classic LCS over the two heading lists, with _heading_match as equality.
+    dp = [[0] * (m + 1) for _ in range(n + 1)]
+    for i in range(n - 1, -1, -1):
+        for j in range(m - 1, -1, -1):
+            if _heading_match(truth[i], typst[j]):
+                dp[i][j] = 1 + dp[i + 1][j + 1]
+            else:
+                dp[i][j] = max(dp[i + 1][j], dp[i][j + 1])
+    return dp[0][0] / len(truth)
+
+
+_FIGURE_CAPTION_RE = re.compile(r"\bfigure\s+(\d+)", re.IGNORECASE)
+_TABLE_CAPTION_RE = re.compile(r"\btable\s+(\d+)", re.IGNORECASE)
+
+
+def float_count_ratio(truth_text: str, typst_text: str) -> dict:
+    """Ratio of distinct figure/table captions ("Figure N" / "Table N") in the
+    typst render vs the truth render. Dropped figures/tables are invisible to
+    word and heading metrics but are a real structural regression. Counts
+    DISTINCT caption numbers (so repeated in-text references to "Figure 1" don't
+    inflate the count). Each ratio is None when truth has none of that float
+    type (undefined — never divides by zero)."""
+    def distinct(rx, text):
+        return {m for m in rx.findall(text)}
+
+    tf = distinct(_FIGURE_CAPTION_RE, truth_text)
+    tt = distinct(_TABLE_CAPTION_RE, truth_text)
+    yf = distinct(_FIGURE_CAPTION_RE, typst_text)
+    yt = distinct(_TABLE_CAPTION_RE, typst_text)
+    return {
+        "figure_ratio": (len(yf) / len(tf)) if tf else None,
+        "table_ratio": (len(yt) / len(tt)) if tt else None,
+        "truth_figures": len(tf),
+        "truth_tables": len(tt),
+        "typst_figures": len(yf),
+        "typst_tables": len(yt),
+    }
+
+
 def pdf_structure_compare(
     truth_pdf: Path,
     typst_pdf: Path,
@@ -478,6 +562,12 @@ def pdf_structure_compare(
     typst_headings = extract_pdf_headings(typst_text)
     h_recall = heading_recall(truth_headings, typst_headings)
 
+    # Phase-2a structural metrics (reported; not yet gated — thresholds will be
+    # set once the corpus baseline shows realistic cross-engine ranges).
+    wc_ratio = word_count_ratio(truth_text, typst_text)
+    h_seq = heading_sequence_score(truth_headings, typst_headings)
+    floats = float_count_ratio(truth_text, typst_text)
+
     page_ratio = (typst_pages / truth_pages) if truth_pages > 0 else 0.0
 
     fail_reasons: list[str] = []
@@ -503,6 +593,15 @@ def pdf_structure_compare(
         "typst_headings": typst_headings,
         "heading_recall": round(h_recall, 3),
         "page_ratio": round(page_ratio, 3),
+        # Phase-2a structural metrics (None when undefined — empty truth / no floats).
+        "word_count_ratio": round(wc_ratio, 3) if wc_ratio is not None else None,
+        "heading_sequence_score": round(h_seq, 3) if h_seq is not None else None,
+        "figure_ratio": round(floats["figure_ratio"], 3) if floats["figure_ratio"] is not None else None,
+        "table_ratio": round(floats["table_ratio"], 3) if floats["table_ratio"] is not None else None,
+        "truth_figures": floats["truth_figures"],
+        "typst_figures": floats["typst_figures"],
+        "truth_tables": floats["truth_tables"],
+        "typst_tables": floats["typst_tables"],
         "structure_ok": not fail_reasons,
         "fail_reasons": fail_reasons,
     }
