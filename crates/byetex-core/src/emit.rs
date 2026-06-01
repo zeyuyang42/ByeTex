@@ -2718,6 +2718,51 @@ impl<'a> Emitter<'a> {
                 }
                 node.end_byte()
             }
+            // ── ICML author block (icml20XX.sty) ──────────────────────────────
+            // These commands are full TeX (`\ifcsname`, `\csname`, counters,
+            // `\@for`) that the text-substitution macro expander cannot evaluate.
+            // Harvested from the .sty and expanded, they leak raw machinery
+            // (`@icmlsymbolequal`, `\@affil\@anon`, `\stepcounter{...}`) into the
+            // body — and the stray `@icmlsymbolequal` tripped `typst` with
+            // `label <icmlsymbolequal> does not exist` (Bug B, paper 2605.22579).
+            // Intercept them here, BEFORE the harvested-macro fallback below, to
+            // capture the author names and drop the unparseable machinery.
+            Some("\\icmltitle") => {
+                if self.metadata.title.is_none() {
+                    if let Some(arg) = first_curly_group(node) {
+                        self.metadata.title =
+                            Some(Content::Typst(self.render_curly_group_content(arg)));
+                    }
+                }
+                node.end_byte()
+            }
+            // `\icmlauthor{Name}{affil-keys}` — keep the name (first arg) as a
+            // raw author entry (parsed by class_map for DocClass::Icml); the
+            // affiliation-key list (second arg) maps onto machinery we drop.
+            Some("\\icmlauthor") => {
+                if let Some(arg) = first_curly_group(node) {
+                    let name = self
+                        .src
+                        .get(arg.start_byte() + 1..arg.end_byte().saturating_sub(1))
+                        .unwrap_or("")
+                        .trim()
+                        .to_string();
+                    if !name.is_empty() {
+                        self.raw_authors.push(name);
+                    }
+                }
+                node.end_byte()
+            }
+            // The remaining ICML author-block directives carry no body-renderable
+            // content (affiliation tables, symbol definitions, the notice
+            // footnote). Drop them — their arguments are children of the
+            // generic_command node, so returning end_byte() consumes them whole.
+            Some("\\icmlaffiliation")
+            | Some("\\icmlsetsymbol")
+            | Some("\\icmlcorrespondingauthor")
+            | Some("\\icmlkeywords")
+            | Some("\\icmlEqualContribution")
+            | Some("\\printAffiliationsAndNotice") => node.end_byte(),
             Some("\\date") => {
                 if let Some(arg) = first_curly_group(node) {
                     self.metadata.date = Some(self.render_curly_group_content(arg));
