@@ -90,6 +90,48 @@ check("not a heading" not in " ".join(th) and "still not a heading" not in " ".j
       f"inline '=' must not be taken as a heading; got {th}")
 check(vt.typ_headings("no headings here\njust text") == [], "no markers -> []")
 
+# byetex also emits `#heading(...)[Title]` (function form) for starred/unnumbered
+# sections — e.g. `\section*{Acknowledgments}` -> `#heading(numbering: none)[Acknowledgments]`.
+# typ_headings must catch these too, else real back-matter headings (Acknowledgments,
+# Funding, Author Contributions...) are scored as missing (22820 false 0.86).
+typ_fn = """= Introduction <sec:intro>
+#heading(numbering: none)[Acknowledgments]
+#heading(level: 2, numbering: none)[Author Contributions] <sec:contrib>
+#heading(numbering: none)[*Funding*]
+"""
+thf = vt.typ_headings(typ_fn)
+check(
+    thf == ["introduction", "acknowledgments", "author contributions", "funding"],
+    f"#heading(...)[Title] forms must be extracted (label/markup stripped); got {thf}",
+)
+
+
+# ── typ_float_counts: real figures/tables from byetex's .typ ────────────────────
+# The PDF-side "Figure N"/"Table N" caption count over-counts because byetex
+# renders theorem/equation/anchor blocks as #figure(kind: "equation"|...). Count
+# the typst side from the .typ instead: real image figures (#figure with an
+# image() body), and #figure(kind: "table"). Exclude equation/anchor/theorem-like
+# kinds.
+typ_floats = """#figure(
+  image("a.png"),
+  caption: [A real figure],
+) <fig:a>
+#figure(
+  table(columns: 2, [x], [y]),
+  kind: table,
+  caption: [A table],
+) <tab:t>
+#figure(kind: "equation", supplement: [Eq.], $ x = 1 $) <eq:1>
+#figure(kind: "remark", supplement: [Remark], [note]) <rem:1>
+#box[#figure(kind: "anchor", supplement: none, numbering: "1", [])<x>]
+#figure(
+  image("b.png"),
+) <fig:b>
+"""
+fc = vt.typ_float_counts(typ_floats)
+check(fc["figures"] == 2, f"two real image figures (a,b); equation/remark/anchor excluded; got {fc}")
+check(fc["tables"] == 1, f"one kind: table figure; got {fc}")
+
 
 if fails:
     print(f"\nTEST FAILED ({len(fails)} assertion(s))")
