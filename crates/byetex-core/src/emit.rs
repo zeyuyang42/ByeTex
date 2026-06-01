@@ -7073,7 +7073,21 @@ impl<'a> Emitter<'a> {
         // \label{...} commands: the first becomes the heading's label
         // (kept), and the rest are consumed/skipped so the walker never
         // re-emits them as standalone labels.
-        {
+        //
+        // Bug A (paper 2605.22814): only do this when the heading has NO body
+        // children. When a `\Cref{fig:a_b}`-style underscore key truncates a
+        // *sub*section title, the broken subsection (and its trailing
+        // `\label`) get absorbed as children/siblings of the enclosing
+        // section, which DOES have body children. In that case `node.end_byte()`
+        // already sits past the body, so scanning forward would grab a distant
+        // orphan label that belongs to the subsection, attach it to the wrong
+        // heading, and — worse — advance `skip_until` past the body before the
+        // body-emit loop runs, silently deleting every intervening node. The
+        // Bug #35 sibling-orphan case this scanner exists for is always
+        // body-less (the title-only node ends at the truncation point), so the
+        // guard preserves it while letting the orphan label fall through to the
+        // recursively-emitted (body-less) subsection that actually owns it.
+        if body_start_idx == children.len() {
             let bytes = self.src.as_bytes();
             let mut i = self.skip_until.max(node.end_byte());
             // Skip whitespace, stray closing braces (the ERROR `}` left behind
