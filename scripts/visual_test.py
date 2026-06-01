@@ -533,25 +533,81 @@ def source_float_counts(tex: str) -> dict:
 
 _TYP_HEADING_RE = re.compile(r"^(={1,6})\s+(.+?)\s*$")
 _TYP_LABEL_RE = re.compile(r"\s*<[^>]+>\s*$")  # trailing `<label>` anchor
+_TYP_HEADING_FN_RE = re.compile(r"^#heading\b[^[]*\[")  # `#heading(..)[`
+
+
+def _clean_typ_heading(raw: str) -> str:
+    """Normalise a raw typst heading title (label stripped) to the comparable
+    form: drop inline math, typst markup chars, backslashes; collapse, lower."""
+    title = _TYP_LABEL_RE.sub("", raw)
+    title = re.sub(r"\$[^$]*\$", " ", title)        # inline math
+    title = re.sub(r"[*_`#]", "", title)             # typst markup chars
+    title = title.replace("\\", "")
+    return " ".join(title.split()).lower()
+
+
+def typ_float_counts(typ_text: str) -> dict:
+    """Count real figures/tables in byetex's generated Typst. byetex wraps many
+    NON-float constructs as `#figure(kind: "equation"|"remark"|"theorem"|...)`
+    (numbered equations, theorem-like blocks, label anchors), so the PDF-side
+    "Figure N"/"Table N" caption count over-reports. Count the `.typ` instead:
+    each `#figure(` block is a FIGURE iff its body holds an `image(` call and it
+    has no non-image `kind:`; a TABLE iff it carries `kind: table` / `kind:
+    "table"`. Equation/anchor/theorem-like kinds are excluded from both."""
+    figures = 0
+    tables = 0
+    # Scan each `#figure(` block: take a window up to the matching close or the
+    # next `#figure(`. A line-based heuristic is enough for byetex's output,
+    # where `kind:` and `image(`/`table(` appear within a few lines of the open.
+    starts = [m.start() for m in re.finditer(r"#figure\(", typ_text)]
+    for idx, s in enumerate(starts):
+        end = starts[idx + 1] if idx + 1 < len(starts) else len(typ_text)
+        block = typ_text[s:end]
+        # `kind:` value if present (bare ident or quoted string).
+        km = re.search(r'kind:\s*"?([a-zA-Z]+)"?', block)
+        kind = km.group(1) if km else None
+        if kind == "table":
+            tables += 1
+        elif kind in (None, "image") and ("image(" in block):
+            figures += 1
+        # else: equation / anchor / remark / theorem / proposition / … — skip.
+    return {"figures": figures, "tables": tables}
 
 
 def typ_headings(typ_text: str) -> list[str]:
-    """Ordered, cleaned headings from byetex's OWN generated Typst, keyed on the
-    line-leading `=`/`==`/... markers byetex emits (with optional trailing
-    `<label>`). This anchors the TYPST side the same way `source_headings`
-    anchors the truth side, so heading_recall compares clean-vs-clean instead of
-    clean-truth-vs-noisy-pdftotext. Strips the `<label>`, residual inline math,
-    and `*bold*`/`_emph_` markup; lowercases; collapses whitespace."""
+    """Ordered, cleaned headings from byetex's OWN generated Typst. Catches BOTH
+    forms byetex emits: line-leading `=`/`==`/… markers (numbered sections) AND
+    the `#heading(...)[Title]` function form (starred/unnumbered sections like
+    `\\section*{Acknowledgments}` → `#heading(numbering: none)[Acknowledgments]`).
+    This anchors the TYPST side the same way `source_headings` anchors the truth
+    side, so heading_recall compares clean-vs-clean instead of
+    clean-truth-vs-noisy-pdftotext. Strips trailing `<label>`, inline math, and
+    `*bold*`/`_emph_` markup; lowercases; collapses whitespace."""
     out: list[str] = []
     for line in typ_text.splitlines():
-        m = _TYP_HEADING_RE.match(line.rstrip())
-        if not m:
-            continue
-        title = _TYP_LABEL_RE.sub("", m.group(2))
-        title = re.sub(r"\$[^$]*\$", " ", title)        # inline math
-        title = re.sub(r"[*_`#]", "", title)             # typst markup chars
-        title = title.replace("\\", "")
-        title = " ".join(title.split()).lower()
+        line = line.rstrip()
+        title: str | None = None
+        m = _TYP_HEADING_RE.match(line)
+        if m:
+            title = _clean_typ_heading(m.group(2))
+        else:
+            fm = _TYP_HEADING_FN_RE.match(line)
+            if fm:
+                # Extract the `[...]` content arg, honoring nested brackets.
+                start = fm.end() - 1  # index of the opening `[`
+                depth = 0
+                end = None
+                for i in range(start, len(line)):
+                    c = line[i]
+                    if c == "[":
+                        depth += 1
+                    elif c == "]":
+                        depth -= 1
+                        if depth == 0:
+                            end = i
+                            break
+                if end is not None:
+                    title = _clean_typ_heading(line[start + 1 : end])
         if title:
             out.append(title)
         if len(out) >= MAX_HEADINGS:
@@ -778,12 +834,19 @@ def pdf_structure_compare(
     h_seq = heading_sequence_score(truth_headings, typst_headings)
     floats = float_count_ratio(truth_text, typst_text)
     if truth_from_source:
-        # Override the truth float counts with the source-anchored ones (the
-        # typst counts and ratios are recomputed against them).
+        # Anchor BOTH sides of the float ratio (like headings): truth counts
+        # from the source LaTeX, typst counts from byetex's `.typ` when given.
+        # The PDF-side "Figure N"/"Table N" count over-reports because byetex
+        # renders equation/theorem/anchor blocks as `#figure(kind: …)`; counting
+        # real image figures + `kind: table` from the `.typ` removes that noise.
         src_floats = source_float_counts(source_tex)
         floats = dict(floats)
         floats["truth_figures"] = src_floats["figures"]
         floats["truth_tables"] = src_floats["tables"]
+        if typst_tex is not None:
+            tf = typ_float_counts(typst_tex)
+            floats["typst_figures"] = tf["figures"]
+            floats["typst_tables"] = tf["tables"]
         floats["figure_ratio"] = (
             floats["typst_figures"] / src_floats["figures"]
             if src_floats["figures"] else None
