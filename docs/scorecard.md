@@ -111,3 +111,30 @@ reorder/flatten. These are the kind of defects Phase 2c will fix in slices.
 Known gaps to address next: `page_ratio` is not yet persisted into `index.json` (shows null);
 the tectonic-truth path covers 3/5 pinned papers; thresholds for the new metrics are not yet
 *gated* (reported only) — gate them once more papers establish realistic cross-engine ranges.
+
+### Update 2026-06-01 (Phase 2c D1 + D4) — corrected, source-anchored numbers
+
+Two fixes changed the fidelity picture:
+- **D1 (PR #146):** table floats now caption as "Table N" and `\input`-ed / `\\[len]` tabulars
+  are recovered. 22776 emits 8 of 8 tables (was 1), 22817 9 of 9 (was 2).
+- **D4 (this work):** the heading + float metrics were unreliable on math-heavy papers because
+  truth headings/floats came from `pdftotext` of the rendered PDF, which lifts equation
+  fragments in as bogus headings. Both sides are now **source-anchored**: truth headings/float
+  counts from the project LaTeX (`\section`/`\begin{figure|table}`, all `\input`-ed files), and
+  the typst side from byetex's own `.typ` `= H`/`== H` markers (not pdftotext). The metric now
+  measures *converter* fidelity, not extraction noise.
+
+Re-measured `heading_recall` (pdftotext baseline → source-anchored):
+
+| paper | heading_recall (was → now) | note |
+|---|---|---|
+| 2605.22507 | 0.67 → **1.00** | was pure extraction noise |
+| 2605.22584 | 0.30 → **0.94** | was pure extraction noise |
+| 2605.22776 | 0.78 → **1.00** | + table_ratio 0.12 → **1.00**, figure_ratio 1.88 → **1.00** (D1) |
+| 2605.22765 | 0.55 → **0.65** | a *real* remaining heading gap (now trustworthy) |
+| 2605.22820 | 0.89 → **0.86** | flat — both sides clean; a real small gap |
+
+The false-negative noise is gone. Remaining sub-1.0 numbers (22765 0.65, 22820 0.86) are now
+**real heading-fidelity signals** — the next Phase-2c targets — rather than measurement
+artifacts. The `truth_render_failed` 3/5-pinned coverage caveat above still applies (tectonic
+can't compile those two sources).
