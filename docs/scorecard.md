@@ -138,3 +138,22 @@ The false-negative noise is gone. Remaining sub-1.0 numbers (22765 0.65, 22820 0
 **real heading-fidelity signals** — the next Phase-2c targets — rather than measurement
 artifacts. The `truth_render_failed` 3/5-pinned coverage caveat above still applies (tectonic
 can't compile those two sources).
+
+### Update 2026-06-02 (figure cluster + metric polish)
+
+**Figure-fidelity cluster shipped** (D1 tables, D5 subfigures, D6 `\input`-relative image
+paths, D7 `\graphicspath`): every corpus paper that emitted 0 images now renders its figures
+(22765 0→16, 22800 0→11, 22821 32→63, etc.).
+
+**Two metric-accuracy fixes** removed the last extraction artifacts:
+- `typ_headings` now also extracts byetex's `#heading(...)[Title]` form (starred/unnumbered
+  sections). 22820 heading_recall **0.86 → 1.00** (the 4 back-matter sections were emitted all
+  along, just not via `=` markers).
+- `typ_float_counts` counts real image figures + `kind: table` from the `.typ`, excluding
+  `#figure(kind: "equation"|"remark"|…)` blocks the PDF count mistook for figures. Spurious
+  figure over-counts collapse to 1.00: 22820 1.33→1.00, 22765 2.10→1.00, 22728 2.40→1.00,
+  22549 1.50→1.00.
+
+Remaining **real** (now-trustworthy) signals for future slices: 22765 heading_recall 0.65;
+22817 table_ratio 1.29 (emits more tables than the source has — possible spurious table);
+22728 heading_recall 0.38 (dense-math paper). All modest.
