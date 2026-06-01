@@ -1958,7 +1958,21 @@ impl<'a> Emitter<'a> {
                     }
                     self.out.push('\\');
                 }
-                node.end_byte()
+                // `\\[len]` carries an optional vertical-space argument. The
+                // grammar does NOT attach the `[len]` to this node (it surfaces
+                // as following raw text), so consume it from the source here —
+                // otherwise it leaks as `\[len\]` into the next table cell and
+                // breaks the surrounding Typst content block. The bracketed
+                // length has no Typst analog in a row break and is dropped.
+                let end = node.end_byte();
+                if self.src.as_bytes().get(end) == Some(&b'[') {
+                    if let Some(rel) = self.src[end..].find(']') {
+                        let consumed = end + rel + 1;
+                        self.skip_until = self.skip_until.max(consumed);
+                        return consumed;
+                    }
+                }
+                end
             }
             // Layout-only commands: drop silently and eat the trailing space
             // that LaTeX would consume after a command-without-args.
@@ -6721,6 +6735,10 @@ impl<'a> Emitter<'a> {
         // the referenced alias and anchor the other referenced ones.
         let mut labels: Vec<String> = Vec::new();
         let mut nested_tabular: Option<Node<'_>> = None;
+        // `\input{file}` nodes inside the float — the tabular often lives in a
+        // separate file (`\begin{table}{\input{results}}...`), so when no inline
+        // tabular is found we resolve these to recover the table body.
+        let mut includes: Vec<Node<'_>> = Vec::new();
 
         // Walk the entire subtree because IEEE-style templates often wrap
         // `\includegraphics` in `\centerline{...}` or `\centering{...}`.
@@ -6730,6 +6748,7 @@ impl<'a> Emitter<'a> {
             for child in n.children(&mut cursor) {
                 match child.kind() {
                     "graphics_include" if graphics.is_none() => graphics = Some(child),
+                    "latex_include" => includes.push(child),
                     "caption" if caption.is_none() => caption = Some(child),
                     // `\captionof{type}{cap}` (caption package) — a caption
                     // source too. Captured only if no real `\caption` won yet;
@@ -6767,6 +6786,10 @@ impl<'a> Emitter<'a> {
             }
         }
 
+        // Whether the float's body is a tabular (vs an image): when it is, the
+        // emitted `#figure` must carry `kind: table` so Typst captions/refs read
+        // "Table N" rather than the default "Figure N".
+        let mut body_is_table = false;
         let body_str = if let Some(g) = graphics {
             self.with_sub_buffer(|emitter| {
                 emitter.emit_graphics_include(g);
@@ -6775,6 +6798,7 @@ impl<'a> Emitter<'a> {
             // `\begin{table}` wrapping a `tabular` (common IEEE pattern).
             // emit_tabular writes `#table(...)`; strip the leading `#` since
             // inside a `#figure(...)` argument the function call must be bare.
+            body_is_table = true;
             let s = self
                 .with_sub_buffer(|emitter| {
                     emitter.emit_tabular(t);
@@ -6782,6 +6806,14 @@ impl<'a> Emitter<'a> {
                 .trim()
                 .to_string();
             s.strip_prefix('#').map(|s| s.to_string()).unwrap_or(s)
+        } else if let Some(tbl) = includes
+            .iter()
+            .find_map(|inc| self.tabular_from_include(*inc))
+        {
+            // `\begin{table}{\input{results}}` — the tabular lives in an
+            // `\input`-ed file. Render it (already a bare `table(...)`).
+            body_is_table = true;
+            tbl
         } else {
             // Neither graphics nor a tabular body — warn and placeholder.
             self.warnings.push(Warning {
@@ -6807,23 +6839,27 @@ impl<'a> Emitter<'a> {
         self.ensure_paragraph_break();
         self.out.push_str("#figure(\n  ");
         self.out.push_str(&body_str);
-        // A real `\caption` always wins; otherwise fall back to `\captionof`.
-        // For `\captionof{type}{cap}` the caption is the 2nd arg and the 1st
-        // arg (the type) sets the figure kind so refs read "Table N"/"Figure N".
+        // Decide the figure `kind`. An explicit `\captionof{type}` wins (it names
+        // the type directly); otherwise a tabular body implies `kind: table` so
+        // refs read "Table N". An image body uses Typst's default (no `kind:`).
+        let mut kind: Option<&str> = None;
         if caption.is_none() {
             if let Some(c) = captionof {
                 if let Some(type_arg) = nth_curly_group(c, 0) {
                     let ty = self.render_curly_group_content(type_arg);
-                    let kind = match ty.trim() {
+                    kind = match ty.trim() {
                         "table" => Some("table"),
                         "figure" => Some("image"),
                         _ => None,
                     };
-                    if let Some(k) = kind {
-                        let _ = write!(self.out, ",\n  kind: {}", k);
-                    }
                 }
             }
+        }
+        if kind.is_none() && body_is_table {
+            kind = Some("table");
+        }
+        if let Some(k) = kind {
+            let _ = write!(self.out, ",\n  kind: {}", k);
         }
         let caption_node = caption.or(captionof);
         if let Some(c) = caption_node {
@@ -6855,6 +6891,78 @@ impl<'a> Emitter<'a> {
             }
         }
         node.end_byte()
+    }
+
+    /// If `inc` is a `\input{file}` whose resolved file contains a `tabular`
+    /// (or array family) environment, render that file in a sub-emitter and
+    /// return the bare `table(...)` body (the leading `#` stripped) so it can be
+    /// spliced into a `#figure(...)`. Returns `None` when there's no base dir,
+    /// the path doesn't resolve, the file can't be read, or it has no tabular.
+    /// Best-effort: emits no warnings (the caller falls back to its own path).
+    fn tabular_from_include(&mut self, inc: Node<'_>) -> Option<String> {
+        let base_dir = self.base_dir.clone()?;
+        let raw_path = extract_latex_include_path(inc, self.src)?;
+        let resolved = resolve_input_path(&base_dir, &raw_path).or_else(|| {
+            self.root_dir
+                .as_deref()
+                .filter(|r| *r != base_dir.as_path())
+                .and_then(|r| resolve_input_path(r, &raw_path))
+        })?;
+        let source = std::fs::read_to_string(&resolved).ok()?;
+        // Cheap pre-check: only parse when a tabular-family env is present.
+        if !source.contains("\\begin{tabular")
+            && !source.contains("\\begin{array")
+            && !source.contains("\\begin{tabulary")
+            && !source.contains("\\begin{tabularx")
+        {
+            return None;
+        }
+        let tree = crate::parser::parse(&source);
+        // Find the first tabular-family environment in the included file.
+        let mut stack = vec![tree.root_node()];
+        let mut tabular: Option<Node<'_>> = None;
+        while let Some(n) = stack.pop() {
+            if n.kind() == "generic_environment"
+                && matches!(
+                    environment_name(n, &source).as_deref(),
+                    Some("tabular") | Some("tabular*") | Some("tabularx")
+                        | Some("tabulary") | Some("array")
+                )
+            {
+                tabular = Some(n);
+                break;
+            }
+            let mut cursor = n.walk();
+            for ch in n.children(&mut cursor) {
+                stack.push(ch);
+            }
+        }
+        let tabular = tabular?;
+        // Render the tabular through a sub-emitter bound to the INCLUDED file's
+        // source (the node borrows `source`, not `self.src`), then strip the
+        // leading `#` so it sits inside the `#figure(...)` call.
+        let visited = std::mem::take(&mut self.visited_includes);
+        let macros = self.macros.clone();
+        let mut sub = Emitter::with_includes(
+            &source,
+            self.source_name,
+            self.base_dir.clone(),
+            visited,
+        );
+        sub.macros = macros;
+        sub.referenced_labels = self.referenced_labels.clone();
+        let rendered = sub.with_sub_buffer(|e| {
+            e.emit_tabular(tabular);
+        });
+        // Merge side-effects back (warnings/assets discovered while rendering).
+        self.visited_includes = std::mem::take(&mut sub.visited_includes);
+        self.warnings.append(&mut sub.warnings);
+        self.asset_refs.append(&mut sub.asset_refs);
+        let s = rendered.trim().to_string();
+        if s.is_empty() {
+            return None;
+        }
+        Some(s.strip_prefix('#').map(str::to_string).unwrap_or(s))
     }
 
     /// `\begin{tabular}{lcr} a & b \\ c & d \end{tabular}` →
@@ -6927,6 +7035,7 @@ impl<'a> Emitter<'a> {
             .filter(|r| !r.trim().is_empty())
             .collect();
         // Build per-row cell lists so we can track rowspan/colspan occupancy.
+        // (`split_math_rows` already consumed any `\\[len]` vertical-space arg.)
         let rows_2d: Vec<Vec<String>> = rows
             .iter()
             .map(|row| row.split('&').map(|c| c.trim().to_string()).collect())
