@@ -6645,24 +6645,42 @@ impl<'a> Emitter<'a> {
         // emit `image("foo.png")` rather than the bare `image("foo")`
         // which Typst rejects with `file not found`.
         let mut resolved_path = path.clone();
+        // Probe the image relative to the current file's dir first, then the
+        // project root. LaTeX resolves `\includegraphics` paths from the MAIN
+        // document's directory, so a figure `figures/x.png` referenced inside an
+        // `\input`-ed `appendix/foo.tex` lives at `<root>/figures/x.png`, not
+        // `<root>/appendix/figures/x.png`. Without the root_dir fallback every
+        // figure in an `\input`-ed file resolves as "missing" (Bug D6).
         let mut probed_source: Option<PathBuf> = None;
-        if let Some(ref base) = self.base_dir {
-            if let Some(source_path) = probe_image_on_disk(base, &path) {
-                if std::path::Path::new(&path).extension().is_none() {
-                    if let Some(name) = source_path.file_name().and_then(|n| n.to_str()) {
-                        let dir = std::path::Path::new(&path)
-                            .parent()
-                            .and_then(|p| p.to_str())
-                            .unwrap_or("");
-                        resolved_path = if dir.is_empty() {
-                            name.to_string()
-                        } else {
-                            format!("{}/{}", dir, name)
-                        };
-                    }
-                }
-                probed_source = Some(source_path);
+        let probe_dirs: Vec<PathBuf> = {
+            let mut v = Vec::new();
+            if let Some(ref b) = self.base_dir {
+                v.push(b.clone());
             }
+            if let Some(ref r) = self.root_dir {
+                if !v.contains(r) {
+                    v.push(r.clone());
+                }
+            }
+            v
+        };
+        if let Some(source_path) =
+            probe_dirs.iter().find_map(|d| probe_image_on_disk(d, &path))
+        {
+            if std::path::Path::new(&path).extension().is_none() {
+                if let Some(name) = source_path.file_name().and_then(|n| n.to_str()) {
+                    let dir = std::path::Path::new(&path)
+                        .parent()
+                        .and_then(|p| p.to_str())
+                        .unwrap_or("");
+                    resolved_path = if dir.is_empty() {
+                        name.to_string()
+                    } else {
+                        format!("{}/{}", dir, name)
+                    };
+                }
+            }
+            probed_source = Some(source_path);
         }
         let mut args = format!("\"{}\"", resolved_path);
         if let Some(width) = opts.iter().find(|(k, _)| k == "width") {
