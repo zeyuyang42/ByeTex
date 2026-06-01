@@ -73,9 +73,41 @@ target for a later phase, not a claim made here.
 
 `2605.22820`, `2605.22776`, `2605.22557`, `2605.22159`, `2605.22507` — **all PASS** at baseline.
 
-### Secondary: structural fidelity
+### Secondary: structural fidelity — committed baseline (2026-06-01)
 
-Not yet captured as a committed number. `scripts/visual_test.py` already computes `word_recall`,
-`heading_recall`, `page_ratio`, and an AI visual grade per paper; the next scorecard update should
-record these for the pinned set so fidelity becomes a tracked driver (last informal reading:
-~1/5 pinned papers structurally OK — the real headroom).
+Now a tracked number. `scripts/visual_test.py` computes deterministic structural metrics per
+paper; Phase 2a added three that the set-based `word_recall`/`heading_recall` are **blind** to:
+- **word_count_ratio** — typst/truth prose-token *count* (catches deletion <1.0 / duplication >1.0
+  that set-recall misses).
+- **heading_sequence_score** — longest in-order (LCS) heading match / truth headings (catches
+  reorder/flatten that `heading_recall` ignores).
+- **figure_ratio / table_ratio** — distinct `Figure N`/`Table N` caption counts, typst vs truth
+  (catches dropped/spurious floats invisible to word & heading metrics).
+
+**Baseline command** (offline, deterministic — tectonic renders the truth PDF, no network):
+```
+uv run --with requests --with Pillow --with numpy --with scikit-image \
+  python scripts/visual_test.py --truth-source tectonic --no-truth-download \
+  --rasterize-dpi 100
+```
+
+**Pinned-set baseline.** Only 3 of the 5 pinned papers are usable: tectonic cannot compile the
+LaTeX of `2605.22557` (hypdvips/hyperref driver conflict) or `2605.22159` (undefined control
+sequence) — `truth_render_failed`, a *truth-source* limit, not a ByeTex defect. Those two need the
+arXiv canonical PDF (drop `--no-truth-download`) to be scored.
+
+| paper | word_recall | word_count_ratio | heading_recall | heading_seq | figure_ratio | table_ratio | mean_ssim |
+|---|---|---|---|---|---|---|---|
+| 2605.22820 | 0.89 | 0.98 | 0.89 | 0.89 | 1.00 (6/6) | 1.00 (17/17) | 0.57 |
+| 2605.22776 | 0.96 | 1.14 | 0.78 | 0.70 | **1.88 (8→15)** | **0.12 (8→1)** | 0.60 |
+| 2605.22507 | 0.85 | 0.97 | 0.67 | 0.67 | 1.20 (10→12) | 1.00 (2/2) | 0.56 |
+
+**What the new metrics immediately surfaced (the Phase-2b triage seed):** `2605.22776` looks fine
+on the legacy metrics (word_recall 0.96) but is **dropping 7 of 8 tables (table_ratio 0.12) and
+emitting ~7 spurious figures (figure_ratio 1.88)** — a major structural defect the set-based
+metrics completely missed. `heading_seq` < `heading_recall` on 22776 also flags heading
+reorder/flatten. These are the kind of defects Phase 2c will fix in slices.
+
+Known gaps to address next: `page_ratio` is not yet persisted into `index.json` (shows null);
+the tectonic-truth path covers 3/5 pinned papers; thresholds for the new metrics are not yet
+*gated* (reported only) — gate them once more papers establish realistic cross-engine ranges.
