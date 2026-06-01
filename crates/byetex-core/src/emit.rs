@@ -4040,6 +4040,15 @@ impl<'a> Emitter<'a> {
             // separately via `set page(columns: N)`), but no warning is needed
             // since the multicols package is already in the noop allowlist.
             Some("multicols") | Some("multicols*") => self.emit_environment_body(node),
+            // A bare `algorithmic` env (NOT wrapped in an `algorithm` float —
+            // the float case routes to emit_figure above) carries the pseudocode
+            // steps and, crucially, their `\State\label{...}` anchors that other
+            // text `\cref`s. Dropping it whole loses those labels → dangling
+            // `@alg:step:N` → compile failure (corpus 2605.31510). Pass the body
+            // through: `\State`/`\Procedure`/… are unknown commands that degrade
+            // to text, and the inner `\label`s reach the orphan-label anchor.
+            Some("algorithmic") | Some("algorithmicx") | Some("algpseudocode")
+            | Some("algpseudocodex") | Some("ALC@g") => self.emit_environment_body(node),
             _ => {
                 self.warn_unsupported_environment(node, env.as_deref());
                 node.end_byte()
@@ -6925,6 +6934,21 @@ impl<'a> Emitter<'a> {
             }
         }
 
+        // Harvest `\label`s from any `\input`-ed float body (e.g. an `algorithm`
+        // float whose `algorithmic` + `\State\label{alg:step:N}` live in a
+        // separate file: `\begin{algorithm}\input{Alg/iDANSE}\caption{}\end{...}`,
+        // corpus 2605.31510). Those labels aren't AST children of this node, so
+        // the walk above can't see them; without this the `\cref{alg:step:N}`
+        // references dangle → compile failure. Merge them into the label set so
+        // the anchor loop below emits the referenced ones.
+        for inc in &includes {
+            for k in self.labels_from_include(*inc) {
+                if !labels.contains(&k) {
+                    labels.push(k);
+                }
+            }
+        }
+
         // Whether the float's body is a tabular (vs an image): when it is, the
         // emitted `#figure` must carry `kind: table` so Typst captions/refs read
         // "Table N" rather than the default "Figure N".
@@ -7056,6 +7080,56 @@ impl<'a> Emitter<'a> {
     /// (or array family) environment, render that file in a sub-emitter and
     /// return the bare `table(...)` body (the leading `#` stripped) so it can be
     /// spliced into a `#figure(...)`. Returns `None` when there's no base dir,
+    /// Resolve an `\input`-ed file referenced by `inc` and return the keys of
+    /// every `\label{...}` it defines. Used by `emit_figure` to recover labels
+    /// from a float body that lives in a separate file (e.g. an `algorithm`
+    /// float `\input`-ing its `algorithmic` steps). Best-effort: returns empty
+    /// when there's no base dir, the path doesn't resolve, or the file can't be
+    /// read. A regex suffices — `\label{key}` is unambiguous.
+    fn labels_from_include(&self, inc: Node<'_>) -> Vec<String> {
+        let Some(base_dir) = self.base_dir.clone() else {
+            return Vec::new();
+        };
+        let Some(raw_path) = extract_latex_include_path(inc, self.src) else {
+            return Vec::new();
+        };
+        let resolved = resolve_input_path(&base_dir, &raw_path).or_else(|| {
+            self.root_dir
+                .as_deref()
+                .filter(|r| *r != base_dir.as_path())
+                .and_then(|r| resolve_input_path(r, &raw_path))
+        });
+        let Some(resolved) = resolved else {
+            return Vec::new();
+        };
+        let Ok(source) = std::fs::read_to_string(&resolved) else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        // Scan for `\label{...}` (honoring balanced braces in the key is
+        // unnecessary — label keys don't contain braces). Skip `%`-commented.
+        for line in source.lines() {
+            let line = match line.find('%') {
+                Some(p) if p == 0 || line.as_bytes()[p - 1] != b'\\' => &line[..p],
+                _ => line,
+            };
+            let mut rest = line;
+            while let Some(pos) = rest.find("\\label{") {
+                let after = &rest[pos + "\\label{".len()..];
+                if let Some(end) = after.find('}') {
+                    let key = after[..end].trim();
+                    if !key.is_empty() {
+                        out.push(key.to_string());
+                    }
+                    rest = &after[end + 1..];
+                } else {
+                    break;
+                }
+            }
+        }
+        out
+    }
+
     /// the path doesn't resolve, the file can't be read, or it has no tabular.
     /// Best-effort: emits no warnings (the caller falls back to its own path).
     fn tabular_from_include(&mut self, inc: Node<'_>) -> Option<String> {
