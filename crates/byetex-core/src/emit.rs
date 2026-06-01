@@ -10580,11 +10580,15 @@ fn post_process_typography(s: &str) -> String {
                     prev = Some('\u{2013}');
                 }
             }
-            // `@` is Typst's reference operator. When the previous emitted
-            // character is alphanumeric, the `@` is clearly mid-word (email
-            // address, twitter handle, etc.) and must be escaped to keep
-            // Typst from parsing it as `@label`.
-            '@' if prev.is_some_and(|p| p.is_ascii_alphanumeric()) => {
+            // `@` is Typst's reference operator. byetex emits a REAL `@ref`
+            // only after whitespace (` @key`, start-of-content) OR after `(`
+            // (`\eqref` wraps the ref in parens → `(@eqn:a)`). An email `@` is
+            // instead glued to the end of a local part: a word char (`cli@uta`)
+            // or a `}` from an escaped brace group (`\{a, b\}@mavs.uta.edu`,
+            // corpus 2605.31564). Escape ONLY those gluing chars to `\@` so the
+            // address isn't parsed as `@label` (→ dangling `<mavs.uta.edu>`),
+            // while leaving `(@eqn:a)` and ` @key` as live references.
+            '@' if prev.is_some_and(|p| p.is_ascii_alphanumeric() || p == '}') => {
                 out.push_str("\\@");
                 prev = Some('@');
             }
