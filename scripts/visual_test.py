@@ -1115,6 +1115,15 @@ def main() -> None:
             "word_jaccard": structure.get("word_jaccard"),
             "word_recall": structure.get("word_recall"),
             "heading_recall": structure.get("heading_recall"),
+            # Phase-2a structural metrics.
+            "word_count_ratio": structure.get("word_count_ratio"),
+            "heading_sequence_score": structure.get("heading_sequence_score"),
+            "figure_ratio": structure.get("figure_ratio"),
+            "table_ratio": structure.get("table_ratio"),
+            "truth_figures": structure.get("truth_figures"),
+            "typst_figures": structure.get("typst_figures"),
+            "truth_tables": structure.get("truth_tables"),
+            "typst_tables": structure.get("typst_tables"),
             "mean_ssim": structure.get("mean_ssim"),
             "composite": str(out / arxiv_id.replace("/", "_") / "composite.png")
                 if summary.get("typst_ok") else None,
