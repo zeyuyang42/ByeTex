@@ -848,6 +848,25 @@ impl<'a> Emitter<'a> {
         self.out = post_process_typography(&self.out);
         self.out = break_raw_paren_chains(&self.out);
 
+        // Backstop for dangling `\ref`/`\cref` targets. A label that LaTeX would
+        // merely warn about — commented out (`% \label{x}`, corpus 2605.31586),
+        // or in a dropped/unsupported environment — leaves a `@key` reference
+        // with no `<key>` anchor, which Typst rejects outright (`label <key>
+        // does not exist`). Emit a hidden anchor for every referenced key that
+        // has neither a `<key>` label in the output nor a bibliography entry, so
+        // the reference resolves and the document compiles (as LaTeX does).
+        // Scoped to `referenced_labels` (the `\ref`/`\cref` family); citation
+        // keys are resolved by `#bibliography`, so they are never anchored here
+        // and the backstop cannot collide with the bibliography. Only for full
+        // documents: a bare fragment may be embedded in a context that defines
+        // the label, where a backstop anchor would itself become a duplicate.
+        if is_document {
+            let backstop = self.dangling_ref_anchors();
+            if !backstop.is_empty() {
+                self.out.push_str(&backstop);
+            }
+        }
+
         // Prepend `#set document(author: ...)` for PDF metadata. Must come
         // after authors are materialised (build_template_preamble or
         // flush_title_block already did that) and after the body is assembled.
@@ -4329,6 +4348,49 @@ impl<'a> Emitter<'a> {
     /// redundant and would collide with it. (corpus 2605.31440)
     fn bib_file_is_authoritative(&self) -> bool {
         self.has_bibtex_include && self.had_bib_file
+    }
+
+    /// Hidden anchors for every `\ref`/`\cref`-referenced key that has no
+    /// resolving target — neither a `<key>` label already in the output nor a
+    /// bibliography entry. Without these a reference to an undefined label
+    /// (commented-out `\label`, dropped environment) leaves a dangling `@key`
+    /// that aborts the Typst compile. See the call site in `finish()`.
+    fn dangling_ref_anchors(&self) -> String {
+        if self.referenced_labels.is_empty() {
+            return String::new();
+        }
+        // Defined labels = every `<key>` already emitted into the body. The `>`
+        // terminator makes this scan unambiguous; keys match the sanitized form
+        // used by both `<key>` and `@key`.
+        let chars: Vec<char> = self.out.chars().collect();
+        let mut defined: HashSet<String> = HashSet::new();
+        let mut i = 0;
+        while i < chars.len() {
+            if chars[i] == '<' {
+                let mut j = i + 1;
+                while j < chars.len() && is_typst_label_char(chars[j]) {
+                    j += 1;
+                }
+                if j > i + 1 && j < chars.len() && chars[j] == '>' {
+                    defined.insert(chars[i + 1..j].iter().collect());
+                    i = j + 1;
+                    continue;
+                }
+            }
+            i += 1;
+        }
+        let mut anchors = String::new();
+        // Deterministic order for stable output.
+        let mut missing: Vec<&String> = self
+            .referenced_labels
+            .iter()
+            .filter(|k| !defined.contains(*k) && !self.bibliography_keys.contains(*k))
+            .collect();
+        missing.sort();
+        for key in missing {
+            let _ = write!(anchors, "\n#hide[#figure([]) <{}>]", key);
+        }
+        anchors
     }
 
     /// Close any in-flight `\bibitem{key}` by emitting `]) <key>` so the label
