@@ -1074,13 +1074,18 @@ impl<'a> Emitter<'a> {
         consumed_end
     }
 
-    /// `\phantom{X}` / `\hphantom{X}` / `\vphantom{X}` → `#hide[$X$]`.
-    /// `hide` is a content function so it needs the `#` escape inside math,
-    /// and the argument must be a math content block `[$...$]`.
+    /// `\phantom{X}` / `\hphantom{X}` / `\vphantom{X}` → `(#hide[$X$])`.
+    /// `hide` is a content function so it needs the `#` escape inside math, and
+    /// the argument must be a math content block `[$...$]`. The whole call is
+    /// wrapped in parens to make it self-delimiting: a literal `[...]` that
+    /// immediately follows the phantom (e.g. `\phantom{0}[\text{3.3}]` in a
+    /// subscript, corpus 2605.31561) would otherwise be parsed by Typst as a
+    /// chained second content argument to `hide` → "unexpected argument".
+    /// `(group)[...]` is plain juxtaposition in math and parses cleanly.
     pub(in crate::emit) fn emit_math_phantom(&mut self, node: Node<'_>) -> usize {
         if let Some(arg) = first_curly_group(node) {
             let inner = self.render_math_group(arg);
-            let _ = write!(self.out, "#hide[${}$]", inner.trim());
+            let _ = write!(self.out, "(#hide[${}$])", inner.trim());
             return node.end_byte();
         }
         node.end_byte()

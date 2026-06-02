@@ -44,3 +44,22 @@ fn phantom_inline_math_compiles() {
         out.typst
     );
 }
+
+#[test]
+fn phantom_followed_by_bracket_in_subscript_does_not_chain() {
+    // corpus 2605.31561: `$x_{\phantom{0}[\text{3.3}]}$` rendered as
+    // `_(#hide[$0$]["3.3"])` — Typst parses `["3.3"]` as a chained 2nd content
+    // argument to `hide` → "unexpected argument". The phantom emission must be
+    // self-delimiting so a following `[...]` cannot bind to it.
+    let out = convert_str(r"$x_{\phantom{0}[\text{3.3}]}$");
+    assert!(
+        !out.typst.contains("]["),
+        "no chained `][` bracket adjacency after #hide[...], got: {}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("hide["),
+        "phantom must still emit a hide[...] call, got: {}",
+        out.typst
+    );
+}
