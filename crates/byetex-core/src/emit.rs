@@ -3745,9 +3745,31 @@ impl<'a> Emitter<'a> {
     fn emit_inline_wrap(&mut self, node: Node<'_>, left: &str, right: &str) -> usize {
         if let Some(arg) = first_curly_group(node) {
             let content = self.render_curly_group_content(arg);
-            self.out.push_str(left);
-            self.out.push_str(&content);
-            self.out.push_str(right);
+            // Move whitespace that sits just inside the group OUTSIDE the wrap
+            // markers. Typst's `_`/`*` emphasis shorthands require a word
+            // boundary at the closing marker, so `\textit{correct }word` must
+            // become `_correct_ word`, not `_correct _word` (closing `_` after a
+            // space → never closes → `unclosed delimiter`, corpus 2605.31567).
+            // Harmless for the `#super[...]` / `#align(center)[...]` wraps too.
+            let raw = self
+                .src
+                .get(arg.start_byte() + 1..arg.end_byte().saturating_sub(1))
+                .unwrap_or("");
+            let lead = &raw[..raw.len() - raw.trim_start().len()];
+            let trail = &raw[raw.trim_end().len()..];
+            let mid = content.trim();
+            self.out.push_str(lead);
+            if mid.is_empty() {
+                // Whitespace-only (or empty) content — emit it once, no markers.
+                if lead.is_empty() {
+                    self.out.push_str(trail);
+                }
+            } else {
+                self.out.push_str(left);
+                self.out.push_str(mid);
+                self.out.push_str(right);
+                self.out.push_str(trail);
+            }
         }
         node.end_byte()
     }
