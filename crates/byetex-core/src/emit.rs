@@ -394,10 +394,10 @@ fn build_neutral_preamble(
         "#set page(paper: \"{paper}\", margin: {margin})\n\
          #set text(font: \"New Computer Modern\", size: {font_size})\n\
          #set par(justify: true, leading: 0.65em, spacing: 0.65em, first-line-indent: 1.2em)\n\
-         #show heading.where(level: 1): set text(size: 1.3em, weight: \"bold\")\n\
-         #show heading.where(level: 2): set text(size: 1.15em, weight: \"bold\")\n\
+         #show heading.where(level: 1): set text(size: 1.44em, weight: \"bold\")\n\
+         #show heading.where(level: 2): set text(size: 1.2em, weight: \"bold\")\n\
          #show heading.where(level: 3): set text(size: 1em, weight: \"bold\")\n\
-         #show heading: it => block(above: 1.2em, below: 0.6em, it)\n\n"
+         #show heading: it => block(above: if it.level == 1 {{ 1.5em }} else {{ 1.4em }}, below: if it.level == 1 {{ 1.0em }} else {{ 0.65em }}, it)\n\n"
     )
 }
 

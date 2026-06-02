@@ -119,10 +119,10 @@ fn m2_misc_full_article() {
     #set page(paper: "us-letter", margin: (x: 1in, y: 1in))
     #set text(font: "New Computer Modern", size: 10pt)
     #set par(justify: true, leading: 0.65em, spacing: 0.65em, first-line-indent: 1.2em)
-    #show heading.where(level: 1): set text(size: 1.3em, weight: "bold")
-    #show heading.where(level: 2): set text(size: 1.15em, weight: "bold")
+    #show heading.where(level: 1): set text(size: 1.44em, weight: "bold")
+    #show heading.where(level: 2): set text(size: 1.2em, weight: "bold")
     #show heading.where(level: 3): set text(size: 1em, weight: "bold")
-    #show heading: it => block(above: 1.2em, below: 0.6em, it)
+    #show heading: it => block(above: if it.level == 1 { 1.5em } else { 1.4em }, below: if it.level == 1 { 1.0em } else { 0.65em }, it)
 
     #set heading(numbering: "1.")
 
