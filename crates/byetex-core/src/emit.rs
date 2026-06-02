@@ -3724,19 +3724,18 @@ impl<'a> Emitter<'a> {
         self.out.push_str("]\n");
 
         // ── Abstract block ────────────────────────────────────────────────
+        // LaTeX's `article` abstract: a centered bold "Abstract" heading above
+        // a narrowed, justified text column — no fill / border / rounded box.
         if let Some(abstract_) = self.metadata.r#abstract.take() {
             if !abstract_.is_empty() {
                 self.out.push_str(
                     "#v(1em)\n\
-                     #block(\n  \
-                       width: 90%,\n  \
-                       inset: (x: 1em, y: 0.8em),\n  \
-                       radius: 4pt,\n  \
-                       fill: luma(245),\n\
-                     )[\n  ",
+                     #align(center)[#text(weight: \"bold\")[Abstract]]\n\
+                     #v(0.4em)\n\
+                     #pad(x: 2em)[\n  ",
                 );
-                let _ = writeln!(self.out, "*Abstract.* {}", abstract_.as_content());
-                self.out.push_str("]\n");
+                let _ = writeln!(self.out, "{}", abstract_.as_content());
+                self.out.push_str("]\n#v(0.6em)\n");
             }
         }
 
