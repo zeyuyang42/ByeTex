@@ -8290,7 +8290,19 @@ fn extract_bib_paths(node: Node<'_>, src: &str) -> Vec<String> {
             let mut sub = child.walk();
             for grandchild in child.children(&mut sub) {
                 if grandchild.kind() == "path" {
-                    out.push(src[grandchild.start_byte()..grandchild.end_byte()].to_string());
+                    let raw = &src[grandchild.start_byte()..grandchild.end_byte()];
+                    // A multi-line `\bibliography{\n a,\n b\n % c,\n}` (corpus
+                    // 2605.31443) yields path tokens carrying newlines, spaces
+                    // and even commented-out paths, and tree-sitter may fold the
+                    // whole comma list into one token. Split on commas, drop any
+                    // trailing `%`-comment, and trim — so the live paths resolve
+                    // against base_dir and the commented ones are ignored.
+                    for piece in raw.split(',') {
+                        let p = piece.split('%').next().unwrap_or("").trim();
+                        if !p.is_empty() {
+                            out.push(p.to_string());
+                        }
+                    }
                 }
             }
         }
