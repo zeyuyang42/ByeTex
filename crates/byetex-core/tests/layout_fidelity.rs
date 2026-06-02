@@ -1,8 +1,9 @@
 //! Task 2 (layout fidelity): the neutral preamble picks up scalar layout
 //! overrides derived from `\documentclass[opts]{class}` — font size
 //! (`10pt`/`11pt`/`12pt`) and paper size (`a4paper`/`letterpaper`/...). When an
-//! option is absent the neutral defaults (us-letter, 11pt) are kept, so this
-//! layers onto the Task 1 base without changing documents that don't specify it.
+//! option is absent the neutral defaults (us-letter, 10pt — LaTeX's `article`
+//! default) are kept, so this layers onto the Task 1 base without changing
+//! documents that don't specify it.
 
 use byetex_core::{convert, ConvertOptions};
 
@@ -47,10 +48,17 @@ fn paper_size_option_maps_to_typst() {
 fn defaults_kept_when_no_layout_options() {
     let src = "\\documentclass{article}\n\\begin{document}\nBody.\n\\end{document}";
     let t = typ(src);
-    assert!(t.contains("size: 11pt"), "default 11pt font expected; got:\n{t}");
+    // LaTeX `\documentclass{article}` with no size option is 10pt.
+    assert!(t.contains("size: 10pt"), "default 10pt font expected; got:\n{t}");
     assert!(
         t.contains("paper: \"us-letter\""),
         "default us-letter paper expected; got:\n{t}"
+    );
+    // Paragraph spacing matches the line leading (LaTeX `article` is
+    // indent-only — no extra inter-paragraph gap).
+    assert!(
+        t.contains("spacing: 0.65em"),
+        "indent-only paragraph spacing expected; got:\n{t}"
     );
 }
 

@@ -117,8 +117,8 @@ fn m2_misc_full_article() {
     insta::assert_snapshot!(run("m2_misc/full_article.tex"), @r#"
     ==== TYPST ====
     #set page(paper: "us-letter", margin: (x: 1in, y: 1in))
-    #set text(font: "New Computer Modern", size: 11pt)
-    #set par(justify: true, leading: 0.65em, first-line-indent: 1.2em)
+    #set text(font: "New Computer Modern", size: 10pt)
+    #set par(justify: true, leading: 0.65em, spacing: 0.65em, first-line-indent: 1.2em)
     #show heading.where(level: 1): set text(size: 1.3em, weight: "bold")
     #show heading.where(level: 2): set text(size: 1.15em, weight: "bold")
     #show heading.where(level: 3): set text(size: 1em, weight: "bold")

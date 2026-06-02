@@ -369,12 +369,14 @@ const MATH_WORD_BOUNDARY: char = '\u{17}';
 /// `#set heading(numbering)` site.
 fn build_neutral_preamble(layout: &crate::class_map::Layout) -> String {
     let paper = layout.paper.unwrap_or("us-letter");
-    let font_size = layout.font_size.unwrap_or("11pt");
+    // LaTeX's default body size for `\documentclass{article}` (no size option)
+    // is 10pt; byetex previously defaulted to 11pt, inflating page count ~10%.
+    let font_size = layout.font_size.unwrap_or("10pt");
     let margin = layout.margin.to_typst_value();
     format!(
         "#set page(paper: \"{paper}\", margin: {margin})\n\
          #set text(font: \"New Computer Modern\", size: {font_size})\n\
-         #set par(justify: true, leading: 0.65em, first-line-indent: 1.2em)\n\
+         #set par(justify: true, leading: 0.65em, spacing: 0.65em, first-line-indent: 1.2em)\n\
          #show heading.where(level: 1): set text(size: 1.3em, weight: \"bold\")\n\
          #show heading.where(level: 2): set text(size: 1.15em, weight: \"bold\")\n\
          #show heading.where(level: 3): set text(size: 1em, weight: \"bold\")\n\
