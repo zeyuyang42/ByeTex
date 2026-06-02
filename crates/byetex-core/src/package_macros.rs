@@ -27,6 +27,7 @@ pub(crate) fn package_macros(name: &str) -> Option<&'static [(&'static str, Macr
         "bm" => BM,
         "stmaryrd" => STMARYRD,
         "mathtools" => MATHTOOLS,
+        "braket" => BRAKET,
         _ => return None,
     })
 }
@@ -155,6 +156,72 @@ static BM: &[(&str, MacroSeed)] = &[(
         body: r"\boldsymbol{#1}",
     },
 )];
+
+// Knuth's `braket` package. `\braket`/`\Braket`/`\set`/`\Set` each take ONE
+// argument that may itself contain `|` (the package redefines `|` to an
+// auto-sized `\middle|`); we keep the `|` literal, which renders as a bar —
+// visually faithful and compile-valid. This differs from the physics package's
+// two-argument `\braket{a}{b}`, so these are gated on `\usepackage{braket}` and
+// NOT placed in any always-on table. `\Bra`/`\Ket` are already KaTeX builtins;
+// listed here too for completeness (or_insert makes the duplicate a no-op).
+static BRAKET: &[(&str, MacroSeed)] = &[
+    (
+        r"\bra",
+        MacroSeed {
+            params: 1,
+            body: r"\left\langle #1 \right|",
+        },
+    ),
+    (
+        r"\ket",
+        MacroSeed {
+            params: 1,
+            body: r"\left| #1 \right\rangle",
+        },
+    ),
+    (
+        r"\braket",
+        MacroSeed {
+            params: 1,
+            body: r"\left\langle #1 \right\rangle",
+        },
+    ),
+    (
+        r"\Bra",
+        MacroSeed {
+            params: 1,
+            body: r"\left\langle #1 \right|",
+        },
+    ),
+    (
+        r"\Ket",
+        MacroSeed {
+            params: 1,
+            body: r"\left| #1 \right\rangle",
+        },
+    ),
+    (
+        r"\Braket",
+        MacroSeed {
+            params: 1,
+            body: r"\left\langle #1 \right\rangle",
+        },
+    ),
+    (
+        r"\set",
+        MacroSeed {
+            params: 1,
+            body: r"\left\{ #1 \right\}",
+        },
+    ),
+    (
+        r"\Set",
+        MacroSeed {
+            params: 1,
+            body: r"\left\{ #1 \right\}",
+        },
+    ),
+];
 
 static STMARYRD: &[(&str, MacroSeed)] = &[
     // `\llbracket` / `\rrbracket` are now built into the math symbol
