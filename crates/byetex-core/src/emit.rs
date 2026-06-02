@@ -867,6 +867,7 @@ impl<'a> Emitter<'a> {
         // detection for adjacent `-` / backtick / apostrophe runs.
         self.out = post_process_typography(&self.out);
         self.out = break_raw_paren_chains(&self.out);
+        self.out = break_math_comment_tokens(&self.out);
 
         // Backstop for dangling `\ref`/`\cref` targets. A label that LaTeX would
         // merely warn about — commented out (`% \label{x}`, corpus 2605.31586),
@@ -10995,6 +10996,45 @@ fn post_process_typography(s: &str) -> String {
 /// raw("X") with Y as argument", which fails when Y contains characters that
 /// are not valid in code (e.g. `↓`).  A plain space breaks the chain: Typst
 /// only applies function-call syntax to `#expr(` with no intervening space.
+/// Break `*/` and `/*` token pairs that occur INSIDE math (`$…$`). They are
+/// Typst's block-comment delimiters; adjacent in math (e.g. a superscript star
+/// before a division, `h^*/x` — corpus 2605.31549) they make the lexer abort
+/// with "unexpected end of block comment". Neither pair is meaningful adjacent
+/// in math, so a separating space is safe. `\$` does not toggle math.
+fn break_math_comment_tokens(s: &str) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    let mut out = String::with_capacity(s.len() + 8);
+    let mut in_math = false;
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        if c == '\\' && i + 1 < chars.len() {
+            out.push(c);
+            out.push(chars[i + 1]);
+            i += 2;
+            continue;
+        }
+        if c == '$' {
+            in_math = !in_math;
+            out.push(c);
+            i += 1;
+            continue;
+        }
+        if in_math && i + 1 < chars.len() {
+            let n = chars[i + 1];
+            if (c == '*' && n == '/') || (c == '/' && n == '*') {
+                out.push(c);
+                out.push(' ');
+                i += 1;
+                continue;
+            }
+        }
+        out.push(c);
+        i += 1;
+    }
+    out
+}
+
 fn break_raw_paren_chains(s: &str) -> String {
     let needle = "#raw(\"";
     if !s.contains(needle) {
