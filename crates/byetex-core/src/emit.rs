@@ -5170,6 +5170,57 @@ impl<'a> Emitter<'a> {
                 self.safe_copy(last, child.start_byte());
                 self.out.push_str(wrap);
                 self.out.push('(');
+                // tree-sitter parses `\rm{d}` with the `{d}` group as a CHILD of
+                // the `\rm` generic_command. Emit those absorbed argument
+                // children first (else their content is dropped → empty
+                // `upright()`, corpus 2605.31306), then the trailing siblings
+                // the declaration scopes over.
+                let mut dc = child.walk();
+                let own: Vec<Node<'_>> = child
+                    .children(&mut dc)
+                    .filter(|c| c.kind() != "command_name")
+                    .collect();
+                for oc in &own {
+                    // `\rm{d} {\mathbb Q}` parses with BOTH groups as children of
+                    // `\rm`; emit them separated by a space so adjacent atoms
+                    // don't fuse into one identifier (`upright(d bb(Q))`, not
+                    // `dbb(Q)` → Typst `unknown variable: dbb`).
+                    if !self.out.ends_with('(') && !self.out.ends_with(' ') {
+                        self.out.push(' ');
+                    }
+                    // The absorbed arg is a LaTeX grouping `{...}`.
+                    if oc.kind() == "curly_group" {
+                        let raw = self
+                            .src
+                            .get(oc.start_byte() + 1..oc.end_byte() - 1)
+                            .unwrap_or("")
+                            .trim();
+                        // A multi-character alphanumeric run is a function/text
+                        // name (`\rm{db2mag}`); quote it so Typst keeps it as one
+                        // token (`upright("db2mag")`) instead of splitting it into
+                        // juxtaposed atoms (`d b 2mag` → `unknown variable: 2mag`,
+                        // corpus 2605.31510). A single atom or any group with a
+                        // command (`{\mathbb Q}`) renders as math, brace-stripped.
+                        if raw.chars().count() > 1
+                            && raw.chars().all(|c| c.is_ascii_alphanumeric())
+                        {
+                            let _ = write!(self.out, "\"{}\"", raw);
+                        } else {
+                            let inner = self.render_math_group(*oc);
+                            self.out.push_str(inner.trim());
+                        }
+                    } else {
+                        let _ = self.emit_node(*oc);
+                    }
+                }
+                // Separate the absorbed arg from the scoped siblings too.
+                if !own.is_empty()
+                    && i + 1 < flat.len()
+                    && !self.out.ends_with(' ')
+                    && !self.out.ends_with('(')
+                {
+                    self.out.push(' ');
+                }
                 self.emit_math_node_slice(&flat[i + 1..]);
                 self.out.push(')');
                 return;
