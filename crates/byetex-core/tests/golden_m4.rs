@@ -37,6 +37,7 @@ fn m4_tabular_basic() {
     #table(
       columns: 3,
       align: (left, center, right),
+      stroke: none,
       [Name], [Age], [Score],
       [Alice], [30], [95],
       [Bob], [25], [87],
