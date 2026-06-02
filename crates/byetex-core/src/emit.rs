@@ -517,6 +517,18 @@ pub(crate) struct Emitter<'a> {
     /// `kind: "anchor"` figure so the label is referenceable. Gates the
     /// `#show figure.where(kind: "anchor"): it => none` rule in `finish()`.
     used_text_label_anchor: bool,
+    /// True when a `\bibliography{...}` (`bibtex_include`) command is present,
+    /// detected in the prepass.
+    has_bibtex_include: bool,
+    /// True when a `.bib` file actually resolved on disk during the prepass
+    /// (`bibliography_keys` was non-empty right after the directory harvest,
+    /// before any `\bibitem` was added during emit). Together with
+    /// `has_bibtex_include` this means a `#bibliography(.bib)` will render the
+    /// full reference list, so any manual `\bibitem`/`thebibliography` entries
+    /// are redundant and must be dropped — otherwise the keys they share with
+    /// the .bib collide (`label <key> occurs both in the document and its
+    /// bibliography`, corpus 2605.31440).
+    had_bib_file: bool,
 }
 
 /// Maximum allowed `\newcommand` expansion depth (see `Emitter::macro_depth`).
@@ -600,6 +612,8 @@ impl<'a> Emitter<'a> {
             macro_depth: 0,
             in_minipage: false,
             used_text_label_anchor: false,
+            has_bibtex_include: false,
+            had_bib_file: false,
         }
     }
 
@@ -627,8 +641,17 @@ impl<'a> Emitter<'a> {
         if let Some(ref base) = self.base_dir.clone() {
             harvest_bib_keys_from_dir(base, &mut self.bibliography_keys);
         }
+        // A .bib resolved on disk iff the harvest added any keys (no `\bibitem`
+        // keys are present yet — those are inserted during emit).
+        self.had_bib_file = !self.bibliography_keys.is_empty();
         let mut stack: Vec<Node<'_>> = vec![root];
         while let Some(n) = stack.pop() {
+            // A `\bibliography{...}` directive — paired with a resolvable .bib,
+            // its `#bibliography(.bib)` is the authoritative reference list, so
+            // any manual `\bibitem`/`thebibliography` entries are dropped.
+            if n.kind() == "bibtex_include" {
+                self.has_bibtex_include = true;
+            }
             match n.kind() {
                 "new_command_definition" => {
                     // Tree-sitter uses `new_command_definition` for \newcommand,
@@ -1908,6 +1931,16 @@ impl<'a> Emitter<'a> {
                 }
             }
             if let Some(k) = key {
+                // A resolvable `\bibliography{.bib}` is authoritative; drop this
+                // manual entry so its `<key>` doesn't collide with the .bib
+                // (the key is already validated via the .bib harvest).
+                if self.bib_file_is_authoritative() {
+                    self.close_bibitem();
+                    if consumed_end > node.end_byte() {
+                        self.skip_until = self.skip_until.max(consumed_end);
+                    }
+                    return consumed_end;
+                }
                 self.close_bibitem();
                 if !self.out.ends_with('\n') {
                     self.out.push('\n');
@@ -4290,6 +4323,14 @@ impl<'a> Emitter<'a> {
         None
     }
 
+    /// True when a `\bibliography{...}` directive is paired with a `.bib` that
+    /// resolved on disk — its `#bibliography(.bib)` is the complete, canonical
+    /// reference list, so any manual `\bibitem`/`thebibliography` entries are
+    /// redundant and would collide with it. (corpus 2605.31440)
+    fn bib_file_is_authoritative(&self) -> bool {
+        self.has_bibtex_include && self.had_bib_file
+    }
+
     /// Close any in-flight `\bibitem{key}` by emitting `]) <key>` so the label
     /// attaches to the entry's `#figure[...]` wrapper.
     fn close_bibitem(&mut self) {
@@ -4439,6 +4480,13 @@ impl<'a> Emitter<'a> {
     /// → numbered list with `<k>` labels per entry. The `{99}` width spec is
     /// dropped.
     fn emit_thebibliography(&mut self, env: Node<'_>) -> usize {
+        // When a `\bibliography{...}` with a resolvable .bib is present, its
+        // `#bibliography(.bib)` is the authoritative, complete reference list.
+        // This manual list is then redundant and its `<key>` labels collide
+        // with the .bib entries — drop it entirely. (corpus 2605.31440)
+        if self.bib_file_is_authoritative() {
+            return env.end_byte();
+        }
         self.ensure_paragraph_break();
         let mut cursor = env.walk();
         // Skip begin/end. Also skip the leading curly_group_text (the width
