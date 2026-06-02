@@ -5,7 +5,7 @@ academic-paper subset of LaTeX and, for anything outside that subset, degrades
 gracefully — emitting a structured `warnings.json` sidecar (and a per-document
 `agent_brief.md`) instead of failing — so a human or an LLM can finish the job.
 
-This document is the **map**; the deeper docs are the **territory**:
+This document is the overview; for detail beyond it, see the deeper docs:
 
 - [`getting-started.md`](getting-started.md) — install and first conversions.
 - [`conversion-logic.md`](conversion-logic.md) — how the emitter behaves, in prose.
@@ -74,7 +74,7 @@ and labels.
 > Architecture Invariant: ByeTex does not write its own LaTeX parser — it
 > reuses the same tree-sitter grammar that powers editor highlighting.
 
-`emit.rs` — the `Emitter` state machine and the project's center of gravity:
+`emit.rs` — the `Emitter` state machine; the largest and most central module:
 the two-pass `prepass_collect` → `emit_root`/`emit_node` dispatch over the
 node kinds, then `finish`. See `emit-refactor-insights.md` for its internals.
 
