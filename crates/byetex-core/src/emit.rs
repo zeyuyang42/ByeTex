@@ -891,23 +891,26 @@ impl<'a> Emitter<'a> {
                 self.out.push_str(tail);
                 return node.end_byte();
             }
-            // Digit-prefix words like "2JX" or "2kg": alpha_end==0 because the
-            // word starts with a digit, so the alpha-split branch never fires.
-            // Extract the digit prefix, then apply the same splitting logic to
-            // the trailing alpha run.
+            // Words with a leading NON-alphabetic prefix: digit-prefix forms
+            // like "2JX"/"2kg", but also a delimiter glued onto the following
+            // identifier — tree-sitter parses `|arrival` (and `(arrival`) as a
+            // single `word` node, so `alpha_end==0` and the alpha-split branch
+            // above never fires; the run would otherwise leak verbatim and
+            // Typst reads `arrival` as an unknown variable (corpus 2605.31072).
+            // Strip the leading non-alpha run, then split the alpha run after it.
             if alpha.is_empty() {
-                let digit_end = text
-                    .find(|c: char| !c.is_ascii_digit())
+                let prefix_end = text
+                    .find(|c: char| c.is_ascii_alphabetic())
                     .unwrap_or(text.len());
-                let digit_prefix = &text[..digit_end];
-                let rest = &text[digit_end..];
+                let prefix = &text[..prefix_end];
+                let rest = &text[prefix_end..];
                 let rest_alpha_end = rest
                     .find(|c: char| !c.is_ascii_alphabetic())
                     .unwrap_or(rest.len());
                 let rest_alpha = &rest[..rest_alpha_end];
                 let rest_tail = &rest[rest_alpha_end..];
                 if should_split_math_word(rest_alpha) {
-                    self.out.push_str(digit_prefix);
+                    self.out.push_str(prefix);
                     for c in rest_alpha.chars() {
                         self.out.push(' ');
                         self.out.push(c);
