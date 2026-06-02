@@ -157,3 +157,41 @@ paths, D7 `\graphicspath`): every corpus paper that emitted 0 images now renders
 Remaining **real** (now-trustworthy) signals for future slices: 22765 heading_recall 0.65;
 22817 table_ratio 1.29 (emits more tables than the source has — possible spurious table);
 22728 heading_recall 0.38 (dense-math paper). All modest.
+
+### Update 2026-06-02 (compile-blocker sprint + layout density)
+
+**Compile-rate: 33 → 40 / 45 ByeTeX-attributable (~89%)** on the 56-paper corpus. Eleven
+fixes (#155–165) cleared distinct blockers: email/`@` escaping, math empty-base & font-decl
+args, the `braket` package, table-cell math escaping, dual-bibliography & multi-line/paren bib
+paths, dangling-ref backstop, `\sqrt\frac{}`, and emphasis whitespace. Remaining 5 are a
+fragile tail (core math-tokenization + niche edge cases).
+
+**Layout-density fidelity (the driver).** With content now correct (headings/floats/word-count
+≈ 1.0), the dominant remaining gap was **page-count inflation**: byetex rendered ~1.13–1.21×
+longer than the LaTeX truth. Two neutral-preamble fixes match LaTeX `article` density:
+- default body size **11pt → 10pt** (LaTeX's `article` default when no size option is given);
+- paragraph **`spacing: 0.65em`** (= line leading) so paragraph breaks are indent-only, not
+  Typst's default ~1.2em inter-paragraph gap.
+
+Result (tectonic-truth, `page_ratio` = typst_pages / truth_pages):
+
+| paper | before | after |
+|---|---|---|
+| 2605.22820 | 1.17 (46→54) | **0.93** (46→43) |
+| 2605.22776 | 1.13 | **0.91** |
+| 2605.22507 | 1.21 | **0.97** |
+| 2605.22765 | — | **0.96** |
+| 2605.22584 | — | **1.00** |
+| 2605.22817 | — | **1.08** |
+| 2605.22779 (two-column) | 1.69 | 1.38 (still high) |
+
+Mean `page_ratio` ~1.20 → **~1.03**; 6/7 sampled within [0.9, 1.1]. Compile-rate held at 40.
+
+**Metric-design note:** the composite "fidelity score" (`0.4·recall + 0.3·headings + 0.3·ssim`)
+does **not** include `page_ratio`, so it doesn't reflect this layout win (SSIM is too coarse to
+reward a global font-size shift). Folding `page_ratio` into the committed score is the next
+metric slice. Two-column page density (22779) is a separate follow-up.
+
+**Measurement gotcha:** `scripts/visual_test.py` builds/uses `REPO_ROOT/target/release/byetex`
+and ignores `BYETEX_BIN` — run it **from the worktree** (with the corpus symlinked) to measure a
+branch's binary, or the stale main-checkout binary silently masks the change.
