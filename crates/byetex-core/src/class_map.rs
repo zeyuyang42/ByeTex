@@ -183,6 +183,11 @@ impl Margin {
         *self == Margin::default()
     }
 
+    /// True when no `geometry` value was set, so a class-default margin applies.
+    pub(crate) fn is_default(&self) -> bool {
+        self.is_empty()
+    }
+
     /// Whether any per-side key (not just `margin=`) was set.
     fn has_sides(&self) -> bool {
         self.top.is_some()

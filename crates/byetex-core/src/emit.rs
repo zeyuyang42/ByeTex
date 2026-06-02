@@ -367,12 +367,29 @@ const MATH_WORD_BOUNDARY: char = '\u{17}';
 /// otherwise the neutral defaults (us-letter, 11pt) are kept. Heading
 /// *numbering* is set by `finish()`, not here, so there is a single
 /// `#set heading(numbering)` site.
-fn build_neutral_preamble(layout: &crate::class_map::Layout) -> String {
+fn build_neutral_preamble(
+    layout: &crate::class_map::Layout,
+    class: &crate::class_map::DocClass,
+) -> String {
     let paper = layout.paper.unwrap_or("us-letter");
     // LaTeX's default body size for `\documentclass{article}` (no size option)
     // is 10pt; byetex previously defaulted to 11pt, inflating page count ~10%.
     let font_size = layout.font_size.unwrap_or("10pt");
-    let margin = layout.margin.to_typst_value();
+    // Margin: an explicit `geometry` value always wins. Otherwise the neutral
+    // 1in default — EXCEPT for dense two-column conference classes, whose own
+    // class geometry is far tighter than 1in; using 1in there narrows the
+    // columns and inflates the page count (IEEEtran conference: 22779
+    // page_ratio 1.38 at 1in). Approximate the IEEEtran text block on letter.
+    let margin = if layout.margin.is_default() {
+        match class {
+            crate::class_map::DocClass::IeeeTran { .. } => {
+                "(top: 0.75in, bottom: 1in, x: 0.62in)".to_string()
+            }
+            _ => layout.margin.to_typst_value(),
+        }
+    } else {
+        layout.margin.to_typst_value()
+    };
     format!(
         "#set page(paper: \"{paper}\", margin: {margin})\n\
          #set text(font: \"New Computer Modern\", size: {font_size})\n\
@@ -791,7 +808,8 @@ impl<'a> Emitter<'a> {
             let title_block = std::mem::take(&mut self.out);
             // Self-contained preamble first, then this document's numbering
             // rules (LaTeX numbers sections by default), then title + body.
-            self.out.push_str(&build_neutral_preamble(&self.layout));
+            self.out
+                .push_str(&build_neutral_preamble(&self.layout, &self.detected_class));
             self.out.push_str("#set heading(numbering: \"1.\")\n");
             if self.used_text_label_anchor {
                 self.out
