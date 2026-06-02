@@ -953,6 +953,15 @@ impl<'a> Emitter<'a> {
             return node.end_byte();
         }
 
+        // `\begin{comment}...\end{comment}` (comment package) — tree-sitter
+        // gives this its own `comment_environment` node whose body is a
+        // `comment` child (already dropped). The `begin`/`end` markers, though,
+        // leaked verbatim through the default walker (corpus 2605.22779 spilled
+        // `\begin{comment}`/`\end{comment}` next to the body). Drop it whole.
+        if node.kind() == "comment_environment" {
+            return node.end_byte();
+        }
+
         // Backslash commands: look up by name, fall through to warn-and-drop.
         if node.kind() == "generic_command" {
             return self.emit_generic_command(node);
