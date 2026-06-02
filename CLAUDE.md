@@ -18,3 +18,4 @@
 
 - Use `./scripts/corpus_sweep.sh` to verify corpus pass-rate after fixes.
 - The script uses `byetex convert --project` to regenerate full projects including bib preprocessing.
+- **Acceptance gate:** run `BYETEX_BIN=<your binary> ./scripts/acceptance.sh` before merging — it fails (exit 1) if a known-passing paper regresses to BYETEX_FAIL (baseline: `scripts/acceptance_baseline.json`). When a fix flips a paper, promote it from `known_fail` to `known_pass` in that baseline.

@@ -17,6 +17,10 @@ track both, never trade one for the other.
 ## How to reproduce
 
 ```bash
+# Acceptance gate (Phase-3 oracle) — the regression check. Fails (exit 1) iff a
+# known-passing paper regresses to BYETEX_FAIL. Run before merging:
+BYETEX_BIN=target/release/byetex ./scripts/acceptance.sh
+
 # Primary (compile-rate, with failure attribution):
 ./scripts/corpus_sweep.sh --with-oracle
 
@@ -26,6 +30,16 @@ uv run --with requests --with Pillow python scripts/visual_test.py
 
 The sweep needs the corpus payloads (`uv run --with requests python scripts/corpus_harvest.py`)
 and `typst` + `tectonic` on PATH.
+
+**Acceptance gate (`scripts/acceptance.sh`).** Encodes the decision rule below as an
+automated check on top of the tectonic round-trip: it runs `corpus_sweep.sh --with-oracle`
+and compares the per-paper verdicts to `scripts/acceptance_baseline.json` (a committed
+`known_pass` / `known_fail` partition). Compile-rate is the **hard gate** — a `known_pass`
+paper that newly fails to compile exits non-zero; a fixed paper or a newly-harvested failing
+paper is **reported** (update the baseline). Only papers whose payloads are present are
+checked, so gitignored payloads never cause a false regression. Fidelity stays the **driver**
+(measured by `visual_test.py`, not gated). When a fix flips a paper, promote it from
+`known_fail` to `known_pass` in the baseline.
 
 ---
 
