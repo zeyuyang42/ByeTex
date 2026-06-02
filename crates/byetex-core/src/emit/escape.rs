@@ -311,12 +311,21 @@ pub(crate) fn escape_text_cell(s: &str) -> String {
                     out.push_str("\\#");
                 }
             }
-            // These are Typst markup operators in TEXT, but all valid verbatim
-            // inside math (`_`/`^` attachments, `*` superscript star, `<`
-            // relation, `` ` `` …). The cell's `$...$` content is already
-            // converted Typst math, so escaping here would corrupt it
-            // (`$y_w$` → `$y\_w$`, a literal underscore, not a subscript).
-            '_' | '*' | '@' | '<' | '`' if !in_math => {
+            // `_`/`*`/`@`/`` ` `` are Typst markup operators in TEXT but valid
+            // verbatim inside math (`_` attachment, `*` superscript star, …).
+            // The cell's `$...$` content is already converted Typst math, so
+            // escaping here would corrupt it (`$y_w$` → `$y\_w$`, a literal
+            // underscore). Only escape these in text mode.
+            //
+            // `<` is deliberately EXCLUDED: the whole-output
+            // `post_process_typography` pass already escapes `<` (math-aware —
+            // it leaves a real `<key>` label alone), so escaping it here too
+            // double-escaped a text-cell `<0.001` to `\\<0.001` (literal `\\` +
+            // an UNescaped `<` that Typst read as an unclosed label — corpus
+            // 2605.31567). (`@`/`` ` `` are kept: post_process's `@` guard is
+            // narrow enough not to double-escape, and removing them regressed
+            // real-paper cells.)
+            '_' | '*' | '@' | '`' if !in_math => {
                 out.push('\\');
                 out.push(c);
             }
