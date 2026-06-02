@@ -1736,6 +1736,16 @@ impl<'a> Emitter<'a> {
                 self.out.push('×');
                 node.end_byte()
             }
+            // `\textpm` / `\textmp` (textcomp) — ± / ∓. Common in results tables
+            // for uncertainty values (corpus 2605.22507).
+            Some("\\textpm") => {
+                self.out.push('±');
+                node.end_byte()
+            }
+            Some("\\textmp") => {
+                self.out.push('∓');
+                node.end_byte()
+            }
             Some("\\textuparrow") => {
                 self.out.push('↑');
                 node.end_byte()
@@ -2617,7 +2627,21 @@ impl<'a> Emitter<'a> {
             | Some("\\normalsize")
             | Some("\\footnotesize")
             | Some("\\scriptsize")
-            | Some("\\tiny") => node.end_byte(),
+            | Some("\\tiny") => {
+                // These are unscoped switches with no argument. In the common
+                // `{\small text}` form `\small` has no curly_group child and the
+                // following text renders as siblings — just drop the directive.
+                // But tree-sitter sometimes ABSORBS a following `{...}` as the
+                // command's argument (e.g. `\small{\textpm 0.034}` in a table
+                // cell, corpus 2605.22507); dropping the whole node then loses
+                // that content. Render the absorbed group's content so it
+                // survives, then drop the directive itself.
+                if let Some(arg) = first_curly_group(node) {
+                    let inner = self.render_curly_group_content(arg);
+                    self.out.push_str(&inner);
+                }
+                node.end_byte()
+            }
             // `\appendix` toggles section-number style to letters; emit as a
             // set rule.
             Some("\\appendix") => {
