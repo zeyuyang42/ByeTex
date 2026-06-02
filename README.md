@@ -263,7 +263,7 @@ ByeTex/
 ## Status
 
 <!-- corpus-summary:start -->
-_Last updated: 2026-06-02 (commit 742771f)_
+_Last updated: 2026-06-02 (commit 65c643d)_
 
 Corpus pass-rate (clean + warnings): **87%** — 431/495 files.
 
