@@ -49,3 +49,34 @@ fn cref_with_underscore_in_subsection_title_does_not_eat_body() {
         out.typst
     );
 }
+
+#[test]
+fn body_less_section_then_subsection_each_keep_own_label() {
+    // A body-less `\section` immediately followed by a `\subsection`, each with
+    // its own `\label`. The section's forward sibling-`\label` scanner must NOT
+    // over-reach and steal the subsection's label (memory: the secondary
+    // over-attachment concern from Bug A). Each heading keeps exactly its own.
+    let out = convert(
+        "\\section{Intro}\\label{sec:a}\n\\subsection{Sub}\\label{sec:b}\nbody\n",
+    );
+    assert!(
+        out.typst.contains("= Intro <sec:a>"),
+        "section must keep only <sec:a>, got: {}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("== Sub <sec:b>"),
+        "subsection must keep its own <sec:b>, got: {}",
+        out.typst
+    );
+}
+
+#[test]
+fn two_body_less_subsections_keep_own_labels() {
+    let out = convert("\\subsection{A}\\label{x}\n\\subsection{B}\\label{y}\nbody\n");
+    assert!(
+        out.typst.contains("== A <x>") && out.typst.contains("== B <y>"),
+        "each subsection must keep its own label, got: {}",
+        out.typst
+    );
+}
