@@ -1182,6 +1182,14 @@ impl<'a> Emitter<'a> {
             // first letter (e.g. `t` + `dt` → `tdt`). The helper is a no-op
             // when the previous output char is not a letter.
             self.ensure_math_letter_boundary(text);
+            // LaTeX operators Typst lacks as built-ins (cov/var/argmax/argmin)
+            // must be emitted via `op("…")` — bare `cov` parses as an unknown
+            // variable (corpus 2605.31567). Like sin/cos they aren't split.
+            if is_operatorname_only_function(alpha) {
+                let _ = write!(self.out, "op(\"{}\")", alpha);
+                self.out.push_str(tail);
+                return node.end_byte();
+            }
             if should_split_math_word(alpha) {
                 let mut first = true;
                 for c in alpha.chars() {
@@ -10746,6 +10754,14 @@ fn should_split_math_word(s: &str) -> bool {
         return false;
     }
     true
+}
+
+/// LaTeX math operators that Typst does NOT provide as built-in upright
+/// identifiers (sin/cos/… exist; these don't), so a bare `cov` parses as an
+/// unknown variable. Emitted via `op("…")` (upright, like `\operatorname`).
+/// They are also "function names" for the no-split rule.
+fn is_operatorname_only_function(s: &str) -> bool {
+    matches!(s, "cov" | "var" | "argmax" | "argmin")
 }
 
 /// Common LaTeX math functions that Typst also renders as upright identifiers.
