@@ -7453,13 +7453,27 @@ impl<'a> Emitter<'a> {
             .unwrap_or_default();
         let (count, aligns) = parse_column_spec(&col_spec);
 
-        // Collect body children (everything between begin and end, excluding
-        // the column-spec curly_group, but including the text children that
-        // contain cells and row separators).
+        // Collect body children (everything between begin and end). Skip only
+        // the LEADING column-spec curly_group (and the preceding `{width}` group
+        // for tabular*/tabularx/tabulary) — NOT every curly_group: a cell can be
+        // brace-wrapped (`{$\Braket{…}$}`, `{\small …}`), and dropping it here
+        // made the parent gap-copy spill its raw LaTeX (corpus 2605.31203;
+        // 22507 `\small`/`\textpm` leak).
+        let leading_groups_to_skip = if needs_skip { 2 } else { 1 };
         let mut cursor = node.walk();
+        let mut cg_seen = 0usize;
         let body: Vec<Node<'_>> = node
             .children(&mut cursor)
-            .filter(|c| !matches!(c.kind(), "begin" | "end" | "curly_group"))
+            .filter(|c| {
+                if matches!(c.kind(), "begin" | "end") {
+                    return false;
+                }
+                if c.kind() == "curly_group" {
+                    cg_seen += 1;
+                    return cg_seen > leading_groups_to_skip;
+                }
+                true
+            })
             .collect();
 
         // Render body to a string, then parse rows + cells. Clear `in_minipage`
