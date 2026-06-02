@@ -311,7 +311,12 @@ pub(crate) fn escape_text_cell(s: &str) -> String {
                     out.push_str("\\#");
                 }
             }
-            '_' | '*' | '@' | '<' | '`' => {
+            // These are Typst markup operators in TEXT, but all valid verbatim
+            // inside math (`_`/`^` attachments, `*` superscript star, `<`
+            // relation, `` ` `` …). The cell's `$...$` content is already
+            // converted Typst math, so escaping here would corrupt it
+            // (`$y_w$` → `$y\_w$`, a literal underscore, not a subscript).
+            '_' | '*' | '@' | '<' | '`' if !in_math => {
                 out.push('\\');
                 out.push(c);
             }
