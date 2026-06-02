@@ -936,21 +936,48 @@ def page_image_similarity(truth_pages: list[Path], typst_pages: list[Path]) -> d
 
 
 # Weights for the single corpus-wide fidelity number. Prose dominates, with
-# structure and visual layout as secondary signals. Tunable as the corpus grows.
-FIDELITY_WEIGHTS = {"word_recall": 0.4, "heading_recall": 0.3, "mean_ssim": 0.3}
+# structure (headings), visual layout (SSIM) and page density (page_closeness)
+# as secondary signals. Tunable as the corpus grows.
+FIDELITY_WEIGHTS = {
+    "word_recall": 0.35,
+    "heading_recall": 0.25,
+    "mean_ssim": 0.2,
+    "page_closeness": 0.2,
+}
+
+
+def page_closeness(page_ratio: float | None) -> float | None:
+    """Map a page_ratio (typst_pages / truth_pages) to a [0, 1] closeness score:
+    1.0 when the page count matches exactly, decreasing symmetrically as the
+    output runs either LONGER (ratio > 1) or SHORTER (ratio < 1) than the truth.
+
+    `min(r, 1/r)` is the symmetric measure — a 1.25× over-run and a 0.8×
+    under-run both score 0.8. Returns None for a missing/degenerate ratio so the
+    paper is skipped (mirrors the other metrics' None handling).
+    """
+    if page_ratio is None or page_ratio <= 0:
+        return None
+    return min(page_ratio, 1.0 / page_ratio)
 
 
 def aggregate_fidelity_score(papers: dict) -> float | None:
-    """Mean over papers (that carry all three metrics) of the weighted blend
-    0.4*word_recall + 0.3*heading_recall + 0.3*mean_ssim.
+    """Mean over papers (that carry all metrics) of the weighted blend
+    0.35*word_recall + 0.25*heading_recall + 0.2*mean_ssim + 0.2*page_closeness.
 
-    Papers missing any metric are skipped rather than scored as zero, so the
-    number reflects only papers we could actually measure. Returns None when
-    no paper has the full triple. A *relative* regression detector.
+    `page_closeness` is derived from each paper's `page_ratio` (see
+    `page_closeness`). Papers missing any metric are skipped rather than scored
+    as zero, so the number reflects only papers we could actually measure.
+    Returns None when no paper has the full set. A *relative* regression
+    detector.
     """
     scores: list[float] = []
     for p in papers.values():
-        vals = {k: p.get(k) for k in FIDELITY_WEIGHTS}
+        vals = {
+            "word_recall": p.get("word_recall"),
+            "heading_recall": p.get("heading_recall"),
+            "mean_ssim": p.get("mean_ssim"),
+            "page_closeness": page_closeness(p.get("page_ratio")),
+        }
         if any(v is None for v in vals.values()):
             continue
         scores.append(sum(FIDELITY_WEIGHTS[k] * vals[k] for k in FIDELITY_WEIGHTS))
@@ -1404,6 +1431,7 @@ def main() -> None:
             "truth_pages": summary.get("truth_pages", 0),
             "typst_pages": summary.get("typst_pages", 0),
             "page_count_diff": summary.get("page_count_diff"),
+            "page_ratio": structure.get("page_ratio"),
             "warnings_total": summary.get("warnings", {}).get("total", 0),
             "word_jaccard": structure.get("word_jaccard"),
             "word_recall": structure.get("word_recall"),
@@ -1442,7 +1470,10 @@ def main() -> None:
         f"structure_ok={structure_ok_count} | overall_ok={ok_count}"
     )
     fidelity_str = f"{fidelity:.3f}" if fidelity is not None else "n/a (no fully-measured papers)"
-    print(f"  Corpus fidelity score (0.4·recall + 0.3·headings + 0.3·ssim): {fidelity_str}")
+    print(
+        "  Corpus fidelity score "
+        f"(0.35·recall + 0.25·headings + 0.2·ssim + 0.2·page): {fidelity_str}"
+    )
     print(f"Index: {index_path}")
     print("Next: ask the agent to read each composite.png and write tests/visual/report.md")
 
