@@ -78,8 +78,8 @@ pub fn preprocess_bib_with_seen(
         while i < bytes.len() && bytes[i].is_ascii_whitespace() {
             i += 1;
         }
-        // Must see `{` for a valid entry.
-        if i >= bytes.len() || bytes[i] != b'{' {
+        // Must see `{` or `(` for a valid entry (BibTeX allows either).
+        if i >= bytes.len() || !matches!(bytes[i], b'{' | b'(') {
             // If the entry type is empty (bare `@` with no type, e.g. a
             // deleted entry left behind), drop it silently — passing it
             // through would cause Typst's parser to abort with
@@ -92,9 +92,10 @@ pub fn preprocess_bib_with_seen(
             pos = next_at + 1;
             continue;
         }
+        let open = bytes[i];
         let body_start = i + 1;
-        // Find matching `}` for this entry (brace-aware).
-        let body_end = match find_matching_brace(bytes, body_start) {
+        // Find the matching closer for this entry's opener (`{`/`}` or `(`/`)`).
+        let body_end = match find_entry_body_end(bytes, open, body_start) {
             Some(e) => e,
             None => {
                 // Unbalanced; pass through to end.
@@ -103,13 +104,23 @@ pub fn preprocess_bib_with_seen(
             }
         };
         let body = &input[body_start..body_end];
+        // Typst only accepts brace-delimited entries; re-emit `@type{...}`
+        // even when the source used the paren form `@type(...)` (corpus
+        // 2605.31596: `@String(PAMI = {...})`).
+        let braced = |out: &mut String| {
+            out.push('@');
+            out.push_str(&input[type_start..type_end]);
+            out.push('{');
+            out.push_str(body);
+            out.push('}');
+        };
         if entry_type == "string" {
-            // Already collected; preserve as-is so Typst sees a valid
-            // (if unused) @string block.
-            out.push_str(&input[next_at..body_end + 1]);
+            // Already collected; preserve content so Typst sees a valid (if
+            // unused) @string block — but normalised to brace delimiters.
+            braced(&mut out);
         } else if entry_type == "preamble" || entry_type == "comment" {
-            // Pass through.
-            out.push_str(&input[next_at..body_end + 1]);
+            // Pass through (brace-normalised).
+            braced(&mut out);
         } else {
             // Regular entry — rewrite. Drop duplicate-key entries
             // (Typst's parser aborts with `duplicate key "X"` on
@@ -173,8 +184,43 @@ fn find_matching_brace(bytes: &[u8], start: usize) -> Option<usize> {
     None
 }
 
-/// Scan the input for `@string{NAME = "value"}` and collect a
-/// case-insensitive name -> value map.
+/// Find the matching `)` for a BibTeX paren-delimited entry `@type(...)`.
+/// `start` points to the byte AFTER the `(`. Brace- and string-aware: a `)`
+/// inside a `{...}` group or `"..."` value is literal, not the closer.
+fn find_matching_paren(bytes: &[u8], start: usize) -> Option<usize> {
+    let mut brace_depth = 0i32;
+    let mut in_string = false;
+    let mut i = start;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' if i + 1 < bytes.len() => {
+                i += 2;
+                continue;
+            }
+            b'"' if brace_depth == 0 => in_string = !in_string,
+            b'{' if !in_string => brace_depth += 1,
+            b'}' if !in_string => brace_depth -= 1,
+            b')' if !in_string && brace_depth == 0 => return Some(i),
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
+/// The opening delimiter of a BibTeX entry may be `{` or `(`; return the
+/// matching-close position for whichever opens at `bytes[open_pos]`. `start`
+/// is the byte after the opener.
+fn find_entry_body_end(bytes: &[u8], open: u8, start: usize) -> Option<usize> {
+    if open == b'(' {
+        find_matching_paren(bytes, start)
+    } else {
+        find_matching_brace(bytes, start)
+    }
+}
+
+/// Scan the input for `@string{NAME = "value"}` (or the `(...)` paren form) and
+/// collect a case-insensitive name -> value map.
 fn collect_string_defs(input: &str) -> HashMap<String, String> {
     let mut map = HashMap::new();
     let bytes = input.as_bytes();
@@ -195,12 +241,13 @@ fn collect_string_defs(input: &str) -> HashMap<String, String> {
         while i < bytes.len() && bytes[i].is_ascii_whitespace() {
             i += 1;
         }
-        if i >= bytes.len() || bytes[i] != b'{' {
+        if i >= bytes.len() || !matches!(bytes[i], b'{' | b'(') {
             pos = at + 1;
             continue;
         }
+        let open = bytes[i];
         let body_start = i + 1;
-        let body_end = match find_matching_brace(bytes, body_start) {
+        let body_end = match find_entry_body_end(bytes, open, body_start) {
             Some(e) => e,
             None => break,
         };
@@ -697,6 +744,32 @@ mod tests {
         assert!(
             !out.contains("journal = jcp"),
             "old bare ref remains: {}",
+            out
+        );
+    }
+
+    #[test]
+    fn paren_delimited_string_def_is_collected_and_braced() {
+        // Corpus 2605.31596: `@String(NAME = {value})` uses BibTeX's parenthesis
+        // delimiter, which Typst's parser rejects (`expected opening brace`).
+        let src = "@String(PAMI = {IEEE Trans. PAMI})\n\
+                   @article(foo, journal = PAMI, year = 2024)\n";
+        let out = preprocess_bib(src);
+        // The abbreviation must resolve in the (also paren-delimited) entry.
+        assert!(
+            out.contains("IEEE Trans. PAMI"),
+            "paren @String must be collected + resolved; got: {}",
+            out
+        );
+        // No paren-delimited entry header may survive (Typst needs braces).
+        assert!(
+            !out.contains("@String(") && !out.contains("@article("),
+            "paren entry delimiters must be converted to braces; got: {}",
+            out
+        );
+        assert!(
+            !out.contains("journal = PAMI"),
+            "the bare abbreviation ref must be resolved; got: {}",
             out
         );
     }
