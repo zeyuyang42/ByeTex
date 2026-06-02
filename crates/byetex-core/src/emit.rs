@@ -7506,13 +7506,31 @@ impl<'a> Emitter<'a> {
             .map(|row| row.split('&').map(|c| c.trim().to_string()).collect())
             .collect();
 
+        // Booktabs styling. Typst's default table draws a full grid (a line
+        // around every cell); academic papers (≈75% of the corpus) instead use
+        // booktabs — no vertical lines, three horizontal rules (top / after the
+        // header / bottom). And a LaTeX tabular with NO rule commands draws no
+        // lines at all. So: `stroke: none` always (kills the spurious grid),
+        // and add booktabs rules only when the source actually ruled the table.
+        let raw_env = &self.src[node.start_byte()..node.end_byte()];
+        let has_rules = raw_env.contains("\\toprule")
+            || raw_env.contains("\\midrule")
+            || raw_env.contains("\\bottomrule")
+            || raw_env.contains("\\hline")
+            || raw_env.contains("\\cmidrule");
+
         self.ensure_paragraph_break();
         let _ = write!(
             self.out,
-            "#table(\n  columns: {},\n  align: ({}),\n",
+            "#table(\n  columns: {},\n  align: ({}),\n  stroke: none,\n",
             count,
             aligns.join(", ")
         );
+        if has_rules {
+            // Top rule (heavier), then the header rule is injected after the
+            // first emitted row below.
+            self.out.push_str("  table.hline(stroke: 0.08em),\n");
+        }
 
         // rowspan_cols[c] = number of additional rows for which column c is
         // already occupied by a rowspan cell from a previous row.  When we
@@ -7520,6 +7538,7 @@ impl<'a> Emitter<'a> {
         // Each subsequent visit to that column decrements the counter.
         let mut rowspan_cols = vec![0usize; count];
 
+        let mut emitted_rows = 0usize;
         for row_cells in &rows_2d {
             let mut row_output: Vec<String> = Vec::new();
             let mut src = row_cells.iter();
@@ -7568,6 +7587,16 @@ impl<'a> Emitter<'a> {
                 }
             }
             self.out.push_str(",\n");
+            // Header rule: after the first emitted row (the common single-row
+            // header). Booktabs' `\midrule` sits here in the vast majority of
+            // academic tables.
+            if has_rules && emitted_rows == 0 {
+                self.out.push_str("  table.hline(stroke: 0.05em),\n");
+            }
+            emitted_rows += 1;
+        }
+        if has_rules {
+            self.out.push_str("  table.hline(stroke: 0.08em),\n");
         }
         self.out.push(')');
         node.end_byte()
