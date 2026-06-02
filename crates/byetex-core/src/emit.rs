@@ -1260,6 +1260,16 @@ impl<'a> Emitter<'a> {
             };
         }
 
+        // `\definecolor{name}{model}{spec}` / `\definecolorset{...}` — tree-sitter
+        // parses these as dedicated `color_definition` / `color_set_definition`
+        // nodes (NOT generic_command), so they bypass the command-name drop list
+        // and were safe-copied into the body verbatim (corpus 2605.22779 spilled a
+        // block of `\definecolor{...}{HTML}{...}` next to the abstract). byetex
+        // doesn't apply xcolor colours, so the definition is inert — drop it whole.
+        if matches!(node.kind(), "color_definition" | "color_set_definition") {
+            return node.end_byte();
+        }
+
         // Backslash commands: look up by name, fall through to warn-and-drop.
         if node.kind() == "generic_command" {
             return self.emit_generic_command(node);
@@ -2360,6 +2370,8 @@ impl<'a> Emitter<'a> {
             //   current point; Typst places figures where #figure() is called.
             // • Color definitions: \colorlet defines a colour alias; without colortbl
             //   support the alias is never used, so the definition is inert.
+            //   (`\definecolor` is a dedicated `color_definition` node — dropped
+            //   earlier in emit_node, near the `color_reference` arm.)
             // • Conditionals: \ifthenelse/\fi/\else are xcolor/ifthen preamble
             //   control flow that tree-sitter surfaces as bare generic_commands
             //   (the contained body is processed separately by tree-sitter's normal
