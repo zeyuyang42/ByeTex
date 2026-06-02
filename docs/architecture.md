@@ -74,9 +74,17 @@ and labels.
 > Architecture Invariant: ByeTex does not write its own LaTeX parser — it
 > reuses the same tree-sitter grammar that powers editor highlighting.
 
-`emit.rs` — the `Emitter` state machine; the largest and most central module:
-the two-pass `prepass_collect` → `emit_root`/`emit_node` dispatch over the
-node kinds, then `finish`. See `emit-refactor-insights.md` for its internals.
+`emit.rs` — the `Emitter` state machine and central dispatcher core (~3,600
+lines, down from a ~11k-line monolith after the 13-module split). It owns the
+`Emitter` struct + fields + constructors, the two-pass `prepass_collect` →
+`emit_root`/`emit_node` flow, the four dispatchers (`emit_node`,
+`emit_generic_command`, `emit_math_command`, `emit_generic_environment`),
+`finish`, and the cross-cutting core helpers (`safe_copy`,
+`render_in_sub_emitter`, `with_sub_buffer`, `ensure_paragraph_break`, the
+`warn_*` family). The per-concern leaf logic lives in the `emit/` submodules
+below; each is an `impl Emitter` block (or free fns) reached from the
+dispatchers, kept emit-internal via `pub(in crate::emit)`. See
+`emit-refactor-insights.md` for its internals.
 
 > Architecture Invariant: math is hand-rolled (the syntax tree is translated
 > through a manual symbol table), not delegated to MiTeX, KaTeX, or any engine.
@@ -85,8 +93,41 @@ node kinds, then `finish`. See `emit-refactor-insights.md` for its internals.
 > Architecture Invariant: every document is rendered with a single
 > self-generated neutral preamble; ByeTex never binds a Typst Universe template.
 
-`emit/boundary.rs`, `emit/escape.rs` — math-identifier spacing and output
-escaping, split out of the emitter.
+`emit/` — the emitter's per-concern submodules, all pure code motion out of
+`emit.rs` (behaviour unchanged; the dispatchers stayed behind). Each is a child
+module of `emit`, so it touches the `Emitter`'s private fields and sibling
+methods directly via descendant-module visibility — no field changes were
+needed. Items called across module boundaries are `pub(in crate::emit)` (the
+compiler enforces this); the few reached from other crate modules
+(`project.rs`, tests) stay `pub(crate)` and are re-exported from `emit.rs`.
+
+- `emit/math.rs` — math-mode emission: primitives, environment containers,
+  command leaf-emitters (`\frac`, `\sqrt`, operatorname, accents, binom,
+  subscript, …), and layout/structures (extensible arrows, matrices, cases).
+  The `emit_math_command` dispatcher itself stays in `emit.rs`.
+- `emit/macros.rs` — `\newcommand`/`\def`/`\newif` harvesting + expansion +
+  `\input` inclusion; owns `MacroDef`.
+- `emit/math_symbols.rs` — the `lookup_math_symbol` table.
+- `emit/typography.rs` — text-accent precomposition and math-word predicates.
+- `emit/braceless.rs` — brace-less argument consumption (`BracelessArg`) and
+  macro-arg substitution.
+- `emit/node_utils.rs` — shared AST/node-classification, curly-group access,
+  label extraction, and small string helpers (`range_of`, `first_curly_group`,
+  `split_math_rows`, `environment_name`, …).
+- `emit/tables.rs` — `tabular` emission and column-spec parsing.
+- `emit/figures.rs` — figures, `\includegraphics`, subfigure panels, graphics
+  path/option extraction.
+- `emit/sections.rs` — section/heading emission and label-alias selection.
+- `emit/bibliography.rs` — bibliography, citations, `thebibliography`, and
+  label-reference (`\ref`/`\cref`) emission.
+- `emit/environments.rs` — theorem/proof/list/minipage/subequations envs and
+  theorem-definition harvesting.
+- `emit/inline.rs` — inline wrapping, font-switch groups, raw/listing,
+  `\textcolor`, logos.
+- `emit/preamble.rs` — neutral-preamble building, title block, author
+  materialization, package/class extraction.
+- `emit/boundary.rs`, `emit/escape.rs` — math-identifier spacing and output
+  escaping.
 
 `document.rs` — `DocumentMetadata` (title, authors, abstract, …).
 
