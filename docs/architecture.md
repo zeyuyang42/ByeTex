@@ -14,8 +14,8 @@ This document is the overview; for detail beyond it, see the deeper docs:
 - [`tectonic-integration-analysis.md`](tectonic-integration-analysis.md) — the `doctor` oracle.
 
 It records only slow-changing facts. It names files and types but does not link
-to them or cite line numbers — use symbol search. Revisit it a couple of times
-a year, not on every change.
+to them or cite line numbers — use symbol search. Review it periodically, not
+on every change.
 
 ## Bird's Eye View
 
