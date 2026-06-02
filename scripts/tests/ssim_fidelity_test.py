@@ -56,18 +56,36 @@ with tempfile.TemporaryDirectory() as td:
     check(r4["pages_compared"] == 0, "empty inputs -> 0 pages compared")
 
 
-# aggregate_fidelity_score: 0.4*word_recall + 0.3*heading_recall + 0.3*mean_ssim
-papers_perfect = {"a": {"word_recall": 1.0, "heading_recall": 1.0, "mean_ssim": 1.0}}
+# page_closeness: symmetric 1.0-at-match, penalizing over- AND under-running.
+check(vt.page_closeness(1.0) == 1.0, "page_closeness(1.0) == 1.0 (perfect)")
+check(abs(vt.page_closeness(1.25) - 0.8) < 1e-9, "page_closeness(1.25) == 0.8 (over-run)")
+check(abs(vt.page_closeness(0.8) - 0.8) < 1e-9, "page_closeness(0.8) == 0.8 (under-run, symmetric)")
+check(vt.page_closeness(None) is None and vt.page_closeness(0) is None,
+      "page_closeness(None/0) -> None")
+
+# aggregate_fidelity_score:
+#   0.35*word_recall + 0.25*heading_recall + 0.2*mean_ssim + 0.2*page_closeness
+papers_perfect = {
+    "a": {"word_recall": 1.0, "heading_recall": 1.0, "mean_ssim": 1.0, "page_ratio": 1.0}
+}
 check(vt.aggregate_fidelity_score(papers_perfect) == 1.0, "all-1.0 metrics -> fidelity 1.0")
 
-papers_mixed = {"a": {"word_recall": 0.8, "heading_recall": 0.6, "mean_ssim": 0.5}}
-# 0.32 + 0.18 + 0.15 = 0.65
-check(vt.aggregate_fidelity_score(papers_mixed) == 0.65, "weighted blend computes correctly (0.65)")
+# page_ratio 1.25 -> page_closeness 0.8.
+# 0.35*0.8 + 0.25*0.6 + 0.2*0.5 + 0.2*0.8 = 0.28 + 0.15 + 0.10 + 0.16 = 0.69
+papers_mixed = {
+    "a": {"word_recall": 0.8, "heading_recall": 0.6, "mean_ssim": 0.5, "page_ratio": 1.25}
+}
+check(vt.aggregate_fidelity_score(papers_mixed) == 0.69, "weighted blend computes correctly (0.69)")
 
-# Papers missing any of the three metrics are skipped, not counted as 0.
+# A missing page_ratio also disqualifies a paper (skipped, not scored 0).
+papers_no_pages = {"a": {"word_recall": 1.0, "heading_recall": 1.0, "mean_ssim": 1.0}}
+check(vt.aggregate_fidelity_score(papers_no_pages) is None,
+      "paper without page_ratio is skipped (no full set)")
+
+# Papers missing any metric are skipped, not counted as 0.
 papers_partial = {
-    "a": {"word_recall": 1.0, "heading_recall": 1.0, "mean_ssim": 1.0},
-    "b": {"word_recall": 0.0, "heading_recall": None, "mean_ssim": None},
+    "a": {"word_recall": 1.0, "heading_recall": 1.0, "mean_ssim": 1.0, "page_ratio": 1.0},
+    "b": {"word_recall": 0.0, "heading_recall": None, "mean_ssim": None, "page_ratio": 2.0},
 }
 check(vt.aggregate_fidelity_score(papers_partial) == 1.0, "papers missing metrics are skipped")
 

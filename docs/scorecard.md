@@ -187,10 +187,18 @@ Result (tectonic-truth, `page_ratio` = typst_pages / truth_pages):
 
 Mean `page_ratio` ~1.20 → **~1.03**; 6/7 sampled within [0.9, 1.1]. Compile-rate held at 40.
 
-**Metric-design note:** the composite "fidelity score" (`0.4·recall + 0.3·headings + 0.3·ssim`)
-does **not** include `page_ratio`, so it doesn't reflect this layout win (SSIM is too coarse to
-reward a global font-size shift). Folding `page_ratio` into the committed score is the next
-metric slice. Two-column page density (22779) is a separate follow-up.
+**Composite fidelity score now weights page density.** The single corpus-wide number is
+
+> `0.35·word_recall + 0.25·heading_recall + 0.2·mean_ssim + 0.2·page_closeness`
+
+where `page_closeness = min(r, 1/r)` for `r = typst_pages / truth_pages` — a symmetric [0,1]
+measure that is 1.0 at an exact page-count match and penalizes running either longer **or**
+shorter than the LaTeX truth (SSIM is too coarse to reward a global font-size shift, so the
+layout work above was previously invisible to the headline number). `page_ratio` is persisted
+per-paper in `index.json`; papers missing any metric (including a renderable page count) are
+skipped, not scored zero. Sample (8 papers) composite after #166/#167: **0.809**, with
+`page_closeness` 0.81–1.00. Two-column figure/equation sizing (22779 residual 1.23) is a
+separate follow-up.
 
 **Measurement gotcha:** `scripts/visual_test.py` builds/uses `REPO_ROOT/target/release/byetex`
 and ignores `BYETEX_BIN` — run it **from the worktree** (with the corpus symlinked) to measure a
