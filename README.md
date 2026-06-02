@@ -235,6 +235,9 @@ See [`docs/for-agents.md`](docs/for-agents.md). The short version:
 
 ## Project layout
 
+New contributors: start with [`docs/architecture.md`](docs/architecture.md) for
+the code map and a bird's-eye view of how a conversion flows through the crates.
+
 ```
 ByeTex/
 ├── crates/
@@ -252,6 +255,7 @@ ByeTex/
 │   └── visual/         # rasterized PDF composites (gitignored)
 ├── vendor/             # vendored tree-sitter-latex (MIT, Patrick Förster 2021)
 └── docs/
+    ├── architecture.md     # the code map — start here
     ├── for-agents.md
     └── warnings.schema.json
 ```
