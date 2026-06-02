@@ -72,3 +72,41 @@ fn font_and_paper_combine_and_coexist_with_class_options() {
     assert!(t.contains("size: 12pt"), "12pt expected; got:\n{t}");
     assert!(t.contains("paper: \"a4\""), "a4 paper expected; got:\n{t}");
 }
+
+#[test]
+fn ieeetran_gets_tight_class_default_margins() {
+    // IEEEtran's own geometry is far tighter than the neutral 1in; using 1in
+    // narrows the two columns and inflates page count (22779 page_ratio 1.38).
+    // With no explicit \geometry, IEEEtran picks up a tight class-default margin.
+    let src = "\\documentclass[conference]{IEEEtran}\n\\begin{document}\nBody.\n\\end{document}";
+    let t = typ(src);
+    assert!(
+        t.contains("margin: (top: 0.75in, bottom: 1in, x: 0.62in)"),
+        "IEEEtran should use a tight class-default margin; got:\n{t}"
+    );
+}
+
+#[test]
+fn article_keeps_neutral_one_inch_margin() {
+    // Regression guard: a plain article (no geometry) keeps the neutral 1in —
+    // the tight margin is class-specific, not global.
+    let src = "\\documentclass{article}\n\\begin{document}\nBody.\n\\end{document}";
+    let t = typ(src);
+    assert!(
+        t.contains("margin: (x: 1in, y: 1in)"),
+        "article must keep the neutral 1in margin; got:\n{t}"
+    );
+}
+
+#[test]
+fn explicit_geometry_overrides_ieeetran_default() {
+    // A real \usepackage[margin=2cm]{geometry} must still win over the class
+    // default.
+    let src = "\\documentclass[conference]{IEEEtran}\n\
+               \\usepackage[margin=2cm]{geometry}\n\\begin{document}\nB.\n\\end{document}";
+    let t = typ(src);
+    assert!(
+        t.contains("2cm") && !t.contains("0.62in"),
+        "explicit geometry must override the IEEEtran default; got:\n{t}"
+    );
+}
