@@ -5682,6 +5682,23 @@ impl<'a> Emitter<'a> {
         // refuses to gobble math delimiters (`$`, `\)`, `\]`, `}`) so we
         // don't accidentally eat a closing `$` when the source is malformed.
         match try_consume_math_arg(self.src, node.end_byte()) {
+            // A structural command radicand (`\sqrt\frac{a}{b}`): `\frac` takes
+            // its OWN brace args, but `consume_braceless_arg` returns just the
+            // `\frac` token, leaving `{a}{b}` to spill out as `sqrt(\frac){a}{b}`
+            // (corpus 2605.31596). When the command is followed by `{...}` arg
+            // groups, consume the whole application and render it as math.
+            Some((BracelessArg::Command(cmd), cmd_end))
+                if consume_trailing_brace_groups(self.src, cmd_end) > cmd_end =>
+            {
+                let end = consume_trailing_brace_groups(self.src, cmd_end);
+                let frag = self.src[node.end_byte()..end].trim();
+                let inner = self.render_in_sub_emitter(frag, true, true);
+                self.skip_until = self.skip_until.max(end);
+                self.ensure_math_letter_boundary("sqrt(");
+                let _ = write!(self.out, "sqrt({})", inner.trim());
+                let _ = cmd;
+                end
+            }
             Some((arg, end)) => {
                 let inner = self.render_braceless_math_arg(arg);
                 if end > node.end_byte() {
@@ -9276,6 +9293,49 @@ pub(crate) fn try_consume_math_arg(src: &str, start: usize) -> Option<(Braceless
         }
     }
     consume_braceless_arg(src, start)
+}
+
+/// Starting at `start`, skip leading whitespace then consume zero or more
+/// consecutive balanced `{...}` argument groups, returning the byte index past
+/// the last one (or `start` if none follow). Used to gather the brace args of a
+/// structural command that was consumed brace-less, e.g. the `{a}{b}` of
+/// `\sqrt\frac{a}{b}`.
+fn consume_trailing_brace_groups(src: &str, start: usize) -> usize {
+    let bytes = src.as_bytes();
+    let mut i = start;
+    loop {
+        let mut j = i;
+        while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+            j += 1;
+        }
+        if j >= bytes.len() || bytes[j] != b'{' {
+            return i;
+        }
+        let mut depth = 1i32;
+        let mut k = j + 1;
+        while k < bytes.len() {
+            match bytes[k] {
+                b'\\' if k + 1 < bytes.len() => {
+                    k += 2;
+                    continue;
+                }
+                b'{' => depth += 1,
+                b'}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                _ => {}
+            }
+            k += 1;
+        }
+        if k >= bytes.len() {
+            // Unbalanced — stop at what we had.
+            return i;
+        }
+        i = k + 1;
+    }
 }
 
 pub(crate) fn consume_braceless_arg(src: &str, start: usize) -> Option<(BracelessArg, usize)> {
