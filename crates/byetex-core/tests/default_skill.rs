@@ -10,6 +10,7 @@ fn each_category_maps_to_an_existing_skill() {
         Category::AmbiguousMath { reason: "x".into() },
         Category::UnsupportedCommand { name: "x".into() },
         Category::NeedsManualReview { reason: "x".into() },
+        Category::UnknownPackage { name: "x".into() },
     ];
     for cat in cases {
         let name = default_skill_for(&cat).expect("every category should map to a skill");
@@ -18,6 +19,11 @@ fn each_category_maps_to_an_existing_skill() {
             "skill `{name}` for {cat:?} must exist in the catalogue"
         );
     }
+    assert_eq!(
+        default_skill_for(&Category::DropOnly { name: "x".into() }),
+        None,
+        "DropOnly is intentionally unactionable"
+    );
 }
 
 #[test]
