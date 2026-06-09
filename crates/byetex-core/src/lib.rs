@@ -38,6 +38,9 @@ pub mod __test_support {
     }
 }
 
+mod skill_map;
+pub use skill_map::default_skill_for;
+
 pub use warnings::{Category, Range, Severity, Warning};
 
 #[derive(Debug, Default)]

@@ -577,6 +577,14 @@ impl<'a> Emitter<'a> {
             self.out.insert_str(0, &set_doc);
         }
 
+        // Fill each warning's suggested_skill from its category when an emit site
+        // didn't set one explicitly, so every warning points at a repair guide.
+        for w in &mut self.warnings {
+            if w.suggested_skill.is_none() {
+                w.suggested_skill = crate::skill_map::default_skill_for(&w.category).map(str::to_string);
+            }
+        }
+
         let class_metadata = self.metadata.class_metadata;
         (self.out, self.warnings, self.asset_refs, class_metadata)
     }
