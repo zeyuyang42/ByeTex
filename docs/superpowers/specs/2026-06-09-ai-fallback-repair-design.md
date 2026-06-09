@@ -92,19 +92,22 @@ first analysis; `typst compile` is ground truth during iteration.
 
 ### 1. Source map (`byetex-core`) — the only new core capability
 
-Interval map from `.typ` byte ranges → originating `.tex` byte ranges, built during
-conversion, exposed on `ConvertOutput`.
+**Content-anchored** (not byte-offset). `finish()` relocates the body and
+`post_process_typography` rewrites the whole output char-by-char *after* emission, so any
+byte offsets captured during `emit_node` would drift. Instead, record each node's **output
+text** alongside its source span, and at diagnose time match a typst error's *line text* to
+the node that produced it. Matching on content is immune to the post-emit byte shifts.
 
 ```rust
-pub struct SpanMapping {
-    pub typ: (usize, usize),  // byte range in the generated .typ
+pub struct NodeOutput {
     pub src: (usize, usize),  // byte range in the LaTeX source
+    pub output: String,       // the .typ text this node produced (pre-post-process)
 }
-pub source_map: Vec<SpanMapping>,   // new ConvertOutput field; empty unless requested
+pub source_map: Vec<NodeOutput>,   // new ConvertOutput field; empty unless requested
 ```
 
 **Single-point instrumentation:** rename the dispatcher body to `emit_node_inner`; make
-`emit_node` a thin wrapper that brackets each node's output:
+`emit_node` a thin wrapper that captures each node's output slice:
 
 ```rust
 fn emit_node(&mut self, node: Node<'_>) -> usize {
@@ -112,42 +115,56 @@ fn emit_node(&mut self, node: Node<'_>) -> usize {
     let out_start = self.out.len();
     let src = (node.start_byte(), node.end_byte());
     let r = self.emit_node_inner(node);
-    let out_end = self.out.len();
-    if out_end > out_start {
-        self.source_map.push(SpanMapping { typ: (out_start, out_end), src });
+    if self.out.len() > out_start {
+        self.source_map.push(NodeOutput {
+            src,
+            output: self.out[out_start..].to_string(),
+        });
     }
     r
 }
 ```
 
-- **Nested intervals:** a parent's interval contains its children's; lookup returns the
-  **smallest** interval containing a `.typ` offset → most specific source span.
+- **Nesting:** a parent's `output` contains its children's. Lookup returns the node with the
+  **shortest** `output` that still contains the query line → most specific (leaf-most)
+  source span.
 - **Gated:** `record_source_map` (new `Emitter` flag, default off) → normal `convert` is
   zero-overhead and byte-identical (goldens unaffected). `diagnose` turns it on.
-- **Sub-buffers:** `with_sub_buffer` / `render_in_sub_emitter` swap `self.out`; offsets
-  recorded there would be relative to the wrong buffer. **MVP rule:** save/restore-disable
-  `record_source_map` for the duration of a sub-buffer. The *outer* node still records a
-  correct **coarse** interval (whole table / equation → whole `tabular` / math source span),
-  because the splice into `self.out` happens inside the outer `emit_node`. Fine-grained
-  sub-node mapping is deferred.
-- **Preamble shift:** body is emitted first (offsets relative to the body), then `finish()`
-  prepends the neutral preamble; add `preamble.len()` to every `typ` range in one pass.
+- **Sub-buffers need no special-casing.** `with_sub_buffer` / `render_in_sub_emitter`
+  emit into a temporary buffer; entries recorded there hold valid output *text*. If that
+  text is spliced verbatim into the final `.typ`, it matches (finer granularity for free —
+  cell-level rather than table-level); if it's transformed or discarded before splicing, the
+  entry simply never matches any error line (inert). The outer node also records a coarse
+  entry (whole table → whole `tabular` source span), so a line always resolves to *something*
+  — finest match wins. (Byte-offset mapping would have needed save/restore here; content
+  matching does not.)
+- **No offset bookkeeping:** matching is on text, so `finish()`'s relocation and
+  `post_process_typography` need no special handling — the recorded `output` is the
+  pre-post-process slice, and the small per-line edits post-processing makes still leave the
+  bulk of the line matchable.
+- **Memory:** recording every node's output (gated, one-shot during `diagnose`) is O(total
+  output × depth) of cloned strings — a few MB for a typical paper, acceptable for a one-shot
+  call. Bounding it (offsets + snapshot, or skipping huge nodes) is a deferred optimization.
 
-**Lookup:** `fn resolve_typ_offset(map, off) -> Option<(usize,usize)>` — smallest `src` span
-whose `typ` range contains `off`. Pure, unit-testable, in core.
+**Lookup:** `fn resolve_error_line(map: &[NodeOutput], typ_line: &str) -> Option<(usize,usize)>`
+— normalize whitespace; among nodes whose `output` contains the normalized `typ_line`, return
+the `src` of the one with the **shortest** `output`; if none contains the full line, fall
+back to the node whose `output` contains the line's longest non-whitespace token; else
+`None`. Pure, unit-testable, in core.
 
 ### 2. typst diagnostic parser (`byetex-core::typst_diag`)
 
-Pure parser (no process spawning) so it's unit-testable: given `typst compile` stderr text
-and the `.typ` content, return:
+Pure parser (no process spawning) so it's unit-testable: given `typst compile` stderr text,
+return:
 
 ```rust
-pub struct TypstError { pub message: String, pub line: usize, pub col: usize, pub typ_byte: usize }
-pub fn parse_typst_errors(stderr: &str, typ_src: &str) -> Vec<TypstError>;
+pub struct TypstError { pub message: String, pub line: usize, pub col: usize }
+pub fn parse_typst_errors(stderr: &str) -> Vec<TypstError>;
 ```
 
-Scans for `error: <msg>` + the `┌─ <file>:<line>:<col>` location line; resolves `line:col`
-→ `typ_byte` against `typ_src`.
+Scans for `error: <msg>` + the `┌─ <file>:<line>:<col>` location line (1-based). The
+content-anchored map resolves source from the line *text* (fetched by line number), so no
+byte resolution is needed here.
 
 ### 3. `byetex diagnose` CLI subcommand (`byetex-cli`)
 
@@ -155,8 +172,9 @@ Reuses the existing `agent-brief` compile path. Steps:
 1. Convert source with `record_source_map = true` → `.typ` + `source_map` + warnings.
 2. Write `paper.typ`.
 3. Shell `typst compile paper.typ <tmp>` (the existing invocation), capture stderr.
-4. `parse_typst_errors(stderr, typ_src)`; for each: `resolve_typ_offset` → source span;
-   slice `.tex`/`.typ` for `src_fragment`/`typ_region`; pick the skill from the byetex
+4. `parse_typst_errors(stderr)`; for each error: fetch the `.typ` line text at `error.line`;
+   `resolve_error_line(source_map, line_text)` → source span; slice the `.tex` for
+   `src_fragment` and use the line text for `typ_region`; pick the skill from the byetex
    warning covering that source span, else `default_skill_for(category)`.
 5. Write `paper.diagnostics.json` (array of `{message, line, col, src_fragment, typ_region,
    skill_name}`) and a compile-aware `agent_brief.md` that references it.
@@ -215,13 +233,14 @@ init doc" sufficient without an MCP.)
 
 ## Testing
 
-- **Source map (core, unit):** convert a 2-construct doc; assert a `.typ` offset inside
-  construct A's output resolves to A's source span and is the *smallest* containing
-  interval; a preamble-shift test; a sub-buffer-gating test (a table maps coarsely to the
-  whole `tabular` span, no garbage entries); a gated-off test (default convert produces an
-  empty `source_map` and byte-identical output → goldens unaffected).
+- **Source map (core, unit):** convert a 2-construct doc with `record_source_map`; assert a
+  line of construct A's output resolves (via `resolve_error_line`) to A's source span and is
+  the *shortest-output* (most specific) match; a sub-buffer-coarseness test (a line inside a
+  table resolves to the whole `tabular` source span, no garbage entries); a gated-off test
+  (default convert produces an empty `source_map` and byte-identical output → goldens
+  unaffected).
 - **typst diagnostic parser (core, unit):** canned `typst` stderr → structured
-  `{message,line,col}` + correct `line:col`→byte resolution against a known `.typ`.
+  `Vec<{message,line,col}>` (multi-error input).
 - **`default_skill_for` (unit):** each category → expected skill; assert each returned name
   exists in the catalogue (`read_skill` is `Some`).
 - **CLI integration (`byetex-cli/tests`):** `byetex diagnose` on a fixture with one injected
