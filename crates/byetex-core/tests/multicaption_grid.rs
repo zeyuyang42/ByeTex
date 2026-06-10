@@ -62,3 +62,23 @@ fn stacked_table_then_figure_captionof_single_column() {
         "both captions present; got:\n{t}");
     assert!(t.contains("kind: table"), "table sub-block keeps kind: table; got:\n{t}");
 }
+
+#[test]
+fn linear_segmentation_does_not_leak_begin_end_markers() {
+    // Regression: the float's own `\begin{figure}` / `\end{figure}` are AST
+    // children of the float node. The linear-segmentation path must not push
+    // them into a block's content run, or a panel body leaks a raw
+    // `\begin{figure}` (invalid Typst). Corpus-class bug found verifying 22507.
+    let t = typ(
+        "\\begin{figure}\n\
+         \\begin{tabular}{ll}x & y\\\\\\end{tabular}\n\
+         \\captionof{table}{T}\\label{t:a}\n\
+         \\includegraphics{z.png}\n\
+         \\captionof{figure}{F}\\label{f:b}\n\
+         \\end{figure}\n",
+    );
+    assert!(
+        !t.contains("\\begin{figure}") && !t.contains("\\end{figure}"),
+        "no raw begin/end markers may leak into the grid; got:\n{t}"
+    );
+}

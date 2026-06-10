@@ -645,6 +645,12 @@ impl<'a> Emitter<'a> {
         let mut run: Vec<Node<'_>> = Vec::new();
         let mut run_labels: Vec<String> = Vec::new();
         for c in &children {
+            // The environment's own `\begin{…}` / `\end{…}` markers are AST
+            // children of the float node; never treat them as block content
+            // (else the linear body leaks a raw `\begin{figure}`).
+            if matches!(c.kind(), "begin" | "end") {
+                continue;
+            }
             if c.kind() == "label_definition" {
                 if let Some(k) = extract_label_name(*c, self.src) {
                     run_labels.push(k);

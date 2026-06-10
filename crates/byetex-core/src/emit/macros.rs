@@ -530,6 +530,10 @@ impl<'a> Emitter<'a> {
         }
         self.needs_heading_numbering |= sub.needs_heading_numbering;
         self.needs_equation_numbering |= sub.needs_equation_numbering;
+        // A `#subpar.grid(...)` emitted inside the included file needs the
+        // parent's `finish()` to add the `@preview/subpar` import, so flow the
+        // flag back (mirrors the numbering flags above; corpus 2605.31063).
+        self.used_subpar |= sub.used_subpar;
         // Merge the included file's metadata into the parent, parent
         // taking priority for fields it already owns.
         self.metadata.merge_from(&mut sub.metadata);
