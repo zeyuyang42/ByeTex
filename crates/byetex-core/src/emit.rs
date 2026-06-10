@@ -662,6 +662,12 @@ impl<'a> Emitter<'a> {
     /// (metadata, raw_authors, detected_class, needs_*_numbering)
     /// that aren't part of the common pattern.
     fn render_in_sub_emitter(&mut self, src: &str, in_math: bool, increment_depth: bool) -> String {
+        // Source-map note: the fresh sub-emitter does NOT inherit
+        // `record_source_map` and its `source_map` is not merged back, so content
+        // routed through here (e.g. inlined `.bbl` bibliography) yields no
+        // fine-grained provenance entries — such error lines resolve only to the
+        // coarse enclosing node's span. Threading capture through here is the
+        // deferred "fine-grained sub-buffer mapping" follow-up.
         let tree = crate::parser::parse(src);
         let visited = std::mem::take(&mut self.visited_includes);
         let macros = self.macros.clone();
