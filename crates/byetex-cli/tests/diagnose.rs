@@ -72,3 +72,50 @@ fn diagnose_writes_diagnostics_json_with_mapped_error() {
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn diagnose_project_mode_maps_error() {
+    if !typst_available() {
+        eprintln!("skipping: typst not on PATH");
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!(
+        "byetex-diagproj-{}-{}",
+        "diagnose_project_mode_maps_error",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    // A project whose output fails typst: a `\cite` with no `.bib` → dangling
+    // `@smith2020` label that typst rejects.
+    let main = dir.join("main.tex");
+    fs::write(
+        &main,
+        "\\documentclass{article}\\begin{document}Some text~\\cite{smith2020}.\\end{document}\n",
+    )
+    .unwrap();
+    let out_dir = dir.join("out");
+
+    let status = Command::new(bin())
+        .arg("diagnose")
+        .arg("--project")
+        .arg(&main)
+        .arg("--out")
+        .arg(&out_dir)
+        .status()
+        .unwrap();
+    assert!(status.success(), "diagnose --project should exit 0");
+
+    // materialize writes main.typ into out_dir; diagnostics land beside it.
+    assert!(out_dir.join("main.typ").exists(), "project main.typ should exist");
+    let diag = fs::read_to_string(out_dir.join("main.diagnostics.json")).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&diag).unwrap();
+    let arr = v.as_array().expect("diagnostics is a JSON array");
+    assert!(!arr.is_empty(), "expected a mapped error, got: {diag}");
+    let first = &arr[0];
+    assert!(first.get("message").is_some());
+    assert!(first.get("src_fragment").is_some());
+    assert!(first.get("skill_name").is_some());
+
+    let _ = fs::remove_dir_all(&dir);
+}

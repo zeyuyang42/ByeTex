@@ -106,13 +106,16 @@ enum Command {
     /// silently falls back to flat mode. Use `byetex convert --project` +
     /// `typst compile` directly for project-mode diagnosis.
     Diagnose {
-        /// Path to the input `.tex` file.
+        /// Path to the input `.tex` file, or a project directory.
         input: PathBuf,
-        /// Convert as a project (accepted for forward-compatibility; currently
-        /// falls back to flat mode).
+        /// Convert as a project: materialise a self-contained Typst project
+        /// (copy assets, preprocess `.bib`, resolve `\input`) before compiling.
+        /// Implied when `input` is a directory.
         #[arg(long)]
         project: bool,
-        /// Output `.typ` path (flat mode only). Defaults to `<stem>.typ`.
+        /// Output location. Flat mode: the `.typ` path (default `<stem>.typ`).
+        /// Project mode: the output project directory (default
+        /// `<entry-stem>.typst-project/`).
         #[arg(long)]
         out: Option<PathBuf>,
     },
@@ -327,84 +330,123 @@ fn tectonic_available() -> bool {
 /// exit code. When typst is absent the `.typ` is still written and an empty
 /// `[]` diagnostics file is produced.
 fn run_diagnose(input: PathBuf, project: bool, out: Option<PathBuf>) -> Result<()> {
-    if project {
-        eprintln!(
-            "byetex diagnose: --project mode not yet supported; \
-             falling back to flat mode."
-        );
+    // A directory input, or an explicit --project, goes through the project
+    // planner+materialiser (copies assets, preprocesses .bib, resolves \input)
+    // so `typst compile` of the produced `main.typ` sees a self-contained tree.
+    // A single .tex without --project uses the fast flat path.
+    if project || input.is_dir() {
+        run_diagnose_project(input, out)
+    } else {
+        run_diagnose_flat(input, out)
     }
+}
 
+/// Flat single-file diagnose: convert in place, compile, map.
+fn run_diagnose_flat(input: PathBuf, out: Option<PathBuf>) -> Result<()> {
     let source = std::fs::read_to_string(&input)
         .with_context(|| format!("read {}", input.display()))?;
     let base_dir = base_dir_from_file(&input);
-
-    // 1. Convert capturing the source map.
     let converted = byetex_core::convert_capturing_source_map(
         &source,
         &byetex_core::ConvertOptions {
             source_name: Some(input.display().to_string()),
-            base_dir: Some(base_dir.clone()),
+            base_dir: Some(base_dir),
         },
     );
-
-    // 2. Write the .typ flat next to input (or to the explicit --out path).
-    let typ_path = match out {
-        Some(p) => p,
-        None => input.with_extension("typ"),
-    };
+    let typ_path = out.unwrap_or_else(|| input.with_extension("typ"));
     std::fs::write(&typ_path, &converted.typst)
         .with_context(|| format!("write {}", typ_path.display()))?;
+    diagnose_typ_and_write(
+        &typ_path,
+        &converted.typst,
+        &source,
+        &converted.source_map,
+        &converted.warnings,
+    )
+}
 
-    // 3. Shell out to typst compile (mirror byetex_output_compiles spawn).
+/// Project diagnose: materialise a self-contained Typst project (assets, .bib,
+/// `main.typ`) into `out_dir`, then compile + map `main.typ`. Source spans in
+/// the captured map are byte ranges in the project's ENTRY `.tex`.
+fn run_diagnose_project(input: PathBuf, out: Option<PathBuf>) -> Result<()> {
+    let input_is_dir = input.is_dir();
+    // no_toml=true (a diagnostics run doesn't need a typst.toml); capture the map.
+    let plan = if input_is_dir {
+        byetex_core::project::plan_project_from_dir(&input, true, true)
+            .with_context(|| format!("planning project from {}", input.display()))?
+    } else {
+        byetex_core::project::plan_project(&input, true, true)
+            .with_context(|| format!("planning project from {}", input.display()))?
+    };
+    let base_dir = if input_is_dir {
+        input.clone()
+    } else {
+        base_dir_from_file(&plan.entry_tex)
+    };
+    let out_dir = out.unwrap_or_else(|| {
+        let stem = plan
+            .entry_tex
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("project");
+        plan.entry_tex
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+            .join(format!("{stem}.typst-project"))
+    });
+    byetex_core::project::materialize_project(&plan, &out_dir, &base_dir, true)
+        .with_context(|| format!("materialising project to {}", out_dir.display()))?;
+
+    let main_typ = out_dir.join("main.typ");
+    let source = std::fs::read_to_string(&plan.entry_tex)
+        .with_context(|| format!("read {}", plan.entry_tex.display()))?;
+    diagnose_typ_and_write(
+        &main_typ,
+        &plan.main_typst,
+        &source,
+        &plan.source_map,
+        &plan.warnings,
+    )
+}
+
+/// Compile `typ_path` with typst, map each error back to a source span + skill
+/// using `source_map`/`warnings` over `source`, and write
+/// `<typ_path>.diagnostics.json`. `typst` resolves relative paths against the
+/// `.typ`'s own directory, so a materialised project's assets/.bib resolve.
+fn diagnose_typ_and_write(
+    typ_path: &std::path::Path,
+    typst: &str,
+    source: &str,
+    source_map: &[byetex_core::NodeOutput],
+    warnings: &[byetex_core::Warning],
+) -> Result<()> {
     let pdf = typ_path.with_extension("pdf");
     let stderr = match std::process::Command::new(typst_bin())
         .arg("compile")
-        .arg(&typ_path)
+        .arg(typ_path)
         .arg(&pdf)
         .output()
     {
         Ok(o) => {
-            // Remove the PDF — we only care about the error log.
             let _ = std::fs::remove_file(&pdf);
             String::from_utf8_lossy(&o.stderr).into_owned()
         }
-        Err(_) => {
-            // typst not available; nothing to parse.
-            String::new()
-        }
+        Err(_) => String::new(), // typst not available; nothing to parse.
     };
 
-    // 4. Parse typst errors and map each to source span + skill.
-    let typ_lines: Vec<&str> = converted.typst.lines().collect();
+    let typ_lines: Vec<&str> = typst.lines().collect();
     let diagnostics: Vec<serde_json::Value> = byetex_core::parse_typst_errors(&stderr)
         .into_iter()
         .map(|e| {
-            // The line number from typst is 1-based.
-            let line_text = typ_lines
-                .get(e.line.saturating_sub(1))
-                .copied()
-                .unwrap_or("");
-
-            // Resolve the error line to a LaTeX source byte span.
-            let span =
-                byetex_core::resolve_error_line(&converted.source_map, line_text);
-
+            let line_text = typ_lines.get(e.line.saturating_sub(1)).copied().unwrap_or("");
+            let span = byetex_core::resolve_error_line(source_map, line_text);
             let src_fragment = span.map(|(a, b)| source[a..b].to_string());
-
-            // Find the first warning whose source byte range overlaps [a, b).
-            // Range fields: byte_start, byte_end (see warnings.rs).
             let skill_name = span.and_then(|(a, b)| {
-                converted
-                    .warnings
+                warnings
                     .iter()
-                    .find(|w| {
-                        let ws = w.range.byte_start as usize;
-                        let we = w.range.byte_end as usize;
-                        ws < b && we > a
-                    })
+                    .find(|w| (w.range.byte_start as usize) < b && (w.range.byte_end as usize) > a)
                     .and_then(|w| w.suggested_skill.clone())
             });
-
             serde_json::json!({
                 "message":      e.message,
                 "line":         e.line,
@@ -416,11 +458,9 @@ fn run_diagnose(input: PathBuf, project: bool, out: Option<PathBuf>) -> Result<(
         })
         .collect();
 
-    // 5. Write diagnostics.json next to the .typ.
     let diag_path = typ_path.with_extension("diagnostics.json");
     std::fs::write(&diag_path, serde_json::to_string_pretty(&diagnostics)?)
         .with_context(|| format!("write {}", diag_path.display()))?;
-
     eprintln!(
         "byetex diagnose: {} typst error(s) → {}",
         diagnostics.len(),
@@ -764,10 +804,10 @@ fn run_convert_dispatch(input: PathBuf, mode: ConvertMode, brief: BriefOpts) -> 
     // Plan the conversion. Both modes go through the project planners
     // so we get `plan.entry_tex` for the brief.
     let plan = if input_is_dir {
-        byetex_core::project::plan_project_from_dir(&input, no_toml)
+        byetex_core::project::plan_project_from_dir(&input, no_toml, false)
             .with_context(|| format!("planning project from {}", input.display()))?
     } else {
-        byetex_core::project::plan_project(&input, no_toml)
+        byetex_core::project::plan_project(&input, no_toml, false)
             .with_context(|| format!("planning project from {}", input.display()))?
     };
 

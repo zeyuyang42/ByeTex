@@ -43,6 +43,10 @@ pub struct ProjectPlan {
     /// callers (e.g. the CLI's agent-brief writer) can reference the
     /// original source without re-running detection.
     pub entry_tex: PathBuf,
+    /// Content-anchored provenance map for `main_typst` (`.typ` text → source
+    /// span in `entry_tex`). Empty unless the planner was asked to capture it
+    /// (`record_source_map`). Used by `byetex diagnose --project`.
+    pub source_map: Vec<crate::source_map::NodeOutput>,
 }
 
 /// Errors that can occur during project planning.
@@ -108,7 +112,11 @@ impl From<std::io::Error> for ProjectError {
 ///
 /// Set `no_toml = true` to suppress `typst.toml` generation even when the
 /// document class maps to a known Typst Universe package.
-pub fn plan_project(main_tex: &Path, no_toml: bool) -> Result<ProjectPlan, ProjectError> {
+pub fn plan_project(
+    main_tex: &Path,
+    no_toml: bool,
+    record_source_map: bool,
+) -> Result<ProjectPlan, ProjectError> {
     let source = std::fs::read_to_string(main_tex)?;
     let base_dir = main_tex
         .parent()
@@ -129,7 +137,7 @@ pub fn plan_project(main_tex: &Path, no_toml: bool) -> Result<ProjectPlan, Proje
     // sections attach the referenced alias (the `\ref` and the labelled
     // `\section` often live in different `\input`'d files).
     let refs = harvest_project_referenced_labels(&base_dir).unwrap_or_default();
-    let out = convert_with_macros(&source, &opts, HashMap::new(), refs, false);
+    let out = convert_with_macros(&source, &opts, HashMap::new(), refs, record_source_map);
 
     let assets = out
         .asset_refs
@@ -149,6 +157,7 @@ pub fn plan_project(main_tex: &Path, no_toml: bool) -> Result<ProjectPlan, Proje
         warnings: out.warnings,
         manifest,
         entry_tex: main_tex.to_path_buf(),
+        source_map: out.source_map,
     })
 }
 
@@ -350,7 +359,11 @@ pub(crate) fn harvest_project_referenced_labels(
 ///    harvested macros pre-seeded into the emitter.
 /// 4. The returned [`ProjectPlan`] is identical in shape to
 ///    [`plan_project`]'s, so the same materialiser can write it out.
-pub fn plan_project_from_dir(dir: &Path, no_toml: bool) -> Result<ProjectPlan, ProjectError> {
+pub fn plan_project_from_dir(
+    dir: &Path,
+    no_toml: bool,
+    record_source_map: bool,
+) -> Result<ProjectPlan, ProjectError> {
     let entry = detect_entry_file(dir)?;
     let preseeded = harvest_project_macros(dir)?;
     let refs = harvest_project_referenced_labels(dir).unwrap_or_default();
@@ -360,7 +373,7 @@ pub fn plan_project_from_dir(dir: &Path, no_toml: bool) -> Result<ProjectPlan, P
         source_name: Some(entry.display().to_string()),
         base_dir: Some(dir.to_path_buf()),
     };
-    let out = convert_with_macros(&source, &opts, preseeded, refs, false);
+    let out = convert_with_macros(&source, &opts, preseeded, refs, record_source_map);
 
     let assets = out
         .asset_refs
@@ -378,6 +391,7 @@ pub fn plan_project_from_dir(dir: &Path, no_toml: bool) -> Result<ProjectPlan, P
         warnings: out.warnings,
         manifest,
         entry_tex: entry,
+        source_map: out.source_map,
     })
 }
 

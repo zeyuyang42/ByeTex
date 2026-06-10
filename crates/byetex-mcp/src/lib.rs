@@ -206,7 +206,7 @@ impl ByeTexServer {
             })
             .unwrap_or_else(|| std::path::PathBuf::from("."));
 
-        let plan = plan_project(&main_tex, p.no_toml)
+        let plan = plan_project(&main_tex, p.no_toml, false)
             .map_err(|e| McpError::internal_error(format!("plan_project: {}", e), None))?;
 
         // Materialise the project (path-traversal guard included).
