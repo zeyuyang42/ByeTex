@@ -12,7 +12,7 @@ pub fn default_skill_for(cat: &Category) -> Option<&'static str> {
         Category::Tikz => Some("byetex-tikz-to-typst"),
         Category::CustomMacro { .. } => Some("byetex-custom-macros"),
         Category::ParseError { .. } => Some("byetex-parse-error"),
-        Category::AmbiguousMath { .. } => Some("byetex-using-warnings-json"),
+        Category::AmbiguousMath { .. } => Some("byetex-math"),
         Category::UnsupportedCommand { .. } => Some("byetex-using-warnings-json"),
         Category::NeedsManualReview { .. } => Some("byetex-using-warnings-json"),
         Category::UnknownPackage { .. } => Some("byetex-using-warnings-json"),

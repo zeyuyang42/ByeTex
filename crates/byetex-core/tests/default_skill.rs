@@ -32,6 +32,14 @@ fn tikz_maps_to_tikz_skill() {
 }
 
 #[test]
+fn ambiguous_math_maps_to_math_skill() {
+    assert_eq!(
+        default_skill_for(&Category::AmbiguousMath { reason: "x".into() }),
+        Some("byetex-math")
+    );
+}
+
+#[test]
 fn unsupported_env_warning_gets_suggested_skill_filled() {
     let out = byetex_core::convert(
         r"\begin{unknownenvxyz}hi\end{unknownenvxyz}",
