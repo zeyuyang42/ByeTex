@@ -94,6 +94,29 @@ enum Command {
         force: bool,
     },
 
+    /// Convert, compile with typst, and write `<stem>.diagnostics.json`
+    /// mapping each typst error back to its LaTeX source fragment + repair
+    /// skill. Exits 0 even when the paper has compile errors (the errors are
+    /// recorded in the JSON). When typst is absent the .typ is still written
+    /// and an empty `[]` diagnostics file is produced.
+    ///
+    /// Set `BYETEX_TYPST_BIN` to point at a non-default `typst` binary.
+    ///
+    /// NOTE: `--project` mode is not yet supported; the flag is accepted and
+    /// silently falls back to flat mode. Use `byetex convert --project` +
+    /// `typst compile` directly for project-mode diagnosis.
+    Diagnose {
+        /// Path to the input `.tex` file.
+        input: PathBuf,
+        /// Convert as a project (accepted for forward-compatibility; currently
+        /// falls back to flat mode).
+        #[arg(long)]
+        project: bool,
+        /// Output `.typ` path (flat mode only). Defaults to `<stem>.typ`.
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+
     /// Stage-0 input-validation oracle: compile the INPUT LaTeX with
     /// `tectonic` to confirm the document itself is valid before/around
     /// conversion. This distinguishes "the input is broken" from "ByeTex
@@ -212,6 +235,7 @@ fn main() -> Result<()> {
             };
             run_convert_dispatch(input, mode, brief_opts)
         }
+        Command::Diagnose { input, project, out } => run_diagnose(input, project, out),
         Command::Doctor {
             input,
             strict,
@@ -293,6 +317,116 @@ fn tectonic_available() -> bool {
         .status()
         .map(|s| s.success())
         .unwrap_or(false)
+}
+
+/// Convert `input`, compile with typst, and write `<stem>.diagnostics.json`
+/// that maps each typst error back to its originating LaTeX source fragment
+/// and the repair skill (if any warning covers that span).
+///
+/// Exits 0 in all cases — errors are recorded in the JSON file, not in the
+/// exit code. When typst is absent the `.typ` is still written and an empty
+/// `[]` diagnostics file is produced.
+fn run_diagnose(input: PathBuf, project: bool, out: Option<PathBuf>) -> Result<()> {
+    if project {
+        eprintln!(
+            "byetex diagnose: --project mode not yet supported; \
+             falling back to flat mode."
+        );
+    }
+
+    let source = std::fs::read_to_string(&input)
+        .with_context(|| format!("read {}", input.display()))?;
+    let base_dir = input.parent().map(|p| p.to_path_buf());
+
+    // 1. Convert capturing the source map.
+    let converted = byetex_core::convert_capturing_source_map(
+        &source,
+        &byetex_core::ConvertOptions {
+            source_name: Some(input.display().to_string()),
+            base_dir: base_dir.clone(),
+        },
+    );
+
+    // 2. Write the .typ flat next to input (or to the explicit --out path).
+    let typ_path = match out {
+        Some(p) => p,
+        None => input.with_extension("typ"),
+    };
+    std::fs::write(&typ_path, &converted.typst)
+        .with_context(|| format!("write {}", typ_path.display()))?;
+
+    // 3. Shell out to typst compile (mirror byetex_output_compiles spawn).
+    let pdf = typ_path.with_extension("pdf");
+    let stderr = match std::process::Command::new(typst_bin())
+        .arg("compile")
+        .arg(&typ_path)
+        .arg(&pdf)
+        .output()
+    {
+        Ok(o) => {
+            // Remove the PDF — we only care about the error log.
+            let _ = std::fs::remove_file(&pdf);
+            String::from_utf8_lossy(&o.stderr).into_owned()
+        }
+        Err(_) => {
+            // typst not available; nothing to parse.
+            String::new()
+        }
+    };
+
+    // 4. Parse typst errors and map each to source span + skill.
+    let typ_lines: Vec<&str> = converted.typst.lines().collect();
+    let diagnostics: Vec<serde_json::Value> = byetex_core::parse_typst_errors(&stderr)
+        .into_iter()
+        .map(|e| {
+            // The line number from typst is 1-based.
+            let line_text = typ_lines
+                .get(e.line.saturating_sub(1))
+                .copied()
+                .unwrap_or("");
+
+            // Resolve the error line to a LaTeX source byte span.
+            let span =
+                byetex_core::resolve_error_line(&converted.source_map, line_text);
+
+            let src_fragment = span.map(|(a, b)| source[a..b].to_string());
+
+            // Find the first warning whose source byte range overlaps [a, b).
+            // Range fields: byte_start, byte_end (see warnings.rs).
+            let skill_name = span.and_then(|(a, b)| {
+                converted
+                    .warnings
+                    .iter()
+                    .find(|w| {
+                        let ws = w.range.byte_start as usize;
+                        let we = w.range.byte_end as usize;
+                        ws < b && we > a
+                    })
+                    .and_then(|w| w.suggested_skill.clone())
+            });
+
+            serde_json::json!({
+                "message":      e.message,
+                "line":         e.line,
+                "col":          e.col,
+                "src_fragment": src_fragment,
+                "typ_region":   line_text,
+                "skill_name":   skill_name,
+            })
+        })
+        .collect();
+
+    // 5. Write diagnostics.json next to the .typ.
+    let diag_path = typ_path.with_extension("diagnostics.json");
+    std::fs::write(&diag_path, serde_json::to_string_pretty(&diagnostics)?)
+        .with_context(|| format!("write {}", diag_path.display()))?;
+
+    eprintln!(
+        "byetex diagnose: {} typst error(s) → {}",
+        diagnostics.len(),
+        diag_path.display()
+    );
+    Ok(())
 }
 
 /// Doctor sidecar path for an input: `<stem>.doctor.json` alongside it,
