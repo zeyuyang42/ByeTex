@@ -10,10 +10,13 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 pub mod bib;
+pub mod diagnose;
 pub mod parser;
 pub mod project;
 pub mod skills;
 pub mod warnings;
+
+pub use diagnose::Diagnostic;
 
 mod class_map;
 mod document;
