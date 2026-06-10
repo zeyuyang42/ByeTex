@@ -19,6 +19,8 @@ mod class_map;
 mod document;
 pub(crate) mod emit;
 pub(crate) mod package_macros;
+mod typst_diag;
+pub use typst_diag::{parse_typst_errors, TypstError};
 
 /// Test-support surface: thin wrappers over internal functions exposed for
 /// integration tests in `tests/`. Not part of the public API.
