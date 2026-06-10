@@ -173,9 +173,16 @@ impl<'a> Emitter<'a> {
     /// are NOT attached here — `emit_figure` collects every subfigure label
     /// into its outer set and anchors the referenced ones (so a `\ref` to a
     /// dropped/image-less panel still resolves).
-    fn render_subfigure_panel(&mut self, node: Node<'_>) -> Option<String> {
+    /// One subfigure/subtable panel → (figure_string, picked_label, width_fraction).
+    /// The figure string has no leading `#` and no trailing `<label>`.
+    fn render_subfigure_panel(
+        &mut self,
+        node: Node<'_>,
+    ) -> Option<(String, Option<String>, Option<f32>)> {
         let mut graphics: Option<Node<'_>> = None;
         let mut caption: Option<Node<'_>> = None;
+        let mut nested_tabular: Option<Node<'_>> = None;
+        let mut labels: Vec<String> = Vec::new();
         let mut stack = vec![node];
         while let Some(n) = stack.pop() {
             let mut cursor = n.walk();
@@ -183,23 +190,49 @@ impl<'a> Emitter<'a> {
                 match child.kind() {
                     "graphics_include" if graphics.is_none() => graphics = Some(child),
                     "caption" if caption.is_none() => caption = Some(child),
+                    "label_definition" => {
+                        if let Some(k) = extract_label_name(child, self.src) {
+                            if !labels.contains(&k) {
+                                labels.push(k);
+                            }
+                        }
+                    }
+                    "generic_environment" => {
+                        let env = environment_name(child, self.src);
+                        if matches!(
+                            env.as_deref(),
+                            Some("tabular") | Some("tabular*") | Some("tabularx")
+                                | Some("tabulary") | Some("array")
+                        ) && nested_tabular.is_none()
+                        {
+                            nested_tabular = Some(child);
+                        }
+                        stack.push(child);
+                    }
                     _ => stack.push(child),
                 }
             }
         }
-        let g = graphics?;
-        let img = self.with_sub_buffer(|e| {
-            e.emit_graphics_include(g);
+        // Body: image wins, else nested tabular, else nothing → drop the panel.
+        let (body, is_table) = if let Some(g) = graphics {
+            (self.with_sub_buffer(|e| { e.emit_graphics_include(g); }), false)
+        } else if let Some(t) = nested_tabular {
+            let s = self
+                .with_sub_buffer(|e| { e.emit_tabular(t); })
+                .trim()
+                .to_string();
+            (s.strip_prefix('#').map(|s| s.to_string()).unwrap_or(s), true)
+        } else {
+            return None;
+        };
+        let kind = if is_table { Some("table") } else { None };
+        let caption_text = caption.and_then(|c| {
+            first_curly_group(c).map(|a| self.render_curly_group_content(a))
         });
-        let mut panel = format!("figure({}", img.trim());
-        if let Some(c) = caption {
-            if let Some(arg) = first_curly_group(c) {
-                let text = self.render_curly_group_content(arg);
-                let _ = write!(panel, ", caption: [{}]", text);
-            }
-        }
-        panel.push(')');
-        Some(panel)
+        let inner = self.emit_figure_inner(body.trim(), kind, caption_text.as_deref());
+        let label = self.pick_label_to_attach(&labels);
+        let width = width_fraction_of(node, self.src);
+        Some((inner, label, width))
     }
 
     /// Render one captioned block as a Typst `figure(...)` string — no leading
@@ -278,6 +311,7 @@ impl<'a> Emitter<'a> {
                         if matches!(
                             env.as_deref(),
                             Some("subfigure") | Some("subcaptionblock") | Some("subfloat")
+                                | Some("subtable")
                         ) {
                             // Capture the whole subfigure as a panel; do NOT
                             // descend for graphics/caption (those belong to the
@@ -337,30 +371,63 @@ impl<'a> Emitter<'a> {
             }
         }
 
+        // Pattern A: explicit subfigure/subtable panels → subpar.grid.
+        if subfigures.len() >= 2
+            || (subfigures.len() == 1 && (caption.is_some() || captionof.is_some()))
+        {
+            let panels: Vec<(String, Option<String>, Option<f32>)> = subfigures
+                .iter()
+                .filter_map(|sf| self.render_subfigure_panel(*sf))
+                .collect();
+            if panels.len() >= 2 {
+                // Sub-labels belong to the panels now; remove them from the
+                // outer `labels` set so they are not also hidden-anchored.
+                let panel_labels: std::collections::HashSet<String> = panels
+                    .iter()
+                    .filter_map(|(_, l, _)| l.clone())
+                    .collect();
+                let parent_labels: Vec<String> = labels
+                    .iter()
+                    .filter(|l| !panel_labels.contains(*l))
+                    .cloned()
+                    .collect();
+                let widths: Vec<Option<f32>> = panels.iter().map(|(_, _, w)| *w).collect();
+                let cols = columns_for_widths(&widths);
+                let parent_kind = if environment_name(node, self.src).as_deref()
+                    == Some("table")
+                {
+                    Some("table")
+                } else {
+                    None
+                };
+                let parent_caption = caption.or(captionof).and_then(|c| {
+                    let arg = if c.kind() == "generic_command" {
+                        nth_curly_group(c, 1)
+                    } else {
+                        first_curly_group(c)
+                    };
+                    arg.map(|a| self.render_curly_group_content(a))
+                });
+                self.emit_subpar_grid(&panels, cols, parent_kind, parent_caption.as_deref(), &parent_labels);
+                return node.end_byte();
+            }
+        }
+
         // Whether the float's body is a tabular (vs an image): when it is, the
         // emitted `#figure` must carry `kind: table` so Typst captions/refs read
         // "Table N" rather than the default "Figure N".
-        // Render subfigure panels up front (Bug D5): each becomes its own
-        // `figure(image(...), caption: [..])`. Empty when there are no
-        // subfigures or none yields an image — in which case we fall back to
-        // the single-graphic / tabular / placeholder chain below.
-        let panels: Vec<String> = subfigures
+        // A lone subfigure (no main caption) collapses to just its panel as the
+        // figure body; the >=2 case is handled by the Pattern-A subpar.grid
+        // branch above (which returns early).
+        let lone_panel: Option<String> = subfigures
             .iter()
             .filter_map(|sf| self.render_subfigure_panel(*sf))
-            .collect();
+            .map(|(inner, _label, _w)| inner)
+            .next();
 
         let mut body_is_table = false;
-        let body_str = if !panels.is_empty() {
-            // Multi-panel figure: lay the panels out in a grid so every image
-            // survives. A single surviving panel collapses to just that panel.
-            if panels.len() == 1 {
-                panels.into_iter().next().unwrap()
-            } else {
-                format!(
-                    "grid(\n  columns: 2,\n  gutter: 0.5em,\n  {}\n)",
-                    panels.join(",\n  ")
-                )
-            }
+        let body_str = if let Some(panel) = lone_panel {
+            panel
         } else if let Some(g) = graphics {
             self.with_sub_buffer(|emitter| {
                 emitter.emit_graphics_include(g);
@@ -455,6 +522,49 @@ impl<'a> Emitter<'a> {
             }
         }
         node.end_byte()
+    }
+
+    /// Emit `#subpar.grid(...)` from rendered panels `(inner_figure, label, _)`.
+    fn emit_subpar_grid(
+        &mut self,
+        panels: &[(String, Option<String>, Option<f32>)],
+        cols: usize,
+        parent_kind: Option<&str>,
+        parent_caption: Option<&str>,
+        parent_labels: &[String],
+    ) {
+        self.used_subpar = true;
+        self.ensure_paragraph_break();
+        self.out.push_str("#subpar.grid(\n");
+        for (inner, label, _w) in panels {
+            self.out.push_str("  ");
+            self.out.push_str(inner);
+            if let Some(l) = label {
+                let _ = write!(self.out, ", <{}>", l);
+            }
+            self.out.push_str(",\n");
+        }
+        let cols_str = std::iter::repeat_n("1fr", cols).collect::<Vec<_>>().join(", ");
+        let _ = writeln!(self.out, "  columns: ({}),", cols_str);
+        if let Some(k) = parent_kind {
+            let _ = writeln!(self.out, "  kind: {},", k);
+        }
+        if let Some(c) = parent_caption {
+            let _ = writeln!(self.out, "  caption: [{}],", c);
+        }
+        let primary = self.pick_label_to_attach(parent_labels);
+        if let Some(l) = &primary {
+            let _ = writeln!(self.out, "  label: <{}>,", l);
+        }
+        self.out.push(')');
+        // Any extra referenced parent labels get hidden anchors (existing pattern).
+        for l in parent_labels {
+            if Some(l) != primary.as_ref()
+                && self.referenced_labels.contains(&sanitize_label_key(l))
+            {
+                let _ = write!(self.out, "\n#hide[#figure([]) <{}>]", l);
+            }
+        }
     }
 }
 
