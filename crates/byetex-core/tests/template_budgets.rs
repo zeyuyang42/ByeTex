@@ -44,7 +44,7 @@ fn check_paper(arxiv_id: &str, primary_tex: &str, budget: usize) {
         );
     }
 
-    let plan = plan_project(&tex_path, false)
+    let plan = plan_project(&tex_path, false, false)
         .unwrap_or_else(|e| panic!("plan_project({arxiv_id}/{primary_tex}): {e}"));
 
     let count = plan.warnings.len();

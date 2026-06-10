@@ -19,7 +19,7 @@ fn fixture(rel: &str) -> PathBuf {
 fn materialize_writes_expected_tree() {
     let main = fixture("mini-project/main.tex");
     let base_dir = main.parent().unwrap().to_path_buf();
-    let plan = plan_project(&main, true).expect("plan_project failed");
+    let plan = plan_project(&main, true, false).expect("plan_project failed");
 
     let tmp = tempfile::TempDir::new().unwrap();
     let out_dir = tmp.path().join("out");
@@ -60,7 +60,7 @@ fn materialize_writes_expected_tree() {
 fn materialize_path_traversal_guard_skips_escape() {
     let main = fixture("mini-project-escape/main.tex");
     let base_dir = main.parent().unwrap().to_path_buf();
-    let plan = plan_project(&main, true).expect("plan_project failed");
+    let plan = plan_project(&main, true, false).expect("plan_project failed");
 
     let tmp = tempfile::TempDir::new().unwrap();
     let out_dir = tmp.path().join("out");
@@ -90,7 +90,7 @@ fn materialize_path_traversal_guard_skips_escape() {
 fn materialize_refuses_non_empty_without_force() {
     let main = fixture("mini-project/main.tex");
     let base_dir = main.parent().unwrap().to_path_buf();
-    let plan = plan_project(&main, true).expect("plan_project failed");
+    let plan = plan_project(&main, true, false).expect("plan_project failed");
 
     let tmp = tempfile::TempDir::new().unwrap();
     let out_dir = tmp.path().join("out");

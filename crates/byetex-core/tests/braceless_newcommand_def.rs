@@ -177,7 +177,7 @@ fn input_chain_inherits_pre_scanned_macros() {
          \\input{chapter.tex}\n\
          \\end{document}\n",
     );
-    let plan = byetex_core::project::plan_project_from_dir(&dir, true).unwrap();
+    let plan = byetex_core::project::plan_project_from_dir(&dir, true, false).unwrap();
     let unrecognised: Vec<_> = plan
         .warnings
         .iter()
@@ -224,7 +224,7 @@ fn probe_real_header_tex() {
          The distance $\\norm{\\src - \\tgt}$ and $\\supp(X)$.\n\
          \\end{document}\n",
     );
-    let plan = byetex_core::project::plan_project_from_dir(&dir, true).unwrap();
+    let plan = byetex_core::project::plan_project_from_dir(&dir, true, false).unwrap();
     let unrecognised: Vec<String> = plan
         .warnings
         .iter()
@@ -273,7 +273,7 @@ fn braceless_def_in_sibling_file_is_pre_scanned() {
     );
 
     // Plan via the folder pipeline to exercise the pre-scan.
-    let plan = byetex_core::project::plan_project_from_dir(&dir, true).unwrap();
+    let plan = byetex_core::project::plan_project_from_dir(&dir, true, false).unwrap();
     let amb_msgs: Vec<_> = plan
         .warnings
         .iter()

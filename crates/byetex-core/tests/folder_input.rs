@@ -102,7 +102,7 @@ fn plan_project_from_dir_uses_sibling_sty_macros() {
         "\\documentclass{article}\n\\begin{document}\nHello \\brand!\n\\end{document}\n",
     );
 
-    let plan = plan_project_from_dir(&dir, true).expect("plan");
+    let plan = plan_project_from_dir(&dir, true, false).expect("plan");
     assert!(
         plan.main_typst.contains("ByeTex"),
         "expected `\\brand` to expand to ByeTex; main.typ was:\n{}",
@@ -127,7 +127,7 @@ fn plan_project_from_dir_preserves_entry_at_subpath() {
         "entry should be the nested file, got {}",
         entry.display()
     );
-    let plan = plan_project_from_dir(&dir, true).unwrap();
+    let plan = plan_project_from_dir(&dir, true, false).unwrap();
     assert!(plan.main_typst.contains("content"));
 }
 
@@ -161,7 +161,7 @@ fn wrapper_newcommand_in_sty_is_harvested_via_dir_mode() {
     );
 
     let plan =
-        byetex_core::project::plan_project_from_dir(&dir, false).expect("plan_project_from_dir");
+        byetex_core::project::plan_project_from_dir(&dir, false, false).expect("plan_project_from_dir");
     let ambiguous_count = plan
         .warnings
         .iter()
@@ -197,7 +197,7 @@ fn wrapper_newcommand_calls_in_main_tex_are_harvested() {
         ),
     );
     let plan =
-        byetex_core::project::plan_project_from_dir(&dir, false).expect("plan_project_from_dir");
+        byetex_core::project::plan_project_from_dir(&dir, false, false).expect("plan_project_from_dir");
     let ambiguous_count = plan
         .warnings
         .iter()
