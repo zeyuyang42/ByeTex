@@ -239,12 +239,25 @@ impl<'a> Emitter<'a> {
             || raw_env.contains("\\hline")
             || raw_env.contains("\\cmidrule");
 
+        // The column SPEC is only an upper bound: LaTeX papers commonly
+        // over-declare it (`{llrrrrrrrrrrrrrr}` = 16) while the rows — via
+        // `\multicolumn{N}` groups — only occupy fewer (11). Typst rejects a
+        // colspan/rowspan layout that doesn't fill the declared `columns:`
+        // ("cell's colspan would cause it to exceed the available column(s)",
+        // corpus 2605.31561). Clamp to the actual max row occupancy.
+        let cols = effective_column_count(&rows_2d, count);
+        let align_str = aligns
+            .iter()
+            .take(cols)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(", ");
+
         self.ensure_paragraph_break();
         let _ = write!(
             self.out,
             "#table(\n  columns: {},\n  align: ({}),\n  stroke: none,\n",
-            count,
-            aligns.join(", ")
+            cols, align_str
         );
         if has_rules {
             // Top rule (heavier), then the header rule is injected after the
@@ -256,7 +269,7 @@ impl<'a> Emitter<'a> {
         // already occupied by a rowspan cell from a previous row.  When we
         // encounter a rowspan=N cell at column c we set rowspan_cols[c] = N-1.
         // Each subsequent visit to that column decrements the counter.
-        let mut rowspan_cols = vec![0usize; count];
+        let mut rowspan_cols = vec![0usize; cols];
 
         let mut emitted_rows = 0usize;
         for row_cells in &rows_2d {
@@ -264,7 +277,7 @@ impl<'a> Emitter<'a> {
             let mut src = row_cells.iter();
             let mut col = 0usize;
 
-            while col < count {
+            while col < cols {
                 if rowspan_cols[col] > 0 {
                     // Column is covered by an active rowspan — skip the LaTeX
                     // placeholder cell (always an empty & in well-formed LaTeX).
@@ -277,7 +290,7 @@ impl<'a> Emitter<'a> {
                         // Mark every column this rowspan covers.
                         for slot in rowspan_cols
                             .iter_mut()
-                            .take((col + cs).min(count))
+                            .take((col + cs).min(cols))
                             .skip(col)
                         {
                             *slot = rs - 1;
@@ -321,6 +334,43 @@ impl<'a> Emitter<'a> {
         self.out.push(')');
         node.end_byte()
     }
+}
+
+/// The actual number of columns the rows occupy — the max, over all rows, of
+/// the columns a row fills (summing `\multicolumn` colspans and counting
+/// `\multirow` carry-over). Used to clamp an over-declared column spec to what
+/// the content really uses (corpus 2605.31561). `spec_count` is the upper bound
+/// (rows are never placed past it); the placement here mirrors `emit_tabular`'s
+/// emission loop so the clamped count matches what is emitted. Never returns 0.
+fn effective_column_count(rows_2d: &[Vec<String>], spec_count: usize) -> usize {
+    if spec_count == 0 {
+        return 0;
+    }
+    let mut max_occ = 0usize;
+    let mut rowspan = vec![0usize; spec_count];
+    for row_cells in rows_2d {
+        let mut src = row_cells.iter();
+        let mut col = 0usize;
+        while col < spec_count {
+            if rowspan[col] > 0 {
+                src.next();
+                rowspan[col] -= 1;
+                col += 1;
+            } else if let Some(cell) = src.next() {
+                let (cs, rs) = table_cell_span(cell);
+                if rs > 1 {
+                    for slot in rowspan.iter_mut().take((col + cs).min(spec_count)).skip(col) {
+                        *slot = rs - 1;
+                    }
+                }
+                col += cs;
+            } else {
+                break;
+            }
+        }
+        max_occ = max_occ.max(col);
+    }
+    max_occ.max(1)
 }
 
 /// Parse a LaTeX tabular column spec like `lcr` or `|l|c|r|` into a count and
