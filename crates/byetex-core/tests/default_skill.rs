@@ -64,3 +64,11 @@ fn bibliography_warning_suggests_bibliography_skill() {
     );
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn repair_loop_skill_is_in_the_catalogue() {
+    assert!(
+        byetex_core::skills::read_skill("byetex-repair-loop").is_some(),
+        "the byetex-repair-loop skill must be embedded"
+    );
+}

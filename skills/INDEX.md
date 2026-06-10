@@ -16,6 +16,7 @@ file in this directory.
 - `byetex-unsupported-environment.md` — Handling LaTeX envs outside v1.
 - `byetex-parse-error.md` — Recovering regions tree-sitter could not parse.
 - `byetex-bibliography.md` — `.bib` and `#bibliography(...)` handoff.
+- `byetex-repair-loop.md` — The `byetex diagnose` repair loop: iterating on compile errors without re-converting.
 
 ## Programmatic access
 
