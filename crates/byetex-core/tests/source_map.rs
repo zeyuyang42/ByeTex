@@ -74,3 +74,17 @@ fn resolve_at_col_falls_back_to_line_when_token_absent() {
     // col points at whitespace-only / token too short → fall back to line match.
     assert_eq!(resolve_error_at_col(&map, "a + b", 1), Some((5, 9)));
 }
+
+#[test]
+fn resolve_at_col_trims_trailing_punctuation() {
+    use byetex_core::resolve_error_at_col;
+    // The token picked up at the column includes the sentence period; it must
+    // be trimmed so it matches the cite node (whose output has no period).
+    let map = vec![
+        n((0, 200), "intro text @a:1 @b:2 @c:3. More text here."), // coarse paragraph
+        n((50, 62), "@a:1 @b:2 @c:3"),                              // the \cite node
+    ];
+    let line = "intro text @a:1 @b:2 @c:3. More text here.";
+    let col = line.find("@c:3").unwrap();
+    assert_eq!(resolve_error_at_col(&map, line, col), Some((50, 62)));
+}
