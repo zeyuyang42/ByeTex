@@ -9,12 +9,13 @@ that explain how to finish the conversion by hand or with an LLM.
 
 ## What it converts cleanly
 
-**Document classes** — `article`/`report`/`book` (arkheion arXiv template),
-`IEEEtran`/`IEEEconf` (charged-ieee), `acmart` (clean-acmart),
-`revtex4`/`revtex4-1`/`revtex4-2` (revtyp), `elsarticle` (elsearticle),
-`llncs`/`svmult` (Springer LNCS), NeurIPS/ICML/ICLR (detected via style
-packages → lucky-icml). Format options (`sigconf`, `journal`, `conference`,
-…) are forwarded to the matching Typst Universe template.
+**Document classes** — `article`/`report`/`book`, `IEEEtran`/`IEEEconf`,
+`acmart`, `revtex4`/`revtex4-1`/`revtex4-2`, `elsarticle`, `llncs`/`svmult`
+(Springer LNCS), and NeurIPS/ICML/ICLR (detected via style packages). Rather
+than binding to a third-party Typst Universe template, ByeTex emits a
+**self-contained neutral preamble** (title/author/abstract block + section
+styling) that compiles on stock Typst with no `@preview` imports. The class is
+detected only to set defaults — column count, numbering, margins.
 
 **Sectioning** — `\part` / `\chapter` / `\section` / `\subsection` /
 `\subsubsection` / `\paragraph` / `\subparagraph`, including starred forms.
@@ -116,12 +117,20 @@ byetex convert paper.tex --output /tmp/out.typ
 # Skip the brief for batch / CI runs.
 byetex convert paper.tex --no-brief
 
+# Also run `typst compile` and fold the real log into the brief.
+byetex convert paper.tex --compile
+
+# Repair loop: compile with typst and map each error back to its LaTeX
+# fragment + repair skill (writes paper.diagnostics.json). This is the
+# headline path when the goal is "make it compile".
+byetex diagnose paper.tex          # add --project (or pass a dir) for multi-file papers
+
 # Inspect the warnings.
 cat paper.warnings.json | jq '.[].category.kind' | sort | uniq -c
 
-# Browse the bundled skills.
+# Browse the bundled skills (start with byetex-getting-started).
 byetex skills list
-byetex skills read byetex-using-warnings-json
+byetex skills read byetex-getting-started
 
 # Run as an MCP server over stdio (requires --features mcp at build time).
 byetex serve
@@ -229,9 +238,12 @@ See [`docs/for-agents.md`](docs/for-agents.md). The short version:
    that documents how to resolve that warning category. Reach the skills via
    `byetex skills read <name>`, by opening `skills/<name>.md` on disk, or
    over MCP with the `read_skill` tool.
-4. For interactive use, `byetex serve` exposes the converter and skills as
-   six MCP tools: `convert`, `convert_file`, `convert_fragment`,
-   `convert_project`, `list_skills`, `read_skill`.
+4. When the `.typ` doesn't compile, `byetex diagnose input.tex` maps each typst
+   error back to its LaTeX fragment + repair skill — the diagnose-first repair
+   loop. See [`docs/for-agents.md`](docs/for-agents.md).
+5. For interactive use, `byetex serve` exposes the converter, the repair loop,
+   and skills as seven MCP tools: `convert`, `convert_file`, `convert_fragment`,
+   `convert_project`, `diagnose`, `list_skills`, `read_skill`.
 
 ## Project layout
 

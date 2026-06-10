@@ -6,7 +6,20 @@ use clap::{Parser, Subcommand};
 // `materialize_project` lives in byetex-core now; no local module needed.
 
 #[derive(Parser, Debug)]
-#[command(name = "byetex", version, about = "LaTeX -> Typst converter")]
+#[command(
+    name = "byetex",
+    version,
+    about = "LaTeX -> Typst converter with an agent repair loop",
+    long_about = "ByeTex deterministically converts an academic subset of LaTeX to Typst, \
+                  and for everything outside that subset emits a warnings.json sidecar plus \
+                  a catalogue of repair skills.\n\n\
+                  Typical agent flow:\n  \
+                  byetex convert paper.tex      # → paper.typ + warnings + agent_brief\n  \
+                  byetex diagnose paper.tex     # compile + map each typst error to its LaTeX fragment + skill\n  \
+                  byetex skills read <name>     # read the repair guide\n  \
+                  typst compile paper.typ       # the success criterion\n\n\
+                  Start with `byetex skills read byetex-getting-started`."
+)]
 struct Cli {
     #[command(subcommand)]
     command: Command,
