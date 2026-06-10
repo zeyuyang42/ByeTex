@@ -36,6 +36,12 @@ typst compile paper.typ
 
 ## Workflow
 
+When the goal is **"make it compile"**, the [diagnose-first repair loop](#repair-loop)
+below is the headline path — `byetex diagnose` compiles the output and maps each
+error back to its LaTeX fragment + skill. The `convert` + `warnings.json` flow shown
+here is the lower-level path for inspecting conversion gaps that compile but render
+approximately.
+
 ```
    ┌─────────────────┐       ┌─────────────────┐       ┌─────────────────┐
    │  paper.tex      │──────▶│ byetex convert │──────▶│  paper.typ      │
@@ -72,13 +78,15 @@ For interactive use, the converter speaks MCP over stdio:
 ./byetex serve
 ```
 
-The five tools exposed:
+The seven tools exposed:
 
 | Tool                | Purpose                                                        |
 |---------------------|----------------------------------------------------------------|
 | `convert`           | Convert a LaTeX string in-memory, get `{typst, warnings}`.     |
 | `convert_file`      | Convert a `.tex` path, write `.typ` + sidecar, return paths.   |
 | `convert_fragment`  | Convert a snippet with a `context_hint` (inline / block / math). |
+| `convert_project`   | Convert a multi-file project to a self-contained Typst dir.    |
+| `diagnose`          | Compile the output and map each typst error to its LaTeX fragment + skill. |
 | `list_skills`       | List bundled skills (`name`, `description`).                   |
 | `read_skill`        | Read a skill's full markdown body.                             |
 
@@ -106,7 +114,8 @@ Categories you will see:
 - `tikz` — TikZ picture; CeTZ migration recommended.
 - `parse_error` — tree-sitter could not parse that region.
 - `ambiguous_math` — math command without a Typst equivalent. The `.typ` will
-  contain a `#text(red)[\foo]` placeholder at the position.
+  contain a `#text(red)[\foo]` placeholder at the position. Read
+  `byetex skills read byetex-math`.
 - `unknown_package` — `\usepackage{...}` with no known mapping.
 - `drop_only` — benign drop, already handled.
 - `needs_manual_review` — converted approximately; verify against the original PDF.
