@@ -43,6 +43,9 @@ pub mod __test_support {
 mod skill_map;
 pub use skill_map::default_skill_for;
 
+mod source_map;
+pub use source_map::{resolve_error_line, NodeOutput};
+
 pub use warnings::{Category, Range, Severity, Warning};
 
 #[derive(Debug, Default)]
