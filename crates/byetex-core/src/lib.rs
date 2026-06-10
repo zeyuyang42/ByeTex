@@ -72,6 +72,9 @@ pub struct ConvertOutput {
     /// the first argument. Populated regardless of whether a class template was
     /// detected — callers can read or forward to other tools.
     pub class_metadata: HashMap<String, String>,
+    /// Content-anchored provenance map (`.typ` text → LaTeX source span) per
+    /// emitted node. Empty unless produced via `convert_capturing_source_map`.
+    pub source_map: Vec<source_map::NodeOutput>,
 }
 
 /// A single asset that the emitter resolved on disk during conversion.
@@ -91,7 +94,13 @@ pub enum AssetKind {
 }
 
 pub fn convert(source: &str, opts: &ConvertOptions) -> ConvertOutput {
-    convert_with_macros(source, opts, HashMap::new(), HashSet::new())
+    convert_with_macros(source, opts, HashMap::new(), HashSet::new(), false)
+}
+
+/// Like [`convert`], but also records the content-anchored source map on the
+/// returned `ConvertOutput.source_map`. Used by `byetex diagnose`.
+pub fn convert_capturing_source_map(source: &str, opts: &ConvertOptions) -> ConvertOutput {
+    convert_with_macros(source, opts, HashMap::new(), HashSet::new(), true)
 }
 
 /// Internal variant of [`convert`] that lets the project layer pre-seed
@@ -108,6 +117,7 @@ pub(crate) fn convert_with_macros(
     opts: &ConvertOptions,
     preseeded_macros: HashMap<String, emit::MacroDef>,
     preseeded_refs: HashSet<String>,
+    record_source_map: bool,
 ) -> ConvertOutput {
     let tree = parser::parse(source);
     let source_name = opts.source_name.as_deref().unwrap_or("<input>");
@@ -119,17 +129,19 @@ pub(crate) fn convert_with_macros(
         visited,
         preseeded_macros,
     );
+    emitter.record_source_map = record_source_map;
     // Seed project-wide referenced labels before the prepass so a `\ref` in
     // one file informs multi-label attachment for a section in another.
     emitter.seed_referenced_labels(preseeded_refs);
     let root = tree.root_node();
     emitter.prepass_collect(root);
     emitter.emit_root(root);
-    let (typst, warnings, asset_refs, class_metadata) = emitter.finish();
+    let (typst, warnings, asset_refs, class_metadata, source_map) = emitter.finish();
     ConvertOutput {
         typst,
         warnings,
         asset_refs,
         class_metadata,
+        source_map,
     }
 }

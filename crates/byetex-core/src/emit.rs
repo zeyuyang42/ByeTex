@@ -219,6 +219,12 @@ pub(crate) struct Emitter<'a> {
     /// the .bib collide (`label <key> occurs both in the document and its
     /// bibliography`, corpus 2605.31440).
     had_bib_file: bool,
+    /// When true, `emit_node` records each node's output text + source span
+    /// into `source_map`. Off by default (zero-overhead normal conversion).
+    pub(crate) record_source_map: bool,
+    /// Content-anchored provenance entries (see source_map.rs). Empty unless
+    /// `record_source_map` is set.
+    pub(crate) source_map: Vec<crate::source_map::NodeOutput>,
 }
 
 /// Maximum allowed `\newcommand` expansion depth (see `Emitter::macro_depth`).
@@ -304,6 +310,8 @@ impl<'a> Emitter<'a> {
             used_text_label_anchor: false,
             has_bibtex_include: false,
             had_bib_file: false,
+            record_source_map: false,
+            source_map: Vec::new(),
         }
     }
 
@@ -464,6 +472,7 @@ impl<'a> Emitter<'a> {
         Vec<Warning>,
         Vec<crate::AssetRef>,
         std::collections::HashMap<String, String>,
+        Vec<crate::source_map::NodeOutput>,
     ) {
         // A full document (had a `\documentclass`, or carries title/authors)
         // is rendered with the self-generated, self-contained neutral preamble
@@ -586,7 +595,8 @@ impl<'a> Emitter<'a> {
         }
 
         let class_metadata = self.metadata.class_metadata;
-        (self.out, self.warnings, self.asset_refs, class_metadata)
+        let source_map = std::mem::take(&mut self.source_map);
+        (self.out, self.warnings, self.asset_refs, class_metadata, source_map)
     }
 
     /// Push `src[from..to]` to the output, but only when the range is valid.
@@ -670,7 +680,25 @@ impl<'a> Emitter<'a> {
     // ─── Node dispatch ────────────────────────────────────────────────────────
 
     /// Emit `node` and return the source byte offset to resume after.
+    /// When `record_source_map` is set, records each node's output text and
+    /// source span into `self.source_map` (content-anchored provenance).
     fn emit_node(&mut self, node: Node<'_>) -> usize {
+        if !self.record_source_map {
+            return self.emit_node_inner(node);
+        }
+        let out_start = self.out.len();
+        let src = (node.start_byte(), node.end_byte());
+        let r = self.emit_node_inner(node);
+        if self.out.len() > out_start {
+            self.source_map.push(crate::source_map::NodeOutput {
+                src,
+                output: self.out[out_start..].to_string(),
+            });
+        }
+        r
+    }
+
+    fn emit_node_inner(&mut self, node: Node<'_>) -> usize {
         // Skip nodes that fall inside a region already consumed (e.g. by the
         // `\verb|...|` handler, which slurps tokens the grammar parsed as if
         // they were live LaTeX, or by emit_math_wrap consuming a
