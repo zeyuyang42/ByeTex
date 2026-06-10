@@ -306,6 +306,21 @@ impl<'a> Emitter<'a> {
             if row_output.is_empty() {
                 continue;
             }
+            // LaTeX pads a short row (fewer cells than the column count) to the
+            // full width implicitly; Typst's `table()` auto-placement does NOT —
+            // it flows cells continuously, so an un-padded short row shifts every
+            // following cell left and can push a later `\multicolumn{N}` past the
+            // grid edge ("colspan would exceed available columns", corpus
+            // 2605.31203). Fill the remainder with empty cells, skipping columns
+            // still held by an active rowspan (mirrors the placement loop above).
+            while col < cols {
+                if rowspan_cols[col] > 0 {
+                    rowspan_cols[col] -= 1;
+                } else {
+                    row_output.push(String::new());
+                }
+                col += 1;
+            }
             self.out.push_str("  ");
             for (i, cell) in row_output.iter().enumerate() {
                 if i > 0 {

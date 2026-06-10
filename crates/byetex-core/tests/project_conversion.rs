@@ -13,7 +13,7 @@ fn fixture(rel: &str) -> PathBuf {
 #[test]
 fn plan_project_finds_image_and_bib_assets() {
     let main = fixture("mini-project/main.tex");
-    let plan = plan_project(&main, false).expect("plan_project failed");
+    let plan = plan_project(&main, false, false).expect("plan_project failed");
 
     // intro.tex is inlined — NOT an asset copy.
     // fig/a.pdf and refs.bib ARE asset copies.
@@ -40,7 +40,7 @@ fn plan_project_finds_image_and_bib_assets() {
 #[test]
 fn plan_project_no_toml_suppresses_manifest() {
     let main = fixture("mini-project/main.tex");
-    let plan = plan_project(&main, true).expect("plan_project failed");
+    let plan = plan_project(&main, true, false).expect("plan_project failed");
     assert!(
         plan.manifest.is_none(),
         "manifest should be None when no_toml=true"
@@ -50,7 +50,7 @@ fn plan_project_no_toml_suppresses_manifest() {
 #[test]
 fn plan_project_typst_body_is_non_empty() {
     let main = fixture("mini-project/main.tex");
-    let plan = plan_project(&main, true).expect("plan_project failed");
+    let plan = plan_project(&main, true, false).expect("plan_project failed");
     assert!(
         !plan.main_typst.is_empty(),
         "main_typst should not be empty"
