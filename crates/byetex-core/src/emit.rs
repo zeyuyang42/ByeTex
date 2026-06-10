@@ -23,7 +23,7 @@ mod boundary;
 mod braceless;
 mod environments;
 mod escape;
-mod figures;
+pub(crate) mod figures;
 mod inline;
 mod macros;
 mod math;

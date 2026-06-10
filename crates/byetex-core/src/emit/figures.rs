@@ -573,6 +573,68 @@ fn normalize_graphics_length(v: &str) -> String {
     v.to_string()
 }
 
+/// Greedily pack sub-block width fractions into rows whose cumulative width is
+/// <= ~1.05; return the column count = the widest row's block count. A block
+/// with no width (`None`) counts as a full-width row break unless every block
+/// is `None`, in which case the answer is 1 (stacked). Never returns 0.
+pub fn columns_for_widths(widths: &[Option<f32>]) -> usize {
+    if widths.is_empty() {
+        return 1;
+    }
+    if widths.iter().all(|w| w.is_none()) {
+        return 1;
+    }
+    let mut max_row = 1usize;
+    let mut row_count = 0usize;
+    let mut row_width = 0.0f32;
+    for w in widths {
+        match w {
+            Some(frac) => {
+                if row_count > 0 && row_width + frac > 1.05 {
+                    row_count = 0;
+                    row_width = 0.0;
+                }
+                row_count += 1;
+                row_width += frac;
+                max_row = max_row.max(row_count);
+            }
+            None => {
+                row_count = 0;
+                row_width = 0.0;
+            }
+        }
+    }
+    max_row.max(1)
+}
+
+/// Extract a width fraction (e.g. `0.41` from `{0.41\textwidth}` /
+/// `{0.5\linewidth}` / `{0.5\columnwidth}`) from a `minipage` / `subfigure` /
+/// `subtable` environment node. Returns `None` when no fraction-of-text-width
+/// argument is present.
+pub(in crate::emit) fn width_fraction_of(node: Node<'_>, src: &str) -> Option<f32> {
+    let text = &src[node.start_byte()..node.end_byte()];
+    for unit in ["\\textwidth", "\\linewidth", "\\columnwidth"] {
+        if let Some(pos) = text.find(unit) {
+            let bytes = text.as_bytes();
+            let mut start = pos;
+            while start > 0 {
+                let c = bytes[start - 1];
+                if c.is_ascii_digit() || c == b'.' {
+                    start -= 1;
+                } else {
+                    break;
+                }
+            }
+            if start < pos {
+                if let Ok(v) = text[start..pos].parse::<f32>() {
+                    return Some(v);
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Probe the base directory for an image asset with the given stem/path.
 /// Tries the path as-is first; if it has no extension, probes common formats.
 /// Returns the resolved path on disk, or `None` if nothing is found.
