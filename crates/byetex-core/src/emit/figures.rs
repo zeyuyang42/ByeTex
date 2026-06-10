@@ -11,6 +11,13 @@ use super::{
 };
 use crate::warnings::{Category, Severity, Warning};
 
+/// One captioned sub-block discovered in a Pattern-B float.
+struct CaptionBlock {
+    inner: String,         // rendered `figure(...)` (no `#`, no `<label>`)
+    label: Option<String>, // picked referenced label, if any
+    width: Option<f32>,    // width fraction for column packing
+}
+
 impl<'a> Emitter<'a> {
     // ─── Figures, graphics & tabular ──────────────────────────────────────────
 
@@ -413,6 +420,31 @@ impl<'a> Emitter<'a> {
             }
         }
 
+        // Pattern B: no subfigure envs, but >=2 top-level caption sources →
+        // segment into captioned sub-blocks and emit a subpar.grid.
+        {
+            let blocks = self.collect_caption_blocks(node);
+            if blocks.len() >= 2 {
+                let widths: Vec<Option<f32>> = blocks.iter().map(|b| b.width).collect();
+                let cols = columns_for_widths(&widths);
+                let parent_kind = if environment_name(node, self.src).as_deref()
+                    == Some("table")
+                {
+                    Some("table")
+                } else {
+                    None
+                };
+                let panels: Vec<(String, Option<String>, Option<f32>)> = blocks
+                    .into_iter()
+                    .map(|b| (b.inner, b.label, b.width))
+                    .collect();
+                // No parent caption/label in Pattern B (every caption belongs to
+                // a sub-block); pass an empty parent label set.
+                self.emit_subpar_grid(&panels, cols, parent_kind, None, &[]);
+                return node.end_byte();
+            }
+        }
+
         // Whether the float's body is a tabular (vs an image): when it is, the
         // emitted `#figure` must carry `kind: table` so Typst captions/refs read
         // "Table N" rather than the default "Figure N".
@@ -564,6 +596,210 @@ impl<'a> Emitter<'a> {
             {
                 let _ = write!(self.out, "\n#hide[#figure([]) <{}>]", l);
             }
+        }
+    }
+
+    /// Collect captioned sub-blocks of a Pattern-B float. Prefers `minipage`
+    /// grouping (each minipage that contains a caption is one block); falls back
+    /// to linear segmentation where each `\caption`/`\captionof` closes the run of
+    /// preceding sibling content. Returns empty / single when the float is not a
+    /// multi-caption float (caller then uses the single-figure path).
+    fn collect_caption_blocks(&mut self, node: Node<'_>) -> Vec<CaptionBlock> {
+        // Gather the float's direct children in source order.
+        let mut cursor = node.walk();
+        let children: Vec<Node<'_>> = node.children(&mut cursor).collect();
+
+        // Path 1: minipage grouping.
+        let minipages: Vec<Node<'_>> = children
+            .iter()
+            .copied()
+            .filter(|c| {
+                c.kind() == "generic_environment"
+                    && environment_name(*c, self.src).as_deref() == Some("minipage")
+            })
+            .collect();
+        let captioned_minipages: Vec<Node<'_>> = minipages
+            .iter()
+            .copied()
+            .filter(|mp| self.subtree_has_caption(*mp))
+            .collect();
+        if captioned_minipages.len() >= 2 {
+            return captioned_minipages
+                .iter()
+                .filter_map(|mp| self.render_caption_block(*mp))
+                .collect();
+        }
+
+        // Path 2: linear segmentation by caption command.
+        // A caption is a `caption` node or a `\captionof` generic_command.
+        let is_caption = |c: &Node<'_>| -> bool {
+            c.kind() == "caption"
+                || (c.kind() == "generic_command"
+                    && command_name_text(*c, self.src).as_deref() == Some("\\captionof"))
+        };
+        let caption_count = children.iter().filter(|c| is_caption(c)).count();
+        if caption_count < 2 {
+            return Vec::new();
+        }
+        let mut blocks: Vec<CaptionBlock> = Vec::new();
+        let mut run: Vec<Node<'_>> = Vec::new();
+        let mut run_labels: Vec<String> = Vec::new();
+        for c in &children {
+            if c.kind() == "label_definition" {
+                if let Some(k) = extract_label_name(*c, self.src) {
+                    run_labels.push(k);
+                }
+                continue;
+            }
+            if is_caption(c) {
+                // Close the current run as a block captioned by `c`.
+                if let Some(b) = self.render_linear_block(&run, *c, &run_labels) {
+                    blocks.push(b);
+                }
+                run.clear();
+                run_labels.clear();
+            } else {
+                run.push(*c);
+            }
+        }
+        blocks
+    }
+
+    /// True if `node`'s subtree contains a `caption` node or a `\captionof`.
+    fn subtree_has_caption(&self, node: Node<'_>) -> bool {
+        let mut stack = vec![node];
+        while let Some(n) = stack.pop() {
+            let mut cursor = n.walk();
+            for child in n.children(&mut cursor) {
+                if child.kind() == "caption"
+                    || (child.kind() == "generic_command"
+                        && command_name_text(child, self.src).as_deref()
+                            == Some("\\captionof"))
+                {
+                    return true;
+                }
+                stack.push(child);
+            }
+        }
+        false
+    }
+
+    /// Render a minipage (or any captioned container) as one CaptionBlock: its body
+    /// (image or tabular), its own caption + label, and its width fraction.
+    fn render_caption_block(&mut self, node: Node<'_>) -> Option<CaptionBlock> {
+        let mut graphics: Option<Node<'_>> = None;
+        let mut caption: Option<Node<'_>> = None;
+        let mut captionof: Option<Node<'_>> = None;
+        let mut nested_tabular: Option<Node<'_>> = None;
+        let mut labels: Vec<String> = Vec::new();
+        let mut stack = vec![node];
+        while let Some(n) = stack.pop() {
+            let mut cursor = n.walk();
+            for child in n.children(&mut cursor) {
+                match child.kind() {
+                    "graphics_include" if graphics.is_none() => graphics = Some(child),
+                    "caption" if caption.is_none() => caption = Some(child),
+                    "generic_command"
+                        if captionof.is_none()
+                            && command_name_text(child, self.src).as_deref()
+                                == Some("\\captionof") =>
+                    {
+                        captionof = Some(child);
+                    }
+                    "label_definition" => {
+                        if let Some(k) = extract_label_name(child, self.src) {
+                            if !labels.contains(&k) {
+                                labels.push(k);
+                            }
+                        }
+                    }
+                    "generic_environment" => {
+                        let env = environment_name(child, self.src);
+                        if matches!(
+                            env.as_deref(),
+                            Some("tabular") | Some("tabular*") | Some("tabularx")
+                                | Some("tabulary") | Some("array")
+                        ) && nested_tabular.is_none()
+                        {
+                            nested_tabular = Some(child);
+                        }
+                        stack.push(child);
+                    }
+                    _ => stack.push(child),
+                }
+            }
+        }
+        let (body, is_table) = if let Some(g) = graphics {
+            (self.with_sub_buffer(|e| { e.emit_graphics_include(g); }), false)
+        } else if let Some(t) = nested_tabular {
+            let s = self.with_sub_buffer(|e| { e.emit_tabular(t); }).trim().to_string();
+            (s.strip_prefix('#').map(|s| s.to_string()).unwrap_or(s), true)
+        } else {
+            return None;
+        };
+        let cap_node = caption.or(captionof);
+        let kind = self.captionof_kind(captionof).or(if is_table { Some("table") } else { None });
+        let caption_text = cap_node.and_then(|c| {
+            let arg = if c.kind() == "generic_command" {
+                nth_curly_group(c, 1)
+            } else {
+                first_curly_group(c)
+            };
+            arg.map(|a| self.render_curly_group_content(a))
+        });
+        let inner = self.emit_figure_inner(body.trim(), kind, caption_text.as_deref());
+        Some(CaptionBlock {
+            inner,
+            label: self.pick_label_to_attach(&labels),
+            width: width_fraction_of(node, self.src),
+        })
+    }
+
+    /// Render a linear run of content nodes + a closing caption node as a block.
+    fn render_linear_block(
+        &mut self,
+        run: &[Node<'_>],
+        caption: Node<'_>,
+        labels: &[String],
+    ) -> Option<CaptionBlock> {
+        // Render the run's content into a sub-buffer (images, tabulars, text).
+        let body = self.with_sub_buffer(|e| {
+            for n in run {
+                e.emit_node(*n);
+            }
+        });
+        let body = body.trim().to_string();
+        let body = body.strip_prefix('#').map(|s| s.to_string()).unwrap_or(body);
+        if body.is_empty() {
+            return None;
+        }
+        let is_table = body.starts_with("table(");
+        let kind = self
+            .captionof_kind(if caption.kind() == "generic_command" { Some(caption) } else { None })
+            .or(if is_table { Some("table") } else { None });
+        let arg = if caption.kind() == "generic_command" {
+            nth_curly_group(caption, 1)
+        } else {
+            first_curly_group(caption)
+        };
+        let caption_text = arg.map(|a| self.render_curly_group_content(a));
+        let inner = self.emit_figure_inner(&body, kind, caption_text.as_deref());
+        Some(CaptionBlock {
+            inner,
+            label: self.pick_label_to_attach(labels),
+            width: None, // linear/stacked → no width → single column
+        })
+    }
+
+    /// `\captionof{type}{...}` → `Some("table")` / `Some("image")` / `None`.
+    fn captionof_kind(&mut self, captionof: Option<Node<'_>>) -> Option<&'static str> {
+        let c = captionof?;
+        let type_arg = nth_curly_group(c, 0)?;
+        let ty = self.render_curly_group_content(type_arg);
+        match ty.trim() {
+            "table" => Some("table"),
+            "figure" => Some("image"),
+            _ => None,
         }
     }
 }

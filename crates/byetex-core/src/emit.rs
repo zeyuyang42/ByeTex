@@ -500,6 +500,9 @@ impl<'a> Emitter<'a> {
             // rules (LaTeX numbers sections by default), then title + body.
             if self.used_subpar {
                 self.out.push_str("#import \"@preview/subpar:0.2.2\"\n");
+                // Emitted here; clear so the fragment-preamble block below
+                // (which runs unconditionally) doesn't prepend it a second time.
+                self.used_subpar = false;
             }
             self.out
                 .push_str(&build_neutral_preamble(&self.layout, &self.detected_class));
