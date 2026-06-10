@@ -1,13 +1,16 @@
 //! ByeTex MCP server — stdio JSON-RPC service exposing the LaTeX → Typst
 //! converter and its bundled skill catalogue to AI agents.
 //!
-//! Five tools are exposed:
+//! Seven tools are exposed:
 //!
 //! - `convert(tex: String, strict: bool?) -> { typst, warnings }`
 //! - `convert_file(path: String, strict: bool?) -> { typst_path, warnings_path, warnings }`
 //! - `convert_fragment(tex: String, context_hint: String) -> { typst, warnings }`
 //!   (`context_hint` is one of `inline | block | math | math_display`; reserved
 //!   for future use — currently behaves identically to `convert`.)
+//! - `convert_project(main_tex: String, out_dir: String, …) -> { written_files, warnings }`
+//! - `diagnose(path: String, project: bool?) -> [{ message, line, col, src_fragment, typ_region, skill_name }]`
+//!   (converts + `typst compile`s and maps each error back to its LaTeX fragment + repair skill.)
 //! - `list_skills() -> [{name, description}]`
 //! - `read_skill(name: String) -> { name, description, body }`
 
@@ -50,6 +53,16 @@ pub struct ConvertFragmentParams {
 pub struct ReadSkillParams {
     /// Name as listed by `list_skills` (matches the skill's frontmatter `name`).
     pub name: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct DiagnoseParams {
+    /// Path to a `.tex` file, or a project directory / entry `.tex`.
+    pub path: String,
+    /// Materialise a self-contained Typst project before compiling (implied when
+    /// `path` is a directory).
+    #[serde(default)]
+    pub project: bool,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -231,6 +244,32 @@ impl ByeTexServer {
         )]))
     }
 
+    #[tool(
+        description = "Convert a .tex file (or project) and `typst compile` it, returning an \
+                          array of {message, line, col, src_fragment, typ_region, skill_name} \
+                          diagnostics that map each typst error back to its LaTeX source fragment \
+                          and repair skill. Writes <stem>.typ (or a materialised project dir) as a \
+                          side effect. Set `project: true` (or pass a directory) for multi-file papers."
+    )]
+    async fn diagnose(
+        &self,
+        Parameters(p): Parameters<DiagnoseParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let path = std::path::PathBuf::from(&p.path);
+        let typst = std::env::var("BYETEX_TYPST_BIN").unwrap_or_else(|_| "typst".to_string());
+        let (_out, diags) = if p.project || path.is_dir() {
+            byetex_core::diagnose::diagnose_project(&path, None, &typst)
+        } else {
+            byetex_core::diagnose::diagnose_flat(&path, None, &typst)
+        }
+        .map_err(|e| {
+            McpError::internal_error(format!("diagnose {}: {}", path.display(), e), None)
+        })?;
+        let json = serde_json::to_string(&diags)
+            .map_err(|e| McpError::internal_error(format!("serialize diagnostics: {e}"), None))?;
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
     #[tool(description = "Return the full markdown body of a single skill by name.")]
     async fn read_skill(
         &self,
@@ -272,8 +311,10 @@ impl ServerHandler for ByeTexServer {
             instructions: Some(
                 "ByeTex converts LaTeX to Typst and reports unconvertible \
                  constructs as structured warnings. Use `convert` for in-memory \
-                 source, `convert_file` for paths, and `list_skills` + \
-                 `read_skill` to discover how to act on warnings."
+                 source, `convert_file`/`convert_project` for paths, `diagnose` to \
+                 compile the output and map each typst error back to its LaTeX \
+                 fragment + repair skill, and `list_skills` + `read_skill` to \
+                 discover how to act on warnings."
                     .to_string(),
             ),
         }
