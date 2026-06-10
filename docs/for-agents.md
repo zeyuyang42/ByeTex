@@ -121,6 +121,30 @@ These usually come from:
 
 Read `byetex skills read byetex-parse-error` for the full procedure.
 
+## Repair loop
+
+When a converted `.typ` does not compile, use `byetex diagnose` to drive a
+targeted fix cycle. For the full procedure read the bundled skill:
+
+```bash
+byetex skills read byetex-repair-loop
+```
+
+Outline:
+
+```
+byetex diagnose paper.tex
+  → paper.typ + paper.diagnostics.json  (per error: src_fragment, typ_region, skill_name)
+  → for each error: read skill, edit paper.typ
+  → typst compile paper.typ  ──(errors?)──┐
+        ▲                                  │ loop until clean
+        └──────────────────────────────────┘
+```
+
+Key rule: **do not re-run `byetex diagnose` between edits** — it overwrites
+`paper.typ` from source, discarding your fixes. Use `typst compile paper.typ`
+to iterate; re-run `diagnose` only to start over from the LaTeX.
+
 ## When ByeTex isn't enough
 
 If too many warnings have `needs_manual_review` and you can't make progress,

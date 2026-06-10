@@ -364,7 +364,8 @@ impl<'a> Emitter<'a> {
                     miss
                 ),
                 snippet: self.src[node.start_byte()..node.end_byte()].to_string(),
-                suggested_skill: None,
+                // override the NeedsManualReview default: the bibliography skill is more specific
+                suggested_skill: Some("byetex-bibliography".to_string()),
             });
         }
         if kept.is_empty() {
@@ -386,7 +387,8 @@ impl<'a> Emitter<'a> {
                         severity: Severity::Info,
                         message: "the LaTeX `.bib` source was not bundled; inlined the pre-rendered `.bbl` instead — entries should still resolve for `\\cite{}` lookups, but the bibliography style is whatever the original BibTeX produced".to_string(),
                         snippet: self.src[node.start_byte()..node.end_byte()].to_string(),
-                        suggested_skill: None,
+                        // override the NeedsManualReview default: the bibliography skill is more specific
+                        suggested_skill: Some("byetex-bibliography".to_string()),
                     });
                     let rendered = self.render_in_sub_emitter(&bbl_content, false, false);
                     self.ensure_paragraph_break();
@@ -403,7 +405,8 @@ impl<'a> Emitter<'a> {
                 severity: Severity::Warning,
                 message: "all bibliography paths missing; #bibliography call dropped".to_string(),
                 snippet: self.src[node.start_byte()..node.end_byte()].to_string(),
-                suggested_skill: None,
+                // override the NeedsManualReview default: the bibliography skill is more specific
+                suggested_skill: Some("byetex-bibliography".to_string()),
             });
             return node.end_byte();
         }

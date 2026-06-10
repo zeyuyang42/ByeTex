@@ -129,7 +129,7 @@ pub fn plan_project(main_tex: &Path, no_toml: bool) -> Result<ProjectPlan, Proje
     // sections attach the referenced alias (the `\ref` and the labelled
     // `\section` often live in different `\input`'d files).
     let refs = harvest_project_referenced_labels(&base_dir).unwrap_or_default();
-    let out = convert_with_macros(&source, &opts, HashMap::new(), refs);
+    let out = convert_with_macros(&source, &opts, HashMap::new(), refs, false);
 
     let assets = out
         .asset_refs
@@ -360,7 +360,7 @@ pub fn plan_project_from_dir(dir: &Path, no_toml: bool) -> Result<ProjectPlan, P
         source_name: Some(entry.display().to_string()),
         base_dir: Some(dir.to_path_buf()),
     };
-    let out = convert_with_macros(&source, &opts, preseeded, refs);
+    let out = convert_with_macros(&source, &opts, preseeded, refs, false);
 
     let assets = out
         .asset_refs
