@@ -103,7 +103,13 @@ pub fn resolve_error_at_col(
     typ_line: &str,
     col: usize,
 ) -> Option<(usize, usize)> {
-    if let Some(tok) = token_at(typ_line, col) {
+    if let Some(raw) = token_at(typ_line, col) {
+        // The whitespace-delimited token often picks up sentence punctuation
+        // the producing node never emitted — e.g. a trailing `.` on
+        // `@chen:2022.` (the sentence period) or wrapping `(...)`. Trim those
+        // from the ENDS so the token matches the node's output; keep `@`,
+        // alphanumerics, and the internal `:`/`-`/`_` of a label/identifier.
+        let tok = raw.trim_matches(|c: char| ".,;:!?()[]{}'\"".contains(c));
         if tok.len() >= 3 {
             if let Some(span) = map
                 .iter()
