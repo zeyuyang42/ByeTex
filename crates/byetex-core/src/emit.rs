@@ -207,6 +207,9 @@ pub(crate) struct Emitter<'a> {
     /// `kind: "anchor"` figure so the label is referenceable. Gates the
     /// `#show figure.where(kind: "anchor"): it => none` rule in `finish()`.
     used_text_label_anchor: bool,
+    /// Set when a `#subpar.grid(...)` is emitted; triggers the conditional
+    /// `#import "@preview/subpar:0.2.2"` at the top of the document in `finish()`.
+    used_subpar: bool,
     /// True when a `\bibliography{...}` (`bibtex_include`) command is present,
     /// detected in the prepass.
     has_bibtex_include: bool,
@@ -320,6 +323,7 @@ impl<'a> Emitter<'a> {
             macro_depth: 0,
             in_minipage: false,
             used_text_label_anchor: false,
+            used_subpar: false,
             has_bibtex_include: false,
             had_bib_file: false,
             record_source_map: false,
@@ -494,6 +498,9 @@ impl<'a> Emitter<'a> {
             let title_block = std::mem::take(&mut self.out);
             // Self-contained preamble first, then this document's numbering
             // rules (LaTeX numbers sections by default), then title + body.
+            if self.used_subpar {
+                self.out.push_str("#import \"@preview/subpar:0.2.2\"\n");
+            }
             self.out
                 .push_str(&build_neutral_preamble(&self.layout, &self.detected_class));
             self.out.push_str("#set heading(numbering: \"1.\")\n");
@@ -532,6 +539,9 @@ impl<'a> Emitter<'a> {
         // numbering only when a fragment references a heading; equation
         // numbering stays demand-driven.
         let mut preamble = String::new();
+        if self.used_subpar {
+            preamble.push_str("#import \"@preview/subpar:0.2.2\"\n");
+        }
         if self.used_text_label_anchor {
             preamble.push_str("#show figure.where(kind: \"anchor\"): it => none\n");
         }
