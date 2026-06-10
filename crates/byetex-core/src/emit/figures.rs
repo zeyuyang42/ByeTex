@@ -202,6 +202,30 @@ impl<'a> Emitter<'a> {
         Some(panel)
     }
 
+    /// Render one captioned block as a Typst `figure(...)` string — no leading
+    /// `#`, no trailing `<label>`. Used both for the single-figure path and for
+    /// each panel of a `subpar.grid`. `kind` is `Some("table")` / `Some("image")`
+    /// or `None` (image default); `caption_text` is the already-rendered caption
+    /// body (without brackets) or `None`.
+    fn emit_figure_inner(
+        &self,
+        body_str: &str,
+        kind: Option<&str>,
+        caption_text: Option<&str>,
+    ) -> String {
+        let mut s = String::new();
+        s.push_str("figure(\n  ");
+        s.push_str(body_str);
+        if let Some(k) = kind {
+            let _ = write!(s, ",\n  kind: {}", k);
+        }
+        if let Some(text) = caption_text {
+            let _ = write!(s, ",\n  caption: [{}]", text);
+        }
+        s.push_str(",\n)");
+        s
+    }
+
     pub(in crate::emit) fn emit_figure(&mut self, node: Node<'_>) -> usize {
         let mut graphics: Option<Node<'_>> = None;
         let mut caption: Option<Node<'_>> = None;
@@ -383,12 +407,8 @@ impl<'a> Emitter<'a> {
                 .to_string()
         };
 
-        self.ensure_paragraph_break();
-        self.out.push_str("#figure(\n  ");
-        self.out.push_str(&body_str);
-        // Decide the figure `kind`. An explicit `\captionof{type}` wins (it names
-        // the type directly); otherwise a tabular body implies `kind: table` so
-        // refs read "Table N". An image body uses Typst's default (no `kind:`).
+        // Resolve kind: an explicit `\captionof{type}` wins; else a tabular
+        // body implies `kind: table`; else image default.
         let mut kind: Option<&str> = None;
         if caption.is_none() {
             if let Some(c) = captionof {
@@ -405,23 +425,20 @@ impl<'a> Emitter<'a> {
         if kind.is_none() && body_is_table {
             kind = Some("table");
         }
-        if let Some(k) = kind {
-            let _ = write!(self.out, ",\n  kind: {}", k);
-        }
+        // Resolve caption text: `\caption{cap}` → 1st group; `\captionof{t}{cap}` → 2nd.
         let caption_node = caption.or(captionof);
-        if let Some(c) = caption_node {
-            // `\caption{cap}` → 1st group; `\captionof{type}{cap}` → 2nd group.
+        let caption_text = caption_node.and_then(|c| {
             let arg = if c.kind() == "generic_command" {
                 nth_curly_group(c, 1)
             } else {
                 first_curly_group(c)
             };
-            if let Some(arg) = arg {
-                let text = self.render_curly_group_content(arg);
-                let _ = write!(self.out, ",\n  caption: [{}]", text);
-            }
-        }
-        self.out.push_str(",\n)");
+            arg.map(|a| self.render_curly_group_content(a))
+        });
+        let inner = self.emit_figure_inner(&body_str, kind, caption_text.as_deref());
+        self.ensure_paragraph_break();
+        self.out.push('#');
+        self.out.push_str(&inner);
         // Attach the referenced alias (or the first label); then give every
         // OTHER referenced label its own hidden, referenceable anchor — a
         // single float (subfigures, or two `\captionof`s) can be `\ref`'d
