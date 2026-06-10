@@ -22,6 +22,12 @@ pub(crate) mod package_macros;
 mod typst_diag;
 pub use typst_diag::{parse_typst_errors, TypstError};
 
+/// Test-only re-exports of pure helpers (not part of the stable API).
+#[doc(hidden)]
+pub mod emit_testing {
+    pub use crate::emit::figures::columns_for_widths;
+}
+
 /// Test-support surface: thin wrappers over internal functions exposed for
 /// integration tests in `tests/`. Not part of the public API.
 #[doc(hidden)]
