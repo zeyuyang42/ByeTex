@@ -223,7 +223,9 @@ pub(crate) struct Emitter<'a> {
     /// into `source_map`. Off by default (zero-overhead normal conversion).
     pub(crate) record_source_map: bool,
     /// Content-anchored provenance entries (see source_map.rs). Empty unless
-    /// `record_source_map` is set.
+    /// `record_source_map` is set. When capture is enabled, total cloned output
+    /// is O(document size × node depth) — fine for one-shot `byetex diagnose`,
+    /// not for bulk corpus processing.
     pub(crate) source_map: Vec<crate::source_map::NodeOutput>,
 }
 
@@ -233,6 +235,16 @@ pub(crate) struct Emitter<'a> {
 /// threads' default 2 MB stack. Real papers rarely nest macros more than
 /// 4-5 levels.
 const MAX_MACRO_DEPTH: u32 = 24;
+
+/// Everything [`Emitter::finish`] produces. A named struct (vs a tuple) keeps
+/// the signature readable and avoids positional destructuring as fields grow.
+pub(crate) struct FinishOutput {
+    pub typst: String,
+    pub warnings: Vec<Warning>,
+    pub asset_refs: Vec<crate::AssetRef>,
+    pub class_metadata: std::collections::HashMap<String, String>,
+    pub source_map: Vec<crate::source_map::NodeOutput>,
+}
 
 impl<'a> Emitter<'a> {
     // ─── Construction & lifecycle ──────────────────────────────────────────────
@@ -467,13 +479,7 @@ impl<'a> Emitter<'a> {
 
     pub(crate) fn finish(
         mut self,
-    ) -> (
-        String,
-        Vec<Warning>,
-        Vec<crate::AssetRef>,
-        std::collections::HashMap<String, String>,
-        Vec<crate::source_map::NodeOutput>,
-    ) {
+    ) -> FinishOutput {
         // A full document (had a `\documentclass`, or carries title/authors)
         // is rendered with the self-generated, self-contained neutral preamble
         // + generalized title block — no Typst Universe import. Bare fragments
@@ -596,7 +602,13 @@ impl<'a> Emitter<'a> {
 
         let class_metadata = self.metadata.class_metadata;
         let source_map = std::mem::take(&mut self.source_map);
-        (self.out, self.warnings, self.asset_refs, class_metadata, source_map)
+        FinishOutput {
+            typst: self.out,
+            warnings: self.warnings,
+            asset_refs: self.asset_refs,
+            class_metadata,
+            source_map,
+        }
     }
 
     /// Push `src[from..to]` to the output, but only when the range is valid.
@@ -1864,7 +1876,7 @@ impl<'a> Emitter<'a> {
             // have. Warn so the caller can see the loss.
             // Declarative font switches (TeX 2.09 + NFSS forms). The common
             // `{\bf x}` / `{\em y}` grouped form is wrapped in Typst markup at
-            // the `curly_group` level (see emit_node, where both braces can be
+            // the `curly_group` level (see emit_node_inner, where both braces can be
             // dropped). Reaching one HERE means it's bare or mid-group, where
             // the scope can't be bounded cleanly — drop it silently (no
             // warning); the text still flows through.
@@ -2046,7 +2058,7 @@ impl<'a> Emitter<'a> {
             // • Color definitions: \colorlet defines a colour alias; without colortbl
             //   support the alias is never used, so the definition is inert.
             //   (`\definecolor` is a dedicated `color_definition` node — dropped
-            //   earlier in emit_node, near the `color_reference` arm.)
+            //   earlier in emit_node_inner, near the `color_reference` arm.)
             // • Conditionals: \ifthenelse/\fi/\else are xcolor/ifthen preamble
             //   control flow that tree-sitter surfaces as bare generic_commands
             //   (the contained body is processed separately by tree-sitter's normal
@@ -3432,7 +3444,7 @@ fn collapse_inline_whitespace(s: &str) -> String {
 
 /// Maps the well-known math wrap commands to their Typst `(left, right)`
 /// delimiter pair. Used by the bare `command_name` branch of
-/// `emit_node` to recover the brace-less form (e.g. `_\mathcal{T}` —
+/// `emit_node_inner` to recover the brace-less form (e.g. `_\mathcal{T}` —
 /// tree-sitter parses the `{T}` as a sibling of the enclosing
 /// subscript, so the command_name itself reaches us without a child).
 pub(crate) fn wrap_for_command_name(name: &str) -> Option<(&'static str, &'static str)> {
