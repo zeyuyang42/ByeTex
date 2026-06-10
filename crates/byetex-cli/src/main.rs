@@ -102,9 +102,8 @@ enum Command {
     ///
     /// Set `BYETEX_TYPST_BIN` to point at a non-default `typst` binary.
     ///
-    /// NOTE: `--project` mode is not yet supported; the flag is accepted and
-    /// silently falls back to flat mode. Use `byetex convert --project` +
-    /// `typst compile` directly for project-mode diagnosis.
+    /// With `--project` (or a directory input) it materialises a self-contained
+    /// Typst project (assets, `.bib`, `main.typ`) and diagnoses that.
     Diagnose {
         /// Path to the input `.tex` file, or a project directory.
         input: PathBuf,
@@ -439,7 +438,7 @@ fn diagnose_typ_and_write(
         .into_iter()
         .map(|e| {
             let line_text = typ_lines.get(e.line.saturating_sub(1)).copied().unwrap_or("");
-            let span = byetex_core::resolve_error_line(source_map, line_text);
+            let span = byetex_core::resolve_error_at_col(source_map, line_text, e.col);
             let src_fragment = span.map(|(a, b)| source[a..b].to_string());
             let skill_name = span.and_then(|(a, b)| {
                 warnings

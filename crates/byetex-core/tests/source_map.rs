@@ -51,3 +51,26 @@ fn captured_map_resolves_a_body_line_to_its_source() {
     let frag = &src[span.0..span.1];
     assert!(frag.contains("quick brown fox"), "resolved fragment was: {frag:?}");
 }
+
+#[test]
+fn resolve_at_col_picks_the_token_under_the_column() {
+    use byetex_core::resolve_error_at_col;
+    // A multi-cite line: the whole line only matches the coarse paragraph node,
+    // but each column's token matches the specific cite node.
+    let map = vec![
+        n((0, 200), "@a:1 @b:2 @c:3.  Moreover, more text here."), // paragraph
+        n((40, 52), "@a:1 @b:2 @c:3"),                              // the \cite node
+    ];
+    // col 0 → token `@a:1` → resolves to the cite node (40,52), not the paragraph.
+    assert_eq!(resolve_error_at_col(&map, "@a:1 @b:2 @c:3.  Moreover, more text here.", 0), Some((40, 52)));
+    // col 5 → token `@b:2` → still the cite node.
+    assert_eq!(resolve_error_at_col(&map, "@a:1 @b:2 @c:3.  Moreover, more text here.", 5), Some((40, 52)));
+}
+
+#[test]
+fn resolve_at_col_falls_back_to_line_when_token_absent() {
+    use byetex_core::resolve_error_at_col;
+    let map = vec![n((5, 9), "a + b")];
+    // col points at whitespace-only / token too short → fall back to line match.
+    assert_eq!(resolve_error_at_col(&map, "a + b", 1), Some((5, 9)));
+}
