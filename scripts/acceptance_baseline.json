@@ -1,5 +1,5 @@
 {
-  "_comment": "Acceptance baseline for scripts/acceptance.sh. Papers in `known_pass` currently emit Typst that compiles (BYETEX-attributable PASS); the gate FAILS if any of them regresses to BYETEX_FAIL. `known_fail` are the currently-open BYETEX_FAIL papers (allowed; a fix flips one and should be promoted to known_pass). Only papers whose payloads are present locally are checked, so the gate is robust to gitignored corpus payloads. Update deliberately when fixing/breaking a paper. Captured 2026-06-02 via `corpus_sweep.sh --with-oracle` (PASS 43 / BYETEX_FAIL 2; 31072 promoted after the math word-split-after-delimiter fix).",
+  "_comment": "Acceptance baseline for scripts/acceptance.sh. Papers in `known_pass` currently emit Typst that compiles (BYETEX-attributable PASS); the gate FAILS if any of them regresses to BYETEX_FAIL. `known_fail` are the currently-open BYETEX_FAIL papers (allowed; a fix flips one and should be promoted to known_pass). Only papers whose payloads are present locally are checked, so the gate is robust to gitignored corpus payloads. Update deliberately when fixing/breaking a paper. Captured 2026-06-02 via `corpus_sweep.sh --with-oracle` (PASS 44 / BYETEX_FAIL 1; 31561 promoted after the over-declared-table-column clamp).",
   "known_pass": [
     "2605.22159",
     "2605.22281",
@@ -43,10 +43,10 @@
     "2605.31586",
     "2605.31596",
     "2605.31598",
-    "2605.31072"
+    "2605.31072",
+    "2605.31561"
   ],
   "known_fail": [
-    "2605.31203",
-    "2605.31561"
+    "2605.31203"
   ]
 }
