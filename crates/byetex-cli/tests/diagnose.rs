@@ -30,7 +30,11 @@ fn diagnose_writes_diagnostics_json_with_mapped_error() {
         eprintln!("skipping: typst not on PATH");
         return;
     }
-    let dir = std::env::temp_dir().join(format!("byetex-diag-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!(
+        "byetex-diag-{}-{}",
+        "diagnose_writes_diagnostics_json_with_mapped_error",
+        std::process::id()
+    ));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
 

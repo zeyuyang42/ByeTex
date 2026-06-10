@@ -336,14 +336,14 @@ fn run_diagnose(input: PathBuf, project: bool, out: Option<PathBuf>) -> Result<(
 
     let source = std::fs::read_to_string(&input)
         .with_context(|| format!("read {}", input.display()))?;
-    let base_dir = input.parent().map(|p| p.to_path_buf());
+    let base_dir = base_dir_from_file(&input);
 
     // 1. Convert capturing the source map.
     let converted = byetex_core::convert_capturing_source_map(
         &source,
         &byetex_core::ConvertOptions {
             source_name: Some(input.display().to_string()),
-            base_dir: base_dir.clone(),
+            base_dir: Some(base_dir.clone()),
         },
     );
 
