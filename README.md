@@ -230,7 +230,9 @@ inspect the sidecar rather than the exit code.
 
 ## For AI agents
 
-See [`docs/for-agents.md`](docs/for-agents.md). The short version:
+**Start with [`AGENTS.md`](AGENTS.md)** — the cold-start guide to the repair loop.
+[`docs/for-agents.md`](docs/for-agents.md) is the deeper technical reference. The
+short version:
 
 1. `byetex convert input.tex` is non-destructive and idempotent.
 2. Read `input.warnings.json`. Empty means a clean conversion.

@@ -1,8 +1,11 @@
 # Using ByeTex from an AI agent
 
-This document is the canonical entry point for AI coding agents (Claude Code,
-Cursor, Codex, etc.) that want to convert a LaTeX document to Typst as part
-of a larger workflow.
+> **New here? Read [`AGENTS.md`](../AGENTS.md) first** — it's the cold-start guide
+> to the repair loop. This document is the deeper technical reference (schema,
+> MCP, jq recipes).
+
+This document is for AI coding agents (Claude Code, Cursor, Codex, etc.) that
+want to convert a LaTeX document to Typst as part of a larger workflow.
 
 ## Four invariants
 
