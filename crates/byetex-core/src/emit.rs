@@ -2033,11 +2033,28 @@ impl<'a> Emitter<'a> {
                     // `\documentclass` (e.g. an `\input`ed macro helper relying
                     // on the at-letter catcode persisting to end of input). The
                     // remainder is internals — harvest its definitions, then skip
-                    // to EOF so the low-level TeX doesn't leak.
-                    let rest = &self.src[node.end_byte()..];
-                    self.harvest_definitions(rest);
-                    self.skip_until = self.src.len();
-                    self.src.len()
+                    // it so the low-level TeX doesn't leak.
+                    //
+                    // BUT a BibTeX `.bbl` (apsrev4-1.bst / natbib) opens its
+                    // `thebibliography` with `\makeatletter` + `\providecommand
+                    // \@…` internals and never writes `\makeatother`. Skipping to
+                    // EOF there would swallow every `\bibitem`, so the inlined
+                    // bibliography would emit no `<key>` anchors and each
+                    // `\cite{…}` would dangle (corpus 2605.31203). Cap the skip at
+                    // the first `\bibitem` / `\end{thebibliography}`: the macro
+                    // preamble is still harvested and dropped, but the entries
+                    // (and their anchors) render.
+                    let rest_from = node.end_byte();
+                    let rest = &self.src[rest_from..];
+                    let cap = ["\\bibitem", "\\end{thebibliography}"]
+                        .iter()
+                        .filter_map(|m| rest.find(m))
+                        .min()
+                        .map(|rel| rest_from + rel)
+                        .unwrap_or(self.src.len());
+                    self.harvest_definitions(&self.src[rest_from..cap]);
+                    self.skip_until = self.skip_until.max(cap);
+                    cap
                 } else {
                     // Unmatched, but inside a full document — stay conservative
                     // and drop only the lone token; the body and `\title` /
