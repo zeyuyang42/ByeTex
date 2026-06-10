@@ -1034,6 +1034,10 @@ fn write_agent_brief(inputs: BriefInputs<'_>) -> Result<()> {
             Ok(arr) => {
                 let mut counts: std::collections::BTreeMap<String, usize> =
                     std::collections::BTreeMap::new();
+                // First non-null `suggested_skill` seen per category, so the
+                // histogram tells the agent which skill to read for each kind.
+                let mut skill_of: std::collections::BTreeMap<String, String> =
+                    std::collections::BTreeMap::new();
                 for w in &arr {
                     let kind = w
                         .get("category")
@@ -1041,7 +1045,10 @@ fn write_agent_brief(inputs: BriefInputs<'_>) -> Result<()> {
                         .and_then(|s| s.as_str())
                         .unwrap_or("unknown")
                         .to_string();
-                    *counts.entry(kind).or_default() += 1;
+                    *counts.entry(kind.clone()).or_default() += 1;
+                    if let Some(s) = w.get("suggested_skill").and_then(|s| s.as_str()) {
+                        skill_of.entry(kind).or_insert_with(|| s.to_string());
+                    }
                 }
                 let mut sorted: Vec<(String, usize)> = counts.into_iter().collect();
                 sorted.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
@@ -1050,7 +1057,10 @@ fn write_agent_brief(inputs: BriefInputs<'_>) -> Result<()> {
                 } else {
                     sorted
                         .iter()
-                        .map(|(k, c)| format!("  - {k}: {c}"))
+                        .map(|(k, c)| match skill_of.get(k) {
+                            Some(s) => format!("  - {k}: {c} → {s}"),
+                            None => format!("  - {k}: {c}"),
+                        })
                         .collect::<Vec<_>>()
                         .join("\n")
                 };
@@ -1102,13 +1112,36 @@ fn write_agent_brief(inputs: BriefInputs<'_>) -> Result<()> {
         }
     };
 
+    // If a diagnostics sidecar already sits next to the `.typ` (e.g. the paper
+    // was produced via `byetex diagnose`), link it so the agent can use the
+    // error→fragment→skill mapping directly.
+    let diag_path = typst_path.with_extension("diagnostics.json");
+    let diag_note = if diag_path.exists() {
+        format!(
+            "\nA mapped error→fragment→skill list is already in `{}`.",
+            relativize(&diag_path, &brief_dir)
+        )
+    } else {
+        String::new()
+    };
+
     let brief = format!(
         r#"# ByeTex agent brief: `{stem}` ({mode_label} mode)
+
+> **Start here:** run `byetex skills read byetex-getting-started` (or read `AGENTS.md` in the repo) for the repair workflow.
 
 **Task** — Read `{src_rel}` (source) and `{typ_rel}` (current Typst output).
 Write a patched copy to **`{manual_rel}`** that compiles cleanly with
 `typst compile {typ_rel}`. Apply the smallest possible local edits per
 compile error; preserve what already works.
+
+## How to repair
+Run `byetex diagnose {src_rel}` to map each typst error to its LaTeX fragment +
+repair skill (`{stem}.diagnostics.json`). For each: read the named skill with
+`byetex skills read <skill_name>`, edit `{typ_rel}`, then re-run
+`typst compile {typ_rel}`. **Do not re-run `byetex diagnose` between edits** — it
+re-converts from source and overwrites your edits. Full procedure:
+`byetex skills read byetex-repair-loop`.{diag_note}
 
 ## Compile status
 {compile_status}
@@ -1145,6 +1178,7 @@ Full sidecar: `{warn_rel}`
         warnings_histogram = warnings_histogram,
         detected_template = detected_template,
         colocated_note = colocated_note,
+        diag_note = diag_note,
     );
 
     std::fs::write(brief_path, brief)
