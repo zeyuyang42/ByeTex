@@ -59,3 +59,61 @@ pub fn resolve_error_line(map: &[NodeOutput], typ_line: &str) -> Option<(usize, 
         .min_by_key(|n| n.output.len())
         .map(|n| n.src)
 }
+
+/// The maximal run of non-whitespace characters in `line` that touches column
+/// `col` (0-based, char index, as typst reports). Used to anchor an error on
+/// the exact token it points at rather than the whole line. Returns `None` for
+/// an empty line or when `col` lands on whitespace with no adjacent token.
+fn token_at(line: &str, col: usize) -> Option<&str> {
+    let chars: Vec<(usize, char)> = line.char_indices().collect();
+    if chars.is_empty() {
+        return None;
+    }
+    // Clamp col into range; if it lands on whitespace, step left to the end of
+    // the preceding token (typst often points just past the offending token).
+    let mut idx = col.min(chars.len() - 1);
+    while chars[idx].1.is_whitespace() {
+        if idx == 0 {
+            return None;
+        }
+        idx -= 1;
+    }
+    let mut start = idx;
+    while start > 0 && !chars[start - 1].1.is_whitespace() {
+        start -= 1;
+    }
+    let mut end = idx;
+    while end + 1 < chars.len() && !chars[end + 1].1.is_whitespace() {
+        end += 1;
+    }
+    let byte_start = chars[start].0;
+    let byte_end = chars[end].0 + chars[end].1.len_utf8();
+    Some(&line[byte_start..byte_end])
+}
+
+/// Resolve a `.typ` error to its source span using the error's COLUMN for
+/// precision. A typst error line is often a whole paragraph (so a full-line
+/// match only finds a coarse container), but its `col` points at the exact
+/// failing token (e.g. `@comaskey:2022` in a multi-cite line). Resolve that
+/// token first — the smallest node whose output contains it is the specific
+/// construct — and fall back to [`resolve_error_line`] when the token is too
+/// short or doesn't match.
+pub fn resolve_error_at_col(
+    map: &[NodeOutput],
+    typ_line: &str,
+    col: usize,
+) -> Option<(usize, usize)> {
+    if let Some(tok) = token_at(typ_line, col) {
+        if tok.len() >= 3 {
+            if let Some(span) = map
+                .iter()
+                .filter(|n| n.output.contains(tok))
+                .min_by_key(|n| n.output.len())
+                .map(|n| n.src)
+            {
+                return Some(span);
+            }
+        }
+    }
+    resolve_error_line(map, typ_line)
+}
