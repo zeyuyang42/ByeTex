@@ -222,6 +222,13 @@ pub(crate) struct Emitter<'a> {
     /// the .bib collide (`label <key> occurs both in the document and its
     /// bibliography`, corpus 2605.31440).
     had_bib_file: bool,
+    /// True when a `\bibliography{...}` names a path that resolves to a `.bib`
+    /// on disk — i.e. `emit_bibliography` will emit a real `#bibliography(.bib)`.
+    /// This is the precondition for emitting `#cite(<key>, form: …)` citation
+    /// forms: against an inlined `.bbl`/`thebibliography` (no `#bibliography`)
+    /// `#cite` aborts the compile. Stricter than `had_bib_file`, which is also
+    /// set for `.bbl`-only papers (the key harvest reads `.bbl` files too).
+    bib_will_render: bool,
     /// When true, `emit_node` records each node's output text + source span
     /// into `source_map`. Off by default (zero-overhead normal conversion).
     pub(crate) record_source_map: bool,
@@ -326,6 +333,7 @@ impl<'a> Emitter<'a> {
             used_subpar: false,
             has_bibtex_include: false,
             had_bib_file: false,
+            bib_will_render: false,
             record_source_map: false,
             source_map: Vec::new(),
         }
@@ -365,6 +373,22 @@ impl<'a> Emitter<'a> {
             // any manual `\bibitem`/`thebibliography` entries are dropped.
             if n.kind() == "bibtex_include" {
                 self.has_bibtex_include = true;
+                // A real `#bibliography(.bib)` is emitted only when one of the
+                // listed paths resolves to a `.bib` on disk (mirrors the `kept`
+                // logic in `emit_bibliography`). When it does NOT — a `.bbl` is
+                // inlined as `#figure ... <key>` labels, or the call is dropped —
+                // `#cite(<key>, …)` would abort, so citation forms must stay
+                // `@key`. (`had_bib_file`/`bib_file_is_authoritative` can't be
+                // used for this: the key harvest also reads `.bbl` files, so it
+                // is true for `.bbl`-only papers where no `#bibliography` renders.)
+                if let Some(ref base) = self.base_dir {
+                    if bibliography::extract_bib_paths(n, self.src)
+                        .iter()
+                        .any(|p| bibliography::probe_bib_on_disk(base, p).is_some())
+                    {
+                        self.bib_will_render = true;
+                    }
+                }
             }
             match n.kind() {
                 "new_command_definition" => {
@@ -720,6 +744,10 @@ impl<'a> Emitter<'a> {
             sub.macro_depth = self.macro_depth + 1;
         }
         sub.bibliography_keys = self.bibliography_keys.clone();
+        // Citation forms are safe in the child iff the root will emit a real
+        // `#bibliography(.bib)`; inherit that gate so `\citet` etc. in
+        // expanded/included content also resolve as `#cite(form: …)`.
+        sub.bib_will_render = self.bib_will_render;
         sub.emit_root(tree.root_node());
         // Merge side-effects back into the parent.
         self.visited_includes = std::mem::take(&mut sub.visited_includes);

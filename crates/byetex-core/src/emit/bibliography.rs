@@ -134,6 +134,40 @@ impl<'a> Emitter<'a> {
             self.warn_unsupported_command(node);
             return node.end_byte();
         }
+
+        // Natbib/biblatex citation forms (Unit 3) are only safe when a real
+        // `#bibliography(.bib)` will render the entries: then `#cite(<key>,
+        // form: ...)` resolves. When the entries are manual `#figure ... <key>`
+        // labels (inlined `.bbl`, `thebibliography`, bare convert) `#cite`
+        // aborts the compile, so we fall back to today's `@key`. Inside math
+        // the `#cite(...)` function syntax is likewise unsafe.
+        let use_forms = self.bib_will_render && !self.in_math;
+        let command = if use_forms {
+            node.child_by_field_name("command")
+                .map(|c| self.src[c.start_byte()..c.end_byte()].to_string())
+        } else {
+            None
+        };
+        // Supplement (postnote `[...]`): tilde → space, attached to the last
+        // key only. prenote (`\citep[see][p.5]{k}`) becomes leading words.
+        //
+        // The grammar binds the FIRST bracket to `prenote` and only the second
+        // (optional) to `postnote`. But natbib semantics make a lone bracket
+        // the *post*note (the page locator): `\citep[p.5]{k}`. So when only one
+        // bracket is present we treat it as the supplement; a true prenote
+        // exists only in the two-bracket form.
+        let (prenote, postnote) = if use_forms {
+            let first = brack_inner(node, "prenote", self.src);
+            let second = brack_inner(node, "postnote", self.src);
+            match (first, second) {
+                (pre, Some(post)) => (pre, Some(post)),
+                (Some(lone), None) => (None, Some(lone)),
+                (None, None) => (None, None),
+            }
+        } else {
+            (None, None)
+        };
+
         // PR-3: validate each key against the harvested set of
         // available bibliography entries. Keys that aren't defined
         // would crash Typst with `label <key> does not exist` —
@@ -146,11 +180,16 @@ impl<'a> Emitter<'a> {
         // old behaviour.
         let mut missing: Vec<&str> = Vec::new();
         let mut typst_parts: Vec<String> = Vec::new();
-        for raw_key in &keys {
+        let last_idx = keys.len() - 1;
+        for (i, raw_key) in keys.iter().enumerate() {
             let sanitized = sanitize_label_key(raw_key);
             if !self.bibliography_keys.is_empty() && !self.bibliography_keys.contains(&sanitized) {
                 missing.push(raw_key.as_str());
                 typst_parts.push(format!("[cite: missing key `{}`]", raw_key));
+            } else if let Some(cmd) = command.as_deref() {
+                // Supplement only on the last key.
+                let supp = if i == last_idx { postnote.as_deref() } else { None };
+                typst_parts.push(self.citation_token(cmd, &sanitized, supp));
             } else {
                 typst_parts.push(format!("@{}", sanitized));
             }
@@ -170,7 +209,20 @@ impl<'a> Emitter<'a> {
                 suggested_skill: None,
             });
         }
-        let typst = typst_parts.join(" ");
+        let mut typst = typst_parts.join(" ");
+        // `\citeyearpar` renders the year form wrapped in parentheses.
+        if let Some(cmd) = command.as_deref() {
+            if missing.is_empty() {
+                if normalize_cite_command(cmd) == "\\citeyearpar" {
+                    typst = format!("({})", typst);
+                }
+                // A two-bracket natbib prenote (`\citep[see][p.5]{k}`) → the
+                // prenote text as leading words before the citation token.
+                if let Some(pre) = prenote.as_deref() {
+                    typst = format!("{} {}", pre, typst);
+                }
+            }
+        }
         self.out.push_str(&typst);
         // See `emit_label_reference` for why we sometimes append a separator
         // after `@key`. Same logic applies to citations.
@@ -181,6 +233,35 @@ impl<'a> Emitter<'a> {
             }
         }
         node.end_byte()
+    }
+
+    /// Map one natbib/biblatex citation command + key to its Typst token,
+    /// applying the optional supplement (postnote) to this key. Only called
+    /// for defined keys when `use_forms` is true. `\citeyearpar`'s parenthesis
+    /// wrapping is applied by the caller around the joined group, not here.
+    fn citation_token(&self, command: &str, sanitized_key: &str, supplement: Option<&str>) -> String {
+        let form = match normalize_cite_command(command) {
+            // Textual / prose form.
+            "\\citet" | "\\textcite" | "\\Cite" | "\\citealt" | "\\citealp" => Some("\"prose\""),
+            "\\citeauthor" | "\\Citeauthor" => Some("\"author\""),
+            "\\citeyear" | "\\citeyearR" | "\\citeyearpar" => Some("\"year\""),
+            "\\nocite" => Some("none"),
+            // Parenthetical and everything we don't specially map → `@key`.
+            _ => None,
+        };
+        match form {
+            None => match supplement {
+                Some(s) => format!("@{}[{}]", sanitized_key, s),
+                None => format!("@{}", sanitized_key),
+            },
+            Some(f) => match supplement {
+                Some(s) => format!(
+                    "#cite(<{}>, form: {}, supplement: [{}])",
+                    sanitized_key, f, s
+                ),
+                None => format!("#cite(<{}>, form: {})", sanitized_key, f),
+            },
+        }
     }
 
     pub(in crate::emit) fn emit_label_reference(&mut self, node: Node<'_>) -> usize {
@@ -466,6 +547,22 @@ pub(in crate::emit) fn extract_citation_keys(node: Node<'_>, src: &str) -> Vec<S
         }
     }
     keys
+}
+
+/// Strip a trailing `*` from a citation command so starred variants share the
+/// unstarred mapping (`\citet*` == `\citet`).
+fn normalize_cite_command(command: &str) -> &str {
+    command.strip_suffix('*').unwrap_or(command)
+}
+
+/// Inner text of a named `brack_group` field (`prenote`/`postnote`) on a
+/// `citation` node, with `~` (non-breaking space) rendered as a normal space.
+/// Returns `None` when the field is absent.
+fn brack_inner(node: Node<'_>, field: &str, src: &str) -> Option<String> {
+    let g = node.child_by_field_name(field)?;
+    // `brack_group` spans the `[` … `]`; take the inner slice.
+    let inner = &src[g.start_byte() + 1..g.end_byte() - 1];
+    Some(inner.replace('~', " "))
 }
 
 /// Extract the path argument from a `bibtex_include` (`\bibliography{x}`) or
