@@ -169,6 +169,128 @@ fn elsarticle_keeps_neutral_title() {
     );
 }
 
+// ─── Abstract styles (Unit 2) ────────────────────────────────────────────────
+
+/// The portion of the output AFTER the title block — i.e. from the `Abstract`
+/// heading onward. Used to assert the article \small wrapper sits in the
+/// abstract region (not the title block).
+fn after_title<'a>(t: &'a str) -> &'a str {
+    let idx = t.find("Abstract").unwrap_or(0);
+    &t[idx.saturating_sub(120)..]
+}
+
+#[test]
+fn article_abstract_is_small_wrapped_centered_bold() {
+    let t = typ(include_str!("../../../tests/fixtures/classes/article.tex"));
+    let region = after_title(&t);
+    assert!(
+        region.contains("#text(size: 0.9em)["),
+        "article abstract env is \\small (0.9em wrapper); got region:\n{region}\nfull:\n{t}"
+    );
+    assert!(
+        region.contains("#text(weight: \"bold\")[Abstract]"),
+        "article abstract heading is centered bold; got:\n{t}"
+    );
+    assert!(
+        region.contains("#pad(x: 2.5em)["),
+        "article abstract uses 2.5em quotation pad; got:\n{t}"
+    );
+}
+
+#[test]
+fn neurips_abstract_is_fullwidth_large_bold() {
+    let t = typ(include_str!("../../../tests/fixtures/classes/neurips.tex"));
+    assert!(
+        !t.contains("#columns(2)"),
+        "neurips is single-column — abstract stays full-width; got:\n{t}"
+    );
+    assert!(
+        t.contains("#text(size: 1.2em, weight: \"bold\")[Abstract]"),
+        "neurips abstract heading is \\large bold; got:\n{t}"
+    );
+}
+
+#[test]
+fn iclr_abstract_is_large_smallcaps() {
+    let t = typ(include_str!("../../../tests/fixtures/classes/iclr.tex"));
+    assert!(
+        t.contains("#text(size: 1.2em)[#smallcaps[Abstract]]"),
+        "iclr abstract heading is \\large small-caps; got:\n{t}"
+    );
+}
+
+#[test]
+fn icml_abstract_is_inside_columns() {
+    let t = typ(include_str!("../../../tests/fixtures/classes/icml.tex"));
+    let cols = pos(&t, "#columns(2)[");
+    let heading = pos(&t, "#text(size: 1.2em, weight: \"bold\")[Abstract]");
+    assert!(
+        cols < heading && heading != usize::MAX,
+        "icml abstract must render INSIDE #columns(2)[; got:\n{t}"
+    );
+}
+
+#[test]
+fn ieee_abstract_run_in_inside_columns_and_deferred_keywords() {
+    let t = typ(include_str!(
+        "../../../tests/fixtures/classes/ieee_conference.tex"
+    ));
+    let cols = pos(&t, "#columns(2)[");
+    // The literal `---` from render_abstract_block is post-processed to an
+    // em-dash (`—`) by the whole-output typographic pass — faithful to IEEE.
+    let runin = pos(&t, "#text(size: 0.9em, weight: \"bold\")[#emph[Abstract]—");
+    assert!(
+        cols < runin && runin != usize::MAX,
+        "IEEE run-in abstract must render INSIDE #columns(2)[; got:\n{t}"
+    );
+    // Deferred IEEEkeywords render inside the columns, after the abstract.
+    let kws = pos(&t, "*Keywords:* alpha, beta");
+    assert!(
+        runin < kws && kws != usize::MAX,
+        "IEEE keywords must render after the run-in abstract, inside columns; got:\n{t}"
+    );
+}
+
+#[test]
+fn acmart_abstract_is_inside_columns() {
+    let t = typ(include_str!(
+        "../../../tests/fixtures/classes/acmart_sigconf.tex"
+    ));
+    let cols = pos(&t, "#columns(2)[");
+    let heading = pos(&t, "#text(size: 1.2em, weight: \"bold\")[Abstract]");
+    assert!(
+        cols < heading && heading != usize::MAX,
+        "acmart abstract must render INSIDE #columns(2)[; got:\n{t}"
+    );
+}
+
+#[test]
+fn llncs_abstract_is_fullwidth_run_in_bold() {
+    let t = typ(include_str!("../../../tests/fixtures/classes/llncs.tex"));
+    assert!(
+        !t.contains("#columns(2)"),
+        "llncs is single-column; got:\n{t}"
+    );
+    assert!(
+        t.contains("#pad(x: 1cm)[#text(size: 0.9em)[*Abstract.* "),
+        "llncs run-in bold abstract with 1cm pad; got:\n{t}"
+    );
+}
+
+#[test]
+fn unknown_class_keeps_neutral_abstract_block() {
+    let src = "\\documentclass{amsart}\n\\title{A Study of Conversion Fidelity}\n\\author{Alice Example}\n\\begin{document}\n\\maketitle\n\\begin{abstract}\nA neutral abstract.\n\\end{abstract}\nBody.\n\\end{document}";
+    let t = typ(src);
+    assert!(
+        t.contains("#align(center)[#text(weight: \"bold\")[Abstract]]"),
+        "Unknown class abstract heading must stay neutral; got:\n{t}"
+    );
+    assert!(
+        t.contains("#pad(x: 2em)["),
+        "Unknown class abstract must keep the neutral 2em pad; got:\n{t}"
+    );
+}
+
 // ─── Unknown class (amsart) — neutral() byte-compat guard ────────────────────
 
 #[test]

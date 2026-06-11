@@ -161,23 +161,25 @@ impl<'a> Emitter<'a> {
         }
 
         // ── Abstract block ────────────────────────────────────────────────
-        // LaTeX's `article` abstract: a centered bold "Abstract" heading above
-        // a narrowed, justified text column — no fill / border / rounded box.
-        if let Some(abstract_) = self.metadata.r#abstract.take() {
-            if !abstract_.is_empty() {
-                self.out.push_str(
-                    "#v(1em)\n\
-                     #align(center)[#text(weight: \"bold\")[Abstract]]\n\
-                     #v(0.4em)\n\
-                     #pad(x: 2em)[\n  ",
-                );
-                let _ = writeln!(self.out, "{}", abstract_.as_content());
-                self.out.push_str("]\n#v(0.6em)\n");
+        // Two-column conference classes (ICML/IEEE/ACM) place the abstract
+        // INSIDE the `#columns(2)[…]` body — `finish()` emits it there. Every
+        // other case renders it here, full-width, in the class-faithful style.
+        let defer_abstract =
+            profile.abstract_in_columns && self.layout.is_two_column(&self.detected_class);
+        if !defer_abstract {
+            if let Some(abstract_) = self.metadata.r#abstract.take() {
+                if !abstract_.is_empty() {
+                    let block =
+                        self.render_abstract_block(profile.abstract_style, abstract_.as_content());
+                    self.out.push_str(&block);
+                }
             }
         }
 
         // ── Keywords line ─────────────────────────────────────────────────
-        if !self.metadata.keywords.is_empty() {
+        // When the abstract is deferred into the columns, the keywords
+        // (e.g. IEEE "Index Terms") follow it there — leave them in metadata.
+        if !defer_abstract && !self.metadata.keywords.is_empty() {
             let kws = self
                 .metadata
                 .keywords
@@ -192,6 +194,64 @@ impl<'a> Emitter<'a> {
         }
 
         self.out.push('\n');
+    }
+
+    /// Render the class-faithful abstract block. `content` is the
+    /// already-converted Typst abstract body. Each shape mirrors the heading
+    /// size/weight/small-caps + run-in-vs-centered structure of the source
+    /// class file (see [`crate::style_profile::AbstractStyle`]).
+    pub(in crate::emit) fn render_abstract_block(
+        &self,
+        style: crate::style_profile::AbstractStyle,
+        content: &str,
+    ) -> String {
+        use crate::style_profile::AbstractStyle;
+        match style {
+            // Byte-identical to the historical hardcoded block.
+            AbstractStyle::Neutral => format!(
+                "#v(1em)\n\
+                 #align(center)[#text(weight: \"bold\")[Abstract]]\n\
+                 #v(0.4em)\n\
+                 #pad(x: 2em)[\n  {content}]\n\
+                 #v(0.6em)\n"
+            ),
+            // article.cls wraps the whole abstract env in \small (0.9em).
+            AbstractStyle::ArticleCentered => format!(
+                "#v(1em)\n\
+                 #text(size: 0.9em)[\n\
+                 #align(center)[#text(weight: \"bold\")[Abstract]]\n\
+                 #v(0.4em)\n\
+                 #pad(x: 2.5em)[\n  {content}]\n\
+                 ]\n\
+                 #v(0.6em)\n"
+            ),
+            // NeurIPS/ICML/ACM: \large\bf centered heading + quote body.
+            AbstractStyle::ConferenceHeading { smallcaps: false } => format!(
+                "#v(0.075in)\n\
+                 #align(center)[#text(size: 1.2em, weight: \"bold\")[Abstract]]\n\
+                 #v(0.5em)\n\
+                 #pad(x: 1em)[\n  {content}]\n\
+                 #v(1em)\n"
+            ),
+            // ICLR: \large\sc — small caps, regular weight.
+            AbstractStyle::ConferenceHeading { smallcaps: true } => format!(
+                "#v(0.075in)\n\
+                 #align(center)[#text(size: 1.2em)[#smallcaps[Abstract]]]\n\
+                 #v(0.5em)\n\
+                 #pad(x: 1em)[\n  {content}]\n\
+                 #v(1em)\n"
+            ),
+            // IEEE conference: \small\bfseries\textit{Abstract}--- run-in.
+            AbstractStyle::RunInBoldItalic => format!(
+                "#text(size: 0.9em, weight: \"bold\")[#emph[Abstract]---{content}]\n\
+                 #v(0.5em)\n"
+            ),
+            // LNCS: \small body, bold run-in "Abstract." with 1cm margins.
+            AbstractStyle::RunInBold => format!(
+                "#pad(x: 1cm)[#text(size: 0.9em)[*Abstract.* {content}]]\n\
+                 #v(0.5em)\n"
+            ),
+        }
     }
 
     /// Convert the raw `\author{...}` strings collected during the AST

@@ -525,6 +525,33 @@ impl<'a> Emitter<'a> {
             self.out.push_str(&title_block);
             if self.layout.is_two_column(&self.detected_class) {
                 self.out.push_str("#columns(2)[\n");
+                // In-column conference classes (ICML/IEEE/ACM) defer their
+                // abstract (and IEEE keywords) here, so they render INSIDE the
+                // two-column body — matching the LaTeX layout where these
+                // classes' abstracts share the column width.
+                let profile =
+                    crate::style_profile::StyleProfile::for_class(&self.detected_class);
+                if profile.abstract_in_columns {
+                    if let Some(a) = self.metadata.r#abstract.take() {
+                        if !a.is_empty() {
+                            let block =
+                                self.render_abstract_block(profile.abstract_style, a.as_content());
+                            self.out.push_str(&block);
+                        }
+                    }
+                    if !self.metadata.keywords.is_empty() {
+                        let kws = self
+                            .metadata
+                            .keywords
+                            .drain(..)
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        let _ = writeln!(
+                            self.out,
+                            "#v(0.3em)\n#text(size: 0.9em)[*Keywords:* {kws}]"
+                        );
+                    }
+                }
                 self.out.push_str(body.trim_start_matches('\n'));
                 if !self.out.ends_with('\n') {
                     self.out.push('\n');
