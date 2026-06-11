@@ -17,8 +17,7 @@ pub(crate) enum CiteMode {
     AuthorYear,
 }
 
-/// How the class renders its abstract block. Consumed in Units 2-4.
-#[allow(dead_code)]
+/// How the class renders its abstract block. Consumed in Unit 2.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AbstractStyle {
     Neutral,
@@ -38,11 +37,9 @@ pub(crate) struct StyleProfile {
     /// Full-width rule BELOW the title:
     /// `(gap above the rule, stroke, gap below the rule)`.
     pub title_rule_below: Option<(&'static str, &'static str, &'static str)>,
-    // Consumed in Units 2-4.
-    #[allow(dead_code)]
+    /// How the class renders its abstract block (Unit 2).
     pub abstract_style: AbstractStyle,
-    // Consumed in Units 2-4.
-    #[allow(dead_code)]
+    /// Whether the abstract is placed inside the two-column body (Unit 2).
     pub abstract_in_columns: bool,
     pub body_font: &'static str,
     // Consumed in Units 2-4.
