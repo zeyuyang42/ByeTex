@@ -512,6 +512,16 @@ impl<'a> Emitter<'a> {
         // `\label`s in this included file attaches the alias that some other
         // file `\ref`s (see pick_label_to_attach).
         sub.referenced_labels = self.referenced_labels.clone();
+        // Forward the citation mode set by a natbib/biblatex option in the main
+        // preamble so a `\bibliography{}` that lives in THIS \input'ed file
+        // resolves the right style (the `.or()` merge-back below handles the
+        // reverse case — the option in the include, `\bibliography` at top).
+        // NOTE: `bib_will_render` is deliberately NOT forwarded here — this
+        // sub-emitter does not clone `bibliography_keys`, so enabling `#cite`
+        // forms without that validation set could emit `#cite(<undefined>)`
+        // against the real bib and abort the compile. \input'ed citations stay
+        // `@key` (Unit 3's deliberate, conservative design).
+        sub.natbib_mode = self.natbib_mode;
         sub.emit_root(tree.root_node());
         // Merge the child's body and state back into the parent.
         if !self.out.ends_with('\n') && !self.out.is_empty() {
@@ -543,6 +553,11 @@ impl<'a> Emitter<'a> {
         if matches!(self.detected_class, DocClass::Unknown) {
             self.detected_class = std::mem::replace(&mut sub.detected_class, DocClass::Unknown);
         }
+        // `\usepackage[numbers]{natbib}` can live in an `\input`ed preamble
+        // file; flow the resolved citation mode back so the parent's
+        // `\bibliography` (at document end) picks the right style. Parent wins
+        // if it already set a mode.
+        self.natbib_mode = self.natbib_mode.or(sub.natbib_mode);
         // Take the (possibly extended) visited set back so siblings see
         // the chain. Drop the canonical insert that belonged to *this*
         // include so a sibling `\input{x}` after the current one is still

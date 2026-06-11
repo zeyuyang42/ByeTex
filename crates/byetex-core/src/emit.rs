@@ -229,6 +229,12 @@ pub(crate) struct Emitter<'a> {
     /// `#cite` aborts the compile. Stricter than `had_bib_file`, which is also
     /// set for `.bbl`-only papers (the key harvest reads `.bbl` files too).
     bib_will_render: bool,
+    /// Citation mode forced by an explicit natbib/biblatex package option
+    /// (`\usepackage[numbers]{natbib}` → Numeric, `[authoryear]` → AuthorYear).
+    /// `None` when no relevant option was given — then the `\bibliographystyle`
+    /// bst name or the document-class default decides. Consumed by
+    /// `resolve_bib_style` to pick the `#bibliography(..., style: ...)` arg.
+    natbib_mode: Option<crate::style_profile::CiteMode>,
     /// When true, `emit_node` records each node's output text + source span
     /// into `source_map`. Off by default (zero-overhead normal conversion).
     pub(crate) record_source_map: bool,
@@ -334,6 +340,7 @@ impl<'a> Emitter<'a> {
             has_bibtex_include: false,
             had_bib_file: false,
             bib_will_render: false,
+            natbib_mode: None,
             record_source_map: false,
             source_map: Vec::new(),
         }
@@ -748,6 +755,10 @@ impl<'a> Emitter<'a> {
         // `#bibliography(.bib)`; inherit that gate so `\citet` etc. in
         // expanded/included content also resolve as `#cite(form: …)`.
         sub.bib_will_render = self.bib_will_render;
+        // The bibliography-style mode forced by a natbib option (parsed from
+        // the preamble) must reach sub-emitted content too (mirrors
+        // `bib_will_render`).
+        sub.natbib_mode = self.natbib_mode;
         sub.emit_root(tree.root_node());
         // Merge side-effects back into the parent.
         self.visited_includes = std::mem::take(&mut sub.visited_includes);
@@ -1291,6 +1302,30 @@ impl<'a> Emitter<'a> {
                     if pkg == "geometry" {
                         if let Some(o) = opts.as_deref() {
                             self.layout.apply_geometry(o);
+                        }
+                    }
+                    // natbib/biblatex options pick the citation mode that drives
+                    // the resolved bibliography style. `[numbers]`/`[super]` →
+                    // Numeric; `[authoryear]` → AuthorYear. Bracket-shape options
+                    // (round/square/sort/compress/comma/colon) carry no mode and
+                    // are ignored. Bare `\usepackage{natbib}` (no relevant option)
+                    // leaves the mode None so the bst/class still decides — this
+                    // avoids contradicting a numeric bst paired with bare natbib.
+                    if pkg == "natbib" || pkg == "biblatex" {
+                        if let Some(o) = opts.as_deref() {
+                            for tok in o.split(',') {
+                                match tok.trim() {
+                                    "numbers" | "super" | "superscript" => {
+                                        self.natbib_mode =
+                                            Some(crate::style_profile::CiteMode::Numeric);
+                                    }
+                                    "authoryear" => {
+                                        self.natbib_mode =
+                                            Some(crate::style_profile::CiteMode::AuthorYear);
+                                    }
+                                    _ => {}
+                                }
+                            }
                         }
                     }
                     // Harvest macros / theorems from a local `<pkg>.sty` if

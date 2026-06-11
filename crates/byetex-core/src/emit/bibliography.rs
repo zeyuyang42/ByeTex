@@ -9,6 +9,7 @@ use tree_sitter::Node;
 use super::{
     extract_label_ref_keys_and_end, is_typst_label_char, range_of, sanitize_label_key, Emitter,
 };
+use crate::style_profile::{CiteMode, StyleProfile};
 use crate::warnings::{Category, Severity, Warning};
 
 impl<'a> Emitter<'a> {
@@ -492,7 +493,7 @@ impl<'a> Emitter<'a> {
             return node.end_byte();
         }
         self.ensure_paragraph_break();
-        let mapped = style.as_deref().and_then(map_bibliography_style);
+        let mapped = self.resolve_bib_style(style.as_deref());
         // Typst's `#bibliography` takes either a single path string or a
         // tuple of paths. Emit the tuple form when we have multiple.
         let path_arg = if kept.len() == 1 {
@@ -511,6 +512,43 @@ impl<'a> Emitter<'a> {
             let _ = write!(self.out, "#bibliography({})", path_arg);
         }
         node.end_byte()
+    }
+
+    /// Resolve the Typst `#bibliography(..., style: "...")` argument from three
+    /// signals, in priority order:
+    ///   1. an explicit natbib/biblatex option (`self.natbib_mode`),
+    ///   2. the `\bibliographystyle{bst}` name (`bst`),
+    ///   3. the document-class default (`StyleProfile::for_class`).
+    ///
+    /// Returns `None` to emit no `style:` arg (Typst's default) — preserving
+    /// today's byte-identical output for a plain `article` with a numeric, no
+    /// class default and no recognized bst.
+    pub(in crate::emit) fn resolve_bib_style(&self, bst: Option<&str>) -> Option<&'static str> {
+        let profile = StyleProfile::for_class(&self.detected_class);
+        let bst_resolved = bst.and_then(bst_style_and_mode);
+        match self.natbib_mode {
+            // An explicit natbib option forces the mode; keep a concrete bst
+            // style only when it agrees with that mode.
+            Some(CiteMode::Numeric) => match bst_resolved {
+                Some((s, CiteMode::Numeric)) => Some(s),
+                _ => Some("ieee"),
+            },
+            Some(CiteMode::AuthorYear) => match bst_resolved {
+                Some((s, CiteMode::AuthorYear)) => Some(s),
+                _ => Some("apa"),
+            },
+            None => match bst_resolved {
+                // The bst name alone decides when it's recognized.
+                Some((s, _)) => Some(s),
+                // No bst, no natbib option → the document-class default.
+                None => match profile.cite_default {
+                    CiteMode::AuthorYear => profile.default_bib_style.or(Some("apa")),
+                    // Numeric with no class default → no style arg (today's
+                    // behavior, byte-identical for plain article).
+                    CiteMode::Numeric => profile.default_bib_style,
+                },
+            },
+        }
     }
 
     pub(in crate::emit) fn emit_bibstyle(&mut self, node: Node<'_>) -> usize {
@@ -817,28 +855,37 @@ pub(in crate::emit) fn probe_bib_on_disk(base: &Path, path: &str) -> Option<Path
     None
 }
 
-/// Map a LaTeX `\bibliographystyle{X}` name to the nearest Typst built-in
-/// style. Returns `None` for unknown styles so the caller can omit the
-/// `style:` argument and let Typst use its default.
-pub(in crate::emit) fn map_bibliography_style(latex: &str) -> Option<&'static str> {
+/// Map a LaTeX `\bibliographystyle{X}` bst name to the nearest Typst built-in
+/// CSL style AND the citation mode (numeric vs author-year) it implies. The
+/// mode lets `resolve_bib_style` keep a concrete style only when it agrees with
+/// an explicit natbib option. Returns `None` for unrecognized bst names so the
+/// caller falls through to the class default.
+///
+/// Every CSL name returned here was verified to compile under `typst compile`
+/// (Typst 0.14): ieee, apa, mla, association-for-computing-machinery,
+/// springer-basic, elsevier-with-titles, elsevier-harvard.
+fn bst_style_and_mode(bst: &str) -> Option<(&'static str, CiteMode)> {
     // Typst's `alphanumeric` is for inline citation labels only and rejects
-    // bibliography lists. We pick `ieee` as the safest default for the
-    // numeric/order-of-appearance LaTeX styles since most academic templates
-    // use a numeric bibliography. Author-year variants map to APA.
-    match latex {
-        "plain" | "alpha" | "abbrv" | "unsrt" => Some("ieee"),
-        "plainnat"
-        | "abbrvnat"
-        | "unsrtnat"
-        | "apa"
-        | "apalike"
-        | "apacite"
-        | "chicago"
-        | "chicagoa"
-        | "chicago-author-date" => Some("apa"),
-        "ieee" | "ieeetr" | "IEEEtran" => Some("ieee"),
-        "mla" => Some("mla"),
-        "ACM-Reference-Format" | "acm" | "acmauthoryear" | "acmnumeric" => Some("ieee"),
+    // bibliography lists, so the numeric/order-of-appearance LaTeX styles all
+    // map to `ieee` (the safest numeric list). Author-year variants map to APA
+    // unless a publisher-specific CSL fits better.
+    match bst {
+        "plain" | "alpha" | "abbrv" | "unsrt" | "ieeetr" | "IEEEtran" | "ieee" | "siamplain"
+        | "siam" => Some(("ieee", CiteMode::Numeric)),
+        "splncs04" | "spmpsci" | "spbasic" | "spphys" => {
+            Some(("springer-basic", CiteMode::Numeric))
+        }
+        "ACM-Reference-Format" | "acmnumeric" | "acm" => {
+            Some(("association-for-computing-machinery", CiteMode::Numeric))
+        }
+        "acmauthoryear" => Some(("association-for-computing-machinery", CiteMode::AuthorYear)),
+        "plainnat" | "abbrvnat" | "unsrtnat" | "apa" | "apalike" | "apacite" | "chicago"
+        | "chicagoa" | "chicago-author-date" | "agsm" | "dcu" => Some(("apa", CiteMode::AuthorYear)),
+        "mla" => Some(("mla", CiteMode::AuthorYear)),
+        "elsarticle-num" | "elsarticle-num-names" => {
+            Some(("elsevier-with-titles", CiteMode::Numeric))
+        }
+        "elsarticle-harv" => Some(("elsevier-harvard", CiteMode::AuthorYear)),
         _ => None,
     }
 }
