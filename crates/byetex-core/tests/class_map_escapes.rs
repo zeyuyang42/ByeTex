@@ -83,7 +83,7 @@ Brief.
     let title_line = out
         .typst
         .lines()
-        .find(|l| l.contains("size: 1.5em") && l.contains("Heat"))
+        .find(|l| l.contains("size: 1.728em") && l.contains("Heat"))
         .unwrap_or_else(|| panic!("no title line in:\n{}", out.typst));
     assert!(
         title_line.contains("$") && !title_line.contains(r"\("),

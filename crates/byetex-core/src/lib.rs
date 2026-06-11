@@ -20,6 +20,7 @@ pub use diagnose::Diagnostic;
 
 mod class_map;
 mod document;
+mod style_profile;
 pub(crate) mod emit;
 pub(crate) mod package_macros;
 mod typst_diag;

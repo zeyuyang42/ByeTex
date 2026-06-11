@@ -18,18 +18,66 @@ impl<'a> Emitter<'a> {
         }
         self.ensure_paragraph_break();
 
-        // ── Centred title + author block ──────────────────────────────────
-        self.out.push_str("#align(center)[\n");
-        if let Some(title) = self.metadata.title.take() {
-            let _ = writeln!(
-                self.out,
-                "  #text(size: 1.5em, weight: \"bold\")[{}]",
-                title.as_content()
-            );
+        let profile = crate::style_profile::StyleProfile::for_class(&self.detected_class);
+        let title = self.metadata.title.take();
+        // Horizontal title rules (NeurIPS/ICML) wrap ONLY an actually-emitted
+        // title — a title-less block must not draw orphan rules.
+        let with_rules = title.is_some()
+            && (profile.title_rule_above.is_some() || profile.title_rule_below.is_some());
+
+        if with_rules {
+            if let Some((stroke, gap_below)) = profile.title_rule_above {
+                let _ = writeln!(self.out, "#line(length: 100%, stroke: {stroke})");
+                let _ = writeln!(self.out, "#v({gap_below})");
+            }
         }
 
+        // ── Centred title + author block ──────────────────────────────────
+        self.out.push_str("#align(center)[\n");
+        if let Some(title) = title {
+            let content = title.as_content();
+            let body = if profile.title_smallcaps {
+                format!("#smallcaps[{content}]")
+            } else {
+                content.to_string()
+            };
+            if profile.title_bold {
+                let _ = writeln!(
+                    self.out,
+                    "  #text(size: {}, weight: \"bold\")[{}]",
+                    profile.title_size, body
+                );
+            } else {
+                let _ = writeln!(self.out, "  #text(size: {})[{}]", profile.title_size, body);
+            }
+        }
+
+        if with_rules {
+            // Close the title-only block and draw the bottom rule; authors
+            // land in a second centred block below it (matching the LaTeX
+            // \@maketitle order: the rules wrap only the title).
+            self.out.push_str("]\n");
+            if let Some((gap_above, stroke, gap_below)) = profile.title_rule_below {
+                let _ = writeln!(self.out, "#v({gap_above})");
+                let _ = writeln!(self.out, "#line(length: 100%, stroke: {stroke})");
+                let _ = writeln!(self.out, "#v({gap_below})");
+            }
+            if !self.metadata.authors.is_empty() || self.metadata.date.is_some() {
+                self.out.push_str("#align(center)[\n");
+            }
+        }
+        let tail_open = !with_rules
+            || !self.metadata.authors.is_empty()
+            || self.metadata.date.is_some();
+
         if !self.metadata.authors.is_empty() {
-            self.out.push_str("  #v(0.6em)\n");
+            // The title→author gap. In the rules layout (NeurIPS/ICML) the
+            // bottom rule already emitted its own gap (e.g. NeurIPS's 0.09in),
+            // and authors open a fresh centred block — adding 0.6em on top
+            // would double the space, so suppress it there.
+            if !with_rules {
+                self.out.push_str("  #v(0.6em)\n");
+            }
             // Clone (not take): `finish()` still needs `metadata.authors` to
             // emit `#set document(author: …)` for the PDF metadata field.
             let authors = self.metadata.authors.clone();
@@ -108,7 +156,9 @@ impl<'a> Emitter<'a> {
         if let Some(date) = self.metadata.date.take() {
             let _ = write!(self.out, "  #v(0.4em)\n  {}\n", date);
         }
-        self.out.push_str("]\n");
+        if tail_open {
+            self.out.push_str("]\n");
+        }
 
         // ── Abstract block ────────────────────────────────────────────────
         // LaTeX's `article` abstract: a centered bold "Abstract" heading above
@@ -188,9 +238,12 @@ pub(in crate::emit) fn build_neutral_preamble(
     } else {
         layout.margin.to_typst_value()
     };
+    // Body font is a per-class profile knob (e.g. acmart → Libertinus Serif);
+    // every unprofiled class keeps the neutral "New Computer Modern".
+    let body_font = crate::style_profile::StyleProfile::for_class(class).body_font;
     format!(
         "#set page(paper: \"{paper}\", margin: {margin})\n\
-         #set text(font: \"New Computer Modern\", size: {font_size})\n\
+         #set text(font: \"{body_font}\", size: {font_size})\n\
          #set par(justify: true, leading: 0.65em, spacing: 0.65em, first-line-indent: 1.2em)\n\
          #show heading.where(level: 1): set text(size: 1.44em, weight: \"bold\")\n\
          #show heading.where(level: 2): set text(size: 1.2em, weight: \"bold\")\n\
