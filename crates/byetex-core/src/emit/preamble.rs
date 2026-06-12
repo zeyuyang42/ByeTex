@@ -298,16 +298,19 @@ pub(in crate::emit) fn build_neutral_preamble(
     } else {
         layout.margin.to_typst_value()
     };
-    // Body font is a per-class profile knob (e.g. acmart → Libertinus Serif);
-    // every unprofiled class keeps the neutral "New Computer Modern".
-    let body_font = crate::style_profile::StyleProfile::for_class(class).body_font;
+    // Body font + heading sizes are per-class profile knobs (e.g. acmart →
+    // Libertinus Serif; compact conference sectioning vs article's). Unprofiled
+    // classes keep the neutral "New Computer Modern" + 1.44/1.2/1em hierarchy.
+    let profile = crate::style_profile::StyleProfile::for_class(class);
+    let body_font = profile.body_font;
+    let [h1, h2, h3] = profile.heading_sizes;
     format!(
         "#set page(paper: \"{paper}\", margin: {margin})\n\
          #set text(font: \"{body_font}\", size: {font_size})\n\
          #set par(justify: true, leading: 0.65em, spacing: 0.65em, first-line-indent: 1.2em)\n\
-         #show heading.where(level: 1): set text(size: 1.44em, weight: \"bold\")\n\
-         #show heading.where(level: 2): set text(size: 1.2em, weight: \"bold\")\n\
-         #show heading.where(level: 3): set text(size: 1em, weight: \"bold\")\n\
+         #show heading.where(level: 1): set text(size: {h1}, weight: \"bold\")\n\
+         #show heading.where(level: 2): set text(size: {h2}, weight: \"bold\")\n\
+         #show heading.where(level: 3): set text(size: {h3}, weight: \"bold\")\n\
          #show heading: it => block(above: if it.level == 1 {{ 1.5em }} else {{ 1.4em }}, below: if it.level == 1 {{ 1.0em }} else {{ 0.65em }}, it)\n\n"
     )
 }

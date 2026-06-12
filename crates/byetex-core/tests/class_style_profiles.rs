@@ -307,3 +307,34 @@ fn unknown_class_keeps_neutral_title_and_font() {
         "Unknown class must keep the neutral body font; got:\n{t}"
     );
 }
+
+// ─── Heading sizes (backlog #3) ────────────────────────────────────────────────
+
+#[test]
+fn icml_uses_compact_heading_sizes() {
+    // ICML sections with \large\bf/\normalsize\bf at a 10pt body → 1.2/1.0/1.0em,
+    // not article's inflated 1.44/1.2/1.0.
+    let t = typ(include_str!("../../../tests/fixtures/classes/icml.tex"));
+    assert!(
+        t.contains("#show heading.where(level: 1): set text(size: 1.2em, weight: \"bold\")"),
+        "ICML level-1 heading must be 1.2em; got:\n{t}"
+    );
+    assert!(
+        t.contains("#show heading.where(level: 2): set text(size: 1.0em, weight: \"bold\")"),
+        "ICML level-2 heading must be 1.0em; got:\n{t}"
+    );
+}
+
+#[test]
+fn article_keeps_large_heading_sizes() {
+    // article (and every unprofiled class) keeps the historical 1.44/1.2/1em.
+    let t = typ(include_str!("../../../tests/fixtures/classes/article.tex"));
+    assert!(
+        t.contains("#show heading.where(level: 1): set text(size: 1.44em, weight: \"bold\")"),
+        "article level-1 heading must stay 1.44em; got:\n{t}"
+    );
+    assert!(
+        t.contains("#show heading.where(level: 3): set text(size: 1em, weight: \"bold\")"),
+        "article level-3 heading must stay the historical 1em literal; got:\n{t}"
+    );
+}
