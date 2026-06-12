@@ -16,6 +16,7 @@
 
 ## Corpus Sweep
 
+- **Layout:** one dir per arXiv id. `corpus/<id>/source/` holds pristine inputs (tex, figures, `.bib`, `00README.json`) plus `source.tar.gz`; all generated artifacts go to the sibling `corpus/_out/<id>/`. `corpus/manifest.json` is the only committed file (the rest is gitignored). Reset a messy corpus with `./scripts/corpus_clean.sh` (idempotent; `--purge-out` also wipes `_out/`, `--dry-run` previews).
 - Use `./scripts/corpus_sweep.sh` to verify corpus pass-rate after fixes.
 - The script uses `byetex convert --project` to regenerate full projects including bib preprocessing.
 - **Acceptance gate:** run `BYETEX_BIN=<your binary> ./scripts/acceptance.sh` before merging — it fails (exit 1) if a known-passing paper regresses to BYETEX_FAIL (baseline: `scripts/acceptance_baseline.json`). When a fix flips a paper, promote it from `known_fail` to `known_pass` in that baseline.
