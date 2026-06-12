@@ -1160,6 +1160,11 @@ fn raw_latex_accents_to_unicode(s: &str) -> String {
 /// Commands the sanitizer PRESERVES verbatim (the parsers consume them later,
 /// or they're author separators). Their `{...}` body flows through and is
 /// itself sanitized as text.
+// `quad`/`qquad` are KEPT (not dropped as spacing) so `parse_generic_block`
+// Pattern 3 can split `\textbf{A \quad B}` grouped authors on them; any residual
+// is normalized to a space in `parse_one_author`. A KEEP command's `{...}` body
+// flows back through the sanitizer as text, so `~`/`&` inside one become spaces
+// (harmless for the emails/affiliations these carry).
 const AUTHOR_KEEP_CMDS: &[&str] = &[
     "and", "And", "AND", "quad", "qquad",
     "email", "affiliation", "affil", "institute", "institution", "address",
@@ -1274,14 +1279,19 @@ fn sanitize_macros(s: &str) -> String {
                 b += 1;
             }
             if b < bytes.len() && bytes[b] == b'{' {
-                if let Some(close) = matched_close_brace(s, b) {
-                    if AUTHOR_UNWRAP_CMDS.contains(&name) {
-                        out.push_str(&sanitize_macros(&s[b + 1..close]));
+                match matched_close_brace(s, b) {
+                    Some(close) => {
+                        if AUTHOR_UNWRAP_CMDS.contains(&name) {
+                            out.push_str(&sanitize_macros(&s[b + 1..close]));
+                        }
+                        // else: drop the command AND its body entirely.
+                        i = close + 1;
                     }
-                    // else: drop the command AND its body entirely.
-                    i = close + 1;
-                    continue;
+                    // Unterminated `{` — the tail is malformed and unrecoverable;
+                    // drop the orphan command + rest so the stray `{…` never leaks.
+                    None => i = bytes.len(),
                 }
+                continue;
             }
             // Bare unknown command (no body) — drop the token.
             i = k;
@@ -1511,6 +1521,8 @@ mod author_sanitize_tests {
         assert_eq!(sanitize_author_block(r"Alice \, Bob\}"), "Alice Bob");
         // \hspace{..} drops command AND body; & and ~ become spaces.
         assert_eq!(sanitize_author_block(r"A\hspace{0.5cm}& B~C"), "A B C");
+        // An UNTERMINATED braced command drops the orphan `{…` too (never leak it).
+        assert_eq!(sanitize_author_block(r"Alice \hspace{0.5cm B C"), "Alice");
     }
 
     #[test]
