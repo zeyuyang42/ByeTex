@@ -1,8 +1,9 @@
 # AGENTS.md — start here
 
 You are an AI agent about to repair a ByeTex conversion. ByeTex deterministically
-converts an academic subset of LaTeX to [Typst](https://typst.app); for anything
-outside that subset it emits structured warnings and a catalogue of **skills**.
+converts LaTeX to [Typst](https://typst.app) — it works best on academic papers,
+where its fidelity is tuned — and for anything it can't translate cleanly it emits
+structured warnings and a catalogue of **skills**.
 **Your job: take the generated `.typ` to a clean `typst compile`.**
 
 This file is the orientation. The deeper technical reference is
