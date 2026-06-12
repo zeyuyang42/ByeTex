@@ -27,12 +27,20 @@ fn textit_trailing_space_moves_outside_markers() {
 
 #[test]
 fn textbf_leading_space_moves_outside_markers() {
+    // `a\textbf{ bold}word`: the internal leading space moves OUT of the markers
+    // (no `* bold`), and because the closing side is glued to `word`, the
+    // boundary-safe function form is used: `a #strong[bold]word`. The old
+    // `a *bold*word` shorthand left the bold unclosed in Typst (see
+    // emphasis_word_boundary.rs).
     let t = typ("a\\textbf{ bold}word");
     assert!(
-        t.contains("a *bold*word") || t.contains("a *bold* word"),
-        "leading space must sit outside the strong markers; got:\n{t}"
+        t.contains("a #strong[bold]word"),
+        "leading space outside markers + glued close uses fn form; got:\n{t}"
     );
-    assert!(!t.contains("* bold"), "no space-after-opening marker; got:\n{t}");
+    assert!(
+        !t.contains("* bold") && !t.contains("[ bold"),
+        "no space after the opening marker; got:\n{t}"
+    );
 }
 
 #[test]
