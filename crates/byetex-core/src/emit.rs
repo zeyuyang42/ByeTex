@@ -1247,10 +1247,23 @@ impl<'a> Emitter<'a> {
                 // \And, \corref, \IEEEauthorblockN, …) reach the per-author
                 // parser in class_map.rs intact instead of being intercepted
                 // and consumed by the top-level dispatcher.
+                //
+                // tree-sitter-latex mis-bounds `curly_group_author_list` on a
+                // bare comma list (`\author{A, B, C}`): it ends the group at the
+                // first comma and emits a zero-width close brace, so the node's
+                // `end_byte` truncates the last name and leaks the rest into the
+                // body. Re-derive the true `{...}` extent by brace-matching from
+                // the group's opening `{` in source, and resume past that close.
                 if let Some(arg) = first_curly_like(node) {
+                    let open = arg.start_byte();
+                    if let Some(end) = brace_balanced_end(self.src.as_bytes(), open) {
+                        let inner = self.src.get(open + 1..end - 1).unwrap_or("").to_string();
+                        self.raw_authors.push(inner);
+                        return node.end_byte().max(end);
+                    }
                     let inner = self
                         .src
-                        .get(arg.start_byte() + 1..arg.end_byte().saturating_sub(1))
+                        .get(open + 1..arg.end_byte().saturating_sub(1))
                         .unwrap_or("")
                         .to_string();
                     self.raw_authors.push(inner);
@@ -2643,11 +2656,18 @@ impl<'a> Emitter<'a> {
                 node.end_byte()
             }
             Some("\\author") => {
-                // Raw-bytes capture — same rationale as `author_declaration` above.
+                // Raw-bytes capture — same rationale as `author_declaration` above,
+                // including the comma-list brace-boundary fix.
                 if let Some(arg) = first_curly_group(node) {
+                    let open = arg.start_byte();
+                    if let Some(end) = brace_balanced_end(self.src.as_bytes(), open) {
+                        let inner = self.src.get(open + 1..end - 1).unwrap_or("").to_string();
+                        self.raw_authors.push(inner);
+                        return node.end_byte().max(end);
+                    }
                     let inner = self
                         .src
-                        .get(arg.start_byte() + 1..arg.end_byte().saturating_sub(1))
+                        .get(open + 1..arg.end_byte().saturating_sub(1))
                         .unwrap_or("")
                         .to_string();
                     self.raw_authors.push(inner);

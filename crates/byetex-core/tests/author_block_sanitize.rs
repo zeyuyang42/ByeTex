@@ -36,3 +36,30 @@ fn neurips_comma_thinspace_block_is_clean() {
     assert!(typst.contains("Pablo Moreno"), "author 1 missing:\n{typst}");
     assert!(typst.contains("Adrian Müller"), "author 2 missing:\n{typst}");
 }
+
+#[test]
+fn comma_names_with_shared_lines_split_all_authors() {
+    // Mirrors 2605.22776: comma-separated authors, shared \\ affiliation + email.
+    let typst = render(
+        "\\documentclass{article}\
+         \\author{A. Kirpichenko, A. Konstantinov, L. Utkin \\\\ Peter the Great University \\\\ utkin@x.edu}",
+    );
+    assert_clean(&typst);
+    for who in ["Kirpichenko", "Konstantinov", "Utkin"] {
+        assert!(typst.contains(who), "missing author {who}:\n{typst}");
+    }
+    assert!(typst.contains("Peter the Great University"), "shared affiliation missing:\n{typst}");
+}
+
+#[test]
+fn textbf_quad_group_splits_authors() {
+    // Mirrors 2605.22765: \textbf{ A \quad B \quad C } grouped author row.
+    let typst = render(
+        "\\documentclass{article}\\usepackage{neurips_2026}\
+         \\author{\\textbf{ Umut Simsekli \\quad Eric Moulines \\quad Anna Korba }}",
+    );
+    assert_clean(&typst);
+    for who in ["Umut Simsekli", "Eric Moulines", "Anna Korba"] {
+        assert!(typst.contains(who), "missing author {who}:\n{typst}");
+    }
+}

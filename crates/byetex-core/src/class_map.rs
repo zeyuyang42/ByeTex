@@ -369,17 +369,120 @@ pub(crate) fn parse_authors(raw: &[String], class: &DocClass) -> Vec<Author> {
 /// to pull out `\email{...}`, `\thanks{...}`, `\affiliation{...}`,
 /// `\orcid{...}`, etc.
 fn parse_generic_block(s: &str) -> Vec<Author> {
-    // Normalise case-variants of the \and separator so a single split suffices.
     let normalised = s.replace("\\AND", "\\and").replace("\\And", "\\and");
-    let mut authors = Vec::new();
-    for piece in normalised.split("\\and") {
-        let trimmed = piece.trim();
-        if trimmed.is_empty() {
+
+    // Pattern 1: `\and`-separated self-contained authors.
+    if normalised.contains("\\and") {
+        return normalised
+            .split("\\and")
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+            .map(parse_one_author)
+            .collect();
+    }
+
+    // Pattern 2: comma-separated names followed by shared `\\` lines.
+    if let Some((head, tail)) = normalised.split_once("\\\\") {
+        let (shared_affil, shared_email) = parse_shared_lines(tail);
+        let names = split_top_level_commas_owned(head.trim());
+        let attach = |mut a: Author| -> Author {
+            if a.affiliation.is_none() {
+                a.affiliation = shared_affil.clone();
+            }
+            if a.email.is_none() {
+                a.email = shared_email.clone();
+            }
+            a
+        };
+        if names.len() > 1 {
+            return names
+                .iter()
+                .map(|n| attach(parse_one_author(n.trim())))
+                .collect();
+        }
+        return vec![attach(parse_one_author(head.trim()))];
+    }
+
+    // Pattern 3: `\quad`/`\qquad`-separated grouped names (post-sanitize the
+    // `\textbf{...}` is unwrapped, leaving `A \quad B`).
+    if normalised.contains("\\quad") || normalised.contains("\\qquad") {
+        return normalised
+            .replace("\\qquad", "\\quad")
+            .split("\\quad")
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+            .map(parse_one_author)
+            .collect();
+    }
+
+    // Single author.
+    vec![parse_one_author(normalised.trim())]
+}
+
+/// Split on top-level commas — commas inside `{...}` are NOT separators.
+/// Returns owned trimmed, non-empty parts (the author-block variant; distinct
+/// from the geometry `split_top_level_commas` which yields `&str` slices).
+fn split_top_level_commas_owned(s: &str) -> Vec<String> {
+    let mut parts = Vec::new();
+    let mut depth = 0i32;
+    let mut start = 0usize;
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'{' => depth += 1,
+            b'}' => depth -= 1,
+            b',' if depth == 0 => {
+                parts.push(s[start..i].to_string());
+                start = i + 1;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    parts.push(s[start..].to_string());
+    parts.into_iter().map(|p| p.trim().to_string()).filter(|p| !p.is_empty()).collect()
+}
+
+/// From the `\\`-separated lines that follow the name list, derive a shared
+/// affiliation (first non-email line) and email (first line containing `@` or
+/// an `\email{}`), applied to every author in the block.
+fn parse_shared_lines(tail: &str) -> (Option<crate::document::Affiliation>, Option<String>) {
+    let mut affil = None;
+    let mut email = None;
+    for line in tail.split("\\\\").map(str::trim).filter(|l| !l.is_empty()) {
+        // `\email{x}` or a bare `x@y` token.
+        if let Some(e) = extract_email_token(line) {
+            if email.is_none() {
+                email = Some(e);
+            }
             continue;
         }
-        authors.push(parse_one_author(trimmed));
+        if affil.is_none() {
+            affil = Some(crate::document::Affiliation::from_raw(Content::Typst(
+                latex_text_to_typst(line),
+            )));
+        }
     }
-    authors
+    (affil, email)
+}
+
+/// Pull an email from a line: `\email{x@y}` body, or the first `@`-containing
+/// whitespace token. Returns `None` if the line has no email.
+fn extract_email_token(line: &str) -> Option<String> {
+    if let Some(i) = line.find("\\email") {
+        let after = i + "\\email".len();
+        if line[after..].trim_start().starts_with('{') {
+            let bpos = after + line[after..].find('{').unwrap();
+            if let Some(end) = matched_close_brace(line, bpos) {
+                return Some(line[bpos + 1..end].trim().to_string());
+            }
+        }
+    }
+    line.split_whitespace().find(|t| t.contains('@')).map(|t| {
+        t.trim_matches(|c: char| !c.is_alphanumeric() && c != '@' && c != '.' && c != '_' && c != '-')
+            .to_string()
+    })
 }
 
 /// Parse a single `\author{...}` chunk that may contain embedded
@@ -472,7 +575,8 @@ fn parse_one_author(chunk: &str) -> Author {
     // name wasn't matched above (e.g. unknown author sub-commands). Emit the
     // body contents so the name stays as clean text. Also strip `\cmd` (no
     // braces) when it's a pure marker.
-    let cleaned_name = strip_unknown_author_cmds(name.trim());
+    let despaced = name.replace("\\qquad", " ").replace("\\quad", " ");
+    let cleaned_name = strip_unknown_author_cmds(despaced.trim());
     Author {
         name: Content::Typst(latex_text_to_typst(&cleaned_name)),
         email,
