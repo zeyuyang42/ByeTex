@@ -986,6 +986,116 @@ def aggregate_fidelity_score(papers: dict) -> float | None:
     return round(sum(scores) / len(scores), 3)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Vision-grading packet: high-DPI front-matter crops + a per-paper evidence index
+# ─────────────────────────────────────────────────────────────────────────────
+
+def rasterize_page1_highres(pdf: Path, prefix: Path, dpi: int = 200) -> "Path | None":
+    """Rasterize only page 1 of a PDF at high DPI; return the single PNG or None."""
+    prefix.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        ["pdftoppm", "-r", str(dpi), "-f", "1", "-l", "1", "-png", str(pdf), str(prefix)],
+        check=True,
+        capture_output=True,
+    )
+    pages = sorted(
+        prefix.parent.glob(f"{prefix.name}-*.png"),
+        key=lambda p: int(re.search(r"-(\d+)\.png$", p.name).group(1)),
+    )
+    return pages[0] if pages else None
+
+
+def crop_front_matter(page_png: Path, out: Path, top_frac: float = 0.40) -> Path:
+    """Crop the full-width top `top_frac` of a page raster (title/author/abstract band)."""
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with Image.open(page_png) as img:
+        w, h = img.size
+        img.crop((0, 0, w, int(h * top_frac))).save(out)
+    return out
+
+
+# Map known base documentclasses to friendly labels.
+_DOC_CLASS_MAP = {
+    "IEEEtran": "ieeetran",
+    "acmart": "acmart",
+    "llncs": "lncs",
+    "elsarticle": "elsarticle",
+    "article": "article",
+    "report": "article",
+}
+
+
+def detect_doc_class(toplevel_tex: Path) -> "str | None":
+    """Detect the (friendly) document class from a top-level .tex; None if unknown."""
+    try:
+        text = toplevel_tex.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    m = re.search(r"\\documentclass(\[[^]]*\])?\{([a-zA-Z]+)\}", text)
+    if not m:
+        return None
+    base = m.group(2)
+    # article/report with a conference style package → conference label. The
+    # package may carry a path prefix, e.g. \usepackage{style/neurips_2026}, so
+    # match the family name ANYWHERE inside the \usepackage{...} braces.
+    if base in ("article", "report"):
+        for pkg in re.findall(r"\\usepackage(?:\[[^]]*\])?\{([^}]*)\}", text):
+            for label in ("neurips", "icml", "iclr"):
+                if label in pkg.lower():
+                    return label
+    return _DOC_CLASS_MAP.get(base)
+
+
+def build_grading_packet(
+    out_dir: Path,
+    summary: dict,
+    front_matter: dict,
+    detected_class: "str | None",
+    rubric_rel: str = "docs/fidelity-rubric.md",
+) -> Path:
+    """Write out_dir/grading_packet.json: a portable index of all grading evidence."""
+    pages_dir = out_dir / "pages"
+
+    def _by_num(prefix: str) -> dict:
+        # Pair the standard per-page rasters (`<side>-NN.png`). Exclude the
+        # high-DPI front-matter intermediates (`<side>-fm-NN.png`), which share
+        # the `<side>-*` glob and would otherwise collide on page 1.
+        found: dict[int, str] = {}
+        if pages_dir.is_dir():
+            for p in pages_dir.glob(f"{prefix}-*.png"):
+                if f"{prefix}-fm-" in p.name:
+                    continue
+                mm = re.search(r"-(\d+)\.png$", p.name)
+                if mm:
+                    found[int(mm.group(1))] = f"pages/{p.name}"
+        return found
+
+    truth_by_num = _by_num("truth")
+    typst_by_num = _by_num("typst")
+    pages = []
+    for num in sorted(set(truth_by_num) | set(typst_by_num)):
+        pages.append({
+            "page": num,
+            "truth": truth_by_num.get(num),
+            "typst": typst_by_num.get(num),
+        })
+
+    packet = {
+        "id": summary.get("id") or out_dir.name,
+        "detected_class": detected_class,
+        "truth_source": summary.get("truth_source"),
+        "front_matter": front_matter or None,
+        "pages": pages,
+        "composite": "composite.png",
+        "structure": summary.get("structure") or {},
+        "warnings": summary.get("warnings") or {},
+        "rubric": rubric_rel,
+    }
+    out = out_dir / "grading_packet.json"
+    out.write_text(json.dumps(packet, indent=2) + "\n")
+    return out
+
+
 def build_composite(
     truth_pages: list[Path],
     typst_pages: list[Path],
@@ -1313,6 +1423,32 @@ def process_paper(
     kb = composite_path.stat().st_size // 1024
     print(f"  composite.png: {kb} KB", flush=True)
 
+    # 6b. Vision-grading packet: high-DPI page-1 front-matter crops + an index
+    # pointing at every piece of evidence with the metrics inlined. A crop
+    # failure must not abort the paper — the full page rasters remain.
+    fm: dict = {}
+    try:
+        for side, pdf in (("truth", truth_dest), ("typst", typst_pdf)):
+            p1 = rasterize_page1_highres(
+                pdf, pages_dir / f"{side}-fm", args.front_matter_dpi
+            )
+            if p1 is not None:
+                crop_front_matter(p1, pages_dir / f"frontmatter-{side}.png")
+                fm[side] = f"pages/frontmatter-{side}.png"
+                # Drop the full-page high-DPI intermediate; only the crop is kept
+                # (and it would otherwise clutter the per-page raster set).
+                p1.unlink(missing_ok=True)
+    except Exception as e:  # noqa: BLE001 — best-effort; never abort the paper
+        print(f"  [warn] front-matter crop failed: {e}", flush=True)
+        fm = {}
+    try:
+        cls = detect_doc_class(toplevel)
+        summary["detected_class"] = cls
+        build_grading_packet(out_dir, {**summary, "id": arxiv_id}, fm, cls)
+        print(f"  grading_packet.json + front-matter crops", flush=True)
+    except Exception as e:  # noqa: BLE001
+        print(f"  [warn] grading packet failed: {e}", flush=True)
+
     # 7. Write per-paper summary
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     return summary
@@ -1350,6 +1486,10 @@ def main() -> None:
     p.add_argument(
         "--rasterize-dpi", type=int, default=RASTERIZE_DPI, metavar="DPI",
         help=f"pdftoppm DPI for rasterization (default: {RASTERIZE_DPI})",
+    )
+    p.add_argument(
+        "--front-matter-dpi", type=int, default=200, metavar="DPI",
+        help="pdftoppm DPI for the high-res page-1 front-matter crop (default: 200)",
     )
     p.add_argument(
         "--no-truth-download", action="store_true",
