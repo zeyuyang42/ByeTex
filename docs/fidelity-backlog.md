@@ -137,12 +137,27 @@ non-interpreting cell context; data columns dropped).
 **Fix sketch.** Reproduce with a minimal `\multirow`+`\cmidrule` fixture; fix rowspan/cmidrule
 parsing so data cells aren't consumed and `\textbf` in a cell emits Typst strong, not literal `*`.
 
-### 9. Cleveref double-prefix  — lncs, sev 4
-**Symptom.** 31598: "Fig. **Figure** 3", "Section **Section** H.1" — `\cref`/`\Cref` prepends a
-literal type word on top of an already-prefixed resolved reference.
-**Suspected site.** the `\cref`/`\Cref` emitter (cleveref handling in `emit/bibliography.rs` or refs).
-**Fix sketch.** Emit the bare `@label` (Typst supplies the "Figure"/"Section" prefix via the
-reference) instead of prepending the cleveref prefix word.
+### 9. Reference double-prefix  — lncs+others, sev 4  — ⚠️ ROOT-CAUSED; fix reverted (needs a more robust approach)
+**Symptom.** "Fig. **Figure** 3", "Section **Section** H.1".
+**Root cause (2026-06-12, corrected).** NOT `\cref`. byetex converts `\cref`/`\ref` correctly. The
+double-prefix is from plain **`\ref`**: authors very commonly write `Fig.~\ref{x}` / `Section~\ref{x}`
+(manual prefix). LaTeX `\ref` renders only the counter ("3"), but byetex maps `\ref` → `@key`, and
+Typst's `@key`/`#ref` AUTO-prepends "Figure"/"Section" → "Fig. Figure 3". `\cref`/`\autoref` (which
+SHOULD prefix) keep `@key` and are correct.
+**Attempted fix (REVERTED — too many sharp edges to land cleanly this session).** Map plain `\ref` →
+`#ref(<k>, supplement: none)` (counter only, faithful). This is correct in principle and passed unit
+tests, but the `#ref(...)` FUNCTION form is fragile where the `@key` shorthand was robust, causing
+**compile regressions** the acceptance gate caught: (a) `\ref{x}(ii)` → `#ref(…)(ii)` parses `(ii)`
+as a CALL (`unknown variable: ii`, 2605.22800) — fixable with a trailing-space guard before `(`/`[`/`.`;
+(b) `\ref` inside a **table cell** gets its `<…>`/`_` escaped by the cell-content escaper →
+`#ref(\<sec\_x>…)` → "character `\` is not valid in code" (2605.31072). (b) is the blocker: the cell
+escaper mangles the fn-form's label. Churns ~6 ref test files too.
+**Better approach for a clean future fix:** either (1) make the cell/escaping path ref-aware so an
+emitted `#ref(...)` is never re-escaped, THEN re-apply the `\ref`→`supplement: none` + the `(`/`[`/`.`
+adjacency guard (both are written-and-tested in git history of the reverted `fidelity-cleveref`
+branch); or (2) a global preamble show-rule that strips the supplement for plain refs without the
+fn-form (investigate whether `#show ref:` can distinguish `\ref` from `\cref` call sites — likely
+needs a per-call marker, so (1) is more tractable). Keep `@key` for `\cref`/`\autoref`/`\eqref`.
 
 ### 10. Body escaping leakage  — neurips/article, sev 2
 **Symptom.** 22765 `bert-base-uncased` → `bertext{-}baseext{-}uncased` (literal `{-}`/`\text`
