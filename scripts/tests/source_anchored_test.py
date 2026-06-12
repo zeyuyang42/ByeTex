@@ -105,6 +105,41 @@ check(
     f"#heading(...)[Title] forms must be extracted (label/markup stripped); got {thf}",
 )
 
+# A `=`-leading line INSIDE a multi-line `$ … $` display equation is the
+# equation's equals sign, not a heading (backlog #4 — the 2605.22159
+# `= chevron.l f,g chevron.r` false heading). Must NOT be extracted.
+typ_matheq = """= Real Heading <sec:x>
+$
+chevron.l a, b chevron.r
+= chevron.l c, d chevron.r_(X times B)
+$ <eqn:dsp>
+== Another Real Heading
+"""
+thm = vt.typ_headings(typ_matheq)
+check(
+    thm == ["real heading", "another real heading"],
+    f"`=` lines inside $...$ display math must not count as headings; got {thm}",
+)
+
+# `\paragraph`/`\subparagraph` become `#heading(level: 4+, …)`; source_headings
+# only counts levels 1-3, so the typst side must too (the ICML heading_recall
+# 0.45 artifact — bold run-in paragraph leads over-counted).
+typ_para = """= Method <sec:m>
+#heading(level: 4, numbering: none)[Hypothesis.]
+#heading(level: 5, numbering: none)[Setup.]
+== Results
+"""
+thp = vt.typ_headings(typ_para)
+check(
+    thp == ["method", "results"],
+    f"level-4+ (\\paragraph) #heading must be excluded to match source; got {thp}",
+)
+# And the `======` (level 4-6) marker form is likewise excluded.
+check(
+    vt.typ_headings("==== deep para\n= real") == ["real"],
+    "level-4+ `=` markers excluded",
+)
+
 
 # ── typ_float_counts: real figures/tables from byetex's .typ ────────────────────
 # The PDF-side "Figure N"/"Table N" caption count over-counts because byetex
