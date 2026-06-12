@@ -265,3 +265,37 @@ tests above are the authoritative guard, with the composites as visual confirmat
 uv run --with requests --with Pillow --with numpy --with scikit-image \
   python scripts/visual_test.py --papers 2605.22507 2605.22820 2605.31526 2605.31598 2605.22159 2605.31244 --truth-source auto
 ```
+
+### Update 2026-06-12 (vision-grading fidelity audit — 8 papers)
+
+The structural metrics above are blind to typography & layout (title/abstract/citation style,
+fonts, leakage, float placement, heading sizes — small page fractions, invisible to word-set
+recall and 100-DPI SSIM). A **vision-grading loop** now fills that gap: `scripts/visual_test.py`
+emits a 200-DPI front-matter crop + a per-paper `grading_packet.json` (#216); a vision agent grades
+each paper against `docs/fidelity-rubric.md` (#215) via the `byetex-visual-grading` skill (#217),
+emitting structured findings.
+
+**First audit** — one+ paper per profiled class, arXiv truth: 2605.22159, 2605.22507, 2605.22765,
+2605.22820, 2605.31244, 2605.31526, 2605.31598, 2605.22776. All compile. Findings ranked into
+`docs/fidelity-backlog.md`.
+
+| paper | class | majors | dominant finding |
+|---|---|---:|---|
+| 2605.22159 | article | 3 | author-block leak; section-heading math leak; dropped figure |
+| 2605.22507 | neurips | 5 | author-block leak (`% … \, \}`); title rules/weight not applied; 4/11 figs |
+| 2605.22765 | neurips | 4 | author-block raw-LaTeX leak; 6/10 figs, 3/5 tables (framed) dropped |
+| 2605.22820 | iclr | 4 | author/`\thanks`/`\newcolumntype` leak; small-caps over-applied |
+| 2605.31244 | icml | 2 | heading sizes ~2× too large; title too large |
+| 2605.31526 | ieeetran | 2 | 2/13 figs render; author list collapses to one name |
+| 2605.31598 | lncs | 2 | `\multirow`+`\cmidrule` table corruption; cleveref double-prefix |
+| 2605.22776 | article | 1 | author/affiliation/email block dropped |
+
+**Headline:** **author-block LaTeX leakage is a major defect in 6 of 8 papers** — entirely
+invisible to the prior metrics. The two NeurIPS papers fail it *differently* (22507 leaks
+`%…\,\}`, 22765 leaks a `\textbf{…\quad…}` line), confirming the author parser is fragile, not
+uniformly wrong. The body (math, bibliography, geometry, density) grades strong across the board.
+
+Top backlog items (freq × severity): #1 author block (6 papers) → #3 per-class heading sizes →
+#7 heading math-leak → #8 LNCS table multirow → #9 cleveref double-prefix. See
+`docs/fidelity-backlog.md` for the suspected `emit/` site + fix sketch on each; per-paper
+`findings.json` live under `tests/visual/<id>/` (gitignored).
