@@ -2745,6 +2745,26 @@ impl<'a> Emitter<'a> {
             Some("\\mbox") | Some("\\hbox") | Some("\\fbox") | Some("\\framebox") => {
                 self.emit_inline_unwrap(node)
             }
+            // `\resizebox{w}{h}{X}` / `\scalebox{f}{X}` / `\rotatebox{a}{X}` /
+            // `\reflectbox{X}` (graphicx) scale/transform their LAST argument.
+            // ByeTex can't reproduce the scaling, but the wrapped content —
+            // frequently a wide `tabular` — MUST survive rather than be dropped
+            // with the size args (corpus: 21 papers use
+            // `\resizebox{\textwidth}{!}{…}` to fit a table to the text width).
+            // Emit the last group's content; drop the size/transform args.
+            Some("\\resizebox") | Some("\\scalebox") | Some("\\rotatebox")
+            | Some("\\reflectbox") => {
+                let mut cursor = node.walk();
+                let content = node
+                    .children(&mut cursor)
+                    .filter(|c| c.kind().starts_with("curly_group"))
+                    .last();
+                if let Some(c) = content {
+                    let rendered = self.render_curly_group_content(c);
+                    self.out.push_str(&rendered);
+                }
+                node.end_byte()
+            }
             // `\multirow{n}{w}{X}` → `table.cell(rowspan: n)[X]`. The third
             // `{X}` argument is the cell content; the second is column width.
             Some("\\multirow") => {
