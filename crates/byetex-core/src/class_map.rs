@@ -117,13 +117,17 @@ impl DocClass {
         if !matches!(self, Self::Unknown | Self::ArxivArticle) {
             return self;
         }
-        if pkg.starts_with("neurips_") {
+        // The package may carry a path prefix, e.g.
+        // `\usepackage{style/neurips_2026}` (corpus 2605.22507) — match the
+        // basename so the conference style is still detected.
+        let base = pkg.rsplit('/').next().unwrap_or(pkg);
+        if base.starts_with("neurips_") {
             return Self::Neurips;
         }
-        if pkg.starts_with("icml") {
+        if base.starts_with("icml") {
             return Self::Icml;
         }
-        if pkg.starts_with("iclr") {
+        if base.starts_with("iclr") {
             return Self::Iclr;
         }
         self
@@ -612,7 +616,7 @@ fn parse_one_author(chunk: &str) -> Author {
         name: Content::Typst(latex_text_to_typst(&cleaned_name)),
         email,
         affiliation: affiliation_raw
-            .map(|raw| crate::document::Affiliation::from_raw(Content::Typst(raw))),
+            .map(|raw| crate::document::Affiliation::from_raw(Content::Typst(latex_text_to_typst(&raw)))),
         orcid,
         equal_contribution: equal,
     }
@@ -737,7 +741,7 @@ fn parse_neurips_block(s: &str) -> Vec<Author> {
                 email = Some(cleaned.to_string());
             } else if affil.is_none() {
                 affil = Some(crate::document::Affiliation::from_raw(Content::Typst(
-                    (*line).to_string(),
+                    latex_text_to_typst(line),
                 )));
             }
         }
@@ -1172,8 +1176,15 @@ const AUTHOR_KEEP_CMDS: &[&str] = &[
     "IEEEauthorblockN", "IEEEauthorblockA",
     "corref", "fnref", "authorrefmark", "inst", "textsuperscript",
 ];
-/// Font-style commands whose inner text is KEPT (the command stripped).
-const AUTHOR_UNWRAP_CMDS: &[&str] = &["textbf", "textit", "emph", "text"];
+/// Font-style/size commands whose inner text is KEPT (the command stripped) —
+/// e.g. affiliation lines wrapped in `\small{University}` keep "University".
+const AUTHOR_UNWRAP_CMDS: &[&str] = &[
+    "textbf", "textit", "emph", "text", "textnormal", "textrm", "textsf", "textsc",
+    "small", "footnotesize", "scriptsize", "tiny",
+    "large", "Large", "LARGE", "huge", "Huge", "normalsize",
+    "bfseries", "mdseries", "itshape", "scshape", "upshape",
+    "sffamily", "rmfamily", "ttfamily",
+];
 
 /// Strip `%`…end-of-line LaTeX comments, honoring an escaped `\%`.
 fn strip_latex_comments(s: &str) -> String {
@@ -1236,11 +1247,17 @@ fn sanitize_macros(s: &str) -> String {
                 let ch = s[i + 1..].chars().next().unwrap();
                 match ch {
                     ',' | ';' | '!' | ':' | '>' | ' ' => out.push(' '), // thin/neg spaces
-                    '{' | '}' => {}                                      // stray escaped brace — drop
+                    // Stray escaped brace, delimiter (`\|`), italic correction
+                    // (`\/`), discretionary hyphen (`\-`) — no name content, drop.
+                    '{' | '}' | '|' | '/' | '-' => {}
+                    // Keep everything else with the backslash: the text escapes
+                    // (`\&` `\%` `\_` `\#` `\$`) AND the accent commands
+                    // (`\~n` `\"u` `\'e` `` \`a `` `\^o` `\=` `\.`) which
+                    // `latex_text_to_typst` resolves to accented characters.
                     _ => {
                         out.push('\\');
                         out.push(ch);
-                    } // \& \% \_ … keep for latex_text_to_typst
+                    }
                 }
                 i += 1 + ch.len_utf8();
                 continue;
@@ -1550,3 +1567,4 @@ mod author_sanitize_tests {
         assert!(once.contains("ller"));
     }
 }
+
