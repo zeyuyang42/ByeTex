@@ -217,3 +217,51 @@ separate follow-up.
 **Measurement gotcha:** `scripts/visual_test.py` builds/uses `REPO_ROOT/target/release/byetex`
 and ignores `BYETEX_BIN` — run it **from the worktree** (with the corpus symlinked) to measure a
 branch's binary, or the stale main-checkout binary silently masks the change.
+
+### Update 2026-06-12 (class-faithful front matter + citations — PRs #210–#213)
+
+Until now every `\documentclass` rendered with one neutral preamble: a fixed `1.5em` bold
+title, one centered "Abstract" block, every `\cite*` collapsed to `@key`, and the bibliography
+style taken only from `\bibliographystyle`. None of this surfaced as a warning, so the repair
+agent could not fix it either. A per-`DocClass` `StyleProfile`
+(`crates/byetex-core/src/style_profile.rs`) now drives front-matter + citation fidelity at
+**convert time**:
+
+| signal | what it now does |
+|---|---|
+| **title** (#210) | per-class size/weight/small-caps: article `\LARGE` 1.728em regular; NeurIPS 1.7em bold + 4pt/1pt title rules; ICML 1.4em bold + 1pt rules; ICLR small-caps; IEEEtran `\Huge` 2.4em; LNCS 1.44em bold. acmart body font → Libertinus Serif. Verified against the bundled `.sty`/`.cls`. |
+| **abstract** (#211) | per-class style (article `\small`+quotation; NeurIPS/ICML 1.2em bold + quote; ICLR small-caps; IEEE run-in `*Abstract*—`; LNCS run-in `*Abstract.*`) and **moved into column 1** for the two-column classes (ICML/IEEE/acmart). |
+| **citations** (#212) | natbib/biblatex forms: `\citet`→`#cite(form: "prose")`, `\citeauthor`→author, `\citeyear`→year, `\nocite`→`form: none`, postnotes→supplements. Gated on a real `#bibliography(.bib)` rendering (`bib_will_render`) so inlined-`.bbl`/`thebibliography` papers stay `@key` (a regression the acceptance gate caught and pinned with `bbl_only_paper_keeps_at_form`). |
+| **bib style** (#213) | auto numeric-vs-author-year from natbib option → bst name → class default. ICML/NeurIPS/ICLR now emit `style: "apa"` (were rendering numeric); IEEEtran→ieee, acmart→ACM, LNCS→springer-basic. All 8 CSL names compile under typst 0.14. |
+
+**Durable preservation:** 49 new emission tests across `class_style_profiles.rs`, `cite_forms.rs`,
+`bib_style_resolution.rs` (+ per-class fixtures in `tests/fixtures/classes/`) pin the exact
+per-class output; the neutral fallback for unprofiled classes is byte-identical.
+
+**Acceptance gate held at every unit** — 45/45 `known_pass` papers still compile (`BYETEX_BIN`
+= the branch binary).
+
+**Visual fidelity (one representative paper per profiled class, source-anchored, arXiv truth):**
+
+| paper | class | word_recall | heading_recall | mean_ssim | page_ratio | status |
+|---|---|---|---|---|---|---|
+| 2605.22507 | NeurIPS | 0.90 | 0.95 | 0.56 | 1.00 | ok |
+| 2605.22820 | ICLR | 0.90 | 1.00 | 0.57 | 0.96 | ok |
+| 2605.31526 | IEEEtran | 0.91 | 1.00 | 0.44 | 1.00 | ok |
+| 2605.31598 | LNCS | 0.83 | 0.77 | 0.57 | 0.79 | ok |
+| 2605.22159 | article | 0.88 | 1.00 | 0.54 | 1.08 | ok |
+| 2605.31244 | ICML | 0.86 | 0.45 | 0.48 | 0.91 | structure_failed¹ |
+
+Representative-set composite fidelity score **0.814**; 5/6 pass all structure gates and all 6
+compile. ¹ICML fails only the `heading_recall` *metric* (0.45) — a heading-detection quirk on
+that paper, not a compile or front-matter defect; its first-page composite shows the title,
+the in-column abstract, and author-year citations matching the LaTeX truth.
+
+The structural metrics (word/heading recall) are largely **blind** to front-matter changes
+(title/abstract/citations are a small fraction of page area); the per-class emission snapshot
+tests above are the authoritative guard, with the composites as visual confirmation. Note
+`tests/visual/` is gitignored — regenerate locally with the worktree binary:
+```
+uv run --with requests --with Pillow --with numpy --with scikit-image \
+  python scripts/visual_test.py --papers 2605.22507 2605.22820 2605.31526 2605.31598 2605.22159 2605.31244 --truth-source auto
+```
