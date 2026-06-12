@@ -23,7 +23,31 @@ density) is strong** — most `match` rows are there. Fidelity damage concentrat
 
 ## P0 — high frequency, high severity
 
-### 1. Author-block LaTeX leakage / mangling  — 6 of 8 papers, peak sev 5
+### 1. Author-block LaTeX leakage / mangling  — 6 of 8 papers, peak sev 5  — ✅ RESOLVED (PR #219)
+
+**Resolution (2026-06-12).** Two-stage "sanitize → parse" (`class_map.rs::sanitize_author_block`):
+a denylist tokenizer strips comments + non-displaying spacing macros (`\,`/`\;`/`\hspace{}`/`~`/`&`/
+`\|`) + unknown braced commands, unwraps font-style wrappers (`\textbf`/`\small`/…) keeping inner
+text, and preserves accents (`\"u`→ü) + `\\`/`\quad` separators. `parse_generic_block` now splits
+`\and` / comma-names+shared-`\\`-lines / `\textbf{a \quad b}` groups; substantive `\thanks`→
+affiliation/email. Two load-bearing fixes found while re-grading: an `emit.rs` `\author` capture
+that brace-matched its real extent (tree-sitter mis-bounds bare comma lists), and
+`refine_from_package` now matching path-prefixed conference packages (`style/neurips_2026`) — which
+ALSO restored NeurIPS/ICML/ICLR title+abstract styling on those papers. Re-graded 2605.22507 (now
+3 clean authors + affiliations + rules), 22765 (`\quad`-row split), 22159 (un-glued). **Residuals
+logged below as 1a/1b (out of the stop-the-leakage scope).** Spec/plan:
+`docs/superpowers/{specs,plans}/2026-06-12-author-block-*`.
+
+- **1a (sev 2):** `\newcolumntype{C}[1]{>{}p{#1}}` p-column spec still leaks above Keywords on 22820 —
+  a *preamble capture-boundary* issue (the spec leaks as body text, not via the author block).
+  Investigate `\newcolumntype` handling in emit (it should be consumed like a definition, not emitted).
+- **1b (sev 1):** `&`-separated authors (`Carlos Heredia & Daniel Roncel`, 22820) render the `&` as a
+  literal ampersand without splitting — can't blindly split on `&` (legitimate in "ICREA & Univ").
+  Low value; revisit only if a real template needs it. `ß`→glyph loss (22159) is a Typst font issue.
+
+---
+
+**Original report.**
 **Symptom.** Raw LaTeX tokens leak into the rendered author block and authors/affiliations/emails
 are dropped or collapsed into one run-in line. Observed: a stray leading `%`, literal `\,` `\}`
 `\quad` `\hspace{..}` `&` `\textbf{...}` `\textit{...}`, a `\newcolumntype` p-column spec leaking
