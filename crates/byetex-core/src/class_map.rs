@@ -351,6 +351,8 @@ fn map_font_size_option(opt: &str) -> Option<&'static str> {
 pub(crate) fn parse_authors(raw: &[String], class: &DocClass) -> Vec<Author> {
     let mut out = Vec::new();
     for s in raw {
+        let s = sanitize_author_block(s);
+        let s = s.as_str();
         match class {
             DocClass::IeeeTran { .. } => out.extend(parse_ieee_block(s)),
             DocClass::Neurips | DocClass::Icml | DocClass::Iclr => {
