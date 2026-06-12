@@ -1,9 +1,10 @@
 # Architecture
 
-ByeTex converts LaTeX source into [Typst](https://typst.app). It targets the
-academic-paper subset of LaTeX and, for anything outside that subset, degrades
-gracefully — emitting a structured `warnings.json` sidecar (and a per-document
-`agent_brief.md`) instead of failing — so a human or an LLM can finish the job.
+ByeTex converts LaTeX source into [Typst](https://typst.app). It is general LaTeX →
+Typst by design and works best on academic papers today, where its fidelity is tuned.
+For anything it can't translate cleanly it degrades gracefully — emitting a structured
+`warnings.json` sidecar (and a per-document `agent_brief.md`) instead of failing — so a
+human or an LLM can finish the job.
 
 This document is the overview; for detail beyond it, see the deeper docs:
 

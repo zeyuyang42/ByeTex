@@ -2,7 +2,7 @@
 
 ## The problem in one paragraph
 
-LaTeX is the standard for typesetting academic papers, but the language is fussy: you write things like `\textbf{hello}` for bold, install a TeX distribution, debug arcane errors. **Typst** is a newer tool that does the same job with a simpler language — `*hello*` for bold, a single static binary to install, errors that point at the right line. People with LaTeX papers want to migrate to Typst, but doing it by hand is tedious. **ByeTex** is a translator: feed it a `.tex` file, get back a `.typ` file. Anything ByeTex doesn't understand gets flagged so a human (or an AI) can finish the job.
+LaTeX is the standard for typesetting academic papers, but the language is fussy: you write things like `\textbf{hello}` for bold, install a TeX distribution, debug arcane errors. **Typst** is a newer tool that does the same job with a simpler language — `*hello*` for bold, a single static binary to install, errors that point at the right line. People with LaTeX documents want to migrate to Typst, but doing it by hand is tedious. **ByeTex** is a translator: feed it a `.tex` file, get back a `.typ` file. It works best on academic papers today — that's where its fidelity is tuned — and anything ByeTex doesn't understand gets flagged so a human (or an AI) can finish the job.
 
 ---
 
