@@ -45,6 +45,11 @@ pub(crate) struct StyleProfile {
     pub cite_default: CiteMode,
     /// The class's own default bibliography style as a Typst CSL name (Unit 4).
     pub default_bib_style: Option<&'static str>,
+    /// Section / subsection / subsubsection heading sizes (em vs the body).
+    /// article runs \Large/\large/\normalsize (1.44/1.2/1.0); the compact
+    /// conference classes section with \large\bf / \normalsize\bf at a 10pt
+    /// body, i.e. 1.2/1.0/1.0.
+    pub heading_sizes: [&'static str; 3],
 }
 
 impl StyleProfile {
@@ -72,6 +77,7 @@ impl StyleProfile {
                 title_rule_below: Some(("0.29in", "1pt", "0.09in")),
                 abstract_style: AbstractStyle::ConferenceHeading { smallcaps: false },
                 cite_default: CiteMode::AuthorYear,
+                heading_sizes: ["1.2em", "1.0em", "1.0em"],
                 ..Self::neutral()
             },
             // icml2026.sty toptitlebar/bottomtitlebar: 1pt rule + 0.25in gap
@@ -84,6 +90,7 @@ impl StyleProfile {
                 abstract_style: AbstractStyle::ConferenceHeading { smallcaps: false },
                 abstract_in_columns: true,
                 cite_default: CiteMode::AuthorYear,
+                heading_sizes: ["1.2em", "1.0em", "1.0em"],
                 ..Self::neutral()
             },
             // iclr_conference.sty: {\LARGE\sc \@title} — small caps, regular.
@@ -93,6 +100,7 @@ impl StyleProfile {
                 title_smallcaps: true,
                 abstract_style: AbstractStyle::ConferenceHeading { smallcaps: true },
                 cite_default: CiteMode::AuthorYear,
+                heading_sizes: ["1.2em", "1.0em", "1.0em"],
                 ..Self::neutral()
             },
             // IEEEtran.cls \@maketitle (non-technote): {\Huge ... \@title}.
@@ -123,6 +131,7 @@ impl StyleProfile {
                 title_bold: true,
                 abstract_style: AbstractStyle::RunInBold,
                 default_bib_style: Some("springer-basic"),
+                heading_sizes: ["1.2em", "1.0em", "1.0em"],
                 ..Self::neutral()
             },
             // elsarticle is deliberately unprofiled for the title (zero corpus
@@ -149,6 +158,10 @@ impl StyleProfile {
             body_font: "New Computer Modern",
             cite_default: CiteMode::Numeric,
             default_bib_style: None,
+            // article.cls \Large/\large/\normalsize sectioning — also the
+            // historical global default for every class (level-3 kept as the
+            // exact historical `1em` literal for byte-identical neutral output).
+            heading_sizes: ["1.44em", "1.2em", "1em"],
         }
     }
 }
@@ -165,6 +178,29 @@ mod tests {
         assert!(!p.title_smallcaps);
         assert!(p.title_rule_above.is_none() && p.title_rule_below.is_none());
         assert_eq!(p.body_font, "New Computer Modern");
+    }
+
+    #[test]
+    fn compact_conference_classes_have_smaller_headings() {
+        for class in [
+            DocClass::Neurips,
+            DocClass::Icml,
+            DocClass::Iclr,
+            DocClass::Lncs,
+            DocClass::SvMult,
+        ] {
+            assert_eq!(
+                StyleProfile::for_class(&class).heading_sizes,
+                ["1.2em", "1.0em", "1.0em"],
+                "{class:?} should use compact \\large\\bf/\\normalsize sectioning"
+            );
+        }
+        // article + neutral keep the article-correct \Large/\large/\normalsize.
+        assert_eq!(
+            StyleProfile::for_class(&DocClass::ArxivArticle).heading_sizes,
+            ["1.44em", "1.2em", "1em"]
+        );
+        assert_eq!(StyleProfile::neutral().heading_sizes, ["1.44em", "1.2em", "1em"]);
     }
 
     #[test]
