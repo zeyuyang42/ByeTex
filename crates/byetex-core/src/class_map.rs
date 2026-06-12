@@ -1020,6 +1020,146 @@ fn raw_latex_accents_to_unicode(s: &str) -> String {
     out
 }
 
+/// Commands the sanitizer PRESERVES verbatim (the parsers consume them later,
+/// or they're author separators). Their `{...}` body flows through and is
+/// itself sanitized as text.
+const AUTHOR_KEEP_CMDS: &[&str] = &[
+    "and", "And", "AND", "quad", "qquad",
+    "email", "affiliation", "affil", "institute", "institution", "address",
+    "orcid", "orcidID", "thanks", "texttt",
+    "IEEEauthorblockN", "IEEEauthorblockA",
+    "corref", "fnref", "authorrefmark", "inst", "textsuperscript",
+];
+/// Font-style commands whose inner text is KEPT (the command stripped).
+const AUTHOR_UNWRAP_CMDS: &[&str] = &["textbf", "textit", "emph", "text"];
+
+/// Strip `%`…end-of-line LaTeX comments, honoring an escaped `\%`.
+fn strip_latex_comments(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'\\' && i + 1 < bytes.len() {
+            // Escaped char (incl. \%) — keep both, UTF-8 safe.
+            out.push('\\');
+            let ch = s[i + 1..].chars().next().unwrap();
+            out.push(ch);
+            i += 1 + ch.len_utf8();
+            continue;
+        }
+        if bytes[i] == b'%' {
+            while i < bytes.len() && bytes[i] != b'\n' {
+                i += 1;
+            }
+            continue;
+        }
+        let ch = s[i..].chars().next().unwrap();
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    out
+}
+
+/// Sanitize a raw `\author{...}` block into clean LaTeX text for the structure
+/// parsers: drop comments, non-displaying spacing/format macros, and unknown
+/// braced commands (unwrapping only the font-style set), while preserving `\\`
+/// separators, `\quad`/`\qquad` author separators, and the structured commands
+/// the parsers consume. UTF-8 safe; idempotent.
+fn sanitize_author_block(raw: &str) -> String {
+    let s = strip_latex_comments(raw);
+    let out = sanitize_macros(&s);
+    // Collapse whitespace runs (tabs/newlines/multi-space) to single spaces.
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn sanitize_macros(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = String::with_capacity(s.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'\\' {
+            // `\\` line break — keep, then drop an optional `[len]`.
+            if i + 1 < bytes.len() && bytes[i + 1] == b'\\' {
+                out.push_str("\\\\");
+                i += 2;
+                if i < bytes.len() && bytes[i] == b'[' {
+                    if let Some(rb) = s[i..].find(']') {
+                        i += rb + 1;
+                    }
+                }
+                continue;
+            }
+            // `\` + non-letter control symbol.
+            if i + 1 < bytes.len() && !bytes[i + 1].is_ascii_alphabetic() {
+                let ch = s[i + 1..].chars().next().unwrap();
+                match ch {
+                    ',' | ';' | '!' | ':' | '>' | ' ' => out.push(' '), // thin/neg spaces
+                    '{' | '}' => {}                                      // stray escaped brace — drop
+                    _ => {
+                        out.push('\\');
+                        out.push(ch);
+                    } // \& \% \_ … keep for latex_text_to_typst
+                }
+                i += 1 + ch.len_utf8();
+                continue;
+            }
+            // `\command` — read the name.
+            let name_start = i + 1;
+            let mut j = name_start;
+            while j < bytes.len() && bytes[j].is_ascii_alphabetic() {
+                j += 1;
+            }
+            let name = &s[name_start..j];
+            // optional `*`
+            let mut k = j;
+            if k < bytes.len() && bytes[k] == b'*' {
+                k += 1;
+            }
+            if AUTHOR_KEEP_CMDS.contains(&name) {
+                // Re-emit the command verbatim; its `{...}` body (if any) flows
+                // through the loop and is sanitized as normal text.
+                out.push_str(&s[i..k]);
+                i = k;
+                continue;
+            }
+            // Skip an optional `[..]` arg then an optional `{..}` body.
+            let mut a = k;
+            while a < bytes.len() && bytes[a] == b' ' {
+                a += 1;
+            }
+            if a < bytes.len() && bytes[a] == b'[' {
+                if let Some(rb) = s[a..].find(']') {
+                    a += rb + 1;
+                }
+            }
+            let mut b = a;
+            while b < bytes.len() && bytes[b] == b' ' {
+                b += 1;
+            }
+            if b < bytes.len() && bytes[b] == b'{' {
+                if let Some(close) = matched_close_brace(s, b) {
+                    if AUTHOR_UNWRAP_CMDS.contains(&name) {
+                        out.push_str(&sanitize_macros(&s[b + 1..close]));
+                    }
+                    // else: drop the command AND its body entirely.
+                    i = close + 1;
+                    continue;
+                }
+            }
+            // Bare unknown command (no body) — drop the token.
+            i = k;
+            continue;
+        }
+        let ch = s[i..].chars().next().unwrap();
+        match ch {
+            '&' | '~' => out.push(' '),
+            _ => out.push(ch),
+        }
+        i += ch.len_utf8();
+    }
+    out
+}
+
 /// Find the matching `}` for the `{` at `open_brace` position in `s`.
 /// Returns the index of the closing brace (inclusive).
 fn matched_close_brace(s: &str, open_brace: usize) -> Option<usize> {
@@ -1215,5 +1355,49 @@ mod tests {
         assert!(a.equal_contribution, "expected equal_contribution true");
         assert_eq!(a.email.as_deref(), Some("alice@x.org"));
         assert!(a.name.as_content().trim().starts_with("Alice"));
+    }
+}
+
+#[cfg(test)]
+mod author_sanitize_tests {
+    use super::*;
+
+    #[test]
+    fn strips_comments_keeps_escaped_percent() {
+        assert_eq!(sanitize_author_block("% lead comment\nAlice"), "Alice");
+        assert_eq!(sanitize_author_block(r"50\% done"), r"50\% done");
+    }
+
+    #[test]
+    fn drops_control_symbols_and_spacing() {
+        // \, \; \! and a stray \} vanish; words keep single spaces.
+        assert_eq!(sanitize_author_block(r"Alice \, Bob\}"), "Alice Bob");
+        // \hspace{..} drops command AND body; & and ~ become spaces.
+        assert_eq!(sanitize_author_block(r"A\hspace{0.5cm}& B~C"), "A B C");
+    }
+
+    #[test]
+    fn unwraps_font_styles_drops_unknown_braced() {
+        assert_eq!(sanitize_author_block(r"\textbf{Alice}"), "Alice");
+        assert_eq!(sanitize_author_block(r"\emph{Bob} \unknown{drop me}"), "Bob");
+    }
+
+    #[test]
+    fn preserves_structure_and_separators() {
+        // \\ kept (with [len] dropped); \and, \email{}, \quad preserved verbatim.
+        assert_eq!(sanitize_author_block(r"A\\[2pt]B"), r"A\\B");
+        assert_eq!(
+            sanitize_author_block(r"Alice \and Bob \email{b@x} \quad C"),
+            r"Alice \and Bob \email{b@x} \quad C"
+        );
+    }
+
+    #[test]
+    fn utf8_safe_and_idempotent() {
+        let once = sanitize_author_block("M\\\"uller \\, Gra\\ss e");
+        // accents are NOT resolved here (that is latex_text_to_typst's job) —
+        // only spacing is removed; multibyte input is never split.
+        assert_eq!(once, sanitize_author_block(&once));
+        assert!(once.contains("ller"));
     }
 }
