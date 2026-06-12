@@ -9,8 +9,7 @@
 use crate::class_map::DocClass;
 
 /// Default in-text citation form for the class (`\cite` rendering).
-/// Consumed in Units 2-4.
-#[allow(dead_code)]
+/// Consumed by Unit 4 bibliography-style resolution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CiteMode {
     Numeric,
@@ -42,11 +41,9 @@ pub(crate) struct StyleProfile {
     /// Whether the abstract is placed inside the two-column body (Unit 2).
     pub abstract_in_columns: bool,
     pub body_font: &'static str,
-    // Consumed in Units 2-4.
-    #[allow(dead_code)]
+    /// Default in-text citation mode for the class (Unit 4 bib-style resolution).
     pub cite_default: CiteMode,
-    // Consumed in Units 2-4.
-    #[allow(dead_code)]
+    /// The class's own default bibliography style as a Typst CSL name (Unit 4).
     pub default_bib_style: Option<&'static str>,
 }
 
