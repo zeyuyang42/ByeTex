@@ -1,18 +1,39 @@
 # ByeTex
 
-A fast, single-binary LaTeX → Typst converter, built fidelity-first.
+**A LaTeX → Typst converter built for the AI era.**
 
-ByeTex translates LaTeX into [Typst](https://typst.app) **deterministically** — no
-LLM, no network, no guessing — and, for anything it can't translate cleanly, emits a
-structured `warnings.json` sidecar plus a bundled catalogue of repair **skills** so an
-AI agent (or a human) can finish the job.
+ByeTex pairs a fast, deterministic core with a native agent loop. The core does the
+reproducible heavy lifting — no LLM inside, no network, no guessing — and for the last
+mile it can't finish alone, it hands off to an AI agent with surgical, source-mapped
+repair instructions. The [Typst](https://typst.app) it emits is good enough to trust:
+hand-rolled native math and class-faithful layout. It works best on academic papers
+today — where its fidelity is tuned — and the approach generalizes outward.
 
-It works best on **academic papers** today: that's where its fidelity is tuned —
-per-class title/abstract styling, citations and bibliographies, and dense two-column
-math. The pipeline is general LaTeX → Typst, and the supported surface grows outward
-from there. Quality is measured on two axes: **compile-rate is the gate** (the output
-must `typst compile`) and **visual fidelity is the driver** (how closely the render
-matches the original).
+## Why ByeTex
+
+- **Natively AI-in-the-loop.** Not a wrapper around an LLM — a deterministic tool
+  *designed* to be finished by one. When the output doesn't compile, `byetex diagnose`
+  maps every Typst error back to the exact LaTeX fragment that caused it and names the
+  repair skill that fixes it: the agent gets a worklist, not a stack trace. It ships as
+  **7 MCP tools**, **12 bundled repair skills**, and an [`AGENTS.md`](AGENTS.md)
+  cold-start — drop it into Claude Code or Cursor with no glue.
+- **Best-in-class math.** ByeTex hand-rolls LaTeX → Typst math instead of delegating to
+  an external engine — ~450 symbols/operators, coverage gated against the **entire KaTeX
+  command set**, emitting **native, editable** Typst math (not images). Hand-rolling wins
+  on fidelity: correct accents, no split digits, real Typst you can keep editing.
+- **Deterministic & pure.** The core is a pure function — same input, same output, every
+  time, with no model inside the binary. The AI only touches clearly-marked edges. That's
+  what makes the loop trustworthy: AI leverage without AI unpredictability where it counts.
+- **Fidelity, measured.** Beyond "it compiles": a per-class `StyleProfile` (NeurIPS, ICML,
+  ICLR, IEEE, ACM, LNCS, …) reproduces title/abstract/heading styling, and a vision agent
+  grades the render against an explicit [rubric](docs/fidelity-rubric.md). Compile-rate is
+  the gate; visual fidelity is the driver.
+- **Never hard-fails.** Anything ByeTex can't translate becomes a visible placeholder plus
+  a structured warning — it always produces usable output and exits 0, so a pipeline never
+  breaks on a surprise.
+- **Real-project aware.** Multi-file `\input`, asset copying, `.bib` preprocessing, and
+  macro pre-scan across every `.tex`/`.sty`/`.cls` — it converts real arXiv tarballs, not
+  just toy single files.
 
 ## How it works
 
