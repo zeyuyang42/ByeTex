@@ -82,14 +82,12 @@ rendering as its own epic.
 
 ## P1 — class-faithful typography gaps (the rubric's GAP rows, now confirmed)
 
-### 3. Heading-size hierarchy is global-uniform, not per-class  — confirmed on icml, sev 4
-**Symptom.** 31244 (ICML) section headings render ~18–24pt, dwarfing the ~10–11pt body; ICML's
-headings are compact. The `#show heading.where(level…)` sizes in `build_neutral_preamble` are one
-size for every class.
-**Suspected site.** `emit/preamble.rs::build_neutral_preamble` (global heading show-rules) +
-`style_profile.rs` (no `heading_sizes` knob).
-**Fix sketch.** Add per-class heading size/spacing to `StyleProfile` (e.g. `heading_sizes: [&str;3]`,
-`heading_spacing`), consume in the preamble show-rules. Snapshot per class.
+### 3. Heading-size hierarchy is global-uniform, not per-class  — confirmed on icml, sev 4  — ✅ RESOLVED (PR #220)
+**Resolution.** Added `StyleProfile.heading_sizes: [&str;3]`, consumed in `build_neutral_preamble`.
+ICML/NeurIPS/ICLR/LNCS/SvMult → `[1.2em,1.0em,1.0em]` (their `\large\bf`/`\normalsize` sectioning at
+a 10pt body, verified against the class `.sty`/`.cls` `\@startsection` fonts); article + every
+unprofiled class keeps the historical 1.44/1.2/1em (byte-identical). Re-graded 2605.31244 — section
+headings now proportionate.
 
 ### 4. ICLR small-caps title applied unconditionally  — iclr, sev 3
 **Symptom.** 22820's title renders small-caps, but this paper's actual title is regular-weight
@@ -117,14 +115,18 @@ set text(...)` show-rules. Low severity; batch with other show-rules.
 
 ## P2 — parse/emit bugs (narrower, but real)
 
-### 7. Inline math in section headings leaks as raw heading text  — 2 papers, peak sev 4
-**Symptom.** 22159 `\section` titles with inline math render the raw math as a full-size heading
-(`⟨f, gh⟩(X×B)` p.6, `⟨f, ∂x⟩(V'×V)` p.14); 22507 a `\paragraph` run-in header with inline math is
-mis-segmented.
-**Suspected site.** `emit/sections.rs::emit_section` (heading-title extraction when the title
-contains a math zone).
-**Fix sketch.** Render the heading title through the normal inline pipeline (so `$…$` becomes a
-Typst math span inside the heading) instead of leaking the math token stream.
+### 7. Inline math in section headings leaks as raw heading text  — ✅ NOT A CONVERTER BUG; metric artifact fixed (PR #221)
+**Diagnosis.** Investigated 22159: byetex's `\section` titles with inline math convert CORRECTLY
+(`\section{… $\Omega$ …}` → `== … $Omega$ …`). The `⟨f, gh⟩(X×B)` "heading" the grader saw was the
+second line of a multi-line `$ … $` **display equation** (`<eqn:DSP>`) whose `=` is the equation's
+equals sign — `scripts/visual_test.py::typ_headings` regex-matched the `=`-leading line as a heading
+with no math-block awareness. The ICML `heading_recall 0.45` was the same class of artifact (`\paragraph`-
+level `#heading(level: 4,…)` run-ins over-counted vs `source_headings`' level-1-3 scope).
+**Fix.** `typ_headings` now tracks `$…$` parity (skips `=`-lines inside an open math block) and caps
+at heading levels 1-3 (markers `={1,3}`; `#heading(level: N>3)` excluded) to match `source_headings`.
+Re-measured: 22159 heading_recall → 1.00; **2605.31244 (ICML) → 1.00 and flipped structure_failed → ok**.
+The residual real defect nearby is a broken custom-operator macro (`\opV` → `op("\opV_{\mathgroup=-1…}")`)
+— a separate math/macro item, not a heading bug. Strengthens the loop's heading metrics.
 
 ### 8. LNCS table corruption: `\multirow` + `\cmidrule`  — lncs, sev 5
 **Symptom.** 31598 Table 1: every numeric data cell empty; `[]{1-5} table.cell(rowspan: 3)[…]`

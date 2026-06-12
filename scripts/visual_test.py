@@ -531,9 +531,26 @@ def source_float_counts(tex: str) -> dict:
     }
 
 
-_TYP_HEADING_RE = re.compile(r"^(={1,6})\s+(.+?)\s*$")
+# Match only levels 1-3 (`=`/`==`/`===`) to mirror `source_headings`, which
+# counts `\section`/`\subsection`/`\subsubsection` — NOT `\paragraph` (level 4).
+_TYP_HEADING_RE = re.compile(r"^(={1,3})\s+(.+?)\s*$")
 _TYP_LABEL_RE = re.compile(r"\s*<[^>]+>\s*$")  # trailing `<label>` anchor
 _TYP_HEADING_FN_RE = re.compile(r"^#heading\b[^[]*\[")  # `#heading(..)[`
+_TYP_HEADING_LEVEL_RE = re.compile(r"level:\s*(\d+)")  # `#heading(level: 4, …)`
+
+
+def _unescaped_dollar_count(s: str) -> int:
+    """Count `$` not preceded by a backslash (Typst math-mode delimiters)."""
+    cnt = 0
+    i = 0
+    while i < len(s):
+        if s[i] == "\\":
+            i += 2
+            continue
+        if s[i] == "$":
+            cnt += 1
+        i += 1
+    return cnt
 
 
 def _clean_typ_heading(raw: str) -> str:
@@ -584,8 +601,16 @@ def typ_headings(typ_text: str) -> list[str]:
     clean-truth-vs-noisy-pdftotext. Strips trailing `<label>`, inline math, and
     `*bold*`/`_emph_` markup; lowercases; collapses whitespace."""
     out: list[str] = []
+    dollars_before = 0  # running count of unescaped `$` seen before this line
     for line in typ_text.splitlines():
         line = line.rstrip()
+        in_math = dollars_before % 2 == 1
+        dollars_before += _unescaped_dollar_count(line)
+        # A `=`-leading line INSIDE a multi-line `$ … $` display equation (e.g.
+        # `= chevron.l f,g chevron.r`) is the equation's equals sign, NOT a
+        # heading. Skip lines that open inside an unclosed math block.
+        if in_math:
+            continue
         title: str | None = None
         m = _TYP_HEADING_RE.match(line)
         if m:
@@ -593,6 +618,11 @@ def typ_headings(typ_text: str) -> list[str]:
         else:
             fm = _TYP_HEADING_FN_RE.match(line)
             if fm:
+                # Skip `\paragraph`/`\subparagraph` (`#heading(level: 4+, …)`) so
+                # the typst side matches `source_headings`' level-1-3 scope.
+                lvl = _TYP_HEADING_LEVEL_RE.search(line[: fm.end()])
+                if lvl and int(lvl.group(1)) > 3:
+                    continue
                 # Extract the `[...]` content arg, honoring nested brackets.
                 start = fm.end() - 1  # index of the opening `[`
                 depth = 0
