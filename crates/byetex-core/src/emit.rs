@@ -36,12 +36,13 @@ mod typography;
 pub(crate) use escape::{escape_text_for_typst_content, needs_text_escape, is_typst_label_char, sanitize_label_key, escape_paren_semicolons, escape_unbalanced_math_brackets, strip_trailing_typst_label, escape_text_cell};
 pub(crate) use math_symbols::lookup_math_symbol;
 pub(in crate::emit) use node_utils::{
-    brace_balanced_end, command_name_of, command_name_text, environment_name, extract_label_name,
-    extract_label_name_and_end, extract_label_ref_keys_and_end, first_curly_group, first_curly_like,
-    flatten_text_children, is_command, is_comment, is_section_kind,
-    leading_font_switch, math_font_decl_wrapper, needs_empty_base, needs_subscript_parens,
-    nth_curly_group, range_of, section_level, skip_balanced_braces,
-    split_math_rows,
+    brace_balanced_end, brace_groups, color_from_model_spec, command_name_of, command_name_text,
+    environment_name,
+    extract_label_name, extract_label_name_and_end, extract_label_ref_keys_and_end,
+    first_curly_group, first_curly_like, flatten_text_children, is_command, is_comment,
+    is_section_kind, leading_font_switch, math_font_decl_wrapper, named_color, needs_empty_base,
+    needs_subscript_parens, nth_curly_group, parse_definecolor, range_of, section_level,
+    skip_balanced_braces, split_math_rows,
 };
 pub(crate) use braceless::{consume_braceless_arg, try_consume_math_arg, BracelessArg};
 pub(in crate::emit) use braceless::{consume_trailing_brace_groups, substitute_macro_args};
@@ -142,6 +143,10 @@ pub(crate) struct Emitter<'a> {
     /// Collected during emission (the directive may sit in an `\input`-ed
     /// preamble) and merged across the `\input` sub-emitter boundary.
     graphics_paths: Vec<String>,
+    /// `\definecolor`-harvested colours: LaTeX name → Typst colour expression
+    /// (e.g. `brand` → `rgb("#FF8800")`). Populated in the prepass so a
+    /// `\textcolor{brand}{…}` in the body resolves regardless of definition order.
+    colors: HashMap<String, String>,
     /// Canonicalised paths of files already expanded along the current
     /// expansion chain — used to break `\input` cycles. Each successful
     /// recursive expansion inserts the resolved file's canonical path before
@@ -323,6 +328,7 @@ impl<'a> Emitter<'a> {
             layout: crate::class_map::Layout::default(),
             root_dir: base_dir.clone(),
             graphics_paths: Vec::new(),
+            colors: HashMap::new(),
             base_dir,
             visited_includes: visited,
             macros: preseeded_macros,
@@ -501,6 +507,14 @@ impl<'a> Emitter<'a> {
                         }
                     }
                     // Do NOT recurse into children of package_include
+                }
+                "color_definition" => {
+                    // `\definecolor{name}{model}{spec}` — harvest into the colour
+                    // table so a later `\textcolor{name}{…}` resolves. The node
+                    // itself is dropped at emit time (xcolor styling is inert).
+                    if let Some((name, typst)) = parse_definecolor(n, self.src) {
+                        self.colors.entry(name).or_insert(typst);
+                    }
                 }
                 _ => {
                     let mut cursor = n.walk();

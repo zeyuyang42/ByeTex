@@ -4,7 +4,10 @@ use std::fmt::Write;
 
 use tree_sitter::Node;
 
-use super::{consume_trailing_inline_space, first_curly_group, Emitter};
+use super::{
+    brace_groups, color_from_model_spec, consume_trailing_inline_space, first_curly_group,
+    named_color, Emitter,
+};
 
 impl<'a> Emitter<'a> {
     /// Emit a typographic-logo command (`\LaTeX`, `\TeX`, etc.) as plain text.
@@ -290,22 +293,60 @@ impl<'a> Emitter<'a> {
         node.end_byte()
     }
 
-    /// `\textcolor{color}{content}` / `\colorbox{color}{content}` →
-    /// drops the first `{color}` argument and emits only `{content}`.
-    /// `\textcolor{color}{content}` — tree-sitter-latex `color_reference` node.
-    /// Drops the color arg; emits only the content arg.
+    /// `\textcolor{color}{content}` (tree-sitter `color_reference`) → Typst
+    /// `#text(fill: <color>)[content]`. The colour resolves from the
+    /// `\definecolor` table, then a built-in xcolor name, then an inline
+    /// `[model]{spec}` form; an unresolvable colour (or a `\colorbox`/`\fcolorbox`
+    /// background box, which we don't colour yet) falls back to plain content so
+    /// the colour is dropped but the text never breaks compilation.
     pub(in crate::emit) fn emit_textcolor(&mut self, node: Node<'_>) -> usize {
-        // color_reference children: command token, curly_group_text (color),
-        // curly_group (content).  Find the curly_group (second arg).
+        // Content is the LAST `{…}` group; render via the AST for nested markup.
         let mut cursor = node.walk();
         let content_node = node
             .children(&mut cursor)
-            .find(|c| c.kind() == "curly_group");
-        if let Some(cnode) = content_node {
-            let content = self.render_curly_group_content(cnode);
-            self.out.push_str(&content);
+            .filter(|c| c.kind().starts_with("curly_group"))
+            .last();
+        let content = match content_node {
+            Some(c) => self.render_curly_group_content(c),
+            None => return node.end_byte(),
+        };
+
+        let text = self.src.get(node.start_byte()..node.end_byte()).unwrap_or("");
+        let color = if text.trim_start().starts_with("\\textcolor") {
+            self.textcolor_fill(text)
+        } else {
+            None
+        };
+
+        match color {
+            Some(c) => {
+                let _ = write!(self.out, "#text(fill: {c})[{content}]");
+            }
+            None => self.out.push_str(&content),
         }
         node.end_byte()
+    }
+
+    /// Resolve the Typst colour expression for a `\textcolor` source span:
+    /// `\textcolor[model]{spec}{…}` or `\textcolor{name}{…}`.
+    fn textcolor_fill(&self, text: &str) -> Option<String> {
+        let body = text.trim_start().strip_prefix("\\textcolor")?.trim_start();
+        let (model, rest) = if let Some(r) = body.strip_prefix('[') {
+            let close = r.find(']')?;
+            (Some(&r[..close]), &r[close + 1..])
+        } else {
+            (None, body)
+        };
+        let groups = brace_groups(rest, 1);
+        let arg = groups.first()?.trim();
+        match model {
+            Some(m) => color_from_model_spec(m, arg),
+            None => self
+                .colors
+                .get(arg)
+                .cloned()
+                .or_else(|| named_color(arg).map(|s| s.to_string())),
+        }
     }
 
     /// `\textcolor{color}{content}` in math mode — drops color, renders content

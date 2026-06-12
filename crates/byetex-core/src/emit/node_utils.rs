@@ -202,6 +202,145 @@ pub(in crate::emit) fn first_curly_like(node: Node<'_>) -> Option<Node<'_>> {
     result
 }
 
+// ─── Colour helpers (xcolor → Typst) ──────────────────────────────────────────
+
+/// Map an xcolor named colour to the equivalent Typst colour identifier, or its
+/// closest built-in (Typst lacks `cyan`/`magenta`/`violet`/… — fold onto the
+/// exact RGB equivalent). Returns `None` for names Typst can't represent, so the
+/// caller falls back to plain content rather than emitting an invalid `fill:`.
+pub(in crate::emit) fn named_color(name: &str) -> Option<&'static str> {
+    Some(match name.trim().to_ascii_lowercase().as_str() {
+        "red" => "red",
+        "green" => "green",
+        "blue" => "blue",
+        "black" => "black",
+        "white" => "white",
+        "yellow" => "yellow",
+        "orange" => "orange",
+        "purple" => "purple",
+        "teal" => "teal",
+        "olive" => "olive",
+        "lime" => "lime",
+        "navy" => "navy",
+        "maroon" => "maroon",
+        "aqua" => "aqua",
+        "fuchsia" => "fuchsia",
+        "silver" => "silver",
+        "eastern" => "eastern",
+        "gray" | "grey" => "gray",
+        // xcolor names without a direct Typst built-in → exact/closest match
+        "cyan" => "aqua",
+        "magenta" => "fuchsia",
+        "violet" => "purple",
+        "pink" => "fuchsia",
+        "darkgray" | "darkgrey" => "gray",
+        "lightgray" | "lightgrey" => "silver",
+        _ => return None,
+    })
+}
+
+/// Convert an xcolor `[model]{spec}` pair to a Typst colour expression
+/// (`rgb("#..")`, `rgb(..)`, `luma(..)`, `cmyk(..)`). `None` if the spec doesn't
+/// parse, so the caller drops the colour rather than emit invalid Typst.
+pub(in crate::emit) fn color_from_model_spec(model: &str, spec: &str) -> Option<String> {
+    let m = model.trim();
+    let spec = spec.trim();
+    let nums = |n: usize| -> Option<Vec<f64>> {
+        let v: Vec<f64> = spec
+            .split(',')
+            .map(|s| s.trim().parse::<f64>().ok())
+            .collect::<Option<Vec<f64>>>()?;
+        if v.len() == n {
+            Some(v)
+        } else {
+            None
+        }
+    };
+    if m.eq_ignore_ascii_case("html") {
+        // Emit DECIMAL `rgb(r, g, b)`, not `rgb("#RRGGBB")`: the `#` inside a
+        // Typst string gets escaped to `\#` by the table-cell escaping pass,
+        // producing an invalid colour string (corpus 2605.31586). Decimal ints
+        // carry no `#`/`"` and survive every escaping context.
+        let hex = spec.trim_start_matches('#');
+        if hex.len() == 6 && hex.chars().all(|c| c.is_ascii_hexdigit()) {
+            let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+            let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+            let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+            return Some(format!("rgb({r}, {g}, {b})"));
+        }
+        return None;
+    }
+    if m == "RGB" {
+        let v = nums(3)?;
+        return Some(format!("rgb({}, {}, {})", v[0] as i64, v[1] as i64, v[2] as i64));
+    }
+    if m.eq_ignore_ascii_case("rgb") {
+        let v = nums(3)?;
+        return Some(format!(
+            "rgb({:.0}%, {:.0}%, {:.0}%)",
+            v[0] * 100.0,
+            v[1] * 100.0,
+            v[2] * 100.0
+        ));
+    }
+    if m.eq_ignore_ascii_case("gray") {
+        let v = nums(1)?;
+        return Some(format!("luma({:.0}%)", v[0] * 100.0));
+    }
+    if m.eq_ignore_ascii_case("cmyk") {
+        let v = nums(4)?;
+        return Some(format!(
+            "cmyk({:.0}%, {:.0}%, {:.0}%, {:.0}%)",
+            v[0] * 100.0,
+            v[1] * 100.0,
+            v[2] * 100.0,
+            v[3] * 100.0
+        ));
+    }
+    if m.eq_ignore_ascii_case("named") {
+        return named_color(spec).map(|s| s.to_string());
+    }
+    None
+}
+
+/// Extract up to `max` brace-group bodies from `s` (depth-aware). Used to read
+/// the `{name}{model}{spec}` args of `\definecolor` straight from source.
+pub(in crate::emit) fn brace_groups(s: &str, max: usize) -> Vec<String> {
+    let bytes = s.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() && out.len() < max {
+        if bytes[i] == b'{' {
+            let start = i + 1;
+            let mut depth = 1;
+            i += 1;
+            while i < bytes.len() && depth > 0 {
+                match bytes[i] {
+                    b'{' => depth += 1,
+                    b'}' => depth -= 1,
+                    _ => {}
+                }
+                i += 1;
+            }
+            out.push(s[start..i - 1].to_string());
+        } else {
+            i += 1;
+        }
+    }
+    out
+}
+
+/// Parse a `\definecolor{name}{model}{spec}` source span into `(name, typst)`.
+pub(in crate::emit) fn parse_definecolor(node: Node<'_>, src: &str) -> Option<(String, String)> {
+    let text = src.get(node.start_byte()..node.end_byte())?;
+    let groups = brace_groups(text, 3);
+    if groups.len() < 3 {
+        return None;
+    }
+    let typst = color_from_model_spec(&groups[1], &groups[2])?;
+    Some((groups[0].trim().to_string(), typst))
+}
+
 /// True if the last emitted bytes look like "there is no base symbol for a
 /// following attachment", in which case a subscript or superscript needs an
 /// empty-string base to be valid Typst.
