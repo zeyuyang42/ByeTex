@@ -485,6 +485,22 @@ fn extract_email_token(line: &str) -> Option<String> {
     })
 }
 
+/// Remove an `\email{...}` command or a bare `x@y` token from a line, leaving
+/// the rest (used to separate a \thanks affiliation from its email).
+fn strip_email_token(line: &str) -> String {
+    let mut out = line.to_string();
+    if let Some(i) = out.find("\\email") {
+        let after = i + "\\email".len();
+        if let Some(rel) = out[after..].find('{') {
+            let bpos = after + rel;
+            if let Some(end) = matched_close_brace(&out, bpos) {
+                out.replace_range(i..=end, "");
+            }
+        }
+    }
+    out.split_whitespace().filter(|t| !t.contains('@')).collect::<Vec<_>>().join(" ")
+}
+
 /// Parse a single `\author{...}` chunk that may contain embedded
 /// `\email{}` / `\affiliation{}` / `\orcid{}` / `\thanks{}` commands.
 /// Pieces not consumed by any of those commands become the author's
@@ -558,8 +574,23 @@ fn parse_one_author(chunk: &str) -> Author {
                             affiliation_raw = Some(body);
                         }
                         "orcid" | "orcidID" => orcid = Some(body),
-                        "thanks" if body.to_ascii_lowercase().contains("equal") => {
+                        "thanks" if body.to_ascii_lowercase().contains("equal")
+                            || body.to_ascii_lowercase().contains("contribut") =>
+                        {
                             equal = true;
+                        }
+                        "thanks" => {
+                            // Substantive \thanks (article affiliation idiom): pull
+                            // an email out, the rest becomes the affiliation.
+                            if email.is_none() {
+                                email = extract_email_token(&body);
+                            }
+                            if affiliation_raw.is_none() {
+                                let aff = strip_email_token(&body);
+                                if !aff.trim().is_empty() {
+                                    affiliation_raw = Some(aff.trim().to_string());
+                                }
+                            }
                         }
                         _ => {}
                     }

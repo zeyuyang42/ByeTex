@@ -63,3 +63,29 @@ fn textbf_quad_group_splits_authors() {
         assert!(typst.contains(who), "missing author {who}:\n{typst}");
     }
 }
+
+#[test]
+fn substantive_thanks_becomes_affiliation_and_email() {
+    // Mirrors 2605.22159: article \thanks holds the affiliation + email.
+    let typst = render(
+        "\\documentclass{article}\
+         \\author{Benedikt Grassle\\thanks{Institut fur Mathematik, Universitat Zurich; benedikt@math.uzh.ch}}",
+    );
+    assert_clean(&typst);
+    assert!(typst.contains("Benedikt Grassle"), "name missing/mangled:\n{typst}");
+    // The affiliation text from \thanks must appear (not inline-glued to the name).
+    assert!(typst.contains("Institut fur Mathematik"), "thanks affiliation missing:\n{typst}");
+    assert!(!typst.contains("GrassleInstitut"), "affiliation glued into name:\n{typst}");
+}
+
+#[test]
+fn equal_contribution_thanks_still_flags_not_affiliation() {
+    let typst = render(
+        "\\documentclass{article}\\usepackage{neurips_2026}\
+         \\author{Alice\\thanks{Equal contribution} \\and Bob}",
+    );
+    assert_clean(&typst);
+    assert!(typst.contains("Alice") && typst.contains("Bob"));
+    // "Equal contribution" is a flag, not an affiliation — must not render as text.
+    assert!(!typst.contains("Equal contribution"), "equal-contrib text leaked as affiliation:\n{typst}");
+}
