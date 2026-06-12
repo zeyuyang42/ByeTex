@@ -117,13 +117,17 @@ impl DocClass {
         if !matches!(self, Self::Unknown | Self::ArxivArticle) {
             return self;
         }
-        if pkg.starts_with("neurips_") {
+        // The package may carry a path prefix, e.g.
+        // `\usepackage{style/neurips_2026}` (corpus 2605.22507) — match the
+        // basename so the conference style is still detected.
+        let base = pkg.rsplit('/').next().unwrap_or(pkg);
+        if base.starts_with("neurips_") {
             return Self::Neurips;
         }
-        if pkg.starts_with("icml") {
+        if base.starts_with("icml") {
             return Self::Icml;
         }
-        if pkg.starts_with("iclr") {
+        if base.starts_with("iclr") {
             return Self::Iclr;
         }
         self
@@ -351,6 +355,8 @@ fn map_font_size_option(opt: &str) -> Option<&'static str> {
 pub(crate) fn parse_authors(raw: &[String], class: &DocClass) -> Vec<Author> {
     let mut out = Vec::new();
     for s in raw {
+        let s = sanitize_author_block(s);
+        let s = s.as_str();
         match class {
             DocClass::IeeeTran { .. } => out.extend(parse_ieee_block(s)),
             DocClass::Neurips | DocClass::Icml | DocClass::Iclr => {
@@ -367,17 +373,136 @@ pub(crate) fn parse_authors(raw: &[String], class: &DocClass) -> Vec<Author> {
 /// to pull out `\email{...}`, `\thanks{...}`, `\affiliation{...}`,
 /// `\orcid{...}`, etc.
 fn parse_generic_block(s: &str) -> Vec<Author> {
-    // Normalise case-variants of the \and separator so a single split suffices.
     let normalised = s.replace("\\AND", "\\and").replace("\\And", "\\and");
-    let mut authors = Vec::new();
-    for piece in normalised.split("\\and") {
-        let trimmed = piece.trim();
-        if trimmed.is_empty() {
+
+    // Pattern 1: `\and`-separated self-contained authors.
+    if normalised.contains("\\and") {
+        return normalised
+            .split("\\and")
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+            .map(parse_one_author)
+            .collect();
+    }
+
+    // Pattern 2: comma-separated names followed by shared `\\` lines.
+    if let Some((head, tail)) = normalised.split_once("\\\\") {
+        let (shared_affil, shared_email) = parse_shared_lines(tail);
+        let names = split_top_level_commas_owned(head.trim());
+        let attach = |mut a: Author| -> Author {
+            if a.affiliation.is_none() {
+                a.affiliation = shared_affil.clone();
+            }
+            if a.email.is_none() {
+                a.email = shared_email.clone();
+            }
+            a
+        };
+        if names.len() > 1 {
+            return names
+                .iter()
+                .map(|n| attach(parse_one_author(n.trim())))
+                .collect();
+        }
+        return vec![attach(parse_one_author(head.trim()))];
+    }
+
+    // Pattern 3: `\quad`/`\qquad`-separated grouped names (post-sanitize the
+    // `\textbf{...}` is unwrapped, leaving `A \quad B`).
+    if normalised.contains("\\quad") || normalised.contains("\\qquad") {
+        return normalised
+            .replace("\\qquad", "\\quad")
+            .split("\\quad")
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+            .map(parse_one_author)
+            .collect();
+    }
+
+    // Single author.
+    vec![parse_one_author(normalised.trim())]
+}
+
+/// Split on top-level commas — commas inside `{...}` are NOT separators.
+/// Returns owned trimmed, non-empty parts (the author-block variant; distinct
+/// from the geometry `split_top_level_commas` which yields `&str` slices).
+fn split_top_level_commas_owned(s: &str) -> Vec<String> {
+    let mut parts = Vec::new();
+    let mut depth = 0i32;
+    let mut start = 0usize;
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'{' => depth += 1,
+            b'}' => depth -= 1,
+            b',' if depth == 0 => {
+                parts.push(s[start..i].to_string());
+                start = i + 1;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    parts.push(s[start..].to_string());
+    parts.into_iter().map(|p| p.trim().to_string()).filter(|p| !p.is_empty()).collect()
+}
+
+/// From the `\\`-separated lines that follow the name list, derive a shared
+/// affiliation (first non-email line) and email (first line containing `@` or
+/// an `\email{}`), applied to every author in the block.
+fn parse_shared_lines(tail: &str) -> (Option<crate::document::Affiliation>, Option<String>) {
+    let mut affil = None;
+    let mut email = None;
+    for line in tail.split("\\\\").map(str::trim).filter(|l| !l.is_empty()) {
+        // `\email{x}` or a bare `x@y` token.
+        if let Some(e) = extract_email_token(line) {
+            if email.is_none() {
+                email = Some(e);
+            }
             continue;
         }
-        authors.push(parse_one_author(trimmed));
+        if affil.is_none() {
+            affil = Some(crate::document::Affiliation::from_raw(Content::Typst(
+                latex_text_to_typst(line),
+            )));
+        }
     }
-    authors
+    (affil, email)
+}
+
+/// Pull an email from a line: `\email{x@y}` body, or the first `@`-containing
+/// whitespace token. Returns `None` if the line has no email.
+fn extract_email_token(line: &str) -> Option<String> {
+    if let Some(i) = line.find("\\email") {
+        let after = i + "\\email".len();
+        if line[after..].trim_start().starts_with('{') {
+            let bpos = after + line[after..].find('{').unwrap();
+            if let Some(end) = matched_close_brace(line, bpos) {
+                return Some(line[bpos + 1..end].trim().to_string());
+            }
+        }
+    }
+    line.split_whitespace().find(|t| t.contains('@')).map(|t| {
+        t.trim_matches(|c: char| !c.is_alphanumeric() && c != '@' && c != '.' && c != '_' && c != '-')
+            .to_string()
+    })
+}
+
+/// Remove an `\email{...}` command or a bare `x@y` token from a line, leaving
+/// the rest (used to separate a \thanks affiliation from its email).
+fn strip_email_token(line: &str) -> String {
+    let mut out = line.to_string();
+    if let Some(i) = out.find("\\email") {
+        let after = i + "\\email".len();
+        if let Some(rel) = out[after..].find('{') {
+            let bpos = after + rel;
+            if let Some(end) = matched_close_brace(&out, bpos) {
+                out.replace_range(i..=end, "");
+            }
+        }
+    }
+    out.split_whitespace().filter(|t| !t.contains('@')).collect::<Vec<_>>().join(" ")
 }
 
 /// Parse a single `\author{...}` chunk that may contain embedded
@@ -453,8 +578,23 @@ fn parse_one_author(chunk: &str) -> Author {
                             affiliation_raw = Some(body);
                         }
                         "orcid" | "orcidID" => orcid = Some(body),
-                        "thanks" if body.to_ascii_lowercase().contains("equal") => {
+                        "thanks" if body.to_ascii_lowercase().contains("equal")
+                            || body.to_ascii_lowercase().contains("contribut") =>
+                        {
                             equal = true;
+                        }
+                        "thanks" => {
+                            // Substantive \thanks (article affiliation idiom): pull
+                            // an email out, the rest becomes the affiliation.
+                            if email.is_none() {
+                                email = extract_email_token(&body);
+                            }
+                            if affiliation_raw.is_none() {
+                                let aff = strip_email_token(&body);
+                                if !aff.trim().is_empty() {
+                                    affiliation_raw = Some(aff.trim().to_string());
+                                }
+                            }
                         }
                         _ => {}
                     }
@@ -470,12 +610,13 @@ fn parse_one_author(chunk: &str) -> Author {
     // name wasn't matched above (e.g. unknown author sub-commands). Emit the
     // body contents so the name stays as clean text. Also strip `\cmd` (no
     // braces) when it's a pure marker.
-    let cleaned_name = strip_unknown_author_cmds(name.trim());
+    let despaced = name.replace("\\qquad", " ").replace("\\quad", " ");
+    let cleaned_name = strip_unknown_author_cmds(despaced.trim());
     Author {
         name: Content::Typst(latex_text_to_typst(&cleaned_name)),
         email,
         affiliation: affiliation_raw
-            .map(|raw| crate::document::Affiliation::from_raw(Content::Typst(raw))),
+            .map(|raw| crate::document::Affiliation::from_raw(Content::Typst(latex_text_to_typst(&raw)))),
         orcid,
         equal_contribution: equal,
     }
@@ -600,7 +741,7 @@ fn parse_neurips_block(s: &str) -> Vec<Author> {
                 email = Some(cleaned.to_string());
             } else if affil.is_none() {
                 affil = Some(crate::document::Affiliation::from_raw(Content::Typst(
-                    (*line).to_string(),
+                    latex_text_to_typst(line),
                 )));
             }
         }
@@ -1020,6 +1161,169 @@ fn raw_latex_accents_to_unicode(s: &str) -> String {
     out
 }
 
+/// Commands the sanitizer PRESERVES verbatim (the parsers consume them later,
+/// or they're author separators). Their `{...}` body flows through and is
+/// itself sanitized as text.
+// `quad`/`qquad` are KEPT (not dropped as spacing) so `parse_generic_block`
+// Pattern 3 can split `\textbf{A \quad B}` grouped authors on them; any residual
+// is normalized to a space in `parse_one_author`. A KEEP command's `{...}` body
+// flows back through the sanitizer as text, so `~`/`&` inside one become spaces
+// (harmless for the emails/affiliations these carry).
+const AUTHOR_KEEP_CMDS: &[&str] = &[
+    "and", "And", "AND", "quad", "qquad",
+    "email", "affiliation", "affil", "institute", "institution", "address",
+    "orcid", "orcidID", "thanks", "texttt",
+    "IEEEauthorblockN", "IEEEauthorblockA",
+    "corref", "fnref", "authorrefmark", "inst", "textsuperscript",
+];
+/// Font-style/size commands whose inner text is KEPT (the command stripped) —
+/// e.g. affiliation lines wrapped in `\small{University}` keep "University".
+const AUTHOR_UNWRAP_CMDS: &[&str] = &[
+    "textbf", "textit", "emph", "text", "textnormal", "textrm", "textsf", "textsc",
+    "small", "footnotesize", "scriptsize", "tiny",
+    "large", "Large", "LARGE", "huge", "Huge", "normalsize",
+    "bfseries", "mdseries", "itshape", "scshape", "upshape",
+    "sffamily", "rmfamily", "ttfamily",
+];
+
+/// Strip `%`…end-of-line LaTeX comments, honoring an escaped `\%`.
+fn strip_latex_comments(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'\\' && i + 1 < bytes.len() {
+            // Escaped char (incl. \%) — keep both, UTF-8 safe.
+            out.push('\\');
+            let ch = s[i + 1..].chars().next().unwrap();
+            out.push(ch);
+            i += 1 + ch.len_utf8();
+            continue;
+        }
+        if bytes[i] == b'%' {
+            while i < bytes.len() && bytes[i] != b'\n' {
+                i += 1;
+            }
+            continue;
+        }
+        let ch = s[i..].chars().next().unwrap();
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    out
+}
+
+/// Sanitize a raw `\author{...}` block into clean LaTeX text for the structure
+/// parsers: drop comments, non-displaying spacing/format macros, and unknown
+/// braced commands (unwrapping only the font-style set), while preserving `\\`
+/// separators, `\quad`/`\qquad` author separators, and the structured commands
+/// the parsers consume. UTF-8 safe; idempotent.
+fn sanitize_author_block(raw: &str) -> String {
+    let s = strip_latex_comments(raw);
+    let out = sanitize_macros(&s);
+    // Collapse whitespace runs (tabs/newlines/multi-space) to single spaces.
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn sanitize_macros(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = String::with_capacity(s.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'\\' {
+            // `\\` line break — keep, then drop an optional `[len]`.
+            if i + 1 < bytes.len() && bytes[i + 1] == b'\\' {
+                out.push_str("\\\\");
+                i += 2;
+                if i < bytes.len() && bytes[i] == b'[' {
+                    if let Some(rb) = s[i..].find(']') {
+                        i += rb + 1;
+                    }
+                }
+                continue;
+            }
+            // `\` + non-letter control symbol.
+            if i + 1 < bytes.len() && !bytes[i + 1].is_ascii_alphabetic() {
+                let ch = s[i + 1..].chars().next().unwrap();
+                match ch {
+                    ',' | ';' | '!' | ':' | '>' | ' ' => out.push(' '), // thin/neg spaces
+                    // Stray escaped brace, delimiter (`\|`), italic correction
+                    // (`\/`), discretionary hyphen (`\-`) — no name content, drop.
+                    '{' | '}' | '|' | '/' | '-' => {}
+                    // Keep everything else with the backslash: the text escapes
+                    // (`\&` `\%` `\_` `\#` `\$`) AND the accent commands
+                    // (`\~n` `\"u` `\'e` `` \`a `` `\^o` `\=` `\.`) which
+                    // `latex_text_to_typst` resolves to accented characters.
+                    _ => {
+                        out.push('\\');
+                        out.push(ch);
+                    }
+                }
+                i += 1 + ch.len_utf8();
+                continue;
+            }
+            // `\command` — read the name.
+            let name_start = i + 1;
+            let mut j = name_start;
+            while j < bytes.len() && bytes[j].is_ascii_alphabetic() {
+                j += 1;
+            }
+            let name = &s[name_start..j];
+            // optional `*`
+            let mut k = j;
+            if k < bytes.len() && bytes[k] == b'*' {
+                k += 1;
+            }
+            if AUTHOR_KEEP_CMDS.contains(&name) {
+                // Re-emit the command verbatim; its `{...}` body (if any) flows
+                // through the loop and is sanitized as normal text.
+                out.push_str(&s[i..k]);
+                i = k;
+                continue;
+            }
+            // Skip an optional `[..]` arg then an optional `{..}` body.
+            let mut a = k;
+            while a < bytes.len() && bytes[a] == b' ' {
+                a += 1;
+            }
+            if a < bytes.len() && bytes[a] == b'[' {
+                if let Some(rb) = s[a..].find(']') {
+                    a += rb + 1;
+                }
+            }
+            let mut b = a;
+            while b < bytes.len() && bytes[b] == b' ' {
+                b += 1;
+            }
+            if b < bytes.len() && bytes[b] == b'{' {
+                match matched_close_brace(s, b) {
+                    Some(close) => {
+                        if AUTHOR_UNWRAP_CMDS.contains(&name) {
+                            out.push_str(&sanitize_macros(&s[b + 1..close]));
+                        }
+                        // else: drop the command AND its body entirely.
+                        i = close + 1;
+                    }
+                    // Unterminated `{` — the tail is malformed and unrecoverable;
+                    // drop the orphan command + rest so the stray `{…` never leaks.
+                    None => i = bytes.len(),
+                }
+                continue;
+            }
+            // Bare unknown command (no body) — drop the token.
+            i = k;
+            continue;
+        }
+        let ch = s[i..].chars().next().unwrap();
+        match ch {
+            '&' | '~' => out.push(' '),
+            _ => out.push(ch),
+        }
+        i += ch.len_utf8();
+    }
+    out
+}
+
 /// Find the matching `}` for the `{` at `open_brace` position in `s`.
 /// Returns the index of the closing brace (inclusive).
 fn matched_close_brace(s: &str, open_brace: usize) -> Option<usize> {
@@ -1217,3 +1521,50 @@ mod tests {
         assert!(a.name.as_content().trim().starts_with("Alice"));
     }
 }
+
+#[cfg(test)]
+mod author_sanitize_tests {
+    use super::*;
+
+    #[test]
+    fn strips_comments_keeps_escaped_percent() {
+        assert_eq!(sanitize_author_block("% lead comment\nAlice"), "Alice");
+        assert_eq!(sanitize_author_block(r"50\% done"), r"50\% done");
+    }
+
+    #[test]
+    fn drops_control_symbols_and_spacing() {
+        // \, \; \! and a stray \} vanish; words keep single spaces.
+        assert_eq!(sanitize_author_block(r"Alice \, Bob\}"), "Alice Bob");
+        // \hspace{..} drops command AND body; & and ~ become spaces.
+        assert_eq!(sanitize_author_block(r"A\hspace{0.5cm}& B~C"), "A B C");
+        // An UNTERMINATED braced command drops the orphan `{…` too (never leak it).
+        assert_eq!(sanitize_author_block(r"Alice \hspace{0.5cm B C"), "Alice");
+    }
+
+    #[test]
+    fn unwraps_font_styles_drops_unknown_braced() {
+        assert_eq!(sanitize_author_block(r"\textbf{Alice}"), "Alice");
+        assert_eq!(sanitize_author_block(r"\emph{Bob} \unknown{drop me}"), "Bob");
+    }
+
+    #[test]
+    fn preserves_structure_and_separators() {
+        // \\ kept (with [len] dropped); \and, \email{}, \quad preserved verbatim.
+        assert_eq!(sanitize_author_block(r"A\\[2pt]B"), r"A\\B");
+        assert_eq!(
+            sanitize_author_block(r"Alice \and Bob \email{b@x} \quad C"),
+            r"Alice \and Bob \email{b@x} \quad C"
+        );
+    }
+
+    #[test]
+    fn utf8_safe_and_idempotent() {
+        let once = sanitize_author_block("M\\\"uller \\, Gra\\ss e");
+        // accents are NOT resolved here (that is latex_text_to_typst's job) —
+        // only spacing is removed; multibyte input is never split.
+        assert_eq!(once, sanitize_author_block(&once));
+        assert!(once.contains("ller"));
+    }
+}
+
