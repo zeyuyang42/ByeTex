@@ -83,9 +83,34 @@ impl<'a> Emitter<'a> {
                     self.out.push_str(trail);
                 }
             } else {
-                self.out.push_str(left);
-                self.out.push_str(mid);
-                self.out.push_str(right);
+                // Typst's `*`/`_` shorthands are delimiters ONLY at a word
+                // boundary: a marker glued between two word chars is a literal
+                // `*`/`_`, not a toggle. So `\textbf{N}eural` -> `*N*eural`
+                // leaves the opening `*` unclosed (corpus 2606.12406, which
+                // bolds single letters to coin acronyms). When either marker
+                // would glue to an adjacent alphanumeric, fall back to the
+                // boundary-independent function form `#strong[...]`/`#emph[...]`.
+                // (`lead` is already in `self.out`; if it was non-empty the
+                // buffer now ends in whitespace, so `lead_glue` is false.)
+                let emph_fn = match (left, right) {
+                    ("*", "*") => Some("strong"),
+                    ("_", "_") => Some("emph"),
+                    _ => None,
+                };
+                let is_word = |c: char| c.is_alphanumeric();
+                let lead_glue = self.out.chars().next_back().is_some_and(is_word);
+                let trail_glue = trail.is_empty()
+                    && self.src[node.end_byte()..].chars().next().is_some_and(is_word);
+                match emph_fn {
+                    Some(name) if lead_glue || trail_glue => {
+                        let _ = write!(self.out, "#{name}[{mid}]");
+                    }
+                    _ => {
+                        self.out.push_str(left);
+                        self.out.push_str(mid);
+                        self.out.push_str(right);
+                    }
+                }
                 self.out.push_str(trail);
             }
         }

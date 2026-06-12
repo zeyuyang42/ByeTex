@@ -2768,7 +2768,19 @@ impl<'a> Emitter<'a> {
             }
             // `\makecell[opts]{X}` — render the content; the [opts] are layout
             // hints we ignore.
-            Some("\\makecell") => self.emit_inline_unwrap(node),
+            Some("\\makecell") => {
+                // A makecell is a multi-line box: its internal `\\` is an
+                // intra-cell line break. Render with `in_minipage` set so it
+                // emits `#linebreak()` rather than the bare `\` the table
+                // row-splitter keys on (a bare `\` glued to the next `*`/`_`
+                // becomes an escaped literal `\*`, leaving the bold unclosed —
+                // corpus 2606.12406 `\makecell{\textbf{Up-sampling}\\\textbf{Strategy}}`).
+                let saved = self.in_minipage;
+                self.in_minipage = true;
+                let end = self.emit_inline_unwrap(node);
+                self.in_minipage = saved;
+                end
+            }
             // `\lipsum[N]` and `\blindtext` — placeholder-text generators.
             // Drop silently; the user added them as filler.
             Some("\\lipsum") | Some("\\blindtext") | Some("\\Blindtext") => node.end_byte(),
