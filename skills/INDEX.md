@@ -24,6 +24,9 @@ warning's `suggested_skill` field names a file in this directory.
 - `byetex-bibliography.md` — `.bib` and `#bibliography(...)` handoff.
 - `byetex-figures-subpar.md` — Figures + multi-caption `#subpar.grid` floats.
 - `byetex-tables-layout.md` — Table fidelity + two-column / page-density notes.
+- `byetex-visual-grading.md` — Grade visual fidelity of a conversion vs the LaTeX
+  truth (truth↔typst page images) against `docs/fidelity-rubric.md`; emits
+  structured findings. For auditing rendering fidelity, not repairing compile errors.
 
 ## Programmatic access
 
