@@ -210,13 +210,16 @@ def run_byetex(
     `.bib`, and copies assets next to `main.typ`. Flat convert would miss the
     cross-file pre-scans and mis-resolve assets, under-representing quality.
     """
-    proj_rel = f"{toplevel.stem}.typst-project"
-    proj_dir = source_dir / proj_rel
+    # Generated project lands in the sibling corpus/_out/<id>/ tree, never in
+    # source/ — keeps inputs pristine. source_dir is corpus/<id>/source, so the
+    # id dir is source_dir.parent and the corpus root is one level above that.
+    proj_dir = source_dir.parent.parent / "_out" / source_dir.parent.name
+    proj_dir.parent.mkdir(parents=True, exist_ok=True)
     shutil.rmtree(proj_dir, ignore_errors=True)
     result = subprocess.run(
         [
             str(byetex_bin), "convert", "--project", toplevel.name,
-            "--project-out", proj_rel, "--force", "--no-brief",
+            "--project-out", str(proj_dir), "--force", "--no-brief",
         ],
         cwd=source_dir,
         capture_output=True,

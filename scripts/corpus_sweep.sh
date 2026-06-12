@@ -18,8 +18,9 @@
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BYETEX="${BYETEX_BIN:-$REPO_ROOT/target/release/byetex}"
-# Harvested layout is corpus/<id>/source/ (corpus_harvest.py --pinned). The
-# old corpus/online/arxiv path is stale (predates the inhouse-corpus removal).
+# Canonical layout: corpus/<id>/source/ holds pristine inputs (corpus_harvest.py
+# --pinned); generated projects go to corpus/_out/<id>/. Reset with
+# scripts/corpus_clean.sh.
 CORPUS="${BYETEX_CORPUS_DIR:-$REPO_ROOT/corpus}"
 
 # ── flags ────────────────────────────────────────────────────────────────────
@@ -108,15 +109,16 @@ PYEOF
   fi
 
   stem="${top_tex%.tex}"
-  gen_proj="$src_dir/${stem}.typst-project"
+  gen_proj="$CORPUS/_out/$paper_id"
 
   # Convert with --project so bib preprocessing and asset copying are
   # always fresh (prevents stale bib files from masking preprocessor
-  # improvements). The generated project is a sibling of the source
-  # dir; we prefer it over the curated source.typst-project/ for the
-  # compile step.
+  # improvements). Generated artifacts land in the sibling corpus/_out/<id>/
+  # tree so the source dir stays pristine inputs only; --project is
+  # self-contained, so writing the project outside the source tree is fine.
   rm -rf "$gen_proj"
-  (cd "$src_dir" && "$BYETEX" convert --project "$top_tex" > /dev/null 2>&1) || true
+  mkdir -p "$CORPUS/_out"
+  (cd "$src_dir" && "$BYETEX" convert --project "$top_tex" --project-out "$gen_proj" --force > /dev/null 2>&1) || true
 
   if [[ ! -f "$gen_proj/main.typ" ]]; then
     if $WITH_ORACLE; then
