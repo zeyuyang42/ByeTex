@@ -176,8 +176,21 @@ impl<'a> Emitter<'a> {
             if !first {
                 self.out.push('\n');
             }
-            let body = self.render_enum_item_body(child, /* description: */ false);
-            let _ = write!(self.out, "{} {}", marker, body.trim());
+            // A custom `\item[label]` replaces the auto marker in LaTeX. The
+            // Typst `+`/`-` shorthand can't carry a per-item label (and the
+            // bracket would otherwise leak as escaped `\[label\]` after a wrong
+            // auto number), so render it as a term item — the same mechanism a
+            // `description` list uses.
+            match self.render_enum_item_term(child) {
+                Some(label) if !label.trim().is_empty() => {
+                    let body = self.render_enum_item_body(child, /* description: */ true);
+                    let _ = write!(self.out, "/ {}: {}", label.trim(), body.trim());
+                }
+                _ => {
+                    let body = self.render_enum_item_body(child, /* description: */ false);
+                    let _ = write!(self.out, "{} {}", marker, body.trim());
+                }
+            }
             first = false;
         }
         env.end_byte()
@@ -201,51 +214,47 @@ impl<'a> Emitter<'a> {
         env.end_byte()
     }
 
-    /// Render the body of an `enum_item` (everything after `\item` and after
-    /// the optional `[term]` bracket group). If `is_description` is true, the
-    /// `brack_group_text` child is treated as the term and not included.
-    pub(in crate::emit) fn render_enum_item_body(&mut self, item: Node<'_>, is_description: bool) -> String {
+    /// Render the body of an `enum_item` — everything after `\item` and after
+    /// any optional `[label]`. The label is matched from SOURCE, not the AST:
+    /// tree-sitter doesn't parse `[(a)]` (leading paren) as a `brack_group_text`,
+    /// so it would otherwise leak into the body as escaped `\[(a)\]`. The label
+    /// byte range is skipped via `skip_until` so a single `text` node spanning
+    /// `[label] body` emits only its `body` tail.
+    pub(in crate::emit) fn render_enum_item_body(&mut self, item: Node<'_>, _is_description: bool) -> String {
+        let body_start = item_body_start(item, self.src);
         let mut cursor = item.walk();
-        let children: Vec<Node<'_>> = item.children(&mut cursor).collect();
-
-        let body: Vec<Node<'_>> = children
-            .into_iter()
-            .filter(|c| {
-                let k = c.kind();
-                if k == "\\item" {
-                    return false;
-                }
-                if is_description && k == "brack_group_text" {
-                    return false;
-                }
-                true
-            })
+        let body: Vec<Node<'_>> = item
+            .children(&mut cursor)
+            .filter(|c| c.kind() != "\\item" && c.end_byte() > body_start)
             .collect();
-
         if body.is_empty() {
             return String::new();
         }
-
         self.with_sub_buffer(|emitter| {
-            let mut last = body[0].start_byte();
+            let saved = emitter.skip_until;
+            emitter.skip_until = emitter.skip_until.max(body_start);
+            let mut last = body_start;
             for child in &body {
                 let cs = child.start_byte();
-                emitter.safe_copy(last, cs);
+                if cs > last {
+                    emitter.safe_copy(last, cs);
+                }
                 last = emitter.emit_node(*child);
             }
             let end = body.last().unwrap().end_byte();
             emitter.safe_copy(last, end);
+            emitter.skip_until = saved;
         })
     }
 
+    /// The optional `\item[label]` content, rendered, or `None` if absent/empty.
     pub(in crate::emit) fn render_enum_item_term(&mut self, item: Node<'_>) -> Option<String> {
-        let mut cursor = item.walk();
-        for child in item.children(&mut cursor) {
-            if child.kind() == "brack_group_text" {
-                return Some(self.render_curly_group_content(child));
-            }
+        let (label, _) = item_bracket(item, self.src)?;
+        let label = label.trim();
+        if label.is_empty() {
+            return None;
         }
-        None
+        Some(self.render_in_sub_emitter(label, false, false).trim().to_string())
     }
 
 
@@ -551,4 +560,54 @@ impl<'a> Emitter<'a> {
             self.theorem_kinds.entry(name).or_insert(display);
         }
     }
+}
+
+/// Byte offset where an `enum_item`'s body begins: after `\item` and any
+/// optional `[label]`.
+fn item_body_start(item: Node<'_>, src: &str) -> usize {
+    if let Some((_, body_start)) = item_bracket(item, src) {
+        return body_start;
+    }
+    let mut cursor = item.walk();
+    let start = item
+        .children(&mut cursor)
+        .find(|c| c.kind() == "\\item")
+        .map(|c| c.end_byte())
+        .unwrap_or_else(|| item.start_byte());
+    start
+}
+
+/// The optional `[label]` of an `enum_item`, matched from source (depth-aware
+/// over nested `[]`): `(raw_label, body_start_byte)`. Source-based because
+/// tree-sitter doesn't model `\item[(a)]` (leading paren) as a bracket group.
+fn item_bracket(item: Node<'_>, src: &str) -> Option<(String, usize)> {
+    let mut cursor = item.walk();
+    let item_end = item
+        .children(&mut cursor)
+        .find(|c| c.kind() == "\\item")?
+        .end_byte();
+    let bytes = src.as_bytes();
+    let mut i = item_end;
+    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    if bytes.get(i) != Some(&b'[') {
+        return None;
+    }
+    let content_start = i + 1;
+    let mut depth = 1usize;
+    i += 1;
+    while i < bytes.len() && depth > 0 {
+        match bytes[i] {
+            b'[' => depth += 1,
+            b']' => depth -= 1,
+            _ => {}
+        }
+        i += 1;
+    }
+    if depth != 0 {
+        return None;
+    }
+    let label = src.get(content_start..i - 1)?.to_string();
+    Some((label, i))
 }
