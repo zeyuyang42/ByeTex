@@ -129,10 +129,24 @@ impl<'a> Emitter<'a> {
     // ===== M4: refs, citations, floats =====
 
     pub(in crate::emit) fn emit_citation(&mut self, node: Node<'_>) -> usize {
+        let is_nocite = node
+            .child_by_field_name("command")
+            .map(|c| &self.src[c.start_byte()..c.end_byte()])
+            == Some("\\nocite");
         // Keys are inside `curly_group_text_list`, possibly with `,` separators.
-        let keys = extract_citation_keys(node, self.src);
+        let mut keys = extract_citation_keys(node, self.src);
+        if is_nocite {
+            // `\nocite{*}` ("all entries") has no Typst equivalent and `*` is not
+            // a real key — its placeholder `[cite: missing key `*`]` left a lone
+            // `*` (an unclosed bold marker, corpus 2605.30843). Drop the wildcard;
+            // any real `\nocite` keys still register via `#cite(form: none)`.
+            keys.retain(|k| k != "*");
+        }
         if keys.is_empty() {
-            self.warn_unsupported_command(node);
+            // `\nocite{*}` legitimately leaves nothing to emit — don't warn.
+            if !is_nocite {
+                self.warn_unsupported_command(node);
+            }
             return node.end_byte();
         }
 
@@ -387,6 +401,16 @@ impl<'a> Emitter<'a> {
 
     pub(in crate::emit) fn emit_bibliography(&mut self, node: Node<'_>) -> usize {
         let paths = extract_bib_paths(node, self.src);
+        self.render_bibliography_from_paths(paths, node)
+    }
+
+    /// Render a `#bibliography(...)` from explicit `.bib` paths (shared by the
+    /// bibtex `\bibliography{}` and the biblatex `\printbibliography` paths).
+    pub(in crate::emit) fn render_bibliography_from_paths(
+        &mut self,
+        paths: Vec<String>,
+        node: Node<'_>,
+    ) -> usize {
         if paths.is_empty() {
             self.warn_unsupported_command(node);
             return node.end_byte();

@@ -96,6 +96,10 @@ pub(crate) struct Emitter<'a> {
     /// Captures `\bibliographystyle{plain}` so a following `\bibliography{refs}`
     /// can attach the style. Cleared after use.
     pending_bib_style: Option<String>,
+    /// biblatex `\addbibresource{file.bib}` paths collected in the prepass. A
+    /// following `\printbibliography` renders `#bibliography(...)` from these
+    /// (the bibtex `bibtex_include` path does not fire for biblatex docs).
+    addbibresource_paths: Vec<String>,
     /// Set when we emit a numbered heading reference (`@sec:...`). Typst
     /// refuses to reference headings without numbering, so we prepend a
     /// `#set heading(numbering: ...)` to the output in `finish()`.
@@ -323,6 +327,7 @@ impl<'a> Emitter<'a> {
             in_math: false,
             pending_math_labels: Vec::new(),
             pending_bib_style: None,
+            addbibresource_paths: Vec::new(),
             needs_heading_numbering: false,
             needs_equation_numbering: false,
             pending_bibitem_key: None,
@@ -406,6 +411,30 @@ impl<'a> Emitter<'a> {
                         .any(|p| bibliography::probe_bib_on_disk(base, p).is_some())
                     {
                         self.bib_will_render = true;
+                    }
+                }
+            }
+            // biblatex `\addbibresource{file.bib}` (tree-sitter `biblatex_include`)
+            // — record the resource so a following `\printbibliography` renders a
+            // real `#bibliography(.bib)` (the bibtex `bibtex_include` branch above
+            // never fires for biblatex docs; corpus 2605.31009/30843). Mirror the
+            // resolve-on-disk → `bib_will_render` logic so cites resolve.
+            if n.kind() == "biblatex_include" {
+                if let Some(g) = n.child_by_field_name("glob") {
+                    let inner = self.src[g.start_byte() + 1..g.end_byte() - 1].to_string();
+                    for raw in inner.split(',') {
+                        let p = raw.trim().to_string();
+                        if p.is_empty() {
+                            continue;
+                        }
+                        if let Some(ref base) = self.base_dir {
+                            let stem = p.strip_suffix(".bib").unwrap_or(p.as_str());
+                            if bibliography::probe_bib_on_disk(base, stem).is_some() {
+                                self.bib_will_render = true;
+                                self.has_bibtex_include = true;
+                            }
+                        }
+                        self.addbibresource_paths.push(p);
                     }
                 }
             }
@@ -1164,6 +1193,9 @@ impl<'a> Emitter<'a> {
             "citation" => return self.emit_citation(node),
             "label_reference" => return self.emit_label_reference(node),
             "bibtex_include" => return self.emit_bibliography(node),
+            // biblatex `\addbibresource{...}` — emits nothing; the path was
+            // collected in the prepass and rendered by `\printbibliography`.
+            "biblatex_include" => return node.end_byte(),
             "bibstyle_include" => return self.emit_bibstyle(node),
             "graphics_include" => return self.emit_graphics_include(node),
             // Orphan `\label{X}` outside any section/equation/figure. A bare
@@ -2588,12 +2620,39 @@ impl<'a> Emitter<'a> {
             Some("\\And") | Some("\\AND") | Some("\\PassOptionsToPackage") | Some("\\And ") => {
                 consume_trailing_inline_space(self.src, node.end_byte())
             }
+            // biblatex `\printbibliography[opts]` — render `#bibliography(.bib)`
+            // from the collected `\addbibresource` paths, then consume the
+            // trailing optional `[title={...}]` so it doesn't leak (the bracket
+            // group is a tree-sitter sibling of the command).
+            Some("\\printbibliography") => {
+                let paths = self.addbibresource_paths.clone();
+                let end = if paths.is_empty() {
+                    self.warn_silently_dropped(node);
+                    node.end_byte()
+                } else {
+                    self.render_bibliography_from_paths(paths, node)
+                };
+                let bytes = self.src.as_bytes();
+                let mut i = end;
+                while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                    i += 1;
+                }
+                if bytes.get(i) == Some(&b'[') {
+                    while i < bytes.len() && bytes[i] != b']' {
+                        i += 1;
+                    }
+                    i += usize::from(i < bytes.len());
+                    self.skip_until = self.skip_until.max(i);
+                    i
+                } else {
+                    end
+                }
+            }
             // Tables-of-contents et al. — Typst equivalents not yet emitted; warn
             // so the user knows these structural sections were not preserved.
             Some("\\tableofcontents")
             | Some("\\listoffigures")
             | Some("\\listoftables")
-            | Some("\\printbibliography")
             | Some("\\printindex")
             // Nomenclature / glossary output commands — generated list is lost.
             | Some("\\printnomenclature")
