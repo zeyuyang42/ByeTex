@@ -2836,11 +2836,15 @@ impl<'a> Emitter<'a> {
                     self.warn_unsupported_command(node);
                     return node.end_byte();
                 }
-                let n = self
+                let n_raw = self
                     .src
                     .get(groups[0].start_byte() + 1..groups[0].end_byte() - 1)
                     .unwrap_or("1")
                     .trim();
+                // LaTeX `\multirow{-N}` spans N rows UPWARD; Typst has no upward
+                // span and rejects non-positive rowspans ("number must be
+                // positive", corpus 2605.31563). Use the magnitude, floored at 1.
+                let n = n_raw.parse::<i64>().unwrap_or(1).unsigned_abs().max(1);
                 let content = self.render_curly_group_content(groups[2]);
                 let _ = write!(self.out, "table.cell(rowspan: {})[{}]", n, content);
                 node.end_byte()
