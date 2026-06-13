@@ -919,7 +919,19 @@ fn extract_graphics_options(node: Node<'_>, src: &str) -> Vec<(String, String)> 
 /// compilation. Treat the bare form as the full container width.
 fn normalize_graphics_length(v: &str) -> String {
     let v = v.trim();
-    for kw in ["\\textwidth", "\\linewidth", "\\columnwidth"] {
+    // Container-relative LaTeX lengths → a percentage. Height keywords
+    // (`\textheight` etc.) are mapped the same way as the width ones: Typst
+    // reads the `%` against the containing block, an acceptable approximation
+    // (corpus 2605.31597: `height=0.4\textheight` previously leaked the `\`).
+    for kw in [
+        "\\textwidth",
+        "\\linewidth",
+        "\\columnwidth",
+        "\\textheight",
+        "\\paperheight",
+        "\\paperwidth",
+        "\\columnheight",
+    ] {
         if let Some(num) = v.strip_suffix(kw) {
             let num = num.trim();
             if num.is_empty() {
@@ -929,6 +941,11 @@ fn normalize_graphics_length(v: &str) -> String {
                 return format!("{}%", (f * 100.0).round() as i64);
             }
         }
+    }
+    // Any remaining LaTeX macro can't be expressed as a Typst length and would
+    // leak a `\` into code context — drop the dimension (Typst `auto`) instead.
+    if v.contains('\\') {
+        return "auto".to_string();
     }
     v.to_string()
 }
