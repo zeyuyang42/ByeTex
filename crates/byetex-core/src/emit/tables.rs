@@ -238,6 +238,8 @@ impl<'a> Emitter<'a> {
             || raw_env.contains("\\bottomrule")
             || raw_env.contains("\\hline")
             || raw_env.contains("\\cmidrule");
+        // `\cmidrule{a-b}` partial rules, keyed by the data-row index they follow.
+        let partial_rules = parse_cmidrule_rules(raw_env);
 
         // The column SPEC is only an upper bound: LaTeX papers commonly
         // over-declare it (`{llrrrrrrrrrrrrrr}` = 16) while the rows — via
@@ -341,6 +343,17 @@ impl<'a> Emitter<'a> {
             if has_rules && emitted_rows == 0 {
                 self.out.push_str("  table.hline(stroke: 0.05em),\n");
             }
+            // Partial `\cmidrule` rules that sit after this data row.
+            if let Some(rules) = partial_rules.get(&emitted_rows) {
+                for &(start, end) in rules {
+                    let end = end.min(cols);
+                    let start = start.min(end.saturating_sub(1));
+                    let _ = write!(
+                        self.out,
+                        "  table.hline(start: {start}, end: {end}, stroke: 0.05em),\n"
+                    );
+                }
+            }
             emitted_rows += 1;
         }
         if has_rules {
@@ -357,6 +370,68 @@ impl<'a> Emitter<'a> {
 /// the content really uses (corpus 2605.31561). `spec_count` is the upper bound
 /// (rows are never placed past it); the placement here mirrors `emit_tabular`'s
 /// emission loop so the clamped count matches what is emitted. Never returns 0.
+/// Parse `\cmidrule[width](trim){a-b}` rules from a raw tabular source, keyed by
+/// the data-row index they follow (= number of `\\` row breaks before the rule,
+/// minus one). A `{a-b}` range (1-indexed, inclusive) maps to a Typst hline span
+/// `(start, end)` = `(a-1, b)` (end-exclusive column boundary).
+fn parse_cmidrule_rules(raw: &str) -> std::collections::HashMap<usize, Vec<(usize, usize)>> {
+    let bytes = raw.as_bytes();
+    let mut map: std::collections::HashMap<usize, Vec<(usize, usize)>> = std::collections::HashMap::new();
+    let mut i = 0usize;
+    let mut row_breaks = 0usize;
+    while i < bytes.len() {
+        if bytes[i] == b'\\' && bytes.get(i + 1) == Some(&b'\\') {
+            row_breaks += 1;
+            i += 2;
+            continue;
+        }
+        if bytes[i..].starts_with(b"\\cmidrule") {
+            let mut j = i + "\\cmidrule".len();
+            // Skip optional (trim) and [width] in any order.
+            loop {
+                while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+                    j += 1;
+                }
+                match bytes.get(j) {
+                    Some(b'(') => {
+                        while j < bytes.len() && bytes[j] != b')' {
+                            j += 1;
+                        }
+                        j += usize::from(j < bytes.len());
+                    }
+                    Some(b'[') => {
+                        while j < bytes.len() && bytes[j] != b']' {
+                            j += 1;
+                        }
+                        j += usize::from(j < bytes.len());
+                    }
+                    _ => break,
+                }
+            }
+            if bytes.get(j) == Some(&b'{') {
+                let start = j + 1;
+                let mut k = start;
+                while k < bytes.len() && bytes[k] != b'}' {
+                    k += 1;
+                }
+                if let Some((a, b)) = raw[start..k].split_once('-') {
+                    if let (Ok(a), Ok(b)) = (a.trim().parse::<usize>(), b.trim().parse::<usize>()) {
+                        map.entry(row_breaks.saturating_sub(1))
+                            .or_default()
+                            .push((a.saturating_sub(1), b));
+                    }
+                }
+                i = k + usize::from(k < bytes.len());
+                continue;
+            }
+            i = j;
+            continue;
+        }
+        i += 1;
+    }
+    map
+}
+
 fn effective_column_count(rows_2d: &[Vec<String>], spec_count: usize) -> usize {
     if spec_count == 0 {
         return 0;
