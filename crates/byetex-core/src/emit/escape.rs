@@ -61,9 +61,34 @@ pub(crate) fn is_typst_label_char(c: char) -> bool {
 }
 
 pub(crate) fn sanitize_label_key(key: &str) -> String {
-    key.chars()
-        .map(|c| if is_typst_label_char(c) { c } else { '-' })
-        .collect()
+    // Map invalid chars to `-`, THEN collapse runs of `-` to a single `-` and
+    // trim leading/trailing ones. Two reasons: (1) a key like
+    // `lemma:bispectrum < A3f` would otherwise sanitize to a hyphen run
+    // (`...---...`), and `post_process_typography` turns `--`/`---` into an
+    // en/em-dash even inside a `<…>` token → Typst "unclosed label" (corpus
+    // 2605.31579); (2) both the `<def>` and `@ref` sides call this, so they
+    // stay byte-identical and keep resolving.
+    let mut out = String::with_capacity(key.len());
+    let mut prev_dash = false;
+    for c in key.chars() {
+        let c = if is_typst_label_char(c) { c } else { '-' };
+        if c == '-' {
+            if prev_dash {
+                continue;
+            }
+            prev_dash = true;
+        } else {
+            prev_dash = false;
+        }
+        out.push(c);
+    }
+    while out.ends_with('-') {
+        out.pop();
+    }
+    while out.starts_with('-') {
+        out.remove(0);
+    }
+    out
 }
 
 /// Replace `;` characters that sit inside any depth of `(...)` in a

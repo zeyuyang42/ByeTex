@@ -360,7 +360,9 @@ impl<'a> Emitter<'a> {
             inner.trim()
         );
         if let Some(l) = label {
-            let _ = write!(self.out, " <{}>", l);
+            if self.label_first_use(&l) {
+                let _ = write!(self.out, " <{}>", l);
+            }
         }
         env.end_byte()
     }

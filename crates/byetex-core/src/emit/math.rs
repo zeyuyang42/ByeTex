@@ -328,16 +328,20 @@ impl<'a> Emitter<'a> {
         // hidden stub a valid `@key` target.
         let labels = std::mem::take(&mut self.pending_math_labels);
         if let Some((first, rest)) = labels.split_first() {
-            let _ = write!(self.out, " <{}>", first);
+            if self.label_first_use(first) {
+                let _ = write!(self.out, " <{}>", first);
+            }
             if !rest.is_empty() {
                 self.needs_equation_numbering = true;
             }
             for extra in rest {
-                let _ = write!(
-                    self.out,
-                    "\n#hide[#figure(kind: \"equation\", supplement: [Eq.], $ \"\" $) <{}>]",
-                    extra
-                );
+                if self.label_first_use(extra) {
+                    let _ = write!(
+                        self.out,
+                        "\n#hide[#figure(kind: \"equation\", supplement: [Eq.], $ \"\" $) <{}>]",
+                        extra
+                    );
+                }
             }
         }
         node.end_byte()

@@ -544,11 +544,14 @@ impl<'a> Emitter<'a> {
         // under several labels, but Typst allows only one label per element.
         let primary = self.pick_label_to_attach(&labels);
         if let Some(l) = &primary {
-            let _ = write!(self.out, " <{}>", l);
+            if self.label_first_use(l) {
+                let _ = write!(self.out, " <{}>", l);
+            }
         }
         for l in &labels {
             if Some(l) != primary.as_ref()
                 && self.referenced_labels.contains(&sanitize_label_key(l))
+                && self.label_first_use(l)
             {
                 let _ = write!(self.out, "\n#hide[#figure([]) <{}>]", l);
             }
@@ -572,7 +575,9 @@ impl<'a> Emitter<'a> {
             self.out.push_str("  ");
             self.out.push_str(inner);
             if let Some(l) = label {
-                let _ = write!(self.out, ", <{}>", l);
+                if self.label_first_use(l) {
+                    let _ = write!(self.out, ", <{}>", l);
+                }
             }
             self.out.push_str(",\n");
         }
@@ -586,13 +591,16 @@ impl<'a> Emitter<'a> {
         }
         let primary = self.pick_label_to_attach(parent_labels);
         if let Some(l) = &primary {
-            let _ = writeln!(self.out, "  label: <{}>,", l);
+            if self.label_first_use(l) {
+                let _ = writeln!(self.out, "  label: <{}>,", l);
+            }
         }
         self.out.push(')');
         // Any extra referenced parent labels get hidden anchors (existing pattern).
         for l in parent_labels {
             if Some(l) != primary.as_ref()
                 && self.referenced_labels.contains(&sanitize_label_key(l))
+                && self.label_first_use(l)
             {
                 let _ = write!(self.out, "\n#hide[#figure([]) <{}>]", l);
             }
