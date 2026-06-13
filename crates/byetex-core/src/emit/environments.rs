@@ -167,6 +167,15 @@ impl<'a> Emitter<'a> {
     }
 
     pub(in crate::emit) fn emit_simple_list(&mut self, env: Node<'_>, marker: &str) -> usize {
+        // An enumerate with an enumitem counter-FORMAT optional arg
+        // (`[(a)]`, `[label=(\roman*)]`, …) maps to a Typst `#enum(numbering: …)`,
+        // which the `+` markup can't express. Pure-option specs (`[noitemsep]`)
+        // and itemize are unaffected.
+        if marker == "+" {
+            if let Some(numbering) = enumerate_numbering(env, self.src) {
+                return self.emit_enum_with_numbering(env, &numbering);
+            }
+        }
         let mut cursor = env.walk();
         let mut first = true;
         for child in env.children(&mut cursor) {
@@ -193,6 +202,24 @@ impl<'a> Emitter<'a> {
             }
             first = false;
         }
+        env.end_byte()
+    }
+
+    /// Emit a styled enumerate as `#enum(numbering: "<fmt>", [item], …)` — the
+    /// function form, since the `+` markup can't carry a numbering format.
+    fn emit_enum_with_numbering(&mut self, env: Node<'_>, numbering: &str) -> usize {
+        self.ensure_paragraph_break();
+        let _ = write!(self.out, "#enum(numbering: \"{}\",", numbering);
+        let mut cursor = env.walk();
+        let items: Vec<Node<'_>> = env
+            .children(&mut cursor)
+            .filter(|c| c.kind() == "enum_item")
+            .collect();
+        for item in &items {
+            let body = self.render_enum_item_body(*item, false);
+            let _ = write!(self.out, "\n  [{}],", body.trim());
+        }
+        self.out.push_str("\n)");
         env.end_byte()
     }
 
@@ -612,4 +639,66 @@ fn item_bracket(item: Node<'_>, src: &str) -> Option<(String, usize)> {
     }
     let label = src.get(content_start..i - 1)?.to_string();
     Some((label, i))
+}
+
+/// If `\begin{enumerate}[...]` carries an enumitem counter FORMAT, return the
+/// equivalent Typst numbering pattern (`(a)`, `(i)`, `1.`, …). `None` for a
+/// plain enumerate or pure-option specs (`[noitemsep]`, `[leftmargin=*]`).
+fn enumerate_numbering(env: Node<'_>, src: &str) -> Option<String> {
+    let s = src.get(env.start_byte()..env.end_byte())?;
+    let after = s.strip_prefix("\\begin")?.trim_start().strip_prefix('{')?;
+    let close = after.find('}')?;
+    let rest = after.get(close + 1..)?.trim_start().strip_prefix('[')?;
+    // matching `]` (depth-aware over nested brackets)
+    let bytes = rest.as_bytes();
+    let mut depth = 1usize;
+    let mut j = 0usize;
+    while j < bytes.len() && depth > 0 {
+        match bytes[j] {
+            b'[' => depth += 1,
+            b']' => depth -= 1,
+            _ => {}
+        }
+        j += 1;
+    }
+    if depth != 0 {
+        return None;
+    }
+    numbering_from_spec(&rest[..j - 1])
+}
+
+/// Map an enumitem label spec to a Typst numbering pattern. Accepts the
+/// shortcut form (`(a)`) and `label=…`; converts counter macros (`\alph*`→`a`,
+/// `\roman*`→`i`, `\arabic*`→`1`, upper variants → `A`/`I`). Returns `None`
+/// unless the result is a single counter symbol wrapped in punctuation.
+fn numbering_from_spec(spec: &str) -> Option<String> {
+    let cand = if let Some(pos) = spec.find("label=") {
+        spec.get(pos + 6..)?.split(',').next().unwrap_or("").trim()
+    } else {
+        let first = spec.split(',').next().unwrap_or("").trim();
+        if first.contains('=') {
+            return None; // first segment is an option key, no label shortcut
+        }
+        first
+    };
+    let conv = cand
+        .replace("\\alph*", "a")
+        .replace("\\alph", "a")
+        .replace("\\Alph*", "A")
+        .replace("\\Alph", "A")
+        .replace("\\roman*", "i")
+        .replace("\\roman", "i")
+        .replace("\\Roman*", "I")
+        .replace("\\Roman", "I")
+        .replace("\\arabic*", "1")
+        .replace("\\arabic", "1");
+    let conv = conv.trim();
+    // Exactly one alphanumeric, and it must be a Typst counter symbol; the rest
+    // is punctuation (parens/dots). Rejects words like `noitemsep`.
+    let alnum: Vec<char> = conv.chars().filter(|c| c.is_alphanumeric()).collect();
+    if alnum.len() == 1 && matches!(alnum[0], 'a' | 'A' | 'i' | 'I' | '1') && !conv.contains('"') {
+        Some(conv.to_string())
+    } else {
+        None
+    }
 }
