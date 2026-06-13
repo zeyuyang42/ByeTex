@@ -1883,9 +1883,48 @@ impl<'a> Emitter<'a> {
                 consume_trailing_inline_space(self.src, node.end_byte())
             }
             // Table rule commands have no Typst equivalent in our default
-            // table emission (Typst auto-styles rules). Drop silently.
-            Some("\\hline") | Some("\\toprule") | Some("\\midrule") | Some("\\bottomrule")
-            | Some("\\cmidrule") => node.end_byte(),
+            // table emission (the table emitter reconstructs rules). Drop.
+            Some("\\hline") | Some("\\toprule") | Some("\\midrule") | Some("\\bottomrule") => {
+                node.end_byte()
+            }
+            // `\cmidrule[width](trim){a-b}`: drop the command but CONSUME its
+            // trailing `(trim)`/`[width]`/`{range}` args — tree-sitter leaves
+            // them as following text, so without this they leak into the next
+            // table cell (corpus: corrupts a cell in every \cmidrule table). The
+            // partial rule itself is reconstructed in emit_tabular from source.
+            Some("\\cmidrule") => {
+                let bytes = self.src.as_bytes();
+                let mut i = node.end_byte();
+                loop {
+                    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                        i += 1;
+                    }
+                    match bytes.get(i) {
+                        Some(b'(') => {
+                            while i < bytes.len() && bytes[i] != b')' {
+                                i += 1;
+                            }
+                            i += usize::from(i < bytes.len());
+                        }
+                        Some(b'[') => {
+                            while i < bytes.len() && bytes[i] != b']' {
+                                i += 1;
+                            }
+                            i += usize::from(i < bytes.len());
+                        }
+                        Some(b'{') => {
+                            while i < bytes.len() && bytes[i] != b'}' {
+                                i += 1;
+                            }
+                            i += usize::from(i < bytes.len());
+                            break;
+                        }
+                        _ => break,
+                    }
+                }
+                self.skip_until = self.skip_until.max(i);
+                i
+            }
             // Sizing-delimiter commands escaping their math container —
             // tree-sitter constructs a `math_delimiter` only when the
             // matching pair is present; when one half is missing the
