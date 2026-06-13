@@ -14,14 +14,10 @@ fn p_column_counted_as_left_aligned() {
 a & b & c \\
 \end{tabular}";
     let out = convert(src);
+    // p-column widths are now carried into Typst as a 3-track tuple.
     assert!(
-        out.typst.contains("columns: 3"),
-        "p-columns must be counted as 3 columns, got: {}",
-        out.typst
-    );
-    assert!(
-        !out.typst.contains("columns: 0"),
-        "0-column table must not appear, got: {}",
+        out.typst.contains("columns: (28%, 24%, 40%)"),
+        "p-columns must yield 3 width tracks, got: {}",
         out.typst
     );
 }
@@ -34,8 +30,8 @@ a & b \\
 \end{tabular}";
     let out = convert(src);
     assert!(
-        out.typst.contains("columns: 2"),
-        "m+b columns must be counted as 2, got: {}",
+        out.typst.contains("columns: (50%, 50%)"),
+        "m+b columns must yield 2 width tracks, got: {}",
         out.typst
     );
 }
@@ -64,8 +60,8 @@ a \\
 \end{tabular}";
     let out = convert(src);
     assert!(
-        out.typst.contains("columns: 1"),
-        ">{{...}}p decorator must yield 1 column, got: {}",
+        out.typst.contains("columns: (5cm,)"),
+        ">{{...}}p decorator must yield 1 width track, got: {}",
         out.typst
     );
     assert!(
@@ -84,8 +80,8 @@ a & b & c \\
 \end{tabularx}";
     let out = convert(src);
     assert!(
-        out.typst.contains("columns: 3"),
-        "decorated 3-column tabularx must yield 3 columns, got: {}",
+        out.typst.contains("columns: (3cm, auto, auto)"),
+        "decorated 3-column tabularx must yield 3 tracks, got: {}",
         out.typst
     );
 }
