@@ -246,7 +246,9 @@ impl<'a> Emitter<'a> {
             let _ = write!(self.out, " {}", title);
         }
         if let Some(l) = &chosen_label {
-            let _ = write!(self.out, " <{}>", l);
+            if self.label_first_use(l) {
+                let _ = write!(self.out, " <{}>", l);
+            }
         }
         self.out.push_str("\n\n");
 

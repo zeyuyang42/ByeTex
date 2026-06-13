@@ -165,6 +165,11 @@ pub(crate) struct Emitter<'a> {
     /// `\label` aliases — and Typst keeps only one per element — we attach the
     /// alias that is actually referenced so the reference resolves.
     referenced_labels: HashSet<String>,
+    /// Sanitized label keys already emitted as a `<key>` definition. LaTeX
+    /// tolerates the same `\label` twice (warning); Typst hard-errors "label
+    /// occurs multiple times". We emit each key only once (first-def-wins;
+    /// refs still resolve). Corpus 2605.31345 duplicated `\label{ssec:comparison}`.
+    emitted_labels: HashSet<String>,
     /// True once a `\documentclass` is seen — i.e. this is a full document
     /// (not a bare fragment). Gates the self-generated neutral preamble so
     /// fragment conversions stay preamble-free.
@@ -328,6 +333,7 @@ impl<'a> Emitter<'a> {
             macros: preseeded_macros,
             newif_flags: HashMap::new(),
             referenced_labels: HashSet::new(),
+            emitted_labels: HashSet::new(),
             saw_document_class: false,
             theorem_kinds: HashMap::new(),
             env_arg_counts: HashMap::new(),
@@ -2873,7 +2879,10 @@ impl<'a> Emitter<'a> {
                         .unwrap_or("")
                         .trim();
                     let key = sanitize_label_key(raw);
-                    if self.in_math {
+                    // Emit each label key at most once (Typst rejects dups).
+                    if !self.label_first_use(&key) {
+                        // already defined elsewhere — refs resolve to the first.
+                    } else if self.in_math {
                         // Inside math the bare label attaches to the equation,
                         // which is referenceable — keep the existing behaviour.
                         let _ = write!(self.out, " <{}>", key);
@@ -3429,6 +3438,14 @@ impl<'a> Emitter<'a> {
 
 
     // ─── Cross-references & bibliography ──────────────────────────────────────
+
+    /// Returns true the first time `key` is seen as a `<key>` label definition,
+    /// false afterwards. Callers skip emitting the `<key>` token on `false` —
+    /// Typst rejects duplicate labels (corpus 2605.31345). First-def-wins; refs
+    /// still resolve to the surviving definition.
+    fn label_first_use(&mut self, key: &str) -> bool {
+        self.emitted_labels.insert(key.to_string())
+    }
 
     /// Ensure two trailing newlines for a Typst paragraph break before a block.
     fn ensure_paragraph_break(&mut self) {
