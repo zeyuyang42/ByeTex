@@ -115,6 +115,17 @@ impl<'a> Emitter<'a> {
                     }
                 }
                 self.out.push_str(trail);
+                // A function-form wrap (`#f[...]`) directly followed by `(` is
+                // parsed by Typst as a call chain (`#smallcaps[X](Y)`), pulling
+                // `(Y)` into code context where an inner `#raw(...)` is invalid
+                // (corpus 2605.31584). End the expression with a zero-width space
+                // so the `(` stays literal markup.
+                if trail.is_empty()
+                    && self.out.ends_with(']')
+                    && self.src[node.end_byte()..].starts_with('(')
+                {
+                    self.out.push('\u{200B}');
+                }
             }
         }
         node.end_byte()
