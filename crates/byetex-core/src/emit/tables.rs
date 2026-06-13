@@ -154,7 +154,7 @@ impl<'a> Emitter<'a> {
         let col_spec = spec_node
             .map(|g| self.src[g.start_byte() + 1..g.end_byte() - 1].to_string())
             .unwrap_or_default();
-        let (count, aligns) = parse_column_spec(&col_spec);
+        let (count, aligns, widths) = parse_column_spec(&col_spec);
 
         // Collect body children (everything between begin and end). Skip only
         // the LEADING column-spec curly_group (and the preceding `{width}` group
@@ -254,12 +254,28 @@ impl<'a> Emitter<'a> {
             .cloned()
             .collect::<Vec<_>>()
             .join(", ");
+        // `columns:` is a bare count when every column is auto-width; a tuple of
+        // widths (`(3cm, auto, …)`) when any `p{…}`/`m`/`b`/`w` column set one.
+        let columns_expr = if widths.iter().take(cols).any(|w| w != "auto") {
+            let mut ws: Vec<String> = widths.iter().take(cols).cloned().collect();
+            while ws.len() < cols {
+                ws.push("auto".to_string());
+            }
+            if ws.len() == 1 {
+                // `(5cm)` is just grouping in Typst; a 1-track array needs `(5cm,)`.
+                format!("({},)", ws[0])
+            } else {
+                format!("({})", ws.join(", "))
+            }
+        } else {
+            cols.to_string()
+        };
 
         self.ensure_paragraph_break();
         let _ = write!(
             self.out,
             "#table(\n  columns: {},\n  align: ({}),\n  stroke: none,\n",
-            cols, align_str
+            columns_expr, align_str
         );
         if has_rules {
             // Top rule (heavier), then the header rule is injected after the
@@ -463,38 +479,84 @@ fn effective_column_count(rows_2d: &[Vec<String>], spec_count: usize) -> usize {
     max_occ.max(1)
 }
 
-/// Parse a LaTeX tabular column spec like `lcr` or `|l|c|r|` into a count and
-/// a vector of Typst alignment names (`"left"`, `"center"`, `"right"`).
-fn parse_column_spec(spec: &str) -> (usize, Vec<String>) {
-    let mut aligns = Vec::new();
+/// Convert a LaTeX column width (`p{…}` arg) to a Typst column width, or `auto`
+/// when it can't be represented: a fraction of `\textwidth`/`\linewidth`/… →
+/// percent; a bare `<n><unit>` (cm/mm/in/pt/em/ex) → itself; anything else (e.g.
+/// `\dimexpr`) → `auto`.
+fn normalize_table_width(raw: &str) -> String {
+    let s = raw.trim();
+    for kw in ["\\textwidth", "\\linewidth", "\\columnwidth", "\\hsize"] {
+        if let Some(pos) = s.find(kw) {
+            let factor = s[..pos].trim().trim_end_matches('*').trim();
+            let f: f64 = if factor.is_empty() {
+                1.0
+            } else {
+                match factor.parse() {
+                    Ok(v) => v,
+                    Err(_) => return "auto".to_string(),
+                }
+            };
+            return format!("{:.0}%", f * 100.0);
+        }
+    }
+    if ["cm", "mm", "in", "pt", "em", "ex"].iter().any(|u| s.ends_with(u))
+        && s[..s.len() - 2].trim().parse::<f64>().is_ok()
+    {
+        return s.to_string();
+    }
+    "auto".to_string()
+}
+
+/// Parse a LaTeX tabular column spec like `lcr` or `p{3cm}c` into a count, a
+/// vector of Typst alignment names (`"left"`/`"center"`/`"right"`), and a
+/// parallel vector of Typst column widths (`"auto"` or e.g. `"3cm"`/`"30%"`).
+fn parse_column_spec(spec: &str) -> (usize, Vec<String>, Vec<String>) {
+    let mut aligns: Vec<String> = Vec::new();
+    let mut widths: Vec<String> = Vec::new();
     let bytes = spec.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
         match bytes[i] as char {
             'l' | 'L' => {
                 aligns.push("left".to_string());
+                widths.push("auto".to_string());
                 i += 1;
             }
             'c' | 'C' => {
                 aligns.push("center".to_string());
+                widths.push("auto".to_string());
                 i += 1;
             }
             'r' | 'R' => {
                 aligns.push("right".to_string());
+                widths.push("auto".to_string());
                 i += 1;
             }
-            // Paragraph/width columns (p, m, b) take {width} argument — skip
-            // the argument but count the column as left-aligned.
+            // Paragraph/width columns carry a fixed `{width}` (p/m/b → width
+            // first; w/W → `{align}{width}`, width second).
             'p' | 'm' | 'b' | 'w' | 'W' => {
+                let is_w = matches!(bytes[i], b'w' | b'W');
                 aligns.push("left".to_string());
                 i += 1;
+                let mut width = "auto".to_string();
                 if bytes.get(i) == Some(&b'{') {
-                    i = skip_balanced_braces(spec, i);
+                    let close = skip_balanced_braces(spec, i);
+                    let first = spec[i + 1..close.saturating_sub(1)].to_string();
+                    i = close;
+                    if is_w && bytes.get(i) == Some(&b'{') {
+                        let close2 = skip_balanced_braces(spec, i);
+                        width = normalize_table_width(&spec[i + 1..close2.saturating_sub(1)]);
+                        i = close2;
+                    } else {
+                        width = normalize_table_width(&first);
+                    }
                 }
+                widths.push(width);
             }
-            // tabularx X column — count as left-aligned.
+            // tabularx X column — count as left-aligned, width auto.
             'X' => {
                 aligns.push("left".to_string());
+                widths.push("auto".to_string());
                 i += 1;
             }
             // array-package repeat: `*{N}{cols}` expands `cols` N times.
@@ -519,9 +581,10 @@ fn parse_column_spec(spec: &str) -> (usize, Vec<String>) {
                     let close = skip_balanced_braces(spec, i);
                     let inner = &spec[i + 1..close.saturating_sub(1)];
                     i = close;
-                    let (_, inner_aligns) = parse_column_spec(inner);
+                    let (_, inner_aligns, inner_widths) = parse_column_spec(inner);
                     for _ in 0..count {
                         aligns.extend(inner_aligns.iter().cloned());
+                        widths.extend(inner_widths.iter().cloned());
                     }
                 }
             }
@@ -539,7 +602,7 @@ fn parse_column_spec(spec: &str) -> (usize, Vec<String>) {
             }
         }
     }
-    (aligns.len(), aligns)
+    (aligns.len(), aligns, widths)
 }
 
 /// Parse the `colspan` and `rowspan` from a Typst `table.cell(...)` string.
