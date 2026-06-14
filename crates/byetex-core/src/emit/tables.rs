@@ -219,11 +219,7 @@ impl<'a> Emitter<'a> {
         // (`split_math_rows` already consumed any `\\[len]` vertical-space arg.)
         let rows_2d: Vec<Vec<String>> = rows
             .iter()
-            .map(|row| {
-                row.split('&')
-                    .map(|c| strip_cell_braces(c.trim()))
-                    .collect()
-            })
+            .map(|row| row.split('&').map(|c| c.trim().to_string()).collect())
             .collect();
 
         // Booktabs styling. Typst's default table draws a full grid (a line
@@ -627,41 +623,4 @@ fn table_cell_span(cell: &str) -> (usize, usize) {
         }
     }
     (colspan, rowspan)
-}
-
-/// Strip one layer of matched outer braces from a rendered table cell. A LaTeX
-/// cell wrapped in `{...}` is just grouping (the braces are invisible); without
-/// this the literal `{`/`}` leak into the Typst cell — e.g.
-/// `{0.131\small{\textpm 0.034}}` rendered `[{0.131± 0.034}]` (corpus
-/// 2605.22507). Only strips when the FIRST `{` matches the LAST char `}` with
-/// no earlier return to depth 0 (so `{a}{b}` and `{a} {b}` are left intact).
-/// `\{`/`\}` escapes don't change depth.
-fn strip_cell_braces(cell: &str) -> String {
-    let bytes = cell.as_bytes();
-    if bytes.first() != Some(&b'{') || bytes.last() != Some(&b'}') {
-        return cell.to_string();
-    }
-    let mut depth = 0i32;
-    let mut chars = cell.char_indices().peekable();
-    while let Some((i, ch)) = chars.next() {
-        match ch {
-            '\\' => {
-                chars.next(); // skip the escaped char
-            }
-            '{' => depth += 1,
-            '}' => {
-                depth -= 1;
-                if depth == 0 {
-                    // The opening brace's match must be the final char to strip.
-                    return if i + ch.len_utf8() == cell.len() {
-                        cell[1..i].trim().to_string()
-                    } else {
-                        cell.to_string()
-                    };
-                }
-            }
-            _ => {}
-        }
-    }
-    cell.to_string()
 }

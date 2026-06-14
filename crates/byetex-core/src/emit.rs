@@ -1584,11 +1584,31 @@ impl<'a> Emitter<'a> {
         }
         // Text-mode declarative font-switch group: `{\bf x}` / `{\em y}`. Wrap
         // the rest of the group in Typst markup and drop the pure-grouping
-        // braces. Non-switch groups fall through to the default walk below.
+        // braces.
         if node.kind() == "curly_group" {
             if let Some((wrap, switch_end)) = leading_font_switch(node, self.src) {
                 return self.emit_font_switch_group(node, switch_end, wrap);
             }
+            // Any other bare `{...}` in TEXT mode is pure LaTeX grouping (local
+            // scope), not literal braces. Emit the inner content WITHOUT the
+            // braces — Typst reads `{...}` as a CODE block, which breaks after a
+            // set rule (`#set heading(...){ ... }`) and lets nested groups leak
+            // (`\textbf{{X}}` → `*{X}*`); corpus 2605.31603. (Math `{...}` is
+            // handled earlier in this function and keeps its braces.)
+            let inner_end = node.end_byte().saturating_sub(1);
+            let mut cursor = node.walk();
+            let mut last = node.start_byte() + 1; // skip the opening `{`
+            for child in node.children(&mut cursor) {
+                // Skip the boundary brace tokens themselves.
+                if child.start_byte() == node.start_byte() || child.end_byte() == node.end_byte() {
+                    continue;
+                }
+                let cs = child.start_byte();
+                self.safe_copy(last, cs);
+                last = self.emit_node(child);
+            }
+            self.safe_copy(last, inner_end);
+            return node.end_byte();
         }
         let mut cursor = node.walk();
         let mut last = node.start_byte();

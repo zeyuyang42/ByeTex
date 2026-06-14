@@ -54,15 +54,20 @@ fn plain_cell_unchanged() {
 }
 
 #[test]
-fn two_groups_in_cell_not_stripped() {
-    // `{a}{b}` is two groups — the outer-brace strip must NOT fire (first `{`
-    // does not match the last `}`).
+fn two_groups_in_cell_concatenate() {
+    // `{a}{b}` is two bare grouping (scoping) groups — each emits its inner
+    // content WITHOUT braces, so the cell renders `ab` (the correct LaTeX
+    // concatenation). The old behavior preserved literal `{a}{b}`, which is a
+    // Typst code block that does not compile.
     let out = convert("\\begin{tabular}{l}\n{a}{b} \\\\\n\\end{tabular}\n");
-    // The first `{` does not match the last `}`, so the outer-brace strip must
-    // leave the cell intact (it must NOT strip to `a}{b`).
     assert!(
-        out.typst.contains("{a}{b}"),
-        "two-group cell must be left intact, got: {}",
+        out.typst.contains("[ab]"),
+        "two-group cell must concatenate to `ab`, got: {}",
+        out.typst
+    );
+    assert!(
+        !out.typst.contains("{a}") && !out.typst.contains("{b}"),
+        "no literal grouping braces may reach Typst, got: {}",
         out.typst
     );
 }
