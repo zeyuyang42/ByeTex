@@ -236,9 +236,14 @@ def run_byetex(
 
 
 def run_typst(typ_path: Path, out_pdf: Path) -> bool:
-    """Compile .typ to PDF with typst; return True on success."""
+    """Compile .typ to PDF with typst; return True on success.
+
+    `--no-pdf-tags`: typst 0.14's PDF/UA accessibility tagging panics
+    ("tags weren't properly closed") on some multi-column docs (corpus
+    2605.31586). Tagging is orthogonal to conversion/layout fidelity.
+    """
     result = subprocess.run(
-        ["typst", "compile", str(typ_path), str(out_pdf)],
+        ["typst", "compile", "--no-pdf-tags", str(typ_path), str(out_pdf)],
         capture_output=True,
         text=True,
     )
@@ -331,6 +336,12 @@ def resolve_truth_source(
 def rasterize_pdf(pdf: Path, prefix: Path, dpi: int) -> list[Path]:
     """Rasterize a PDF to PNGs; return sorted list of produced PNGs."""
     prefix.parent.mkdir(parents=True, exist_ok=True)
+    # Delete stale PNGs from a previous run first. pdftoppm only writes the pages
+    # it produces, so if the new PDF has FEWER pages the leftover higher-numbered
+    # PNGs would survive and inflate the page count (a 27-page PDF was counted as
+    # 81 after a prior 81-page run — corpus 2605.31586, two-column rework).
+    for stale in prefix.parent.glob(f"{prefix.name}-*.png"):
+        stale.unlink()
     subprocess.run(
         ["pdftoppm", "-r", str(dpi), "-png", str(pdf), str(prefix)],
         check=True,

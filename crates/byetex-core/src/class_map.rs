@@ -30,6 +30,9 @@ pub(crate) enum DocClass {
     Icml,
     Neurips,
     Iclr,
+    /// `\usepackage{acl}` (ACL Anthology style; the class is plain `article`).
+    /// Two-column in both preprint and final modes.
+    Acl,
     RevTeX,
     ElsArticle {
         format: Option<String>, // "preprint" (default), "1p", "3p", "5p", "review"
@@ -55,7 +58,9 @@ impl DocClass {
     /// First pass: detect the class purely from `\documentclass[opts]{class}`.
     pub fn from_class(class: &str, opts: &[String]) -> Self {
         match class {
-            "IEEEtran" | "IEEEconf" => {
+            // Match all `IEEEtran*` variants (IEEEtranTCOM, IEEEtranBSTCTL, …),
+            // not just the base class — they are all two-column.
+            name if name.starts_with("IEEEtran") || name == "IEEEconf" => {
                 let paper_type = opts
                     .iter()
                     .find(|o| {
@@ -130,6 +135,10 @@ impl DocClass {
         if base.starts_with("iclr") {
             return Self::Iclr;
         }
+        // ACL Anthology style (`acl`, `acl_natbib`, `acl20xx`) — two-column.
+        if base.starts_with("acl") {
+            return Self::Acl;
+        }
         self
     }
 
@@ -147,6 +156,8 @@ impl DocClass {
             }
             // ICML camera-ready is two-column.
             Self::Icml => true,
+            // ACL is two-column in both preprint and final modes.
+            Self::Acl => true,
             _ => false,
         }
     }
