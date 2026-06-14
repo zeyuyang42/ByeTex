@@ -36,8 +36,8 @@ mod typography;
 pub(crate) use escape::{escape_text_for_typst_content, needs_text_escape, is_typst_label_char, sanitize_label_key, escape_paren_semicolons, escape_unbalanced_math_brackets, strip_trailing_typst_label, escape_text_cell};
 pub(crate) use math_symbols::lookup_math_symbol;
 pub(in crate::emit) use node_utils::{
-    brace_balanced_end, brace_groups, color_from_model_spec, command_name_of, command_name_text,
-    environment_name,
+    brace_balanced_end, brace_groups, color_command_parts, color_from_model_spec, command_name_of,
+    command_name_text, environment_name,
     extract_label_name, extract_label_name_and_end, extract_label_ref_keys_and_end,
     first_curly_group, first_curly_like, flatten_text_children, is_command, is_comment,
     is_section_kind, leading_font_switch, math_font_decl_wrapper, named_color, needs_empty_base,
@@ -2890,6 +2890,40 @@ impl<'a> Emitter<'a> {
             // primitives that just render their content; emit X as-is.
             Some("\\mbox") | Some("\\hbox") | Some("\\fbox") | Some("\\framebox") => {
                 self.emit_inline_unwrap(node)
+            }
+            // `\fcolorbox{frame}{bg}{X}` (tree-sitter parses this as a generic
+            // command, not a `color_reference`, so without a handler the whole
+            // node — content included — was warned-and-dropped). Emit a filled,
+            // stroked box; drop just the frame/bg if a colour can't be resolved.
+            Some("\\fcolorbox") => {
+                let mut cursor = node.walk();
+                let content = node
+                    .children(&mut cursor)
+                    .filter(|c| c.kind().starts_with("curly_group"))
+                    .last()
+                    .map(|c| self.render_curly_group_content(c))
+                    .unwrap_or_default();
+                let text = self.src.get(node.start_byte()..node.end_byte()).unwrap_or("");
+                let (model, groups) = color_command_parts(text, "\\fcolorbox");
+                let frame = groups
+                    .first()
+                    .and_then(|a| self.resolve_color_arg(model.as_deref(), a));
+                let bg = groups
+                    .get(1)
+                    .and_then(|a| self.resolve_color_arg(model.as_deref(), a));
+                match (bg, frame) {
+                    (Some(b), Some(f)) => {
+                        let _ = write!(
+                            self.out,
+                            "#box(fill: {b}, stroke: {f}, inset: 2pt)[{content}]"
+                        );
+                    }
+                    (Some(b), None) => {
+                        let _ = write!(self.out, "#box(fill: {b}, inset: 2pt)[{content}]");
+                    }
+                    _ => self.out.push_str(&content),
+                }
+                node.end_byte()
             }
             // `\resizebox{w}{h}{X}` / `\scalebox{f}{X}` / `\rotatebox{a}{X}` /
             // `\reflectbox{X}` (graphicx) scale/transform their LAST argument.

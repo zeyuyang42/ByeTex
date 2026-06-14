@@ -330,6 +330,21 @@ pub(in crate::emit) fn brace_groups(s: &str, max: usize) -> Vec<String> {
     out
 }
 
+/// Split a colour command's source (`\textcolor[model]{a}{b}…`) into its
+/// optional `[model]` and the brace-group contents (up to 3). Used by
+/// `\textcolor`/`\colorbox`/`\fcolorbox` to read their colour args from source.
+pub(in crate::emit) fn color_command_parts(text: &str, cmd: &str) -> (Option<String>, Vec<String>) {
+    let body = text.trim_start().strip_prefix(cmd).unwrap_or("").trim_start();
+    let (model, rest) = match body.strip_prefix('[') {
+        Some(r) => match r.find(']') {
+            Some(close) => (Some(r[..close].to_string()), &r[close + 1..]),
+            None => (None, body),
+        },
+        None => (None, body),
+    };
+    (model, brace_groups(rest, 3))
+}
+
 /// Parse a `\definecolor{name}{model}{spec}` source span into `(name, typst)`.
 pub(in crate::emit) fn parse_definecolor(node: Node<'_>, src: &str) -> Option<(String, String)> {
     let text = src.get(node.start_byte()..node.end_byte())?;
