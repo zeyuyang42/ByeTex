@@ -624,16 +624,18 @@ impl<'a> Emitter<'a> {
                     .push_str("#set math.equation(numbering: \"(1)\")\n");
             }
             self.out.push('\n');
-            // The title block stays full-width; a two-column document wraps only
-            // the body in `#columns(2)[...]` (mirrors LaTeX's full-width title
-            // over a two-column body).
-            self.out.push_str(&title_block);
             if self.layout.is_two_column(&self.detected_class) {
-                self.out.push_str("#columns(2)[\n");
-                // In-column conference classes (ICML/IEEE/ACM) defer their
-                // abstract (and IEEE keywords) here, so they render INSIDE the
-                // two-column body — matching the LaTeX layout where these
-                // classes' abstracts share the column width.
+                // Document-level two-column (page `columns: 2` set in the
+                // preamble). The title block spans BOTH columns as a full-width
+                // float at the top of page 1; the body then flows in two columns
+                // below it (mirrors LaTeX `\twocolumn[\maketitle …]`).
+                self.out
+                    .push_str("#place(top + center, scope: \"parent\", float: true)[\n");
+                self.out.push_str(title_block.trim_end());
+                self.out.push_str("\n]\n");
+                // In-column conference classes (ICML/IEEE/ACM/ACL) defer their
+                // abstract (and IEEE keywords): they flow as the first in-column
+                // content (column 1), matching the LaTeX layout.
                 let profile =
                     crate::style_profile::StyleProfile::for_class(&self.detected_class);
                 if profile.abstract_in_columns {
@@ -658,11 +660,9 @@ impl<'a> Emitter<'a> {
                     }
                 }
                 self.out.push_str(body.trim_start_matches('\n'));
-                if !self.out.ends_with('\n') {
-                    self.out.push('\n');
-                }
-                self.out.push_str("]\n");
             } else {
+                // Single-column: full-width title block, then body.
+                self.out.push_str(&title_block);
                 self.out.push_str(&body);
             }
             // Numbering is fully emitted above; don't double-prepend below.

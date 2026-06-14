@@ -103,6 +103,16 @@ impl StyleProfile {
                 heading_sizes: ["1.2em", "1.0em", "1.0em"],
                 ..Self::neutral()
             },
+            // ACL (acl.sty): two-column, in-column abstract, natbib author-year.
+            // Conservative profile — exact title size/weight + ACL bib style
+            // deferred to a visual re-grade.
+            DocClass::Acl => Self {
+                abstract_style: AbstractStyle::ConferenceHeading { smallcaps: false },
+                abstract_in_columns: true,
+                cite_default: CiteMode::AuthorYear,
+                heading_sizes: ["1.2em", "1.0em", "1.0em"],
+                ..Self::neutral()
+            },
             // IEEEtran.cls \@maketitle (non-technote): {\Huge ... \@title}.
             DocClass::IeeeTran { .. } => Self {
                 title_size: "2.4em",

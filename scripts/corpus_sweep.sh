@@ -130,8 +130,10 @@ PYEOF
     continue
   fi
 
-  # Compile
-  typst_out=$(cd "$gen_proj" && typst compile main.typ main.pdf 2>&1) || true
+  # Compile. `--no-pdf-tags`: typst 0.14's PDF/UA accessibility tagging panics
+  # ("tags weren't properly closed") on some multi-column docs (corpus 2605.31586);
+  # tagging is orthogonal to conversion/layout fidelity, so disable it here.
+  typst_out=$(cd "$gen_proj" && typst compile --no-pdf-tags main.typ main.pdf 2>&1) || true
   errors=$(echo "$typst_out" | grep "^error:" | head -"$MAX_ERRORS")
 
   if [[ -z "$errors" ]]; then
