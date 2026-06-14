@@ -188,6 +188,9 @@ pub(crate) struct Emitter<'a> {
     /// that matches a key here, it routes to `emit_theorem_env_dyn` instead of
     /// `warn_unsupported_environment`.
     theorem_kinds: HashMap<String, String>,
+    /// Theorem `kind:` strings actually emitted, so `finish()` can add one head
+    /// show rule per kind (`#show figure.where(kind: …): "Theorem N (Note). body"`).
+    used_theorem_kinds: std::collections::HashSet<String>,
     /// Declared mandatory-argument count for custom `\newenvironment`s, keyed by
     /// env name. At a use site `\begin{name}{a}{b}` the args are leading
     /// `curly_group` children; `emit_environment_body` drops this many so they
@@ -347,6 +350,7 @@ impl<'a> Emitter<'a> {
             emitted_labels: HashSet::new(),
             saw_document_class: false,
             theorem_kinds: HashMap::new(),
+            used_theorem_kinds: std::collections::HashSet::new(),
             env_arg_counts: HashMap::new(),
             bibliography_keys: std::collections::HashSet::new(),
             asset_refs: Vec::new(),
@@ -561,6 +565,22 @@ impl<'a> Emitter<'a> {
         }
     }
 
+    /// One head show rule per emitted theorem kind: renders the figure as
+    /// `*Supplement N (Note).* body` (LaTeX shows a theorem head + number; a
+    /// bare `#figure` shows neither). Kinds are sorted for deterministic output.
+    fn theorem_show_rules(&self) -> String {
+        let mut kinds: Vec<&String> = self.used_theorem_kinds.iter().collect();
+        kinds.sort();
+        let mut s = String::new();
+        for k in kinds {
+            let _ = write!(
+                s,
+                "#show figure.where(kind: \"{k}\"): it => block(width: 100%, above: 1.1em, below: 1.1em)[#strong[#it.supplement #context it.counter.display(it.numbering)#if it.caption != none [ (#it.caption.body)].] #it.body]\n"
+            );
+        }
+        s
+    }
+
     pub(crate) fn finish(
         mut self,
     ) -> FinishOutput {
@@ -593,6 +613,11 @@ impl<'a> Emitter<'a> {
                 // Emitted here; clear so the fragment-preamble block below
                 // (which runs unconditionally) doesn't prepend it a second time.
                 self.used_text_label_anchor = false;
+            }
+            if !self.used_theorem_kinds.is_empty() {
+                let rules = self.theorem_show_rules();
+                self.out.push_str(&rules);
+                self.used_theorem_kinds.clear();
             }
             if self.needs_equation_numbering {
                 self.out
@@ -654,6 +679,9 @@ impl<'a> Emitter<'a> {
         }
         if self.used_text_label_anchor {
             preamble.push_str("#show figure.where(kind: \"anchor\"): it => none\n");
+        }
+        if !self.used_theorem_kinds.is_empty() {
+            preamble.push_str(&self.theorem_show_rules());
         }
         if self.needs_heading_numbering {
             preamble.push_str("#set heading(numbering: \"1.\")\n");
