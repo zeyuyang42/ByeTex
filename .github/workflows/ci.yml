@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -85,3 +86,31 @@ jobs:
         with:
           commit_message: "chore: refresh corpus warning table [skip ci]"
           file_pattern: README.md
+
+  fidelity:
+    # Render-fidelity regression gate (Layer 1). Heavy — it renders the pinned
+    # corpus and downloads arXiv truth PDFs — so it is MANUAL: run it from the
+    # Actions tab before a release, or locally via ./scripts/fidelity_gate.sh.
+    # Compile-rate is gated by the always-on `test` job; this gates render
+    # quality (the DRIVER) against scripts/fidelity_baseline.json.
+    name: fidelity gate (manual)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: typst-community/setup-typst@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install deps + fetch pinned corpus
+        run: |
+          pip install requests numpy pillow
+          python scripts/corpus_harvest.py --pinned
+
+      - name: Fidelity gate (pinned papers)
+        run: ./scripts/fidelity_gate.sh
