@@ -1339,6 +1339,12 @@ impl<'a> Emitter<'a> {
                     if let Some(end) = brace_balanced_end(self.src.as_bytes(), open) {
                         let inner = self.src.get(open + 1..end - 1).unwrap_or("").to_string();
                         self.raw_authors.push(inner);
+                        // Skip every node within the author-block extent — the
+                        // return value only governs raw-text gap copy; a sibling
+                        // node inside `[node.end, end]` (e.g. the affiliation
+                        // line after a tree-sitter mis-bound `\\`) would still be
+                        // re-emitted into the body otherwise (corpus 2605.31063).
+                        self.skip_until = self.skip_until.max(end);
                         return node.end_byte().max(end);
                     }
                     let inner = self
@@ -1941,6 +1947,14 @@ impl<'a> Emitter<'a> {
                     // rather than the bare `\` the table row-splitter keys on,
                     // so a minipage used as a table cell isn't split into rows.
                     self.out.push_str("#linebreak()");
+                    // `#linebreak()` directly followed by `(` is parsed as a call
+                    // chain (`#linebreak()(…)` → "expected function, found
+                    // content"); a zero-width space ends the expression so the
+                    // `(` stays literal markup (corpus 2605.31063
+                    // `\makecell{...\\($\Delta F$)}`).
+                    if self.src[node.end_byte()..].starts_with('(') {
+                        self.out.push('\u{200B}');
+                    }
                 } else {
                     if !self.out.ends_with(' ') && !self.out.ends_with('\n') {
                         self.out.push(' ');
@@ -2567,6 +2581,40 @@ impl<'a> Emitter<'a> {
                 self.harvest_tcolorbox_decl(node, self.src);
                 node.end_byte()
             }
+            // `\newtcbtheorem[init]{name}{title}{options}{prefix}` (tcolorbox
+            // theorem def). Unhandled, its 4 mandatory groups — especially the
+            // big `{options}` with nested braces / `\rule` / `\bfseries` — leak
+            // into the body as siblings and can cascade into following preamble
+            // content like `\author` (corpus 2605.31063). Consume the optional
+            // `[..]` plus the 4 mandatory `{..}` groups.
+            Some("\\newtcbtheorem") | Some("\\newtcbtheorem*") => {
+                let bytes = self.src.as_bytes();
+                let mut i = node.end_byte();
+                while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                    i += 1;
+                }
+                if bytes.get(i) == Some(&b'[') {
+                    while i < bytes.len() && bytes[i] != b']' {
+                        i += 1;
+                    }
+                    i += usize::from(i < bytes.len());
+                }
+                for _ in 0..4 {
+                    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                        i += 1;
+                    }
+                    if bytes.get(i) == Some(&b'{') {
+                        match brace_balanced_end(bytes, i) {
+                            Some(end) => i = end,
+                            None => break,
+                        }
+                    } else {
+                        break;
+                    }
+                }
+                self.skip_until = self.skip_until.max(i);
+                i
+            }
             // `\newcommandx` (xargs/xargspec package) parses as a bare
             // generic_command with only its command_name child; the
             // `\name[N][K=def]{body}` definition lands as sibling
@@ -2866,6 +2914,9 @@ impl<'a> Emitter<'a> {
                     if let Some(end) = brace_balanced_end(self.src.as_bytes(), open) {
                         let inner = self.src.get(open + 1..end - 1).unwrap_or("").to_string();
                         self.raw_authors.push(inner);
+                        // See `author_declaration` above: skip the whole extent so
+                        // sibling nodes inside it don't re-emit into the body.
+                        self.skip_until = self.skip_until.max(end);
                         return node.end_byte().max(end);
                     }
                     let inner = self
@@ -4146,11 +4197,19 @@ fn convertible_length(s: &str) -> Option<String> {
     if s.is_empty() || s.contains('\\') {
         return None;
     }
-    for u in ["cm", "mm", "in", "pt", "em", "ex"] {
+    for u in ["cm", "mm", "in", "pt", "em"] {
         if let Some(num) = s.strip_suffix(u) {
             if num.trim().parse::<f64>().is_ok() {
                 return Some(s.to_string());
             }
+        }
+    }
+    // `ex` is NOT a Typst unit — emitting `1ex` makes Typst read `1e` as broken
+    // scientific notation ("invalid floating point number"; corpus 2605.31603
+    // `\vspace{1ex}`). Approximate 1ex ≈ 0.5em.
+    if let Some(num) = s.strip_suffix("ex") {
+        if let Ok(n) = num.trim().parse::<f64>() {
+            return Some(format!("{}em", n * 0.5));
         }
     }
     None
