@@ -1,0 +1,16 @@
+{
+  "name": "byetex",
+  "description": "ByeTex — LaTeX → Typst converter for AI agents.",
+  "owner": {
+    "name": "Zeyu Yang"
+  },
+  "plugins": [
+    {
+      "name": "byetex",
+      "description": "LaTeX → Typst converter: 11 MCP tools, a CLI, and 12 repair/grading skills. Requires the `byetex` binary on PATH (cargo install byetex / brew / install.sh).",
+      "version": "0.3.0",
+      "source": "./",
+      "author": { "name": "Zeyu Yang" }
+    }
+  ]
+}
