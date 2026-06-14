@@ -2787,7 +2787,12 @@ impl<'a> Emitter<'a> {
                 node.end_byte()
             }
             Some("\\&") => {
-                self.out.push('&');
+                // Keep the Typst escape `\&` (renders a literal `&`). A bare `&`
+                // is indistinguishable from a tabular column separator and gets
+                // split as one — corrupting cells (corpus 2605.31604:
+                // `\multicolumn{3}{c}{Document \& Diagram}`). The table cell
+                // splitter only breaks on UNescaped `&`.
+                self.out.push_str("\\&");
                 node.end_byte()
             }
             Some("\\%") => {
