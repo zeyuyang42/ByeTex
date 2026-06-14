@@ -117,6 +117,8 @@ fn mcp_server_handshakes_and_lists_tools() {
         "convert_project",
         "diagnose",
         "validate",
+        "compile",
+        "render",
         "list_skills",
         "read_skill",
     ] {

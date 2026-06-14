@@ -1,7 +1,7 @@
 //! ByeTex MCP server — stdio JSON-RPC service exposing the LaTeX → Typst
 //! converter and its bundled skill catalogue to AI agents.
 //!
-//! Eight tools are exposed:
+//! Ten tools are exposed:
 //!
 //! - `convert(tex: String, strict: bool?) -> { typst, warnings }`
 //! - `convert_file(path: String, strict: bool?) -> { typst_path, warnings_path, warnings }`
@@ -13,6 +13,10 @@
 //!   (converts + `typst compile`s and maps each error back to its LaTeX fragment + repair skill.)
 //! - `validate(path: String, full: bool?) -> { input_compiles, tectonic_log_excerpt, byetex_typst_compiles, verdict }`
 //!   (Stage-0 oracle: compiles the *input* with tectonic to tell a broken source from a ByeTex bug.)
+//! - `compile(path: String, out_pdf: String?) -> { ok, errors:[{message,line,col}], pdf_path }`
+//!   (runs `typst compile` on a `.typ`/`.tex` and returns parsed errors — no raw shell-out needed.)
+//! - `render(path: String, dpi: u32?, out_dir: String?) -> { ok, errors, image_paths }`
+//!   (renders the output to per-page PNGs for visual inspection / fidelity grading.)
 //! - `list_skills() -> [{name, description}]`
 //! - `read_skill(name: String) -> { name, description, body }`
 
@@ -79,6 +83,31 @@ pub struct ValidateParams {
 
 fn default_true() -> bool {
     true
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct CompileParams {
+    /// Path to a `.typ` file (or a `.tex`, which is converted flat first).
+    pub path: String,
+    /// Output PDF path. Defaults to `<input>.pdf`.
+    #[serde(default)]
+    pub out_pdf: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct RenderParams {
+    /// Path to a `.typ` file (or a `.tex`, which is converted flat first).
+    pub path: String,
+    /// Pixels-per-inch for the PNG export. Defaults to 144.
+    #[serde(default = "default_dpi")]
+    pub dpi: u32,
+    /// Output directory for the page PNGs. Defaults to `<input-stem>.pages/`.
+    #[serde(default)]
+    pub out_dir: Option<String>,
+}
+
+fn default_dpi() -> u32 {
+    144
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -308,6 +337,60 @@ impl ByeTexServer {
             })?;
         let json = serde_json::to_string(&report)
             .map_err(|e| McpError::internal_error(format!("serialize report: {e}"), None))?;
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
+    #[tool(
+        description = "Compile a generated Typst file to PDF and return STRUCTURED typst errors. \
+                          `path` is a `.typ` (or a `.tex`, converted flat first). Returns \
+                          {ok, errors:[{message,line,col}], pdf_path}. Prefer this over shelling \
+                          out to `typst` so compile errors come back parsed and mapped to lines."
+    )]
+    async fn compile(
+        &self,
+        Parameters(p): Parameters<CompileParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let typst = std::env::var("BYETEX_TYPST_BIN").unwrap_or_else(|_| "typst".to_string());
+        let input = std::path::PathBuf::from(&p.path);
+        let typ = byetex_core::compile::ensure_typ(&input).map_err(|e| {
+            McpError::internal_error(format!("ensure_typ {}: {}", input.display(), e), None)
+        })?;
+        let out_pdf = p.out_pdf.as_ref().map(std::path::PathBuf::from);
+        let res = byetex_core::compile::compile_typ(&typ, out_pdf.as_deref(), &typst)
+            .map_err(|e| {
+                McpError::internal_error(format!("compile {}: {}", typ.display(), e), None)
+            })?;
+        let json = serde_json::to_string(&res)
+            .map_err(|e| McpError::internal_error(format!("serialize compile result: {e}"), None))?;
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
+    #[tool(
+        description = "Render a generated Typst file to per-page PNG images at a given DPI and \
+                          return their paths. `path` is a `.typ` (or a `.tex`, converted flat \
+                          first). Returns {ok, errors, image_paths}. Use this to visually inspect \
+                          the conversion — e.g. front-matter and per-page fidelity grading."
+    )]
+    async fn render(
+        &self,
+        Parameters(p): Parameters<RenderParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let typst = std::env::var("BYETEX_TYPST_BIN").unwrap_or_else(|_| "typst".to_string());
+        let input = std::path::PathBuf::from(&p.path);
+        let typ = byetex_core::compile::ensure_typ(&input).map_err(|e| {
+            McpError::internal_error(format!("ensure_typ {}: {}", input.display(), e), None)
+        })?;
+        let out_dir = p.out_dir.map(std::path::PathBuf::from).unwrap_or_else(|| {
+            let stem = typ.file_stem().and_then(|s| s.to_str()).unwrap_or("output");
+            typ.parent()
+                .unwrap_or_else(|| std::path::Path::new("."))
+                .join(format!("{stem}.pages"))
+        });
+        let res = byetex_core::compile::render_typ(&typ, &out_dir, p.dpi, &typst).map_err(|e| {
+            McpError::internal_error(format!("render {}: {}", typ.display(), e), None)
+        })?;
+        let json = serde_json::to_string(&res)
+            .map_err(|e| McpError::internal_error(format!("serialize render result: {e}"), None))?;
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
