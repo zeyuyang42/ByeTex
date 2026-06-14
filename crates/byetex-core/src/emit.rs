@@ -2158,11 +2158,43 @@ impl<'a> Emitter<'a> {
             // (`\smallskip`/`\medskip`/`\bigskip` are handled above with
             // explicit `#v(...)` emission and take precedence over this
             // catch-all.)
+            // `\vspace{len}` / `\hspace{len}` — emit `#v(len)` / `#h(len)` when
+            // the length is a plain Typst dimension (em/cm/mm/in/pt/ex, signed);
+            // LaTeX length macros (`\baselineskip`, `\dimexpr…`) → drop.
+            Some("\\vspace") | Some("\\vspace*") | Some("\\hspace") | Some("\\hspace*")
+                if !self.in_math =>
+            {
+                let func = if name.as_deref().is_some_and(|n| n.starts_with("\\hspace")) {
+                    "h"
+                } else {
+                    "v"
+                };
+                if let Some(arg) = first_curly_group(node) {
+                    let raw = self
+                        .src
+                        .get(arg.start_byte() + 1..arg.end_byte().saturating_sub(1))
+                        .unwrap_or("")
+                        .trim();
+                    if let Some(len) = convertible_length(raw) {
+                        let _ = write!(self.out, "#{func}({len})");
+                        // `#h(..)`/`#v(..)` glued to following punctuation (`(`,
+                        // `[`, `@`, `.`, …) is parsed by Typst as a call / content
+                        // arg / field-access / ref chain on the function result →
+                        // code context → error (corpus 2605.22728 `\hspace{-0.1mm}(`
+                        // and `\hspace{-0.1mm}@cite`). A zero-width space ends the
+                        // expression as markup. Letters/digits/space are safe.
+                        let glued_punct = self.src[node.end_byte()..]
+                            .chars()
+                            .next()
+                            .is_some_and(|c| !c.is_alphanumeric() && !c.is_whitespace());
+                        if glued_punct {
+                            self.out.push('\u{200B}');
+                        }
+                    }
+                }
+                node.end_byte()
+            }
             Some("\\kern")
-            | Some("\\vspace")
-            | Some("\\hspace")
-            | Some("\\vspace*")
-            | Some("\\hspace*")
             | Some("\\quad")
             | Some("\\qquad")
             | Some("\\,")
@@ -4081,6 +4113,24 @@ fn break_raw_paren_chains(s: &str) -> String {
 /// them (the rationale being that an argument-less command without a brace
 /// group can't otherwise be separated from the next token). When we drop a
 /// command we mirror that consumption so we don't leave a stray leading space.
+/// A `\vspace`/`\hspace` length that maps 1:1 to a Typst dimension: an
+/// optionally-signed decimal followed by a Typst-valid unit (cm/mm/in/pt/em/ex).
+/// `None` for LaTeX length macros / `\dimexpr` / fills, which have no analog.
+fn convertible_length(s: &str) -> Option<String> {
+    let s = s.trim();
+    if s.is_empty() || s.contains('\\') {
+        return None;
+    }
+    for u in ["cm", "mm", "in", "pt", "em", "ex"] {
+        if let Some(num) = s.strip_suffix(u) {
+            if num.trim().parse::<f64>().is_ok() {
+                return Some(s.to_string());
+            }
+        }
+    }
+    None
+}
+
 fn consume_trailing_inline_space(src: &str, mut pos: usize) -> usize {
     let bytes = src.as_bytes();
     while bytes.get(pos) == Some(&b' ') || bytes.get(pos) == Some(&b'\t') {
