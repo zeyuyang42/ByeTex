@@ -119,6 +119,7 @@ fn mcp_server_handshakes_and_lists_tools() {
         "validate",
         "compile",
         "render",
+        "explain",
         "list_skills",
         "read_skill",
     ] {

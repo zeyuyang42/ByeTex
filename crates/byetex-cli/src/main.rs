@@ -30,8 +30,15 @@ enum Command {
     /// Convert a .tex file to .typ, writing <stem>.warnings.json alongside it.
     /// With --project, emits a self-contained Typst project directory instead.
     Convert {
-        /// Path to the input .tex file.
-        input: PathBuf,
+        /// Path to the input .tex file, or `-` to read LaTeX from stdin. Omit
+        /// when using `-c/--code`. Stdin and `-c` print Typst to stdout and
+        /// write no files (a quick, reproducible one-off check).
+        input: Option<PathBuf>,
+
+        /// Convert a LaTeX string directly and print the Typst to stdout
+        /// (no files written).
+        #[arg(short = 'c', long = "code", conflicts_with_all = ["input", "project", "output"])]
+        code: Option<String>,
 
         /// Write Typst output here. Defaults to <input-stem>.typ.
         /// Mutually exclusive with --project.
@@ -188,6 +195,17 @@ enum Command {
         #[arg(long)]
         out: Option<PathBuf>,
     },
+
+    /// Explain a conversion node-by-node: print a JSON array mapping each LaTeX
+    /// source fragment to the Typst it produced ("why did this LaTeX emit this
+    /// Typst?"). Input is a `.tex` file, `-` for stdin, or `-c <code>`.
+    Explain {
+        /// Path to a `.tex` file, or `-` to read stdin. Omit when using `-c`.
+        input: Option<PathBuf>,
+        /// Explain a LaTeX string directly instead of a file.
+        #[arg(short = 'c', long = "code", conflicts_with = "input")]
+        code: Option<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -230,6 +248,7 @@ fn main() -> Result<()> {
     match cli.command {
         Command::Convert {
             input,
+            code,
             output,
             project,
             project_out,
@@ -238,22 +257,32 @@ fn main() -> Result<()> {
             no_brief,
             compile,
         } => {
-            let brief_opts = BriefOpts {
-                skip: no_brief,
-                // `convert` is the fast path (no implicit typst spawn) unless
-                // `--compile` is given, in which case it behaves like `agent-brief`.
-                no_compile: !compile,
-            };
-            let mode = if project {
-                ConvertMode::Project {
-                    project_out,
-                    no_toml,
-                    force,
-                }
+            // Snippet modes (`-c` or `-`) convert in-memory and print Typst to
+            // stdout, writing no files.
+            if let Some(src) = code {
+                run_convert_snippet(&src)
+            } else if input.as_deref().map(is_stdin_dash).unwrap_or(false) {
+                run_convert_snippet(&read_stdin()?)
+            } else if let Some(input) = input {
+                let brief_opts = BriefOpts {
+                    skip: no_brief,
+                    // `convert` is the fast path (no implicit typst spawn) unless
+                    // `--compile` is given, in which case it behaves like `agent-brief`.
+                    no_compile: !compile,
+                };
+                let mode = if project {
+                    ConvertMode::Project {
+                        project_out,
+                        no_toml,
+                        force,
+                    }
+                } else {
+                    ConvertMode::Flat { output }
+                };
+                run_convert_dispatch(input, mode, brief_opts)
             } else {
-                ConvertMode::Flat { output }
-            };
-            run_convert_dispatch(input, mode, brief_opts)
+                anyhow::bail!("provide an input file, `-c <code>`, or `-` to read LaTeX from stdin");
+            }
         }
         Command::Skills { action } => run_skills(action),
         #[cfg(feature = "mcp")]
@@ -292,6 +321,7 @@ fn main() -> Result<()> {
         } => run_doctor(input, strict, full),
         Command::Compile { input, out } => run_compile(input, out),
         Command::Render { input, dpi, out } => run_render(input, dpi, out),
+        Command::Explain { input, code } => run_explain(input, code),
     }
 }
 
@@ -465,6 +495,58 @@ fn run_render(input: PathBuf, dpi: u32, out: Option<PathBuf>) -> Result<()> {
     for p in &res.image_paths {
         println!("{p}");
     }
+    Ok(())
+}
+
+/// True for the `-` sentinel meaning "read from stdin".
+fn is_stdin_dash(p: &std::path::Path) -> bool {
+    p.as_os_str() == "-"
+}
+
+/// Read all of stdin as a UTF-8 string.
+fn read_stdin() -> Result<String> {
+    use std::io::Read;
+    let mut buf = String::new();
+    std::io::stdin()
+        .read_to_string(&mut buf)
+        .context("reading LaTeX from stdin")?;
+    Ok(buf)
+}
+
+/// Convert a LaTeX string in-memory and print the Typst to stdout. Writes no
+/// files; a warning count (if any) goes to stderr. Powers `convert -c <code>`
+/// and `convert -`.
+fn run_convert_snippet(source: &str) -> Result<()> {
+    let out = byetex_core::convert(source, &byetex_core::ConvertOptions::default());
+    print!("{}", out.typst);
+    if !out.typst.ends_with('\n') {
+        println!();
+    }
+    if !out.warnings.is_empty() {
+        eprintln!("byetex: {} warning(s)", out.warnings.len());
+    }
+    Ok(())
+}
+
+/// Resolve snippet source from a `--code` string, stdin (`-`), or a file path.
+fn resolve_snippet_source(input: Option<PathBuf>, code: Option<String>) -> Result<String> {
+    if let Some(src) = code {
+        return Ok(src);
+    }
+    match input {
+        Some(p) if is_stdin_dash(&p) => read_stdin(),
+        Some(p) => std::fs::read_to_string(&p).with_context(|| format!("read {}", p.display())),
+        None => anyhow::bail!("provide a `.tex` file, `-c <code>`, or `-` to read stdin"),
+    }
+}
+
+/// Explain a conversion node-by-node: print a JSON array mapping each LaTeX
+/// source fragment to the Typst it produced ("why did this LaTeX emit this
+/// Typst?").
+fn run_explain(input: Option<PathBuf>, code: Option<String>) -> Result<()> {
+    let source = resolve_snippet_source(input, code)?;
+    let ex = byetex_core::snippet::explain(&source, &byetex_core::ConvertOptions::default());
+    println!("{}", serde_json::to_string_pretty(&ex)?);
     Ok(())
 }
 

@@ -15,6 +15,7 @@ pub mod diagnose;
 pub mod parser;
 pub mod project;
 pub mod skills;
+pub mod snippet;
 pub mod validate;
 pub mod warnings;
 
