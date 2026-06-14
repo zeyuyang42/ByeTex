@@ -5,7 +5,7 @@ use std::fmt::Write;
 use tree_sitter::Node;
 
 use super::{
-    brace_groups, color_from_model_spec, consume_trailing_inline_space, first_curly_group,
+    color_command_parts, color_from_model_spec, consume_trailing_inline_space, first_curly_group,
     named_color, Emitter,
 };
 
@@ -304,12 +304,11 @@ impl<'a> Emitter<'a> {
         node.end_byte()
     }
 
-    /// `\textcolor{color}{content}` (tree-sitter `color_reference`) → Typst
-    /// `#text(fill: <color>)[content]`. The colour resolves from the
-    /// `\definecolor` table, then a built-in xcolor name, then an inline
-    /// `[model]{spec}` form; an unresolvable colour (or a `\colorbox`/`\fcolorbox`
-    /// background box, which we don't colour yet) falls back to plain content so
-    /// the colour is dropped but the text never breaks compilation.
+    /// `\textcolor{c}{x}` → `#text(fill: c)[x]`; `\colorbox{bg}{x}` →
+    /// `#highlight(fill: bg)[x]` (tree-sitter routes both through the
+    /// `color_reference` node). The colour resolves from the `\definecolor`
+    /// table, then a built-in xcolor name, then an inline `[model]{spec}`; an
+    /// unresolvable colour falls back to plain content (never breaks compile).
     pub(in crate::emit) fn emit_textcolor(&mut self, node: Node<'_>) -> usize {
         // Content is the LAST `{…}` group; render via the AST for nested markup.
         let mut cursor = node.walk();
@@ -323,33 +322,31 @@ impl<'a> Emitter<'a> {
         };
 
         let text = self.src.get(node.start_byte()..node.end_byte()).unwrap_or("");
-        let color = if text.trim_start().starts_with("\\textcolor") {
-            self.textcolor_fill(text)
+        let trimmed = text.trim_start();
+        let (wrapper, cmd) = if trimmed.starts_with("\\colorbox") {
+            ("#highlight(fill: ", "\\colorbox")
         } else {
-            None
+            ("#text(fill: ", "\\textcolor")
         };
+        let (model, groups) = color_command_parts(text, cmd);
+        let color = groups
+            .first()
+            .and_then(|a| self.resolve_color_arg(model.as_deref(), a));
 
         match color {
             Some(c) => {
-                let _ = write!(self.out, "#text(fill: {c})[{content}]");
+                let _ = write!(self.out, "{wrapper}{c})[{content}]");
             }
             None => self.out.push_str(&content),
         }
         node.end_byte()
     }
 
-    /// Resolve the Typst colour expression for a `\textcolor` source span:
-    /// `\textcolor[model]{spec}{…}` or `\textcolor{name}{…}`.
-    fn textcolor_fill(&self, text: &str) -> Option<String> {
-        let body = text.trim_start().strip_prefix("\\textcolor")?.trim_start();
-        let (model, rest) = if let Some(r) = body.strip_prefix('[') {
-            let close = r.find(']')?;
-            (Some(&r[..close]), &r[close + 1..])
-        } else {
-            (None, body)
-        };
-        let groups = brace_groups(rest, 1);
-        let arg = groups.first()?.trim();
+    /// Resolve a colour arg to a Typst colour expression: an inline `[model]`
+    /// spec, else a `\definecolor`-harvested custom name, else a built-in xcolor
+    /// name. `None` if unresolvable (caller drops the colour).
+    pub(in crate::emit) fn resolve_color_arg(&self, model: Option<&str>, arg: &str) -> Option<String> {
+        let arg = arg.trim();
         match model {
             Some(m) => color_from_model_spec(m, arg),
             None => self
@@ -360,16 +357,27 @@ impl<'a> Emitter<'a> {
         }
     }
 
-    /// `\textcolor{color}{content}` in math mode — drops color, renders content
-    /// as math.
+    /// `\textcolor{c}{x}` in math mode → `#text(fill: c)[$x$]` (the inline-math
+    /// content carries the colour). Unresolvable colour → content only.
     pub(in crate::emit) fn emit_math_textcolor(&mut self, node: Node<'_>) -> usize {
         let mut cursor = node.walk();
         let content_node = node
             .children(&mut cursor)
             .find(|c| c.kind() == "curly_group");
-        if let Some(cnode) = content_node {
-            let inner = self.render_math_group(cnode);
-            self.out.push_str(inner.trim());
+        let inner = match content_node {
+            Some(cnode) => self.render_math_group(cnode).trim().to_string(),
+            None => return node.end_byte(),
+        };
+        let text = self.src.get(node.start_byte()..node.end_byte()).unwrap_or("");
+        let (model, groups) = color_command_parts(text, "\\textcolor");
+        let color = groups
+            .first()
+            .and_then(|a| self.resolve_color_arg(model.as_deref(), a));
+        match color {
+            Some(c) => {
+                let _ = write!(self.out, "#text(fill: {c})[${inner}$]");
+            }
+            None => self.out.push_str(&inner),
         }
         node.end_byte()
     }
