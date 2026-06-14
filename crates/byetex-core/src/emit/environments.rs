@@ -122,6 +122,21 @@ impl<'a> Emitter<'a> {
         while self.out.ends_with('\n') || self.out.ends_with(' ') || self.out.ends_with('\t') {
             self.out.pop();
         }
+        // A transparent wrapper (`center`, `document`, …) emits its body inline
+        // after the trim above. But if the buffer now ends with a Typst set-rule
+        // statement (e.g. `\appendix` → `#set heading(numbering: "A.1")`,
+        // corpus 2605.31603), inline body content would glue onto it ("expected
+        // semicolon or line break"). Re-add the line break the statement needs.
+        if let Some(last_line) = self.out.rsplit('\n').next() {
+            let s = last_line.trim_start();
+            if s.starts_with("#set ")
+                || s.starts_with("#show ")
+                || s.starts_with("#let ")
+                || s.starts_with("#import ")
+            {
+                self.out.push('\n');
+            }
+        }
 
         let mut cursor = env.walk();
         let mut body: Vec<Node<'_>> = env

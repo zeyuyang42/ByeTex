@@ -331,7 +331,15 @@ impl<'a> Emitter<'a> {
             if self.label_first_use(first) {
                 let _ = write!(self.out, " <{}>", first);
             }
-            if !rest.is_empty() {
+            // A referenced equation MUST be numbered, or `@key` errors with
+            // "cannot reference equation without numbering" (corpus 2605.31603:
+            // a single-label `\begin{equation}` referenced by `\ref`). Multi-
+            // label equations always need numbering too.
+            if !rest.is_empty()
+                || self
+                    .referenced_labels
+                    .contains(&crate::emit::escape::sanitize_label_key(first))
+            {
                 self.needs_equation_numbering = true;
             }
             for extra in rest {
