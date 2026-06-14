@@ -1,7 +1,7 @@
 //! ByeTex MCP server — stdio JSON-RPC service exposing the LaTeX → Typst
 //! converter and its bundled skill catalogue to AI agents.
 //!
-//! Seven tools are exposed:
+//! Eight tools are exposed:
 //!
 //! - `convert(tex: String, strict: bool?) -> { typst, warnings }`
 //! - `convert_file(path: String, strict: bool?) -> { typst_path, warnings_path, warnings }`
@@ -11,6 +11,8 @@
 //! - `convert_project(main_tex: String, out_dir: String, …) -> { written_files, warnings }`
 //! - `diagnose(path: String, project: bool?) -> [{ message, line, col, src_fragment, typ_region, skill_name }]`
 //!   (converts + `typst compile`s and maps each error back to its LaTeX fragment + repair skill.)
+//! - `validate(path: String, full: bool?) -> { input_compiles, tectonic_log_excerpt, byetex_typst_compiles, verdict }`
+//!   (Stage-0 oracle: compiles the *input* with tectonic to tell a broken source from a ByeTex bug.)
 //! - `list_skills() -> [{name, description}]`
 //! - `read_skill(name: String) -> { name, description, body }`
 
@@ -63,6 +65,20 @@ pub struct DiagnoseParams {
     /// `path` is a directory).
     #[serde(default)]
     pub project: bool,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct ValidateParams {
+    /// Path to a `.tex` file whose *input* validity should be checked.
+    pub path: String,
+    /// Also check that ByeTex's own output compiles, separating `input_broken`
+    /// from `byetex_bug`. Defaults to true.
+    #[serde(default = "default_true")]
+    pub full: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -270,6 +286,31 @@ impl ByeTexServer {
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
+    #[tool(
+        description = "Stage-0 input oracle: compile the *input* LaTeX with tectonic and report \
+                          whether the source itself is valid. Returns {input_compiles, \
+                          tectonic_log_excerpt, byetex_typst_compiles, verdict}, where verdict is one \
+                          of ok | input_broken | byetex_bug | tectonic_unavailable. Use this BEFORE \
+                          repairing a conversion to tell a broken source apart from a ByeTex bug. \
+                          Requires `tectonic` on PATH (verdict is `tectonic_unavailable` otherwise)."
+    )]
+    async fn validate(
+        &self,
+        Parameters(p): Parameters<ValidateParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let path = std::path::PathBuf::from(&p.path);
+        let tectonic =
+            std::env::var("BYETEX_TECTONIC_BIN").unwrap_or_else(|_| "tectonic".to_string());
+        let typst = std::env::var("BYETEX_TYPST_BIN").unwrap_or_else(|_| "typst".to_string());
+        let report =
+            byetex_core::validate::run_doctor(&path, p.full, &tectonic, &typst).map_err(|e| {
+                McpError::internal_error(format!("validate {}: {}", path.display(), e), None)
+            })?;
+        let json = serde_json::to_string(&report)
+            .map_err(|e| McpError::internal_error(format!("serialize report: {e}"), None))?;
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
     #[tool(description = "Return the full markdown body of a single skill by name.")]
     async fn read_skill(
         &self,
@@ -313,8 +354,9 @@ impl ServerHandler for ByeTexServer {
                  constructs as structured warnings. Use `convert` for in-memory \
                  source, `convert_file`/`convert_project` for paths, `diagnose` to \
                  compile the output and map each typst error back to its LaTeX \
-                 fragment + repair skill, and `list_skills` + `read_skill` to \
-                 discover how to act on warnings."
+                 fragment + repair skill, `validate` to check whether the *input* \
+                 LaTeX itself compiles (a broken source vs. a ByeTex bug), and \
+                 `list_skills` + `read_skill` to discover how to act on warnings."
                     .to_string(),
             ),
         }
