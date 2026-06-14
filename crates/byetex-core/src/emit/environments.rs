@@ -379,13 +379,23 @@ impl<'a> Emitter<'a> {
         // Convert the display name through the sub-emitter so LaTeX math
         // (e.g. `Theorem A$^\star_{\mathrm{global}}$`) becomes valid Typst.
         let converted_name = self.render_in_sub_emitter(name, false, true);
+        // The optional `\begin{theorem}[Note]` becomes the figure caption; a
+        // per-kind head show rule (emitted in finish()) renders it as
+        // "Theorem N (Note). body".
+        let note = theorem_note(env, self.src)
+            .map(|n| self.render_in_sub_emitter(&n, false, true).trim().to_string())
+            .filter(|n| !n.is_empty());
+        self.used_theorem_kinds.insert(kind.clone());
         let _ = write!(
             self.out,
-            "#figure(kind: \"{}\", supplement: [{}], [{}])",
+            "#figure(kind: \"{}\", supplement: [{}]",
             kind,
-            converted_name.trim(),
-            inner.trim()
+            converted_name.trim()
         );
+        if let Some(n) = &note {
+            let _ = write!(self.out, ", caption: [{}]", n);
+        }
+        let _ = write!(self.out, ", [{}])", inner.trim());
         if let Some(l) = label {
             if self.label_first_use(&l) {
                 let _ = write!(self.out, " <{}>", l);
@@ -700,5 +710,37 @@ fn numbering_from_spec(spec: &str) -> Option<String> {
         Some(conv.to_string())
     } else {
         None
+    }
+}
+
+/// The optional `\begin{<thm>}[Note]` argument, matched from source. Requires
+/// the `[` on the same line as `\begin{…}` (only spaces/tabs between), so a body
+/// that starts with `[` on a new line is not mistaken for a note. Depth-aware
+/// over nested `[]`.
+fn theorem_note(env: Node<'_>, src: &str) -> Option<String> {
+    let s = src.get(env.start_byte()..env.end_byte())?;
+    let after = s.strip_prefix("\\begin")?.trim_start().strip_prefix('{')?;
+    let close = after.find('}')?;
+    let gap = after.get(close + 1..)?;
+    let rest = gap.trim_start_matches([' ', '\t']).strip_prefix('[')?;
+    let bytes = rest.as_bytes();
+    let mut depth = 1usize;
+    let mut j = 0usize;
+    while j < bytes.len() && depth > 0 {
+        match bytes[j] {
+            b'[' => depth += 1,
+            b']' => depth -= 1,
+            _ => {}
+        }
+        j += 1;
+    }
+    if depth != 0 {
+        return None;
+    }
+    let note = rest[..j - 1].trim();
+    if note.is_empty() {
+        None
+    } else {
+        Some(note.to_string())
     }
 }
