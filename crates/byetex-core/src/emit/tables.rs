@@ -219,7 +219,7 @@ impl<'a> Emitter<'a> {
         // (`split_math_rows` already consumed any `\\[len]` vertical-space arg.)
         let rows_2d: Vec<Vec<String>> = rows
             .iter()
-            .map(|row| row.split('&').map(|c| c.trim().to_string()).collect())
+            .map(|row| split_cells_on_unescaped_amp(row))
             .collect();
 
         // Booktabs styling. Typst's default table draws a full grid (a line
@@ -382,6 +382,28 @@ impl<'a> Emitter<'a> {
 /// the content really uses (corpus 2605.31561). `spec_count` is the upper bound
 /// (rows are never placed past it); the placement here mirrors `emit_tabular`'s
 /// emission loop so the clamped count matches what is emitted. Never returns 0.
+/// Split a rendered table row into cells on the column separator `&`, skipping
+/// an escaped `\&` (a literal ampersand rendered by the `\&` text command, e.g.
+/// `\multicolumn{3}{c}{Document \& Diagram}` — corpus 2605.31604). Cells are
+/// trimmed. A `\\` escape (literal backslash) before `&` still separates.
+fn split_cells_on_unescaped_amp(row: &str) -> Vec<String> {
+    let mut cells = Vec::new();
+    let mut cur = String::new();
+    let mut prev_backslash = false;
+    for ch in row.chars() {
+        if ch == '&' && !prev_backslash {
+            cells.push(cur.trim().to_string());
+            cur.clear();
+            prev_backslash = false;
+            continue;
+        }
+        cur.push(ch);
+        prev_backslash = ch == '\\' && !prev_backslash;
+    }
+    cells.push(cur.trim().to_string());
+    cells
+}
+
 /// Parse `\cmidrule[width](trim){a-b}` rules from a raw tabular source, keyed by
 /// the data-row index they follow (= number of `\\` row breaks before the rule,
 /// minus one). A `{a-b}` range (1-indexed, inclusive) maps to a Typst hline span
