@@ -14,6 +14,7 @@ pub mod diagnose;
 pub mod parser;
 pub mod project;
 pub mod skills;
+pub mod validate;
 pub mod warnings;
 
 pub use diagnose::Diagnostic;
