@@ -8,9 +8,11 @@ PATH — install it first.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/zeyuyang42/ByeTex/main/install.sh | sh
-# or: cargo install byetex --features mcp
-# or: brew install zeyuyang42/byetex/byetex
+# or build from source:
+cargo install --git https://github.com/zeyuyang42/ByeTex byetex --features mcp
 ```
+
+> `cargo install byetex` (crates.io) and `brew install` (a Homebrew tap) are coming soon.
 
 ## 2. Install the plugin (Claude Code)
 
