@@ -13,7 +13,7 @@ captioned sub-blocks, every caption after the first is dropped — and often the
 later body content too (only the first image/table is kept).
 
 All affected corpus papers currently *compile* (the corpus is at 100%
-ByeTeX-attributable compile-rate); this is a **fidelity / content-loss** gap, not
+ByeTex-attributable compile-rate); this is a **fidelity / content-loss** gap, not
 a compile blocker.
 
 Two real structures appear in the corpus:

@@ -81,15 +81,19 @@ For interactive use, the converter speaks MCP over stdio:
 ./byetex serve
 ```
 
-The seven tools exposed:
+The eleven tools exposed:
 
 | Tool                | Purpose                                                        |
 |---------------------|----------------------------------------------------------------|
 | `convert`           | Convert a LaTeX string in-memory, get `{typst, warnings}`.     |
 | `convert_file`      | Convert a `.tex` path, write `.typ` + sidecar, return paths.   |
-| `convert_fragment`  | Convert a snippet with a `context_hint` (inline / block / math). |
+| `convert_fragment`  | Convert a snippet with a `context_hint`; math hints wrap it so bare math converts as math. |
 | `convert_project`   | Convert a multi-file project to a self-contained Typst dir.    |
 | `diagnose`          | Compile the output and map each typst error to its LaTeX fragment + skill. |
+| `validate`          | Stage-0 oracle: compile the *input* with tectonic to tell a broken source from a ByeTex bug. |
+| `compile`           | `typst compile` a `.typ`/`.tex` → PDF with **structured** errors `{ok, errors, pdf_path}`. |
+| `render`            | Render to per-page PNGs at a DPI → `{ok, errors, image_paths}` (visual inspection / grading). |
+| `explain`           | Per-node LaTeX → Typst map — "why did this LaTeX emit this Typst?". |
 | `list_skills`       | List bundled skills (`name`, `description`).                   |
 | `read_skill`        | Read a skill's full markdown body.                             |
 

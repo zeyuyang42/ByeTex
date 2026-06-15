@@ -174,7 +174,7 @@ Remaining **real** (now-trustworthy) signals for future slices: 22765 heading_re
 
 ### Update 2026-06-02 (compile-blocker sprint + layout density)
 
-**Compile-rate: 33 → 40 / 45 ByeTeX-attributable (~89%)** on the 56-paper corpus. Eleven
+**Compile-rate: 33 → 40 / 45 ByeTex-attributable (~89%)** on the 56-paper corpus. Eleven
 fixes (#155–165) cleared distinct blockers: email/`@` escaping, math empty-base & font-decl
 args, the `braket` package, table-cell math escaping, dual-bibliography & multi-line/paren bib
 paths, dangling-ref backstop, `\sqrt\frac{}`, and emphasis whitespace. Remaining 5 are a

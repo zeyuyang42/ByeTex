@@ -8,7 +8,7 @@
 
 **Tech Stack:** Rust (byetex-core); `cargo test`; existing helpers `matched_close_brace`, `latex_text_to_typst`, `Content::Typst`, `document::Affiliation::from_raw`, `Author::default`.
 
-All paths are in the worktree `/Users/zeyuyang42/Workspace/tools/ByeTex/.claude/worktrees/style-profile-title/`, branch `fix-author-block`. Spec: `docs/superpowers/specs/2026-06-12-author-block-sanitization-design.md`.
+All paths are in the worktree `<workspace>/tools/ByeTex/.claude/worktrees/style-profile-title/`, branch `fix-author-block`. Spec: `docs/superpowers/specs/2026-06-12-author-block-sanitization-design.md`.
 
 ---
 
@@ -664,7 +664,7 @@ Expected: `OK: no compile regression in known_pass set.` (45/45). The corpus pay
 - [ ] **Step 3: Re-grade the worst papers** — regenerate packets with the new binary and view before/after front-matter crops:
 
 ```bash
-for id in 2605.22507 2605.22765 2605.22159 2605.22820; do ln -sf /Users/zeyuyang42/Workspace/tools/ByeTex/corpus/$id corpus/$id; done
+for id in 2605.22507 2605.22765 2605.22159 2605.22820; do ln -sf <workspace>/tools/ByeTex/corpus/$id corpus/$id; done
 uv run --with requests --with Pillow --with numpy --with scikit-image \
   python scripts/visual_test.py --papers 2605.22507 2605.22765 2605.22159 2605.22820 --truth-source auto
 ```

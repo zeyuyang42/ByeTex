@@ -23,6 +23,18 @@ typst compile paper.typ       # the success criterion
 For a multi-file paper, pass the project directory (or the entry `.tex` with
 `--project`): `byetex diagnose --project paper/main.tex`.
 
+### More commands
+
+- `byetex validate paper.tex` — Stage-0 oracle: is the *input* LaTeX itself broken,
+  or is the failure a ByeTex bug? Run it before repairing to attribute the problem.
+- `byetex compile paper.typ` / `byetex render paper.typ` — `typst compile` to PDF /
+  per-page PNGs with **structured** errors (no raw shell-out + stderr scraping).
+- `byetex review paper.tex` — build a visual grading packet (truth↔typst page
+  images) for the `byetex-visual-grading` skill.
+- `byetex explain -c '\frac12'` — show which LaTeX fragment produced which Typst.
+
+All of these are also MCP tools — `byetex serve` exposes **11 tools** total.
+
 ## The repair loop (diagnose-first)
 
 1. **Diagnose once.** `byetex diagnose paper.tex` writes `paper.diagnostics.json`:

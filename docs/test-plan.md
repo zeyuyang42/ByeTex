@@ -77,21 +77,21 @@ gates release, not the crate version field).
 ### A2. Download from GitHub Releases
 
 ```bash
-gh release view v0.2.0 --repo zeyuyang42/ByeTeX
+gh release view v0.2.0 --repo zeyuyang42/ByeTex
 ```
 
 **Expected**: the v0.2.0 release page with 5 platform asset tarballs. If the
 release.yml workflow is still running, check back in a few minutes:
 
 ```bash
-gh run list --workflow=release.yml --repo zeyuyang42/ByeTeX --limit 3
+gh run list --workflow=release.yml --repo zeyuyang42/ByeTex --limit 3
 ```
 
 Once the assets are present, pick yours (macOS arm64 in your case):
 
 ```bash
 mkdir -p /tmp/byetex-test && cd /tmp/byetex-test
-gh release download v0.2.0 --repo zeyuyang42/ByeTeX --pattern '*aarch64-apple-darwin*'
+gh release download v0.2.0 --repo zeyuyang42/ByeTex --pattern '*aarch64-apple-darwin*'
 tar -xzf byetex-*aarch64-apple-darwin*.tar.gz
 ls byetex-*aarch64-apple-darwin*/
 ```
@@ -113,7 +113,7 @@ byetex --version
 ### A3. `cargo install` from the GitHub repo
 
 ```bash
-cargo install --git https://github.com/zeyuyang42/ByeTeX --tag v0.2.0 byetex-cli --features mcp
+cargo install --git https://github.com/zeyuyang42/ByeTex --tag v0.2.0 byetex-cli --features mcp
 which byetex
 byetex --version
 ```
@@ -542,7 +542,7 @@ If you came through Scenario A2 (downloaded release):
 
 ```bash
 cd /tmp/byetex-test
-gh release view v0.2.0 --repo zeyuyang42/ByeTeX --json assets --jq '.assets[].name'
+gh release view v0.2.0 --repo zeyuyang42/ByeTex --json assets --jq '.assets[].name'
 ```
 
 **Expected**: 5 tarballs covering linux-musl x2, darwin x2, windows.
@@ -550,7 +550,7 @@ gh release view v0.2.0 --repo zeyuyang42/ByeTeX --json assets --jq '.assets[].na
 Download the manifest (if cargo-dist generated one):
 
 ```bash
-gh release download v0.2.0 --repo zeyuyang42/ByeTeX --pattern '*manifest*' 2>/dev/null
+gh release download v0.2.0 --repo zeyuyang42/ByeTex --pattern '*manifest*' 2>/dev/null
 ls *.json 2>/dev/null
 ```
 
