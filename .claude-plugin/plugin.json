@@ -1,0 +1,12 @@
+{
+  "name": "byetex",
+  "description": "LaTeX → Typst converter for AI agents: 11 MCP tools (convert, diagnose, validate, compile, render, explain, …), a CLI, and 12 repair/grading skills.",
+  "version": "0.3.0",
+  "author": {
+    "name": "Zeyu Yang"
+  },
+  "homepage": "https://github.com/zeyuyang42/ByeTex",
+  "repository": "https://github.com/zeyuyang42/ByeTex",
+  "license": "MIT OR Apache-2.0",
+  "keywords": ["latex", "typst", "converter", "mcp", "academic", "pdf"]
+}

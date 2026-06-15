@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v byetex >/dev/null 2>&1 || echo 'ByeTex plugin: the `byetex` binary is not on PATH — its MCP server and CLI need it. Install one of: `cargo install byetex` | `brew install zeyuyang42/byetex/byetex` | `curl -fsSL https://raw.githubusercontent.com/zeyuyang42/ByeTex/main/install.sh | sh`.'",
+            "async": false
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -42,15 +42,15 @@ fn generate_skill_catalogue() {
 
     let mut entries: Vec<(String, String, String)> = Vec::new();
     if skills_dir.is_dir() {
+        // Each skill is `skills/<name>/SKILL.md` (the Claude-plugin layout).
+        // Map every entry to `<entry>/SKILL.md` and keep the ones that exist —
+        // this naturally drops loose files like `INDEX.md` (there is no
+        // `INDEX.md/SKILL.md`).
         let mut paths: Vec<_> = fs::read_dir(&skills_dir)
             .unwrap_or_else(|e| panic!("read_dir {}: {}", skills_dir.display(), e))
             .filter_map(|e| e.ok())
-            .map(|e| e.path())
-            .filter(|p| {
-                p.is_file()
-                    && p.extension().and_then(|s| s.to_str()) == Some("md")
-                    && p.file_stem().and_then(|s| s.to_str()) != Some("INDEX")
-            })
+            .map(|e| e.path().join("SKILL.md"))
+            .filter(|p| p.is_file())
             .collect();
         paths.sort();
 
@@ -59,8 +59,10 @@ fn generate_skill_catalogue() {
             let body = fs::read_to_string(&path)
                 .unwrap_or_else(|e| panic!("read {}: {}", path.display(), e));
             let (name, desc) = parse_frontmatter(&body).unwrap_or_else(|| {
+                // Fallback name: the skill's directory name.
                 let stem = path
-                    .file_stem()
+                    .parent()
+                    .and_then(|p| p.file_name())
                     .and_then(|s| s.to_str())
                     .unwrap_or("unknown")
                     .to_string();
