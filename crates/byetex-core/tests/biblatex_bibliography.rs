@@ -24,7 +24,10 @@ fn printbibliography_renders_addbibresource() {
         t.contains("#bibliography(\"refs.bib\")"),
         "biblatex \\printbibliography must render #bibliography from \\addbibresource;\noutput:\n{t}"
     );
-    assert!(t.contains("@Smith2020"), "the cite must reference the rendered bib;\noutput:\n{t}");
+    assert!(
+        t.contains("@Smith2020"),
+        "the cite must reference the rendered bib;\noutput:\n{t}"
+    );
 }
 
 #[test]

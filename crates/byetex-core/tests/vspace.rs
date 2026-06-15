@@ -28,6 +28,12 @@ fn hspace_emits_h() {
 #[test]
 fn vspace_macro_length_is_dropped() {
     let t = typ(r"A\vspace{\baselineskip}B");
-    assert!(!t.contains("#v("), "macro length must drop, not emit a broken #v; got:\n{t}");
-    assert!(t.contains('A') && t.contains('B'), "surrounding text kept; got:\n{t}");
+    assert!(
+        !t.contains("#v("),
+        "macro length must drop, not emit a broken #v; got:\n{t}"
+    );
+    assert!(
+        t.contains('A') && t.contains('B'),
+        "surrounding text kept; got:\n{t}"
+    );
 }

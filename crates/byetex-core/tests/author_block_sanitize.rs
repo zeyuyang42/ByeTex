@@ -4,9 +4,7 @@
 use byetex_core::{convert, ConvertOptions};
 
 fn render(class_and_author: &str) -> String {
-    let src = format!(
-        r"{class_and_author}\title{{T}}\begin{{document}}Body.\end{{document}}"
-    );
+    let src = format!(r"{class_and_author}\title{{T}}\begin{{document}}Body.\end{{document}}");
     convert(&src, &ConvertOptions::default()).typst
 }
 
@@ -14,7 +12,9 @@ fn render(class_and_author: &str) -> String {
 /// the title text and the abstract/keywords. We assert over the whole output
 /// for simplicity since titles/sections here are trivial.
 fn assert_clean(typst: &str) {
-    for tok in ["\\,", "\\quad", "\\hspace", "\\thanks", "\\textbf", "\\\\", " & ", "\\}"] {
+    for tok in [
+        "\\,", "\\quad", "\\hspace", "\\thanks", "\\textbf", "\\\\", " & ", "\\}",
+    ] {
         assert!(
             !typst.contains(tok),
             "author block leaked `{tok}`:\n{typst}"
@@ -34,7 +34,10 @@ fn neurips_comma_thinspace_block_is_clean() {
     );
     assert_clean(&typst);
     assert!(typst.contains("Pablo Moreno"), "author 1 missing:\n{typst}");
-    assert!(typst.contains("Adrian Müller"), "author 2 missing:\n{typst}");
+    assert!(
+        typst.contains("Adrian Müller"),
+        "author 2 missing:\n{typst}"
+    );
 }
 
 #[test]
@@ -48,7 +51,10 @@ fn comma_names_with_shared_lines_split_all_authors() {
     for who in ["Kirpichenko", "Konstantinov", "Utkin"] {
         assert!(typst.contains(who), "missing author {who}:\n{typst}");
     }
-    assert!(typst.contains("Peter the Great University"), "shared affiliation missing:\n{typst}");
+    assert!(
+        typst.contains("Peter the Great University"),
+        "shared affiliation missing:\n{typst}"
+    );
 }
 
 #[test]
@@ -72,10 +78,19 @@ fn substantive_thanks_becomes_affiliation_and_email() {
          \\author{Benedikt Grassle\\thanks{Institut fur Mathematik, Universitat Zurich; benedikt@math.uzh.ch}}",
     );
     assert_clean(&typst);
-    assert!(typst.contains("Benedikt Grassle"), "name missing/mangled:\n{typst}");
+    assert!(
+        typst.contains("Benedikt Grassle"),
+        "name missing/mangled:\n{typst}"
+    );
     // The affiliation text from \thanks must appear (not inline-glued to the name).
-    assert!(typst.contains("Institut fur Mathematik"), "thanks affiliation missing:\n{typst}");
-    assert!(!typst.contains("GrassleInstitut"), "affiliation glued into name:\n{typst}");
+    assert!(
+        typst.contains("Institut fur Mathematik"),
+        "thanks affiliation missing:\n{typst}"
+    );
+    assert!(
+        !typst.contains("GrassleInstitut"),
+        "affiliation glued into name:\n{typst}"
+    );
 }
 
 #[test]
@@ -87,5 +102,8 @@ fn equal_contribution_thanks_still_flags_not_affiliation() {
     assert_clean(&typst);
     assert!(typst.contains("Alice") && typst.contains("Bob"));
     // "Equal contribution" is a flag, not an affiliation — must not render as text.
-    assert!(!typst.contains("Equal contribution"), "equal-contrib text leaked as affiliation:\n{typst}");
+    assert!(
+        !typst.contains("Equal contribution"),
+        "equal-contrib text leaked as affiliation:\n{typst}"
+    );
 }

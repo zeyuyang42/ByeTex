@@ -42,7 +42,10 @@ fn normal_superscript_with_base_is_untouched() {
     // Regression guard: a real base before `^` must stay attached (no spurious
     // empty base injected).
     let t = typ("$x^2 + (a+b)^2$");
-    assert!(t.contains("x^2"), "base `x` must keep its superscript; got:\n{t}");
+    assert!(
+        t.contains("x^2"),
+        "base `x` must keep its superscript; got:\n{t}"
+    );
     assert!(
         !t.contains("\"\"^"),
         "no empty base should be injected when a real base exists; got:\n{t}"

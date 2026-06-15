@@ -37,5 +37,8 @@ fn escaped_amp_does_not_split_plain_cell() {
 #[test]
 fn escaped_amp_renders_as_escaped_in_text() {
     let t = typst(r"R\&D budget");
-    assert!(t.contains("R\\&D"), "text-mode \\& must render as \\&;\noutput:\n{t}");
+    assert!(
+        t.contains("R\\&D"),
+        "text-mode \\& must render as \\&;\noutput:\n{t}"
+    );
 }

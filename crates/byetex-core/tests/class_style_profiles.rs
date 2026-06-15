@@ -174,7 +174,7 @@ fn elsarticle_keeps_neutral_title() {
 /// The portion of the output AFTER the title block — i.e. from the `Abstract`
 /// heading onward. Used to assert the article \small wrapper sits in the
 /// abstract region (not the title block).
-fn after_title<'a>(t: &'a str) -> &'a str {
+fn after_title(t: &str) -> &str {
     let idx = t.find("Abstract").unwrap_or(0);
     &t[idx.saturating_sub(120)..]
 }
@@ -222,7 +222,10 @@ fn iclr_abstract_is_large_smallcaps() {
 #[test]
 fn icml_abstract_is_inside_columns() {
     let t = typ(include_str!("../../../tests/fixtures/classes/icml.tex"));
-    assert!(t.contains(", columns: 2)"), "icml is two-column (page columns); got:\n{t}");
+    assert!(
+        t.contains(", columns: 2)"),
+        "icml is two-column (page columns); got:\n{t}"
+    );
     let span = pos(&t, "#place(top + center, scope: \"parent\", float: true)[");
     let heading = pos(&t, "#text(size: 1.2em, weight: \"bold\")[Abstract]");
     assert!(
@@ -236,7 +239,10 @@ fn ieee_abstract_run_in_inside_columns_and_deferred_keywords() {
     let t = typ(include_str!(
         "../../../tests/fixtures/classes/ieee_conference.tex"
     ));
-    assert!(t.contains(", columns: 2)"), "IEEE is two-column (page columns); got:\n{t}");
+    assert!(
+        t.contains(", columns: 2)"),
+        "IEEE is two-column (page columns); got:\n{t}"
+    );
     let span = pos(&t, "#place(top + center, scope: \"parent\", float: true)[");
     // The literal `---` from render_abstract_block is post-processed to an
     // em-dash (`—`) by the whole-output typographic pass — faithful to IEEE.
@@ -258,7 +264,10 @@ fn acmart_abstract_is_inside_columns() {
     let t = typ(include_str!(
         "../../../tests/fixtures/classes/acmart_sigconf.tex"
     ));
-    assert!(t.contains(", columns: 2)"), "acmart sigconf is two-column (page columns); got:\n{t}");
+    assert!(
+        t.contains(", columns: 2)"),
+        "acmart sigconf is two-column (page columns); got:\n{t}"
+    );
     let span = pos(&t, "#place(top + center, scope: \"parent\", float: true)[");
     let heading = pos(&t, "#text(size: 1.2em, weight: \"bold\")[Abstract]");
     assert!(

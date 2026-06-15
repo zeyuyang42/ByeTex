@@ -21,7 +21,14 @@ fn grid_document_imports_subpar_exactly_once() {
         \\begin{minipage}{0.5\\textwidth}\\includegraphics{b.png}\\captionof{figure}{R}\\label{f:b}\\end{minipage}\n\
         \\end{figure}\n\\end{document}\n";
     let t = byetex_core::convert(src, &Default::default()).typst;
-    assert_eq!(t.matches("@preview/subpar").count(), 1, "import exactly once; got:\n{t}");
-    assert!(t.trim_start().starts_with("#import \"@preview/subpar"),
-        "import must be at the very top; got:\n{}", &t[..t.len().min(200)]);
+    assert_eq!(
+        t.matches("@preview/subpar").count(),
+        1,
+        "import exactly once; got:\n{t}"
+    );
+    assert!(
+        t.trim_start().starts_with("#import \"@preview/subpar"),
+        "import must be at the very top; got:\n{}",
+        &t[..t.len().min(200)]
+    );
 }

@@ -51,7 +51,10 @@ pub fn map_typst_errors(
     parse_typst_errors(stderr)
         .into_iter()
         .map(|e| {
-            let line_text = typ_lines.get(e.line.saturating_sub(1)).copied().unwrap_or("");
+            let line_text = typ_lines
+                .get(e.line.saturating_sub(1))
+                .copied()
+                .unwrap_or("");
             let span = resolve_error_at_col(source_map, line_text, e.col);
             let src_fragment = span.map(|(a, b)| source[a..b].to_string());
             let skill_name = span.and_then(|(a, b)| {

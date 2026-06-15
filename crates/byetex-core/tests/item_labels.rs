@@ -13,9 +13,18 @@ fn typ(src: &str) -> String {
 #[test]
 fn custom_item_label_renders_as_term_not_broken_marker() {
     let t = typ(r"\begin{enumerate}\item[(a)] foo \item[(b)] bar\end{enumerate}");
-    assert!(!t.contains(r"\[(a)\]"), "bracket label leaked as escaped literal; got:\n{t}");
-    assert!(t.contains("/ (a): foo"), "label (a) not preserved as a term; got:\n{t}");
-    assert!(t.contains("/ (b): bar"), "label (b) not preserved as a term; got:\n{t}");
+    assert!(
+        !t.contains(r"\[(a)\]"),
+        "bracket label leaked as escaped literal; got:\n{t}"
+    );
+    assert!(
+        t.contains("/ (a): foo"),
+        "label (a) not preserved as a term; got:\n{t}"
+    );
+    assert!(
+        t.contains("/ (b): bar"),
+        "label (b) not preserved as a term; got:\n{t}"
+    );
 }
 
 #[test]

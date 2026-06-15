@@ -133,23 +133,29 @@ Anything else produces a structured warning categorised as `unsupported_command`
 
 ## Install
 
-Pre-built binaries are published with each release for:
-`x86_64-linux-musl`, `aarch64-linux-musl`, `x86_64-apple-darwin`,
-`aarch64-apple-darwin`, `x86_64-pc-windows-msvc`.
+The `byetex` binary is the same across channels; the Claude Code plugin (skills +
+MCP server) is a separate artifact that needs the binary on PATH.
 
 ```bash
-# Download the latest tarball for your platform from GitHub Releases.
-# Each archive includes the `byetex` binary plus the `skills/` directory.
-tar -xzf byetex-vX.Y.Z-<target>.tar.gz
-./byetex-vX.Y.Z-<target>/byetex --version
+# 1. Claude Code plugin — bundles the skills + auto-registers the MCP server.
+claude plugin marketplace add zeyuyang42/ByeTex
+claude plugin install byetex@byetex
+
+# 2. Install script — prebuilt binary → ~/.local/bin.
+curl -fsSL https://raw.githubusercontent.com/zeyuyang42/ByeTex/main/install.sh | sh
+
+# 3. cargo (needs Rust 1.84+; --features mcp adds `byetex serve`).
+cargo install byetex --features mcp
+
+# 4. Homebrew.
+brew install zeyuyang42/byetex/byetex
 ```
 
-Or via cargo (requires Rust 1.85+):
-
-```bash
-# --features mcp is needed only if you want `byetex serve` (MCP server).
-cargo install --git https://github.com/zeyuyang42/ByeTex byetex --features mcp
-```
+Pre-built binaries are published with each release for `x86_64`/`aarch64` Linux
+(musl) and macOS, plus `x86_64` Windows; each archive bundles the `byetex` binary
+and the `skills/` directory. See [`packaging/README.md`](packaging/README.md) for
+all four channels and [`docs/plugin-setup.md`](docs/plugin-setup.md) for the
+plugin (Claude Code / Cursor).
 
 ## CLI
 
@@ -309,15 +315,16 @@ ByeTex/
 
 ## Status
 
-**Compile-rate — the gate.** **45/45** ByeTex-attributable arXiv papers compile (100%, 0
-`BYETEX_FAIL`), captured 2026-06-10 in
+**Compile-rate — the gate.** **59/59** ByeTex-attributable arXiv papers compile (100%, 0
+`BYETEX_FAIL`), tracked in
 [`scripts/acceptance_baseline.json`](scripts/acceptance_baseline.json). The acceptance gate
 (`scripts/acceptance.sh`) blocks any merge that regresses a known-passing paper.
 
-**Visual fidelity — the driver.** Representative-set composite fidelity score **0.814**
-(2026-06-12), graded against [`docs/fidelity-rubric.md`](docs/fidelity-rubric.md). Recent
-work closed author-block LaTeX leakage and per-class heading sizes; remaining gaps (dropped
-vector floats, LNCS multirow tables, cleveref double-prefix) are tracked and ranked in
+**Visual fidelity — the driver.** Corpus composite fidelity score **0.821**, graded against
+[`docs/fidelity-rubric.md`](docs/fidelity-rubric.md). The fidelity gate
+(`scripts/fidelity_gate.sh`, baseline
+[`scripts/fidelity_baseline.json`](scripts/fidelity_baseline.json)) flags render regressions;
+remaining gaps are tracked and ranked in
 [`docs/fidelity-backlog.md`](docs/fidelity-backlog.md). Full history: [`docs/scorecard.md`](docs/scorecard.md).
 
 The supported subset grows incrementally; compile-rate is held at its ceiling while each

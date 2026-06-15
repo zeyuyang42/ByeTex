@@ -13,7 +13,11 @@ fn tmp(name: &str) -> std::path::PathBuf {
 fn plan_project_captures_source_map_when_requested() {
     let d = tmp("cap");
     let main = d.join("main.tex");
-    fs::write(&main, "\\documentclass{article}\\begin{document}Hello world.\\end{document}").unwrap();
+    fs::write(
+        &main,
+        "\\documentclass{article}\\begin{document}Hello world.\\end{document}",
+    )
+    .unwrap();
 
     let off = byetex_core::project::plan_project(&main, true, false).unwrap();
     assert!(off.source_map.is_empty(), "no capture by default");

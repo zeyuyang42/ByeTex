@@ -95,8 +95,9 @@ impl<'a> Emitter<'a> {
             }
             v
         };
-        if let Some(source_path) =
-            probe_dirs.iter().find_map(|d| probe_image_on_disk(d, &path))
+        if let Some(source_path) = probe_dirs
+            .iter()
+            .find_map(|d| probe_image_on_disk(d, &path))
         {
             if std::path::Path::new(&path).extension().is_none() {
                 if let Some(name) = source_path.file_name().and_then(|n| n.to_str()) {
@@ -208,8 +209,11 @@ impl<'a> Emitter<'a> {
                         let env = environment_name(child, self.src);
                         if matches!(
                             env.as_deref(),
-                            Some("tabular") | Some("tabular*") | Some("tabularx")
-                                | Some("tabulary") | Some("array")
+                            Some("tabular")
+                                | Some("tabular*")
+                                | Some("tabularx")
+                                | Some("tabulary")
+                                | Some("array")
                         ) && nested_tabular.is_none()
                         {
                             nested_tabular = Some(child);
@@ -222,20 +226,29 @@ impl<'a> Emitter<'a> {
         }
         // Body: image wins, else nested tabular, else nothing → drop the panel.
         let (body, is_table) = if let Some(g) = graphics {
-            (self.with_sub_buffer(|e| { e.emit_graphics_include(g); }), false)
+            (
+                self.with_sub_buffer(|e| {
+                    e.emit_graphics_include(g);
+                }),
+                false,
+            )
         } else if let Some(t) = nested_tabular {
             let s = self
-                .with_sub_buffer(|e| { e.emit_tabular(t); })
+                .with_sub_buffer(|e| {
+                    e.emit_tabular(t);
+                })
                 .trim()
                 .to_string();
-            (s.strip_prefix('#').map(|s| s.to_string()).unwrap_or(s), true)
+            (
+                s.strip_prefix('#').map(|s| s.to_string()).unwrap_or(s),
+                true,
+            )
         } else {
             return None;
         };
         let kind = if is_table { Some("table") } else { None };
-        let caption_text = caption.and_then(|c| {
-            first_curly_group(c).map(|a| self.render_curly_group_content(a))
-        });
+        let caption_text =
+            caption.and_then(|c| first_curly_group(c).map(|a| self.render_curly_group_content(a)));
         let inner = self.emit_figure_inner(body.trim(), kind, caption_text.as_deref());
         let label = self.pick_label_to_attach(&labels);
         let width = width_fraction_of(node, self.src);
@@ -317,7 +330,9 @@ impl<'a> Emitter<'a> {
                         let env = environment_name(child, self.src);
                         if matches!(
                             env.as_deref(),
-                            Some("subfigure") | Some("subcaptionblock") | Some("subfloat")
+                            Some("subfigure")
+                                | Some("subcaptionblock")
+                                | Some("subfloat")
                                 | Some("subtable")
                         ) {
                             // Capture the whole subfigure as a panel; do NOT
@@ -389,10 +404,8 @@ impl<'a> Emitter<'a> {
             if panels.len() >= 2 {
                 // Sub-labels belong to the panels now; remove them from the
                 // outer `labels` set so they are not also hidden-anchored.
-                let panel_labels: std::collections::HashSet<String> = panels
-                    .iter()
-                    .filter_map(|(_, l, _)| l.clone())
-                    .collect();
+                let panel_labels: std::collections::HashSet<String> =
+                    panels.iter().filter_map(|(_, l, _)| l.clone()).collect();
                 let parent_labels: Vec<String> = labels
                     .iter()
                     .filter(|l| !panel_labels.contains(*l))
@@ -400,9 +413,7 @@ impl<'a> Emitter<'a> {
                     .collect();
                 let widths: Vec<Option<f32>> = panels.iter().map(|(_, _, w)| *w).collect();
                 let cols = columns_for_widths(&widths);
-                let parent_kind = if environment_name(node, self.src).as_deref()
-                    == Some("table")
-                {
+                let parent_kind = if environment_name(node, self.src).as_deref() == Some("table") {
                     Some("table")
                 } else {
                     None
@@ -415,7 +426,13 @@ impl<'a> Emitter<'a> {
                     };
                     arg.map(|a| self.render_curly_group_content(a))
                 });
-                self.emit_subpar_grid(&panels, cols, parent_kind, parent_caption.as_deref(), &parent_labels);
+                self.emit_subpar_grid(
+                    &panels,
+                    cols,
+                    parent_kind,
+                    parent_caption.as_deref(),
+                    &parent_labels,
+                );
                 return node.end_byte();
             }
         }
@@ -427,9 +444,7 @@ impl<'a> Emitter<'a> {
             if blocks.len() >= 2 {
                 let widths: Vec<Option<f32>> = blocks.iter().map(|b| b.width).collect();
                 let cols = columns_for_widths(&widths);
-                let parent_kind = if environment_name(node, self.src).as_deref()
-                    == Some("table")
-                {
+                let parent_kind = if environment_name(node, self.src).as_deref() == Some("table") {
                     Some("table")
                 } else {
                     None
@@ -581,7 +596,9 @@ impl<'a> Emitter<'a> {
             }
             self.out.push_str(",\n");
         }
-        let cols_str = std::iter::repeat_n("1fr", cols).collect::<Vec<_>>().join(", ");
+        let cols_str = std::iter::repeat_n("1fr", cols)
+            .collect::<Vec<_>>()
+            .join(", ");
         let _ = writeln!(self.out, "  columns: ({}),", cols_str);
         if let Some(k) = parent_kind {
             let _ = writeln!(self.out, "  kind: {},", k);
@@ -687,8 +704,7 @@ impl<'a> Emitter<'a> {
             for child in n.children(&mut cursor) {
                 if child.kind() == "caption"
                     || (child.kind() == "generic_command"
-                        && command_name_text(child, self.src).as_deref()
-                            == Some("\\captionof"))
+                        && command_name_text(child, self.src).as_deref() == Some("\\captionof"))
                 {
                     return true;
                 }
@@ -731,8 +747,11 @@ impl<'a> Emitter<'a> {
                         let env = environment_name(child, self.src);
                         if matches!(
                             env.as_deref(),
-                            Some("tabular") | Some("tabular*") | Some("tabularx")
-                                | Some("tabulary") | Some("array")
+                            Some("tabular")
+                                | Some("tabular*")
+                                | Some("tabularx")
+                                | Some("tabulary")
+                                | Some("array")
                         ) && nested_tabular.is_none()
                         {
                             nested_tabular = Some(child);
@@ -744,15 +763,30 @@ impl<'a> Emitter<'a> {
             }
         }
         let (body, is_table) = if let Some(g) = graphics {
-            (self.with_sub_buffer(|e| { e.emit_graphics_include(g); }), false)
+            (
+                self.with_sub_buffer(|e| {
+                    e.emit_graphics_include(g);
+                }),
+                false,
+            )
         } else if let Some(t) = nested_tabular {
-            let s = self.with_sub_buffer(|e| { e.emit_tabular(t); }).trim().to_string();
-            (s.strip_prefix('#').map(|s| s.to_string()).unwrap_or(s), true)
+            let s = self
+                .with_sub_buffer(|e| {
+                    e.emit_tabular(t);
+                })
+                .trim()
+                .to_string();
+            (
+                s.strip_prefix('#').map(|s| s.to_string()).unwrap_or(s),
+                true,
+            )
         } else {
             return None;
         };
         let cap_node = caption.or(captionof);
-        let kind = self.captionof_kind(captionof).or(if is_table { Some("table") } else { None });
+        let kind = self
+            .captionof_kind(captionof)
+            .or(if is_table { Some("table") } else { None });
         let caption_text = cap_node.and_then(|c| {
             let arg = if c.kind() == "generic_command" {
                 nth_curly_group(c, 1)
@@ -783,13 +817,20 @@ impl<'a> Emitter<'a> {
             }
         });
         let body = body.trim().to_string();
-        let body = body.strip_prefix('#').map(|s| s.to_string()).unwrap_or(body);
+        let body = body
+            .strip_prefix('#')
+            .map(|s| s.to_string())
+            .unwrap_or(body);
         if body.is_empty() {
             return None;
         }
         let is_table = body.starts_with("table(");
         let kind = self
-            .captionof_kind(if caption.kind() == "generic_command" { Some(caption) } else { None })
+            .captionof_kind(if caption.kind() == "generic_command" {
+                Some(caption)
+            } else {
+                None
+            })
             .or(if is_table { Some("table") } else { None });
         let arg = if caption.kind() == "generic_command" {
             nth_curly_group(caption, 1)

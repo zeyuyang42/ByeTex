@@ -63,7 +63,10 @@ fn diagnose_writes_diagnostics_json_with_mapped_error() {
         .unwrap_or_else(|e| panic!("reading {}: {e}", diag_path.display()));
     let v: serde_json::Value = serde_json::from_str(&diag).unwrap();
     let arr = v.as_array().expect("diagnostics is a JSON array");
-    assert!(!arr.is_empty(), "expected at least one mapped error, got: {diag}");
+    assert!(
+        !arr.is_empty(),
+        "expected at least one mapped error, got: {diag}"
+    );
     let first = &arr[0];
     assert!(first.get("message").is_some());
     assert!(first.get("line").is_some());
@@ -107,7 +110,10 @@ fn diagnose_project_mode_maps_error() {
     assert!(status.success(), "diagnose --project should exit 0");
 
     // materialize writes main.typ into out_dir; diagnostics land beside it.
-    assert!(out_dir.join("main.typ").exists(), "project main.typ should exist");
+    assert!(
+        out_dir.join("main.typ").exists(),
+        "project main.typ should exist"
+    );
     let diag = fs::read_to_string(out_dir.join("main.diagnostics.json")).unwrap();
     let v: serde_json::Value = serde_json::from_str(&diag).unwrap();
     let arr = v.as_array().expect("diagnostics is a JSON array");

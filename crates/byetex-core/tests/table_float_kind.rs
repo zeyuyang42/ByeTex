@@ -10,7 +10,6 @@
 //! so an `\input`-ed tabular was invisible.
 
 use std::fs;
-use std::path::PathBuf;
 
 use byetex_core::{convert, Category, ConvertOptions};
 use tempfile::TempDir;
@@ -33,10 +32,7 @@ fn table_env_with_inline_tabular_and_caption_sets_kind_table() {
         t.contains("caption: [My table]"),
         "caption must be preserved; got:\n{t}"
     );
-    assert!(
-        t.contains("<tab:x>"),
-        "label must attach; got:\n{t}"
-    );
+    assert!(t.contains("<tab:x>"), "label must attach; got:\n{t}");
     // The tabular body must actually be present (not the placeholder rect).
     assert!(
         t.contains("table("),
@@ -98,8 +94,11 @@ fn input_ed_tabular_inside_table_float_is_not_dropped() {
         &w.category,
         Category::NeedsManualReview { reason } if reason.contains("no \\includegraphics or tabular body")
     ));
-    assert!(!dropped, "table must not be dropped as 'no tabular body'; warnings: {:?}",
-        out.warnings.iter().map(|w| &w.category).collect::<Vec<_>>());
+    assert!(
+        !dropped,
+        "table must not be dropped as 'no tabular body'; warnings: {:?}",
+        out.warnings.iter().map(|w| &w.category).collect::<Vec<_>>()
+    );
 }
 
 #[test]
@@ -109,9 +108,7 @@ fn rowbreak_with_length_arg_does_not_break_cells() {
     // brackets break the Typst content block ("unclosed delimiter"). Surfaced
     // by corpus 2605.22800 once D1 stopped dropping the table. The bracketed
     // length must be stripped, not emitted as a leading cell.
-    let t = typ(
-        "\\begin{tabular}{cc}\na & b\\\\[0.85em]\nc & d\\\\\n\\end{tabular}",
-    );
+    let t = typ("\\begin{tabular}{cc}\na & b\\\\[0.85em]\nc & d\\\\\n\\end{tabular}");
     assert!(
         !t.contains("[\\\\[0.85em") && !t.contains("[0.85em]"),
         "the \\\\[len] spacing arg must not appear as a cell; got:\n{t}"

@@ -1,7 +1,7 @@
 //! Bibliography, citation & label-reference emission, extracted from emit.rs (pure code motion).
 
-use std::fmt::Write;
 use std::collections::HashSet;
+use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
 use tree_sitter::Node;
@@ -203,7 +203,11 @@ impl<'a> Emitter<'a> {
                 typst_parts.push(format!("[cite: missing key `{}`]", raw_key));
             } else if let Some(cmd) = command.as_deref() {
                 // Supplement only on the last key.
-                let supp = if i == last_idx { postnote.as_deref() } else { None };
+                let supp = if i == last_idx {
+                    postnote.as_deref()
+                } else {
+                    None
+                };
                 typst_parts.push(self.citation_token(cmd, &sanitized, supp));
             } else {
                 typst_parts.push(format!("@{}", sanitized));
@@ -254,7 +258,12 @@ impl<'a> Emitter<'a> {
     /// applying the optional supplement (postnote) to this key. Only called
     /// for defined keys when `use_forms` is true. `\citeyearpar`'s parenthesis
     /// wrapping is applied by the caller around the joined group, not here.
-    fn citation_token(&self, command: &str, sanitized_key: &str, supplement: Option<&str>) -> String {
+    fn citation_token(
+        &self,
+        command: &str,
+        sanitized_key: &str,
+        supplement: Option<&str>,
+    ) -> String {
         let form = match normalize_cite_command(command) {
             // Textual / prose form.
             "\\citet" | "\\textcite" | "\\Cite" | "\\citealt" | "\\citealp" => Some("\"prose\""),
@@ -666,9 +675,7 @@ pub(in crate::emit) fn extract_bib_paths(node: Node<'_>, src: &str) -> Vec<Strin
     out
 }
 
-
 // ─── Asset & bibliography filesystem probing ──────────────────────────────────
-
 
 /// Probe the base directory for a BibTeX file. Appends `.bib` if the stem has
 /// no extension. Returns the resolved path on disk, or `None`.
@@ -678,7 +685,10 @@ pub(in crate::emit) fn extract_bib_paths(node: Node<'_>, src: &str) -> Vec<Strin
 /// unparseable content) are silently skipped — the worst case is a
 /// citation that should have resolved gets dropped, which is the
 /// same end state as before this validation existed.
-pub(in crate::emit) fn harvest_bib_keys_from_dir(base: &Path, out: &mut std::collections::HashSet<String>) {
+pub(in crate::emit) fn harvest_bib_keys_from_dir(
+    base: &Path,
+    out: &mut std::collections::HashSet<String>,
+) {
     let entries = match std::fs::read_dir(base) {
         Ok(e) => e,
         Err(_) => return,
@@ -903,8 +913,17 @@ fn bst_style_and_mode(bst: &str) -> Option<(&'static str, CiteMode)> {
             Some(("association-for-computing-machinery", CiteMode::Numeric))
         }
         "acmauthoryear" => Some(("association-for-computing-machinery", CiteMode::AuthorYear)),
-        "plainnat" | "abbrvnat" | "unsrtnat" | "apa" | "apalike" | "apacite" | "chicago"
-        | "chicagoa" | "chicago-author-date" | "agsm" | "dcu" => Some(("apa", CiteMode::AuthorYear)),
+        "plainnat"
+        | "abbrvnat"
+        | "unsrtnat"
+        | "apa"
+        | "apalike"
+        | "apacite"
+        | "chicago"
+        | "chicagoa"
+        | "chicago-author-date"
+        | "agsm"
+        | "dcu" => Some(("apa", CiteMode::AuthorYear)),
         "mla" => Some(("mla", CiteMode::AuthorYear)),
         "elsarticle-num" | "elsarticle-num-names" => {
             Some(("elsevier-with-titles", CiteMode::Numeric))

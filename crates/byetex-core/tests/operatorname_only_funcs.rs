@@ -21,8 +21,15 @@ fn typst_missing_operators_use_op_call() {
         );
         // Not split into letters, not left as a bare identifier.
         assert!(
-            !t.contains(&format!(" {} ", name.chars().collect::<Vec<_>>()
-                .iter().map(|c| c.to_string()).collect::<Vec<_>>().join(" "))),
+            !t.contains(&format!(
+                " {} ",
+                name.chars()
+                    .collect::<Vec<_>>()
+                    .iter()
+                    .map(|c| c.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            )),
             "`{name}` must not be letter-split; got:\n{t}"
         );
     }
@@ -35,12 +42,18 @@ fn typst_builtin_functions_stay_bare() {
     for f in ["sin", "cos", "log", "max", "det"] {
         assert!(t.contains(f), "{f} must stay; got:\n{t}");
     }
-    assert!(!t.contains("op(\"sin\")"), "builtin sin must not be wrapped in op(); got:\n{t}");
+    assert!(
+        !t.contains("op(\"sin\")"),
+        "builtin sin must not be wrapped in op(); got:\n{t}"
+    );
 }
 
 #[test]
 fn plain_word_still_splits() {
     // Regression guard: a non-function multi-letter word still splits.
     let t = typ("$abc$");
-    assert!(t.contains("a b c"), "plain word must still split; got:\n{t}");
+    assert!(
+        t.contains("a b c"),
+        "plain word must still split; got:\n{t}"
+    );
 }

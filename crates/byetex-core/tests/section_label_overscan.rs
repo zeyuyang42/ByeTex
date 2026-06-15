@@ -56,9 +56,7 @@ fn body_less_section_then_subsection_each_keep_own_label() {
     // its own `\label`. The section's forward sibling-`\label` scanner must NOT
     // over-reach and steal the subsection's label (memory: the secondary
     // over-attachment concern from Bug A). Each heading keeps exactly its own.
-    let out = convert(
-        "\\section{Intro}\\label{sec:a}\n\\subsection{Sub}\\label{sec:b}\nbody\n",
-    );
+    let out = convert("\\section{Intro}\\label{sec:a}\n\\subsection{Sub}\\label{sec:b}\nbody\n");
     assert!(
         out.typst.contains("= Intro <sec:a>"),
         "section must keep only <sec:a>, got: {}",

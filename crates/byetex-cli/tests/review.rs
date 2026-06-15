@@ -51,8 +51,8 @@ fn review_builds_packet_with_typst_pages() {
 
     let packet = out.join("grading_packet.json");
     assert!(packet.is_file(), "packet missing at {}", packet.display());
-    let v: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&packet).unwrap()).expect("valid packet json");
+    let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&packet).unwrap())
+        .expect("valid packet json");
 
     assert_eq!(v["detected_class"], "article", "class: {v}");
     assert_eq!(v["truth_source"], "none", "truth should be none: {v}");

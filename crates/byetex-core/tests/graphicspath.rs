@@ -34,11 +34,19 @@ fn graphicspath_search_dir_resolves_bare_includegraphics() {
         t.contains("image(\"") && t.contains("plot.png"),
         "bare \\includegraphics must resolve via \\graphicspath search dir; got:\n{t}"
     );
-    assert!(!t.contains("(missing)"), "no missing placeholder; got:\n{t}");
     assert!(
-        out.asset_refs.iter().any(|a| a.source_path.ends_with("figures/tasks/plot.png")),
+        !t.contains("(missing)"),
+        "no missing placeholder; got:\n{t}"
+    );
+    assert!(
+        out.asset_refs
+            .iter()
+            .any(|a| a.source_path.ends_with("figures/tasks/plot.png")),
         "asset must point at the real file under the graphicspath dir; refs: {:?}",
-        out.asset_refs.iter().map(|a| a.source_path.display().to_string()).collect::<Vec<_>>()
+        out.asset_refs
+            .iter()
+            .map(|a| a.source_path.display().to_string())
+            .collect::<Vec<_>>()
     );
 }
 
@@ -66,6 +74,13 @@ fn direct_path_still_resolves_without_graphicspath() {
     let tmp = TempDir::new().expect("tempdir");
     let root = tmp.path();
     fs::write(root.join("solo.png"), b"\x89PNG\r\n").unwrap();
-    let out = run(root, "\\begin{figure}\\includegraphics{solo.png}\\caption{S}\\end{figure}\n");
-    assert!(out.typst.contains("image(\"solo.png\")"), "direct path still works; got:\n{}", out.typst);
+    let out = run(
+        root,
+        "\\begin{figure}\\includegraphics{solo.png}\\caption{S}\\end{figure}\n",
+    );
+    assert!(
+        out.typst.contains("image(\"solo.png\")"),
+        "direct path still works; got:\n{}",
+        out.typst
+    );
 }

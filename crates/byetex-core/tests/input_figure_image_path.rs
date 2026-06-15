@@ -44,9 +44,14 @@ fn includegraphics_in_input_file_resolves_against_project_root() {
     );
     // The asset must be recorded so the project layer copies it.
     assert!(
-        out.asset_refs.iter().any(|a| a.typst_path.contains("plot.png")),
+        out.asset_refs
+            .iter()
+            .any(|a| a.typst_path.contains("plot.png")),
         "image should be recorded as an asset ref; got refs: {:?}",
-        out.asset_refs.iter().map(|a| &a.typst_path).collect::<Vec<_>>()
+        out.asset_refs
+            .iter()
+            .map(|a| &a.typst_path)
+            .collect::<Vec<_>>()
     );
 }
 

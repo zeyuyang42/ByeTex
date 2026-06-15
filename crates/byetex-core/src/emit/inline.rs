@@ -63,7 +63,12 @@ impl<'a> Emitter<'a> {
     /// Find the first `curly_group` child of `node` and render its inner
     /// content wrapped between `left` and `right`. Falls back to dropping
     /// the command if no argument is present.
-    pub(in crate::emit) fn emit_inline_wrap(&mut self, node: Node<'_>, left: &str, right: &str) -> usize {
+    pub(in crate::emit) fn emit_inline_wrap(
+        &mut self,
+        node: Node<'_>,
+        left: &str,
+        right: &str,
+    ) -> usize {
         if let Some(arg) = first_curly_group(node) {
             let content = self.render_curly_group_content(arg);
             // Move whitespace that sits just inside the group OUTSIDE the wrap
@@ -103,7 +108,10 @@ impl<'a> Emitter<'a> {
                 let is_word = |c: char| c.is_alphanumeric();
                 let lead_glue = self.out.chars().next_back().is_some_and(is_word);
                 let trail_glue = trail.is_empty()
-                    && self.src[node.end_byte()..].chars().next().is_some_and(is_word);
+                    && self.src[node.end_byte()..]
+                        .chars()
+                        .next()
+                        .is_some_and(is_word);
                 match emph_fn {
                     Some(name) if lead_glue || trail_glue => {
                         let _ = write!(self.out, "#{name}[{mid}]");
@@ -321,7 +329,10 @@ impl<'a> Emitter<'a> {
             None => return node.end_byte(),
         };
 
-        let text = self.src.get(node.start_byte()..node.end_byte()).unwrap_or("");
+        let text = self
+            .src
+            .get(node.start_byte()..node.end_byte())
+            .unwrap_or("");
         let trimmed = text.trim_start();
         let (wrapper, cmd) = if trimmed.starts_with("\\colorbox") {
             ("#highlight(fill: ", "\\colorbox")
@@ -345,7 +356,11 @@ impl<'a> Emitter<'a> {
     /// Resolve a colour arg to a Typst colour expression: an inline `[model]`
     /// spec, else a `\definecolor`-harvested custom name, else a built-in xcolor
     /// name. `None` if unresolvable (caller drops the colour).
-    pub(in crate::emit) fn resolve_color_arg(&self, model: Option<&str>, arg: &str) -> Option<String> {
+    pub(in crate::emit) fn resolve_color_arg(
+        &self,
+        model: Option<&str>,
+        arg: &str,
+    ) -> Option<String> {
         let arg = arg.trim();
         match model {
             Some(m) => color_from_model_spec(m, arg),
@@ -368,7 +383,10 @@ impl<'a> Emitter<'a> {
             Some(cnode) => self.render_math_group(cnode).trim().to_string(),
             None => return node.end_byte(),
         };
-        let text = self.src.get(node.start_byte()..node.end_byte()).unwrap_or("");
+        let text = self
+            .src
+            .get(node.start_byte()..node.end_byte())
+            .unwrap_or("");
         let (model, groups) = color_command_parts(text, "\\textcolor");
         let color = groups
             .first()

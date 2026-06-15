@@ -210,7 +210,10 @@ mod tests {
             StyleProfile::for_class(&DocClass::ArxivArticle).heading_sizes,
             ["1.44em", "1.2em", "1em"]
         );
-        assert_eq!(StyleProfile::neutral().heading_sizes, ["1.44em", "1.2em", "1em"]);
+        assert_eq!(
+            StyleProfile::neutral().heading_sizes,
+            ["1.44em", "1.2em", "1em"]
+        );
     }
 
     #[test]
@@ -240,8 +243,12 @@ mod tests {
         for class in [
             DocClass::ArxivArticle,
             DocClass::Iclr,
-            DocClass::IeeeTran { paper_type: "conference".into() },
-            DocClass::AcmArt { format: "sigconf".into() },
+            DocClass::IeeeTran {
+                paper_type: "conference".into(),
+            },
+            DocClass::AcmArt {
+                format: "sigconf".into(),
+            },
             DocClass::Lncs,
             DocClass::SvMult,
         ] {

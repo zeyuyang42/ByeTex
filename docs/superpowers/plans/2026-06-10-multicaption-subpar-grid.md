@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-06-10-multicaption-subpar-grid-design.md`
 
-**Branch / worktree:** `feat/multicaption-subpar-grid` in worktree `/Users/zeyuyang42/Workspace/tools/ByeTex-labelfix` (already created off `origin/main` @ 8c341a5). The corpus is symlinked at `corpus/`. Build the worktree binary with `cargo build --release -p byetex-cli`; run the acceptance gate with `BYETEX_BIN="$(pwd)/target/release/byetex" bash scripts/acceptance.sh`.
+**Branch / worktree:** `feat/multicaption-subpar-grid` in worktree `<workspace>/tools/ByeTex-labelfix` (already created off `origin/main` @ 8c341a5). The corpus is symlinked at `corpus/`. Build the worktree binary with `cargo build --release -p byetex-cli`; run the acceptance gate with `BYETEX_BIN="$(pwd)/target/release/byetex" bash scripts/acceptance.sh`.
 
 **Conventions in this codebase:**
 - Bare-fragment conversion for tests: `byetex_core::convert(src, &Default::default()).typst` returns the Typst string.

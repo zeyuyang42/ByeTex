@@ -26,7 +26,10 @@ fn doc(body: &str) -> String {
 fn ref_to_undefined_label_gets_backstop_anchor() {
     // `\cref{ghost}` with no `\label{ghost}` anywhere.
     let t = typ(&doc("See \\cref{ghost} for details."));
-    assert!(t.contains("@ghost"), "the reference must be emitted; got:\n{t}");
+    assert!(
+        t.contains("@ghost"),
+        "the reference must be emitted; got:\n{t}"
+    );
     assert!(
         t.contains("<ghost>"),
         "an undefined reference must get a backstop anchor so it resolves; got:\n{t}"
@@ -37,7 +40,9 @@ fn ref_to_undefined_label_gets_backstop_anchor() {
 fn ref_to_defined_label_gets_no_duplicate_anchor() {
     // Regression guard: a real label must NOT get a second backstop anchor
     // (which would itself be a duplicate-label error).
-    let t = typ(&doc("\\section{Intro}\\label{sec:intro}\nSee \\cref{sec:intro}."));
+    let t = typ(&doc(
+        "\\section{Intro}\\label{sec:intro}\nSee \\cref{sec:intro}.",
+    ));
     let n = t.matches("<sec:intro>").count();
     assert_eq!(
         n, 1,

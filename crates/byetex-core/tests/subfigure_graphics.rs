@@ -34,7 +34,10 @@ fn all_subfigure_images_are_emitted() {
         "exactly two images expected; got:\n{t}"
     );
     // Outer caption + label still attach to the figure.
-    assert!(t.contains("caption: [Main caption]"), "outer caption kept; got:\n{t}");
+    assert!(
+        t.contains("caption: [Main caption]"),
+        "outer caption kept; got:\n{t}"
+    );
     assert!(t.contains("<fig:multi>"), "outer label kept; got:\n{t}");
 }
 
@@ -65,8 +68,10 @@ fn referenced_label_of_imageless_subfigure_is_anchored() {
     let out = convert(src, &ConvertOptions::default());
     let t = &out.typst;
     // The image panel still renders.
-    assert!(t.contains("image(\"a.png\")") || t.contains("image(\"a.png\","),
-        "image panel renders; got:\n{t}");
+    assert!(
+        t.contains("image(\"a.png\")") || t.contains("image(\"a.png\","),
+        "image panel renders; got:\n{t}"
+    );
     // The referenced text-only subfigure label must be present somewhere as an anchor.
     assert!(
         t.contains("<fig:panel_c>"),
@@ -77,9 +82,15 @@ fn referenced_label_of_imageless_subfigure_is_anchored() {
 #[test]
 fn single_graphics_figure_unchanged() {
     // Regression guard: an ordinary one-image figure is still a single image.
-    let t = typ(
-        "\\begin{figure}\\includegraphics{solo.png}\\caption{Solo}\\label{fig:s}\\end{figure}",
+    let t =
+        typ("\\begin{figure}\\includegraphics{solo.png}\\caption{Solo}\\label{fig:s}\\end{figure}");
+    assert_eq!(
+        t.matches("image(").count(),
+        1,
+        "single image preserved; got:\n{t}"
     );
-    assert_eq!(t.matches("image(").count(), 1, "single image preserved; got:\n{t}");
-    assert!(t.contains("caption: [Solo]") && t.contains("<fig:s>"), "caption+label; got:\n{t}");
+    assert!(
+        t.contains("caption: [Solo]") && t.contains("<fig:s>"),
+        "caption+label; got:\n{t}"
+    );
 }

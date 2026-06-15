@@ -30,7 +30,10 @@ fn braket_package_capitalized_braket_expands() {
         "\\Braket should produce angle brackets (chevron.l/.r); got:\n{t}"
     );
     // The argument must survive (here the accented H).
-    assert!(t.contains("hat("), "the \\Braket argument must be kept; got:\n{t}");
+    assert!(
+        t.contains("hat("),
+        "the \\Braket argument must be kept; got:\n{t}"
+    );
 }
 
 #[test]

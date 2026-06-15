@@ -34,7 +34,11 @@ fn compile_valid_typ_reports_ok_and_writes_pdf() {
     let typ = write(dir.path(), "ok.typ", "Hello, world.\n");
     let res = compile_typ(&typ, None, "typst").unwrap();
     assert!(res.ok, "expected ok; errors={:?}", res.errors);
-    assert!(res.errors.is_empty(), "no errors expected; got {:?}", res.errors);
+    assert!(
+        res.errors.is_empty(),
+        "no errors expected; got {:?}",
+        res.errors
+    );
     let pdf = res.pdf_path.expect("pdf path");
     assert!(Path::new(&pdf).exists(), "pdf should exist at {pdf}");
 }
@@ -78,8 +82,16 @@ fn render_two_page_typ_returns_ordered_pngs() {
         "two pages → two images: {:?}",
         res.image_paths
     );
-    assert!(res.image_paths[0].ends_with("page-1.png"), "{:?}", res.image_paths);
-    assert!(res.image_paths[1].ends_with("page-2.png"), "{:?}", res.image_paths);
+    assert!(
+        res.image_paths[0].ends_with("page-1.png"),
+        "{:?}",
+        res.image_paths
+    );
+    assert!(
+        res.image_paths[1].ends_with("page-2.png"),
+        "{:?}",
+        res.image_paths
+    );
     for p in &res.image_paths {
         assert!(Path::new(p).exists(), "image should exist: {p}");
     }

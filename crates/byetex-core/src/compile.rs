@@ -40,7 +40,11 @@ pub struct RenderResult {
 
 /// Compile `typ_path` to a PDF (`out_pdf`, or `<typ>.pdf` by default) and parse
 /// typst's stderr into structured errors. `ok` reflects the process exit.
-pub fn compile_typ(typ_path: &Path, out_pdf: Option<&Path>, typst_bin: &str) -> Result<CompileResult> {
+pub fn compile_typ(
+    typ_path: &Path,
+    out_pdf: Option<&Path>,
+    typst_bin: &str,
+) -> Result<CompileResult> {
     let pdf = out_pdf
         .map(Path::to_path_buf)
         .unwrap_or_else(|| typ_path.with_extension("pdf"));
@@ -61,7 +65,12 @@ pub fn compile_typ(typ_path: &Path, out_pdf: Option<&Path>, typst_bin: &str) -> 
 /// Render `typ_path` to per-page PNGs in `out_dir` at `dpi` ppi, using typst's
 /// native PNG export (the `{p}` page placeholder), so no external rasteriser is
 /// needed. Returns the page image paths in numeric order.
-pub fn render_typ(typ_path: &Path, out_dir: &Path, dpi: u32, typst_bin: &str) -> Result<RenderResult> {
+pub fn render_typ(
+    typ_path: &Path,
+    out_dir: &Path,
+    dpi: u32,
+    typst_bin: &str,
+) -> Result<RenderResult> {
     std::fs::create_dir_all(out_dir).with_context(|| format!("create {}", out_dir.display()))?;
     // typst replaces `{p}` with the 1-based page number, producing page-1.png,
     // page-2.png, … inside out_dir.

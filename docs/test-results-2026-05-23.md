@@ -113,7 +113,7 @@ ByeTex MCP server. To finish, you'd run in a separate Claude Code
 session:
 
 ```bash
-claude mcp add byetex /Users/zeyuyang42/Workspace/tools/ByeTex/target/release/byetex serve
+claude mcp add byetex byetex serve
 ```
 
 Then in that session, ask Claude to follow the prompts in
@@ -324,7 +324,7 @@ contains(matrix.target, 'aarch64-unknown-linux-musl')` but it may not be
 running before the build step. Inspect the run log:
 
 ```bash
-gh run view 26332481083 --repo zeyuyang42/ByeTeX --log-failed | grep -i aarch64
+gh run view 26332481083 --repo zeyuyang42/ByeTex --log-failed | grep -i aarch64
 ```
 
 ---

@@ -24,7 +24,10 @@ fn newtcbtheorem_args_do_not_leak() {
         !t.contains("colback") && !t.contains("before skip") && !t.contains("boxed title"),
         "the \\newtcbtheorem options must not leak into the body;\noutput:\n{t}"
     );
-    assert!(t.contains("Body paragraph."), "real body must survive;\noutput:\n{t}");
+    assert!(
+        t.contains("Body paragraph."),
+        "real body must survive;\noutput:\n{t}"
+    );
 }
 
 #[test]

@@ -66,9 +66,8 @@ impl<'a> Emitter<'a> {
                 self.out.push_str("#align(center)[\n");
             }
         }
-        let tail_open = !with_rules
-            || !self.metadata.authors.is_empty()
-            || self.metadata.date.is_some();
+        let tail_open =
+            !with_rules || !self.metadata.authors.is_empty() || self.metadata.date.is_some();
 
         if !self.metadata.authors.is_empty() {
             // The title→author gap. In the rules layout (NeurIPS/ICML) the
@@ -309,7 +308,11 @@ pub(in crate::emit) fn build_neutral_preamble(
     // title block spans both columns via a `#place(scope: "parent", float: true)`
     // float in `finish()`. Page columns replace the old `#columns(2)[body]`
     // content-block, which blew up on figure-heavy docs (corpus 2605.31586: 81pp).
-    let columns = if layout.is_two_column(class) { ", columns: 2" } else { "" };
+    let columns = if layout.is_two_column(class) {
+        ", columns: 2"
+    } else {
+        ""
+    };
     format!(
         "#set page(paper: \"{paper}\", margin: {margin}{columns})\n\
          #set text(font: \"{body_font}\", size: {font_size})\n\
@@ -321,7 +324,10 @@ pub(in crate::emit) fn build_neutral_preamble(
     )
 }
 
-pub(in crate::emit) fn extract_class_and_options(node: Node<'_>, src: &str) -> (Option<String>, Vec<String>) {
+pub(in crate::emit) fn extract_class_and_options(
+    node: Node<'_>,
+    src: &str,
+) -> (Option<String>, Vec<String>) {
     let mut class: Option<String> = None;
     let mut opts: Vec<String> = Vec::new();
     let mut cursor = node.walk();
@@ -572,9 +578,7 @@ pub(in crate::emit) fn is_known_noop_package(name: &str) -> bool {
     )
 }
 
-
 // ─── Math word recognition & post-processing ──────────────────────────────────
-
 
 /// Replace LaTeX typographic conventions with their Typst equivalents:
 /// - `---` → `—` (em-dash)
@@ -587,7 +591,9 @@ pub(in crate::emit) fn is_known_noop_package(name: &str) -> bool {
 /// record carries no renderable text. Prefers structured fields
 /// (department → institution → city → country) and falls back to the raw
 /// blob when no structured fields are populated.
-pub(in crate::emit) fn aff_display_text(aff: &Option<crate::document::Affiliation>) -> Option<String> {
+pub(in crate::emit) fn aff_display_text(
+    aff: &Option<crate::document::Affiliation>,
+) -> Option<String> {
     let aff = aff.as_ref()?;
     let mut parts: Vec<&str> = Vec::new();
     if let Some(dept) = &aff.department {

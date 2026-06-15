@@ -22,6 +22,12 @@ fn resizebox_preserves_wrapped_tabular() {
 #[test]
 fn resizebox_preserves_plain_content() {
     let t = typ(r"x \resizebox{5cm}{!}{KEEPME} y");
-    assert!(t.contains("KEEPME"), "wrapped content must survive; got:\n{t}");
-    assert!(t.contains('x') && t.contains('y'), "surrounding text preserved; got:\n{t}");
+    assert!(
+        t.contains("KEEPME"),
+        "wrapped content must survive; got:\n{t}"
+    );
+    assert!(
+        t.contains('x') && t.contains('y'),
+        "surrounding text preserved; got:\n{t}"
+    );
 }

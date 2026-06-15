@@ -15,7 +15,10 @@ fn typ(src: &str) -> String {
 #[test]
 fn theorem_note_becomes_caption() {
     let t = typ(r"\newtheorem{theorem}{Theorem}\begin{theorem}[Pythagoras]Body.\end{theorem}");
-    assert!(t.contains("caption: [Pythagoras]"), "note not captured; got:\n{t}");
+    assert!(
+        t.contains("caption: [Pythagoras]"),
+        "note not captured; got:\n{t}"
+    );
     assert!(t.contains("kind: \"theorem\""), "got:\n{t}");
 }
 
@@ -26,7 +29,10 @@ fn theorem_kind_gets_head_show_rule() {
         t.contains("#show figure.where(kind: \"theorem\")"),
         "head show-rule missing; got:\n{t}"
     );
-    assert!(t.contains("it.supplement") && t.contains("it.body"), "got:\n{t}");
+    assert!(
+        t.contains("it.supplement") && t.contains("it.body"),
+        "got:\n{t}"
+    );
 }
 
 #[test]

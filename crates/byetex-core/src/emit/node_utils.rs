@@ -101,7 +101,10 @@ pub(in crate::emit) fn command_name_text(node: Node<'_>, src: &str) -> Option<St
 /// bold/italic font switch (`{\bf ..}`, `{\em ..}`), return the Typst wrap
 /// markup and the byte just after the switch command. Other family switches
 /// (`\sc`, `\tt`, ...) have no clean inline equivalent and are not wrapped.
-pub(in crate::emit) fn leading_font_switch(node: Node<'_>, src: &str) -> Option<((&'static str, &'static str), usize)> {
+pub(in crate::emit) fn leading_font_switch(
+    node: Node<'_>,
+    src: &str,
+) -> Option<((&'static str, &'static str), usize)> {
     let mut cursor = node.walk();
     let first = node.named_children(&mut cursor).next()?;
     if first.kind() != "generic_command" {
@@ -272,7 +275,10 @@ pub(in crate::emit) fn color_from_model_spec(model: &str, spec: &str) -> Option<
     }
     if m == "RGB" {
         let v = nums(3)?;
-        return Some(format!("rgb({}, {}, {})", v[0] as i64, v[1] as i64, v[2] as i64));
+        return Some(format!(
+            "rgb({}, {}, {})",
+            v[0] as i64, v[1] as i64, v[2] as i64
+        ));
     }
     if m.eq_ignore_ascii_case("rgb") {
         let v = nums(3)?;
@@ -334,7 +340,11 @@ pub(in crate::emit) fn brace_groups(s: &str, max: usize) -> Vec<String> {
 /// optional `[model]` and the brace-group contents (up to 3). Used by
 /// `\textcolor`/`\colorbox`/`\fcolorbox` to read their colour args from source.
 pub(in crate::emit) fn color_command_parts(text: &str, cmd: &str) -> (Option<String>, Vec<String>) {
-    let body = text.trim_start().strip_prefix(cmd).unwrap_or("").trim_start();
+    let body = text
+        .trim_start()
+        .strip_prefix(cmd)
+        .unwrap_or("")
+        .trim_start();
     let (model, rest) = match body.strip_prefix('[') {
         Some(r) => match r.find(']') {
             Some(close) => (Some(r[..close].to_string()), &r[close + 1..]),
@@ -374,9 +384,7 @@ pub(in crate::emit) fn needs_empty_base(out: &str) -> bool {
         || trimmed.ends_with('{')
 }
 
-
 // ─── Label, citation & graphics extraction ────────────────────────────────────
-
 
 /// Whether `node`'s reference command takes a comma-separated LIST of labels in
 /// one brace — i.e. cleveref's `\cref{a,b}` → two refs. For every other
@@ -419,7 +427,10 @@ pub(in crate::emit) fn label_ref_splits_on_comma(node: Node<'_>) -> bool {
 /// Returns all comma-separated keys for a comma-list command (see
 /// [`label_ref_splits_on_comma`]); every other ref returns a one-element Vec
 /// with the comma kept as a literal label char.
-pub(in crate::emit) fn extract_label_ref_keys_and_end(node: Node<'_>, src: &str) -> Option<(Vec<String>, usize)> {
+pub(in crate::emit) fn extract_label_ref_keys_and_end(
+    node: Node<'_>,
+    src: &str,
+) -> Option<(Vec<String>, usize)> {
     let split = label_ref_splits_on_comma(node);
     let bytes = src.as_bytes();
     let mut cursor = node.walk();
@@ -474,10 +485,7 @@ pub(in crate::emit) fn extract_label_ref_keys_and_end(node: Node<'_>, src: &str)
     None
 }
 
-
-
 // ─── Tabular, math rows & math sanitization ───────────────────────────────────
-
 
 /// Skip a `{...}` balanced-brace group starting at `start` (where `src[start] == '{'`).
 /// Returns the index one past the closing `}`.
@@ -551,8 +559,6 @@ pub(in crate::emit) fn split_math_rows(body: &str) -> Vec<&str> {
     out
 }
 
-
-
 /// Find the byte index one past the `}` that closes the `{` at `start`.
 /// Returns `None` if `bytes[start]` is not `{` or braces are unbalanced.
 /// Skips `\{` and `\}` so escaped braces don't affect the depth count.
@@ -579,9 +585,7 @@ pub(in crate::emit) fn brace_balanced_end(bytes: &[u8], start: usize) -> Option<
     None
 }
 
-
 // ─── Command dispatch helpers ──────────────────────────────────────────────────
-
 
 /// Decide whether a Typst math-mode subscript/superscript argument
 /// needs an explicit `(...)` wrapper. A single token (one letter or
@@ -644,7 +648,10 @@ pub(in crate::emit) fn extract_label_name(node: Node<'_>, src: &str) -> Option<S
 /// uses that offset to set `skip_until` so the leaked tail (when
 /// tree-sitter truncates the label at `_`) isn't re-emitted as
 /// stray math content.
-pub(in crate::emit) fn extract_label_name_and_end(node: Node<'_>, src: &str) -> Option<(String, usize)> {
+pub(in crate::emit) fn extract_label_name_and_end(
+    node: Node<'_>,
+    src: &str,
+) -> Option<(String, usize)> {
     // tree-sitter-latex stops the `label` token at the first `_`, which
     // means `\label{eq:edl_objective}` parses with `label = "eq:edl"`
     // plus a synthesized closing brace and the rest of the name

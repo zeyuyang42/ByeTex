@@ -17,9 +17,18 @@ fn preamble() -> String {
 #[test]
 fn heading_sizes_match_latex_article() {
     let t = preamble();
-    assert!(t.contains("level: 1): set text(size: 1.44em"), "L1 = \\Large 1.44em; got:\n{t}");
-    assert!(t.contains("level: 2): set text(size: 1.2em"), "L2 = \\large 1.2em; got:\n{t}");
-    assert!(t.contains("level: 3): set text(size: 1em"), "L3 = \\normalsize 1em; got:\n{t}");
+    assert!(
+        t.contains("level: 1): set text(size: 1.44em"),
+        "L1 = \\Large 1.44em; got:\n{t}"
+    );
+    assert!(
+        t.contains("level: 2): set text(size: 1.2em"),
+        "L2 = \\large 1.2em; got:\n{t}"
+    );
+    assert!(
+        t.contains("level: 3): set text(size: 1em"),
+        "L3 = \\normalsize 1em; got:\n{t}"
+    );
 }
 
 #[test]

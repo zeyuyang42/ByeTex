@@ -40,7 +40,16 @@ fn column_spec_still_skipped_and_count_right() {
     // Regression guard: the column-spec group is still dropped (not treated as a
     // cell), so the column count and a normal table are unaffected.
     let t = typ("\\begin{tabular}{ccc}\nA & B & C \\\\\n\\end{tabular}\n");
-    assert!(t.contains("columns: 3"), "column count must stay 3; got:\n{t}");
-    assert!(t.contains("[A], [B], [C]"), "plain cells unaffected; got:\n{t}");
-    assert!(!t.contains("[ccc]") && !t.contains("[{ccc}]"), "spec must not become a cell; got:\n{t}");
+    assert!(
+        t.contains("columns: 3"),
+        "column count must stay 3; got:\n{t}"
+    );
+    assert!(
+        t.contains("[A], [B], [C]"),
+        "plain cells unaffected; got:\n{t}"
+    );
+    assert!(
+        !t.contains("[ccc]") && !t.contains("[{ccc}]"),
+        "spec must not become a cell; got:\n{t}"
+    );
 }

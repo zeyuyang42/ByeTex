@@ -29,7 +29,11 @@ fn tmpdir(name: &str) -> PathBuf {
 fn convert_without_compile_marks_brief_not_run() {
     let dir = tmpdir("no-compile");
     let tex = dir.join("p.tex");
-    fs::write(&tex, "\\documentclass{article}\n\\begin{document}\nHi.\n\\end{document}\n").unwrap();
+    fs::write(
+        &tex,
+        "\\documentclass{article}\n\\begin{document}\nHi.\n\\end{document}\n",
+    )
+    .unwrap();
     let ok = Command::new(bin())
         .arg("convert")
         .arg(&tex)
@@ -53,7 +57,11 @@ fn convert_compile_runs_typst_into_brief() {
     }
     let dir = tmpdir("compile");
     let tex = dir.join("p.tex");
-    fs::write(&tex, "\\documentclass{article}\n\\begin{document}\nHi.\n\\end{document}\n").unwrap();
+    fs::write(
+        &tex,
+        "\\documentclass{article}\n\\begin{document}\nHi.\n\\end{document}\n",
+    )
+    .unwrap();
     let ok = Command::new(bin())
         .arg("convert")
         .arg(&tex)

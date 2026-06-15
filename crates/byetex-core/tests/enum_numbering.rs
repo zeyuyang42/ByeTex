@@ -13,7 +13,10 @@ fn typ(src: &str) -> String {
 fn enumerate_alpha_shortcut_style() {
     let t = typ(r"\begin{enumerate}[(a)]\item foo\item bar\end{enumerate}");
     assert!(t.contains("#enum(numbering: \"(a)\""), "got:\n{t}");
-    assert!(t.contains("[foo]") && t.contains("[bar]"), "items lost; got:\n{t}");
+    assert!(
+        t.contains("[foo]") && t.contains("[bar]"),
+        "items lost; got:\n{t}"
+    );
 }
 
 #[test]

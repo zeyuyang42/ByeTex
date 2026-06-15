@@ -13,7 +13,10 @@ fn typst(src: &str) -> String {
 fn vspace_ex_converts_to_em() {
     let t = typst(r"x\vspace{1ex}y");
     assert!(t.contains("#v(0.5em)"), "1ex → 0.5em;\noutput:\n{t}");
-    assert!(!t.contains("1ex"), "must not emit the invalid `ex` unit;\noutput:\n{t}");
+    assert!(
+        !t.contains("1ex"),
+        "must not emit the invalid `ex` unit;\noutput:\n{t}"
+    );
 }
 
 #[test]
