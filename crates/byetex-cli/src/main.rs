@@ -206,6 +206,27 @@ enum Command {
         #[arg(short = 'c', long = "code", conflicts_with = "input")]
         code: Option<String>,
     },
+
+    /// Build a visual-fidelity grading packet for a paper: render the converted
+    /// Typst to per-page PNGs and, when a truth PDF is available, rasterise the
+    /// original LaTeX render alongside, then write `grading_packet.json` for the
+    /// `byetex-visual-grading` skill. Truth comes from `--truth`, a cached `.pdf`
+    /// in the paper dir, or a `tectonic` compile of the source (skipped if none).
+    Review {
+        /// Path to a `.tex` entry file or a paper directory.
+        input: PathBuf,
+        /// Reference (truth) PDF to compare against. Defaults to a cached `.pdf`
+        /// beside the source, else a `tectonic` compile of it.
+        #[arg(long)]
+        truth: Option<PathBuf>,
+        /// Pixels-per-inch for rasterisation. Defaults to 120.
+        #[arg(long, default_value_t = 120)]
+        dpi: u32,
+        /// Output directory for the packet + page images. Defaults to
+        /// `<input-stem>.review/`.
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -322,6 +343,12 @@ fn main() -> Result<()> {
         Command::Compile { input, out } => run_compile(input, out),
         Command::Render { input, dpi, out } => run_render(input, dpi, out),
         Command::Explain { input, code } => run_explain(input, code),
+        Command::Review {
+            input,
+            truth,
+            dpi,
+            out,
+        } => run_review(input, truth, dpi, out),
     }
 }
 
@@ -548,6 +575,249 @@ fn run_explain(input: Option<PathBuf>, code: Option<String>) -> Result<()> {
     let ex = byetex_core::snippet::explain(&source, &byetex_core::ConvertOptions::default());
     println!("{}", serde_json::to_string_pretty(&ex)?);
     Ok(())
+}
+
+/// Build a visual-fidelity grading packet: materialise the project, render the
+/// Typst to per-page PNGs, rasterise a truth PDF (provided / cached / tectonic)
+/// alongside, and write `grading_packet.json` for the `byetex-visual-grading`
+/// skill. Truth is best-effort — without it the packet is typst-only. Prints
+/// the packet path to stdout.
+fn run_review(
+    input: PathBuf,
+    truth: Option<PathBuf>,
+    dpi: u32,
+    out: Option<PathBuf>,
+) -> Result<()> {
+    let input_is_dir = input.is_dir();
+    let stem = if input_is_dir {
+        input.file_name().and_then(|s| s.to_str())
+    } else {
+        input.file_stem().and_then(|s| s.to_str())
+    }
+    .unwrap_or("paper")
+    .to_string();
+
+    let out_dir = out.unwrap_or_else(|| {
+        let parent = if input_is_dir {
+            input.clone()
+        } else {
+            input
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .map(|p| p.to_path_buf())
+                .unwrap_or_else(|| PathBuf::from("."))
+        };
+        parent.join(format!("{stem}.review"))
+    });
+    std::fs::create_dir_all(&out_dir).with_context(|| format!("create {}", out_dir.display()))?;
+
+    // 1) Materialise the Typst project so assets sit next to main.typ.
+    let plan = if input_is_dir {
+        byetex_core::project::plan_project_from_dir(&input, true, false)?
+    } else {
+        byetex_core::project::plan_project(&input, true, false)?
+    };
+    let base_dir = if input_is_dir {
+        input.clone()
+    } else {
+        base_dir_from_file(&plan.entry_tex)
+    };
+    let proj_dir = out_dir.join("typst-project");
+    byetex_core::project::materialize_project(&plan, &proj_dir, &base_dir, true)?;
+    let main_typ = proj_dir.join("main.typ");
+
+    // 2) Render the Typst side to per-page PNGs.
+    let typst = typst_bin();
+    let render = byetex_core::compile::render_typ(&main_typ, &out_dir.join("typst-pages"), dpi, &typst)?;
+    if !render.ok {
+        eprintln!(
+            "byetex review: typst render reported {} error(s); packet may be partial.",
+            render.errors.len()
+        );
+    }
+
+    // 3) Resolve + rasterise a truth PDF (best-effort).
+    let (truth_pdf, truth_source) =
+        resolve_truth_pdf(&input, input_is_dir, &plan.entry_tex, truth.as_deref(), &out_dir)?;
+    let truth_images = match &truth_pdf {
+        Some(pdf) => rasterize_pdf(pdf, &out_dir.join("truth-pages"), dpi)?,
+        None => Vec::new(),
+    };
+
+    // 4) detected_class from the entry source (best-effort).
+    let detected_class = std::fs::read_to_string(&plan.entry_tex)
+        .ok()
+        .and_then(|s| detect_document_class(&s));
+
+    // 5) Assemble + write the packet.
+    let packet = serde_json::json!({
+        "id": stem,
+        "detected_class": detected_class,
+        "truth_source": truth_source,
+        "front_matter": {
+            "typst": render.image_paths.first(),
+            "truth": truth_images.first(),
+        },
+        "pages": build_page_pairs(&render.image_paths, &truth_images),
+        "warnings": {
+            "total": plan.warnings.len(),
+            "by_kind": warning_kind_counts(&plan.warnings),
+        },
+        "rubric": "docs/fidelity-rubric.md",
+    });
+    let packet_path = out_dir.join("grading_packet.json");
+    std::fs::write(&packet_path, serde_json::to_string_pretty(&packet)?)
+        .with_context(|| format!("write {}", packet_path.display()))?;
+
+    eprintln!(
+        "byetex review: {} typst page(s), {} truth page(s) [{}] → {}",
+        render.image_paths.len(),
+        truth_images.len(),
+        truth_source,
+        packet_path.display()
+    );
+    println!("{}", packet_path.display());
+    Ok(())
+}
+
+/// Resolve a truth (reference) PDF: an explicit `--truth`, else a cached `.pdf`
+/// next to the source, else a `tectonic` compile of the entry file. Returns the
+/// PDF path and a provenance tag (`provided` | `cached` | `tectonic` | `none`).
+fn resolve_truth_pdf(
+    input: &Path,
+    input_is_dir: bool,
+    entry_tex: &Path,
+    truth_arg: Option<&Path>,
+    out_dir: &Path,
+) -> Result<(Option<PathBuf>, &'static str)> {
+    if let Some(t) = truth_arg {
+        return Ok((Some(t.to_path_buf()), "provided"));
+    }
+    // A cached reference PDF beside the source.
+    let src_dir = if input_is_dir {
+        input.to_path_buf()
+    } else {
+        base_dir_from_file(entry_tex)
+    };
+    if let Ok(rd) = std::fs::read_dir(&src_dir) {
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.extension().and_then(|s| s.to_str()) == Some("pdf") {
+                return Ok((Some(p), "cached"));
+            }
+        }
+    }
+    // Compile the original LaTeX with tectonic (best-effort; absent → no truth).
+    let tectonic = std::env::var("BYETEX_TECTONIC_BIN").unwrap_or_else(|_| "tectonic".to_string());
+    let status = std::process::Command::new(&tectonic)
+        .arg("--outdir")
+        .arg(out_dir)
+        .arg(entry_tex)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    if let Ok(s) = status {
+        if s.success() {
+            let pdf_stem = entry_tex.file_stem().and_then(|x| x.to_str()).unwrap_or("main");
+            let produced = out_dir.join(format!("{pdf_stem}.pdf"));
+            if produced.exists() {
+                return Ok((Some(produced), "tectonic"));
+            }
+        }
+    }
+    Ok((None, "none"))
+}
+
+/// Rasterise `pdf` to per-page PNGs (`truth-N.png`) in `out_dir` via `pdftoppm`
+/// at `dpi`. Returns the page image paths in order, or an empty list (with a
+/// note) if pdftoppm is unavailable / fails. Override the binary with
+/// `BYETEX_PDFTOPPM_BIN`.
+fn rasterize_pdf(pdf: &Path, out_dir: &Path, dpi: u32) -> Result<Vec<String>> {
+    std::fs::create_dir_all(out_dir).with_context(|| format!("create {}", out_dir.display()))?;
+    let bin = std::env::var("BYETEX_PDFTOPPM_BIN").unwrap_or_else(|_| "pdftoppm".to_string());
+    let status = std::process::Command::new(&bin)
+        .arg("-png")
+        .arg("-r")
+        .arg(dpi.to_string())
+        .arg(pdf)
+        .arg(out_dir.join("truth"))
+        .status();
+    match status {
+        Ok(s) if s.success() => Ok(collect_numbered_pngs(out_dir, "truth")),
+        _ => {
+            eprintln!(
+                "byetex review: `{bin}` unavailable or failed; truth pages skipped."
+            );
+            Ok(Vec::new())
+        }
+    }
+}
+
+/// Collect `<prefix>-<N>.png` files in `dir`, sorted numerically by `N`
+/// (pdftoppm may zero-pad, so parse the trailing number rather than sort
+/// lexically).
+fn collect_numbered_pngs(dir: &Path, prefix: &str) -> Vec<String> {
+    let mut pages: Vec<(u32, PathBuf)> = Vec::new();
+    if let Ok(rd) = std::fs::read_dir(dir) {
+        for entry in rd.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) != Some("png") {
+                continue;
+            }
+            if let Some(n) = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .and_then(|s| s.strip_prefix(prefix))
+                .and_then(|s| s.trim_start_matches('-').parse::<u32>().ok())
+            {
+                pages.push((n, path));
+            }
+        }
+    }
+    pages.sort_by_key(|(n, _)| *n);
+    pages
+        .into_iter()
+        .map(|(_, p)| p.display().to_string())
+        .collect()
+}
+
+/// Pair typst and truth page images by index into `{ page, typst?, truth? }`
+/// rows (page is 1-based). The longer side governs the row count.
+fn build_page_pairs(typst: &[String], truth: &[String]) -> Vec<serde_json::Value> {
+    let n = typst.len().max(truth.len());
+    (0..n)
+        .map(|i| {
+            serde_json::json!({
+                "page": i + 1,
+                "typst": typst.get(i),
+                "truth": truth.get(i),
+            })
+        })
+        .collect()
+}
+
+/// Count warnings by category kind for the packet's `warnings.by_kind` summary.
+fn warning_kind_counts(
+    warnings: &[byetex_core::Warning],
+) -> std::collections::BTreeMap<String, usize> {
+    let mut counts = std::collections::BTreeMap::new();
+    for w in warnings {
+        *counts.entry(category_kind_name(&w.category)).or_insert(0) += 1;
+    }
+    counts
+}
+
+/// Extract the class name from the first `\documentclass[opts]{name}` in `src`.
+fn detect_document_class(src: &str) -> Option<String> {
+    let idx = src.find("\\documentclass")?;
+    let mut rest = src[idx + "\\documentclass".len()..].trim_start();
+    if let Some(stripped) = rest.strip_prefix('[') {
+        let close = stripped.find(']')?;
+        rest = stripped[close + 1..].trim_start();
+    }
+    let rest = rest.strip_prefix('{')?;
+    let close = rest.find('}')?;
+    Some(rest[..close].trim().to_string())
 }
 
 fn run_corpus(action: CorpusAction) -> Result<()> {
