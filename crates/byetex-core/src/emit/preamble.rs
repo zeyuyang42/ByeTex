@@ -308,7 +308,11 @@ pub(in crate::emit) fn build_neutral_preamble(
     // title block spans both columns via a `#place(scope: "parent", float: true)`
     // float in `finish()`. Page columns replace the old `#columns(2)[body]`
     // content-block, which blew up on figure-heavy docs (corpus 2605.31586: 81pp).
-    let columns = if layout.is_two_column(class) { ", columns: 2" } else { "" };
+    let columns = if layout.is_two_column(class) {
+        ", columns: 2"
+    } else {
+        ""
+    };
     format!(
         "#set page(paper: \"{paper}\", margin: {margin}{columns})\n\
          #set text(font: \"{body_font}\", size: {font_size})\n\
