@@ -64,7 +64,8 @@ echo "[structural] stray top-level dirs"
 for entry in "$CORPUS"/*/; do
   name="$(basename "$entry")"
   [[ "$name" == "_out" ]] && continue            # generated tree, handled below
-  [[ "$name" =~ $ID_RE ]] && continue            # a real paper — keep
+  [[ "$name" =~ $ID_RE ]] && continue            # an arXiv paper — keep
+  [[ -f "$entry/source/00README.json" ]] && continue  # non-arXiv paper (corpus_add_local.py) — keep
   zap "$entry"                                    # online/, inhouse/, anything else
 done
 

@@ -72,6 +72,42 @@ which permits this kind of research use.
 
 ---
 
+## corpus_add_local.py
+
+Ingest a **non-arXiv** LaTeX project (book/report/thesis/generic article) into the
+corpus in the same layout the sweep + visual harness consume — companion to
+`corpus_harvest.py`. It copies/extracts the source into `corpus/<id>/source/`,
+auto-detects the toplevel `.tex` (the file with both `\documentclass` and
+`\begin{document}`), writes `00README.json`, and appends a `manifest.json` entry
+recording `source`/`doc_class`/`doc_type` and a re-fetch ref (`repo_ref` commit SHA
+or `archive_sha256`).
+
+IDs use a non-arXiv scheme so they never collide with `NNNN.NNNNN`:
+`gh-<org>-<repo>`, `ctan-<name>`, `overleaf-<slug>`, `local-<slug>` (lowercase).
+
+```bash
+# git repo (records the resolved commit SHA)
+python scripts/corpus_add_local.py --git https://github.com/org/repo \
+  --id gh-org-repo --source-kind github --doc-type book --title "The Title"
+
+# a hand-downloaded archive (e.g. a login-walled Overleaf export)
+python scripts/corpus_add_local.py ~/Downloads/x.zip --id overleaf-x \
+  --source-kind overleaf --doc-type thesis --needs-manual-download
+
+# a CTAN / release archive by URL (lazily needs `requests`)
+uv run --with requests python scripts/corpus_add_local.py \
+  --url https://mirrors.ctan.org/macros/latex/contrib/memoir.zip \
+  --id ctan-memoir --source-kind ctan --doc-type book --toplevel doc-src/memman.tex
+```
+
+Pass `--toplevel NAME.tex` when 0 or >1 candidates are found, `--dry-run` to preview.
+New non-arXiv ids stay **out of `acceptance_baseline.json`** (measurement-only) until
+their converter gaps are triaged. For non-arXiv ids, `visual_test.py` auto-builds the
+ground-truth PDF with tectonic (no arXiv PDF). See `docs/tier1-baseline-2026-06-15.md`
+for the first baseline + ranked gaps.
+
+---
+
 ## visual_test.py
 
 Runs the visual regression pipeline: for each arXiv paper in `corpus/`,

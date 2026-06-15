@@ -60,6 +60,19 @@ def load_pinned_ids() -> list[str]:
     return [p["id"] for p in data.get("papers", []) if p.get("pinned")]
 
 
+def manifest_source(paper_id: str) -> str:
+    """Return the manifest `source` for an id ('arxiv' by default). Non-arXiv
+    entries (added by corpus_add_local.py) have no arXiv PDF, so truth rendering
+    falls through to tectonic."""
+    if not MANIFEST_PATH.exists():
+        return "arxiv"
+    data = json.loads(MANIFEST_PATH.read_text())
+    for p in data.get("papers", []):
+        if p.get("id") == paper_id:
+            return p.get("source", "arxiv")
+    return "arxiv"
+
+
 DEFAULT_PAPERS = load_pinned_ids()
 
 COMPOSITE_CELL_W = 600  # px per column in composite image
@@ -1271,11 +1284,16 @@ def process_paper(
     out_dir = out_root / id_safe
     composite_path = out_dir / "composite.png"
 
+    # Non-arXiv corpus entries (corpus_add_local.py) have no canonical arXiv PDF;
+    # don't mislabel them and don't try to download one.
+    is_arxiv = manifest_source(arxiv_id) == "arxiv"
+    id_label = f"arxiv:{arxiv_id}" if is_arxiv else arxiv_id
+
     if args.skip_existing and composite_path.exists():
         print(f"  [skip] composite already exists", flush=True)
         summary_path = out_dir / "summary.json"
         return json.loads(summary_path.read_text()) if summary_path.exists() else {
-            "id": f"arxiv:{arxiv_id}", "status": "skipped"
+            "id": id_label, "status": "skipped"
         }
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -1283,7 +1301,7 @@ def process_paper(
     pages_dir.mkdir(exist_ok=True)
 
     summary: dict = {
-        "id": f"arxiv:{arxiv_id}",
+        "id": id_label,
         "generated_at": _now(),
         "toplevel_tex": None,
         "truth_pages": 0,
@@ -1319,7 +1337,7 @@ def process_paper(
     tectonic_ok = tectonic_available()
     try:
         truth_source = resolve_truth_source(
-            args.truth_source, arxiv_id, args.no_truth_download, tectonic_ok
+            args.truth_source, arxiv_id if is_arxiv else "", args.no_truth_download, tectonic_ok
         )
     except ValueError as e:
         summary["status"] = "truth_source_unavailable"
@@ -1604,7 +1622,8 @@ def main() -> None:
             import traceback
             print(f"  [fatal] {exc}", file=sys.stderr)
             traceback.print_exc(file=sys.stderr)
-            summary = {"id": f"arxiv:{arxiv_id}", "status": "exception", "error": str(exc)}
+            label = f"arxiv:{arxiv_id}" if manifest_source(arxiv_id) == "arxiv" else arxiv_id
+            summary = {"id": label, "status": "exception", "error": str(exc)}
 
         structure = summary.get("structure") or {}
         index["papers"][arxiv_id] = {
