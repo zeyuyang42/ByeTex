@@ -330,6 +330,10 @@ def main() -> None:
 
     count = 0
     for paper in papers_to_fetch:
+        if paper.get("source", "arxiv") != "arxiv":
+            # non-arXiv entries (added by corpus_add_local.py) aren't on arXiv;
+            # they're fetched/refreshed by that script, not here.
+            continue
         try:
             download_paper(session, paper["id"], delay, args.dry_run)
             count += 1
