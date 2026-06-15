@@ -54,7 +54,7 @@ fn mcp_server_handshakes_and_lists_tools() {
     if !bin.exists() {
         // The test binary may run before the CLI is built. Build it.
         let status = Command::new("cargo")
-            .args(["build", "-p", "byetex-cli"])
+            .args(["build", "-p", "byetex"])
             .status()
             .expect("cargo build");
         assert!(status.success(), "cargo build failed");

@@ -148,7 +148,7 @@ Or via cargo (requires Rust 1.85+):
 
 ```bash
 # --features mcp is needed only if you want `byetex serve` (MCP server).
-cargo install --git https://github.com/zeyuyang42/ByeTex byetex-cli --features mcp
+cargo install --git https://github.com/zeyuyang42/ByeTex byetex --features mcp
 ```
 
 ## CLI
