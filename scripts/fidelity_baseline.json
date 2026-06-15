@@ -1,0 +1,486 @@
+{
+  "_comment": "Fidelity baseline for scripts/fidelity_check.py. Per-paper render metrics + corpus fidelity_score from scripts/visual_test.py. Regenerate with `./scripts/fidelity_gate.sh --update-baseline` (or fidelity_check.py --emit-baseline).",
+  "fidelity_score": 0.821,
+  "papers": {
+    "2605.22159": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.54,
+      "page_ratio": 1.083,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.871
+    },
+    "2605.22159\n2605.22281\n2605.22312\n2605.22315\n2605.22485\n2605.22507\n2605.22549\n2605.22557\n2605.22579\n2605.22584\n2605.22724\n2605.22728\n2605.22736\n2605.22738\n2605.22746\n2605.22765\n2605.22776\n2605.22779\n2605.22786\n2605.22794\n2605.22795\n2605.22800\n2605.22814\n2605.22817\n2605.22820\n2605.22821\n2605.30609\n2605.30718\n2605.30843\n2605.31009\n2605.31011\n2605.31063\n2605.31072\n2605.31203\n2605.31244\n2605.31306\n2605.31345\n2605.31394\n2605.31440\n2605.31443\n2605.31499\n2605.31510\n2605.31526\n2605.31549\n2605.31561\n2605.31563\n2605.31564\n2605.31567\n2605.31579\n2605.31584\n2605.31586\n2605.31596\n2605.31597\n2605.31598\n2605.31603\n2605.31604\n2606.12397\n2606.12406\n2606.12411": {
+      "heading_recall": null,
+      "mean_ssim": null,
+      "page_ratio": null,
+      "status": "exception",
+      "structure_ok": false,
+      "word_recall": null
+    },
+    "2605.22281": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.486,
+      "page_ratio": 0.84,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.877
+    },
+    "2605.22312": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.615,
+      "page_ratio": 0.8,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.957
+    },
+    "2605.22315": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.562,
+      "page_ratio": 0.75,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.923
+    },
+    "2605.22485": {
+      "heading_recall": 0.765,
+      "mean_ssim": 0.611,
+      "page_ratio": 1.0,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.921
+    },
+    "2605.22507": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.559,
+      "page_ratio": 1.0,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.894
+    },
+    "2605.22549": {
+      "heading_recall": 0.952,
+      "mean_ssim": 0.553,
+      "page_ratio": 1.231,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.883
+    },
+    "2605.22557": {
+      "heading_recall": 0.938,
+      "mean_ssim": 0.524,
+      "page_ratio": 0.889,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.894
+    },
+    "2605.22579": {
+      "heading_recall": 0.975,
+      "mean_ssim": 0.489,
+      "page_ratio": 1.2,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.875
+    },
+    "2605.22584": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.554,
+      "page_ratio": 1.0,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.961
+    },
+    "2605.22724": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.582,
+      "page_ratio": 1.109,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.847
+    },
+    "2605.22728": {
+      "heading_recall": 0.375,
+      "mean_ssim": 0.598,
+      "page_ratio": 1.318,
+      "status": "structure_failed",
+      "structure_ok": false,
+      "word_recall": 0.898
+    },
+    "2605.22736": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.55,
+      "page_ratio": 0.962,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.898
+    },
+    "2605.22738": {
+      "heading_recall": 0.925,
+      "mean_ssim": 0.619,
+      "page_ratio": 1.074,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.846
+    },
+    "2605.22746": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.585,
+      "page_ratio": 1.111,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.904
+    },
+    "2605.22765": {
+      "heading_recall": 0.95,
+      "mean_ssim": 0.619,
+      "page_ratio": 1.021,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.726
+    },
+    "2605.22776": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.575,
+      "page_ratio": 0.846,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.953
+    },
+    "2605.22779": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.394,
+      "page_ratio": 1.333,
+      "status": "structure_failed",
+      "structure_ok": false,
+      "word_recall": 0.918
+    },
+    "2605.22786": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.563,
+      "page_ratio": 1.231,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.724
+    },
+    "2605.22794": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.531,
+      "page_ratio": 1.0,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.884
+    },
+    "2605.22795": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.687,
+      "page_ratio": 1.043,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.891
+    },
+    "2605.22800": {
+      "heading_recall": 0.9,
+      "mean_ssim": 0.595,
+      "page_ratio": 0.983,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.913
+    },
+    "2605.22814": {
+      "heading_recall": 0.789,
+      "mean_ssim": 0.531,
+      "page_ratio": 1.188,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.968
+    },
+    "2605.22817": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.54,
+      "page_ratio": 1.083,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.864
+    },
+    "2605.22820": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.573,
+      "page_ratio": 1.0,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.871
+    },
+    "2605.22821": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.585,
+      "page_ratio": 1.462,
+      "status": "structure_failed",
+      "structure_ok": false,
+      "word_recall": 0.746
+    },
+    "2605.30609": {
+      "heading_recall": 0.917,
+      "mean_ssim": 0.606,
+      "page_ratio": 0.75,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.833
+    },
+    "2605.30718": {
+      "heading_recall": 0.946,
+      "mean_ssim": 0.598,
+      "page_ratio": 1.061,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.951
+    },
+    "2605.30843": {
+      "heading_recall": 0.85,
+      "mean_ssim": 0.601,
+      "page_ratio": 0.741,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.882
+    },
+    "2605.31009": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.491,
+      "page_ratio": 1.233,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.946
+    },
+    "2605.31011": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.499,
+      "page_ratio": 1.087,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.961
+    },
+    "2605.31063": {
+      "heading_recall": 0.625,
+      "mean_ssim": 0.651,
+      "page_ratio": 1.045,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.952
+    },
+    "2605.31072": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.586,
+      "page_ratio": 0.785,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.913
+    },
+    "2605.31203": {
+      "heading_recall": 0.714,
+      "mean_ssim": 0.48,
+      "page_ratio": 1.071,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.754
+    },
+    "2605.31244": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.482,
+      "page_ratio": 0.967,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.879
+    },
+    "2605.31306": {
+      "heading_recall": 0.952,
+      "mean_ssim": 0.631,
+      "page_ratio": 0.944,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.871
+    },
+    "2605.31345": {
+      "heading_recall": 0.944,
+      "mean_ssim": 0.571,
+      "page_ratio": 1.26,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.912
+    },
+    "2605.31394": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.559,
+      "page_ratio": 0.971,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.884
+    },
+    "2605.31440": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.617,
+      "page_ratio": 1.0,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.934
+    },
+    "2605.31443": {
+      "heading_recall": 0.8,
+      "mean_ssim": 0.512,
+      "page_ratio": 0.829,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.89
+    },
+    "2605.31499": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.401,
+      "page_ratio": 1.333,
+      "status": "structure_failed",
+      "structure_ok": false,
+      "word_recall": 0.899
+    },
+    "2605.31510": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.456,
+      "page_ratio": 1.455,
+      "status": "structure_failed",
+      "structure_ok": false,
+      "word_recall": 0.823
+    },
+    "2605.31526": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.446,
+      "page_ratio": 1.0,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.902
+    },
+    "2605.31549": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.421,
+      "page_ratio": 1.2,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.92
+    },
+    "2605.31561": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.577,
+      "page_ratio": 1.222,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.931
+    },
+    "2605.31563": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.499,
+      "page_ratio": 1.75,
+      "status": "structure_failed",
+      "structure_ok": false,
+      "word_recall": 0.825
+    },
+    "2605.31564": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.486,
+      "page_ratio": 1.526,
+      "status": "structure_failed",
+      "structure_ok": false,
+      "word_recall": 0.737
+    },
+    "2605.31567": {
+      "heading_recall": 0.923,
+      "mean_ssim": 0.55,
+      "page_ratio": 1.176,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.963
+    },
+    "2605.31579": {
+      "heading_recall": 0.967,
+      "mean_ssim": 0.562,
+      "page_ratio": 0.743,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.856
+    },
+    "2605.31584": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.55,
+      "page_ratio": 1.286,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.824
+    },
+    "2605.31586": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.493,
+      "page_ratio": 1.722,
+      "status": "structure_failed",
+      "structure_ok": false,
+      "word_recall": 0.728
+    },
+    "2605.31596": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.459,
+      "page_ratio": 0.895,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.754
+    },
+    "2605.31597": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.594,
+      "page_ratio": 0.789,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.786
+    },
+    "2605.31598": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.572,
+      "page_ratio": 0.788,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.906
+    },
+    "2605.31603": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.54,
+      "page_ratio": 0.912,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.735
+    },
+    "2605.31604": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.532,
+      "page_ratio": 0.938,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.678
+    },
+    "2606.12397": {
+      "heading_recall": 0.87,
+      "mean_ssim": 0.516,
+      "page_ratio": 1.643,
+      "status": "structure_failed",
+      "structure_ok": false,
+      "word_recall": 0.646
+    },
+    "2606.12406": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.55,
+      "page_ratio": 1.182,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.934
+    },
+    "2606.12411": {
+      "heading_recall": 0.95,
+      "mean_ssim": 0.503,
+      "page_ratio": 1.136,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.843
+    }
+  }
+}
