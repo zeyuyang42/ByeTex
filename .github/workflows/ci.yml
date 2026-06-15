@@ -56,7 +56,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Build CLI
-        run: cargo build -p byetex-cli --release
+        run: cargo build -p byetex --release
 
       - name: Harvest corpus
         run: |
