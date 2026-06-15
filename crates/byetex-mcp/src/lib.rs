@@ -1,13 +1,13 @@
 //! ByeTex MCP server — stdio JSON-RPC service exposing the LaTeX → Typst
 //! converter and its bundled skill catalogue to AI agents.
 //!
-//! Ten tools are exposed:
+//! Eleven tools are exposed:
 //!
 //! - `convert(tex: String, strict: bool?) -> { typst, warnings }`
 //! - `convert_file(path: String, strict: bool?) -> { typst_path, warnings_path, warnings }`
 //! - `convert_fragment(tex: String, context_hint: String) -> { typst, warnings }`
-//!   (`context_hint` is one of `inline | block | math | math_display`; reserved
-//!   for future use — currently behaves identically to `convert`.)
+//!   (`context_hint` ∈ `inline | block | math | math_display`; math hints wrap the
+//!   fragment so e.g. `\frac{1}{2}` converts as math, not an unknown text command.)
 //! - `convert_project(main_tex: String, out_dir: String, …) -> { written_files, warnings }`
 //! - `diagnose(path: String, project: bool?) -> [{ message, line, col, src_fragment, typ_region, skill_name }]`
 //!   (converts + `typst compile`s and maps each error back to its LaTeX fragment + repair skill.)
@@ -17,6 +17,8 @@
 //!   (runs `typst compile` on a `.typ`/`.tex` and returns parsed errors — no raw shell-out needed.)
 //! - `render(path: String, dpi: u32?, out_dir: String?) -> { ok, errors, image_paths }`
 //!   (renders the output to per-page PNGs for visual inspection / fidelity grading.)
+//! - `explain(tex: String) -> [{ src_fragment, typst_output, src_start, src_end }]`
+//!   (per-node LaTeX→Typst mapping — "why did this LaTeX emit this Typst?".)
 //! - `list_skills() -> [{name, description}]`
 //! - `read_skill(name: String) -> { name, description, body }`
 
@@ -50,9 +52,16 @@ pub struct ConvertFileParams {
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct ConvertFragmentParams {
     pub tex: String,
-    /// `inline | block | math | math_display`. Currently informational only.
+    /// `inline | block | math | math_display`. Math hints wrap the fragment in
+    /// `$…$` / `\[…\]` before converting; unknown/empty defaults to `inline`.
     #[serde(default)]
     pub context_hint: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct ExplainParams {
+    /// Raw LaTeX source to explain node-by-node.
+    pub tex: String,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -201,16 +210,17 @@ impl ByeTexServer {
     }
 
     #[tool(
-        description = "Convert a LaTeX fragment with an optional context hint \
-                          (inline | block | math | math_display). Behaves like \
-                          `convert` today; the hint is reserved for future use."
+        description = "Convert a LaTeX fragment with a context hint \
+                          (inline | block | math | math_display). Math hints wrap the \
+                          fragment so bare math like `\\frac{1}{2}` converts as Typst math \
+                          rather than an unknown text command. Returns { typst, warnings }."
     )]
     async fn convert_fragment(
         &self,
         Parameters(p): Parameters<ConvertFragmentParams>,
     ) -> Result<CallToolResult, McpError> {
-        let _ = p.context_hint;
-        let out = convert(&p.tex, &ConvertOptions::default());
+        let ctx = byetex_core::snippet::FragmentContext::parse(&p.context_hint);
+        let out = byetex_core::snippet::convert_fragment(&p.tex, ctx, &ConvertOptions::default());
         let json = serde_json::json!({
             "typst": out.typst,
             "warnings": out.warnings,
@@ -218,6 +228,22 @@ impl ByeTexServer {
         Ok(CallToolResult::success(vec![Content::text(
             json.to_string(),
         )]))
+    }
+
+    #[tool(
+        description = "Explain a conversion node-by-node: returns an array of \
+                          { src_fragment, typst_output, src_start, src_end } mapping each \
+                          LaTeX source fragment to the Typst it produced. Answers \
+                          'why did this LaTeX emit this Typst?' for reproducible debugging."
+    )]
+    async fn explain(
+        &self,
+        Parameters(p): Parameters<ExplainParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let ex = byetex_core::snippet::explain(&p.tex, &ConvertOptions::default());
+        let json = serde_json::to_string(&ex)
+            .map_err(|e| McpError::internal_error(format!("serialize explanations: {e}"), None))?;
+        Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
     #[tool(description = "List all bundled skills (name + one-line description).")]
