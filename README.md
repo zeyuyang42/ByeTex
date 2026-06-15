@@ -137,25 +137,25 @@ The `byetex` binary is the same across channels; the Claude Code plugin (skills 
 MCP server) is a separate artifact that needs the binary on PATH.
 
 ```bash
-# 1. Claude Code plugin — bundles the skills + auto-registers the MCP server.
+# Claude Code plugin — bundles the skills + auto-registers the MCP server.
 claude plugin marketplace add zeyuyang42/ByeTex
 claude plugin install byetex@byetex
 
-# 2. Install script — prebuilt binary → ~/.local/bin.
+# Install script — prebuilt binary → ~/.local/bin.
 curl -fsSL https://raw.githubusercontent.com/zeyuyang42/ByeTex/main/install.sh | sh
 
-# 3. cargo (needs Rust 1.84+; --features mcp adds `byetex serve`).
-cargo install byetex --features mcp
-
-# 4. Homebrew.
-brew install zeyuyang42/byetex/byetex
+# From source via cargo (needs Rust 1.84+; --features mcp adds `byetex serve`).
+cargo install --git https://github.com/zeyuyang42/ByeTex byetex --features mcp
 ```
 
-Pre-built binaries are published with each release for `x86_64`/`aarch64` Linux
-(musl) and macOS, plus `x86_64` Windows; each archive bundles the `byetex` binary
-and the `skills/` directory. See [`packaging/README.md`](packaging/README.md) for
-all four channels and [`docs/plugin-setup.md`](docs/plugin-setup.md) for the
-plugin (Claude Code / Cursor).
+Self-contained binaries are attached to each
+[release](https://github.com/zeyuyang42/ByeTex/releases) for macOS (arm64/x86_64),
+Linux musl (arm64/x86_64), and Windows x86_64 — each archive bundles the `byetex`
+binary and the `skills/` directory; verify against `SHA256SUMS`. See
+[`packaging/README.md`](packaging/README.md) and
+[`docs/plugin-setup.md`](docs/plugin-setup.md) (Claude Code / Cursor).
+
+> **Coming soon:** `cargo install byetex` (crates.io) and `brew install` (a Homebrew tap).
 
 ## CLI
 
