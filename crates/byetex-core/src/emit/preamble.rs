@@ -303,8 +303,14 @@ pub(in crate::emit) fn build_neutral_preamble(
     let profile = crate::style_profile::StyleProfile::for_class(class);
     let body_font = profile.body_font;
     let [h1, h2, h3] = profile.heading_sizes;
+    // Document-level two-column: a PAGE-level `columns: 2` (the body flows in two
+    // balanced columns across pages, with figures/floats handled natively). The
+    // title block spans both columns via a `#place(scope: "parent", float: true)`
+    // float in `finish()`. Page columns replace the old `#columns(2)[body]`
+    // content-block, which blew up on figure-heavy docs (corpus 2605.31586: 81pp).
+    let columns = if layout.is_two_column(class) { ", columns: 2" } else { "" };
     format!(
-        "#set page(paper: \"{paper}\", margin: {margin})\n\
+        "#set page(paper: \"{paper}\", margin: {margin}{columns})\n\
          #set text(font: \"{body_font}\", size: {font_size})\n\
          #set par(justify: true, leading: 0.65em, spacing: 0.65em, first-line-indent: 1.2em)\n\
          #show heading.where(level: 1): set text(size: {h1}, weight: \"bold\")\n\
@@ -530,7 +536,7 @@ pub(in crate::emit) fn is_known_noop_package(name: &str) -> bool {
         | "neurips_2022" | "neurips_2023" | "neurips_2024" | "neurips_2025"
         | "neurips_2026" | "iclr2024_conference" | "iclr2025_conference"
         | "iclr_conference" | "icml2024" | "icml2025" | "icml2026"
-        | "acmart" | "IEEEtran" | "spconf"
+        | "acmart" | "IEEEtran" | "spconf" | "acl" | "acl_natbib"
         // Indexing / nomenclature / cross-reference plumbing.
         // The package load itself is inert; body calls (\index, \nomenclature)
         // warn separately on their own merits.

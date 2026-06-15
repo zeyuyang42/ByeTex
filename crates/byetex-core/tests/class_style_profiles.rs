@@ -201,8 +201,8 @@ fn article_abstract_is_small_wrapped_centered_bold() {
 fn neurips_abstract_is_fullwidth_large_bold() {
     let t = typ(include_str!("../../../tests/fixtures/classes/neurips.tex"));
     assert!(
-        !t.contains("#columns(2)"),
-        "neurips is single-column — abstract stays full-width; got:\n{t}"
+        !t.contains(", columns: 2)"),
+        "neurips is single-column — no page columns; got:\n{t}"
     );
     assert!(
         t.contains("#text(size: 1.2em, weight: \"bold\")[Abstract]"),
@@ -222,11 +222,12 @@ fn iclr_abstract_is_large_smallcaps() {
 #[test]
 fn icml_abstract_is_inside_columns() {
     let t = typ(include_str!("../../../tests/fixtures/classes/icml.tex"));
-    let cols = pos(&t, "#columns(2)[");
+    assert!(t.contains(", columns: 2)"), "icml is two-column (page columns); got:\n{t}");
+    let span = pos(&t, "#place(top + center, scope: \"parent\", float: true)[");
     let heading = pos(&t, "#text(size: 1.2em, weight: \"bold\")[Abstract]");
     assert!(
-        cols < heading && heading != usize::MAX,
-        "icml abstract must render INSIDE #columns(2)[; got:\n{t}"
+        span < heading && heading != usize::MAX,
+        "icml abstract must flow after the spanning title float (in-column); got:\n{t}"
     );
 }
 
@@ -235,19 +236,20 @@ fn ieee_abstract_run_in_inside_columns_and_deferred_keywords() {
     let t = typ(include_str!(
         "../../../tests/fixtures/classes/ieee_conference.tex"
     ));
-    let cols = pos(&t, "#columns(2)[");
+    assert!(t.contains(", columns: 2)"), "IEEE is two-column (page columns); got:\n{t}");
+    let span = pos(&t, "#place(top + center, scope: \"parent\", float: true)[");
     // The literal `---` from render_abstract_block is post-processed to an
     // em-dash (`—`) by the whole-output typographic pass — faithful to IEEE.
     let runin = pos(&t, "#text(size: 0.9em, weight: \"bold\")[#emph[Abstract]—");
     assert!(
-        cols < runin && runin != usize::MAX,
-        "IEEE run-in abstract must render INSIDE #columns(2)[; got:\n{t}"
+        span < runin && runin != usize::MAX,
+        "IEEE run-in abstract must flow after the spanning title float (in-column); got:\n{t}"
     );
-    // Deferred IEEEkeywords render inside the columns, after the abstract.
+    // Deferred IEEEkeywords flow after the abstract (in-column).
     let kws = pos(&t, "*Keywords:* alpha, beta");
     assert!(
         runin < kws && kws != usize::MAX,
-        "IEEE keywords must render after the run-in abstract, inside columns; got:\n{t}"
+        "IEEE keywords must render after the run-in abstract, in-column; got:\n{t}"
     );
 }
 
@@ -256,11 +258,12 @@ fn acmart_abstract_is_inside_columns() {
     let t = typ(include_str!(
         "../../../tests/fixtures/classes/acmart_sigconf.tex"
     ));
-    let cols = pos(&t, "#columns(2)[");
+    assert!(t.contains(", columns: 2)"), "acmart sigconf is two-column (page columns); got:\n{t}");
+    let span = pos(&t, "#place(top + center, scope: \"parent\", float: true)[");
     let heading = pos(&t, "#text(size: 1.2em, weight: \"bold\")[Abstract]");
     assert!(
-        cols < heading && heading != usize::MAX,
-        "acmart abstract must render INSIDE #columns(2)[; got:\n{t}"
+        span < heading && heading != usize::MAX,
+        "acmart abstract must flow after the spanning title float (in-column); got:\n{t}"
     );
 }
 
@@ -268,7 +271,7 @@ fn acmart_abstract_is_inside_columns() {
 fn llncs_abstract_is_fullwidth_run_in_bold() {
     let t = typ(include_str!("../../../tests/fixtures/classes/llncs.tex"));
     assert!(
-        !t.contains("#columns(2)"),
+        !t.contains(", columns: 2)"),
         "llncs is single-column; got:\n{t}"
     );
     assert!(
