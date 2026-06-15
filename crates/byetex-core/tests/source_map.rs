@@ -1,15 +1,20 @@
+use byetex_core::{
+    convert, convert_capturing_source_map, resolve_error_line as resolve, ConvertOptions,
+};
 use byetex_core::{resolve_error_line, NodeOutput};
-use byetex_core::{convert, convert_capturing_source_map, resolve_error_line as resolve, ConvertOptions};
 
 fn n(src: (usize, usize), out: &str) -> NodeOutput {
-    NodeOutput { src, output: out.to_string() }
+    NodeOutput {
+        src,
+        output: out.to_string(),
+    }
 }
 
 #[test]
 fn shortest_containing_output_wins() {
     let map = vec![
         n((0, 100), "= Heading\n\nP(B_(tau_i)|arrival)\n"), // parent
-        n((40, 60), "P(B_(tau_i)|arrival)"),                 // the math node
+        n((40, 60), "P(B_(tau_i)|arrival)"),                // the math node
     ];
     let span = resolve_error_line(&map, "P(B_(tau_i)|arrival)");
     assert_eq!(span, Some((40, 60)));
@@ -38,8 +43,14 @@ fn default_convert_has_empty_source_map_and_unchanged_output() {
     let src = r"\section{Intro}\nHello world.";
     let plain = convert(src, &ConvertOptions::default());
     let mapped = convert_capturing_source_map(src, &ConvertOptions::default());
-    assert!(plain.source_map.is_empty(), "default convert must not capture a map");
-    assert_eq!(plain.typst, mapped.typst, "capture must not change the output");
+    assert!(
+        plain.source_map.is_empty(),
+        "default convert must not capture a map"
+    );
+    assert_eq!(
+        plain.typst, mapped.typst,
+        "capture must not change the output"
+    );
 }
 
 #[test]
@@ -49,7 +60,10 @@ fn captured_map_resolves_a_body_line_to_its_source() {
     assert!(!out.source_map.is_empty());
     let span = resolve(&out.source_map, "The quick brown fox.").expect("should resolve");
     let frag = &src[span.0..span.1];
-    assert!(frag.contains("quick brown fox"), "resolved fragment was: {frag:?}");
+    assert!(
+        frag.contains("quick brown fox"),
+        "resolved fragment was: {frag:?}"
+    );
 }
 
 #[test]
@@ -59,12 +73,18 @@ fn resolve_at_col_picks_the_token_under_the_column() {
     // but each column's token matches the specific cite node.
     let map = vec![
         n((0, 200), "@a:1 @b:2 @c:3.  Moreover, more text here."), // paragraph
-        n((40, 52), "@a:1 @b:2 @c:3"),                              // the \cite node
+        n((40, 52), "@a:1 @b:2 @c:3"),                             // the \cite node
     ];
     // col 0 → token `@a:1` → resolves to the cite node (40,52), not the paragraph.
-    assert_eq!(resolve_error_at_col(&map, "@a:1 @b:2 @c:3.  Moreover, more text here.", 0), Some((40, 52)));
+    assert_eq!(
+        resolve_error_at_col(&map, "@a:1 @b:2 @c:3.  Moreover, more text here.", 0),
+        Some((40, 52))
+    );
     // col 5 → token `@b:2` → still the cite node.
-    assert_eq!(resolve_error_at_col(&map, "@a:1 @b:2 @c:3.  Moreover, more text here.", 5), Some((40, 52)));
+    assert_eq!(
+        resolve_error_at_col(&map, "@a:1 @b:2 @c:3.  Moreover, more text here.", 5),
+        Some((40, 52))
+    );
 }
 
 #[test]
@@ -82,7 +102,7 @@ fn resolve_at_col_trims_trailing_punctuation() {
     // be trimmed so it matches the cite node (whose output has no period).
     let map = vec![
         n((0, 200), "intro text @a:1 @b:2 @c:3. More text here."), // coarse paragraph
-        n((50, 62), "@a:1 @b:2 @c:3"),                              // the \cite node
+        n((50, 62), "@a:1 @b:2 @c:3"),                             // the \cite node
     ];
     let line = "intro text @a:1 @b:2 @c:3. More text here.";
     let col = line.find("@c:3").unwrap();

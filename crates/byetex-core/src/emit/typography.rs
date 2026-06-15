@@ -190,4 +190,3 @@ pub(in crate::emit) fn is_math_function_name(s: &str) -> bool {
             | "cov"
     )
 }
-

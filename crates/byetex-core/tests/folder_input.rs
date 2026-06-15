@@ -160,8 +160,8 @@ fn wrapper_newcommand_in_sty_is_harvested_via_dir_mode() {
         ),
     );
 
-    let plan =
-        byetex_core::project::plan_project_from_dir(&dir, false, false).expect("plan_project_from_dir");
+    let plan = byetex_core::project::plan_project_from_dir(&dir, false, false)
+        .expect("plan_project_from_dir");
     let ambiguous_count = plan
         .warnings
         .iter()
@@ -196,8 +196,8 @@ fn wrapper_newcommand_calls_in_main_tex_are_harvested() {
             "\\end{document}\n",
         ),
     );
-    let plan =
-        byetex_core::project::plan_project_from_dir(&dir, false, false).expect("plan_project_from_dir");
+    let plan = byetex_core::project::plan_project_from_dir(&dir, false, false)
+        .expect("plan_project_from_dir");
     let ambiguous_count = plan
         .warnings
         .iter()

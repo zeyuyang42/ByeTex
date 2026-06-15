@@ -302,7 +302,9 @@ fn main() -> Result<()> {
                 };
                 run_convert_dispatch(input, mode, brief_opts)
             } else {
-                anyhow::bail!("provide an input file, `-c <code>`, or `-` to read LaTeX from stdin");
+                anyhow::bail!(
+                    "provide an input file, `-c <code>`, or `-` to read LaTeX from stdin"
+                );
             }
         }
         Command::Skills { action } => run_skills(action),
@@ -334,7 +336,11 @@ fn main() -> Result<()> {
             };
             run_convert_dispatch(input, mode, brief_opts)
         }
-        Command::Diagnose { input, project, out } => run_diagnose(input, project, out),
+        Command::Diagnose {
+            input,
+            project,
+            out,
+        } => run_diagnose(input, project, out),
         Command::Doctor {
             input,
             strict,
@@ -628,7 +634,8 @@ fn run_review(
 
     // 2) Render the Typst side to per-page PNGs.
     let typst = typst_bin();
-    let render = byetex_core::compile::render_typ(&main_typ, &out_dir.join("typst-pages"), dpi, &typst)?;
+    let render =
+        byetex_core::compile::render_typ(&main_typ, &out_dir.join("typst-pages"), dpi, &typst)?;
     if !render.ok {
         eprintln!(
             "byetex review: typst render reported {} error(s); packet may be partial.",
@@ -637,8 +644,13 @@ fn run_review(
     }
 
     // 3) Resolve + rasterise a truth PDF (best-effort).
-    let (truth_pdf, truth_source) =
-        resolve_truth_pdf(&input, input_is_dir, &plan.entry_tex, truth.as_deref(), &out_dir)?;
+    let (truth_pdf, truth_source) = resolve_truth_pdf(
+        &input,
+        input_is_dir,
+        &plan.entry_tex,
+        truth.as_deref(),
+        &out_dir,
+    )?;
     let truth_images = match &truth_pdf {
         Some(pdf) => rasterize_pdf(pdf, &out_dir.join("truth-pages"), dpi)?,
         None => Vec::new(),
@@ -718,7 +730,10 @@ fn resolve_truth_pdf(
         .status();
     if let Ok(s) = status {
         if s.success() {
-            let pdf_stem = entry_tex.file_stem().and_then(|x| x.to_str()).unwrap_or("main");
+            let pdf_stem = entry_tex
+                .file_stem()
+                .and_then(|x| x.to_str())
+                .unwrap_or("main");
             let produced = out_dir.join(format!("{pdf_stem}.pdf"));
             if produced.exists() {
                 return Ok((Some(produced), "tectonic"));
@@ -745,9 +760,7 @@ fn rasterize_pdf(pdf: &Path, out_dir: &Path, dpi: u32) -> Result<Vec<String>> {
     match status {
         Ok(s) if s.success() => Ok(collect_numbered_pngs(out_dir, "truth")),
         _ => {
-            eprintln!(
-                "byetex review: `{bin}` unavailable or failed; truth pages skipped."
-            );
+            eprintln!("byetex review: `{bin}` unavailable or failed; truth pages skipped.");
             Ok(Vec::new())
         }
     }

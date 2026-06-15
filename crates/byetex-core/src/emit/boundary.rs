@@ -71,17 +71,26 @@ mod tests {
     fn is_letter_is_ascii_alphabetic_only() {
         assert!(is_letter('a'));
         assert!(is_letter('Z'));
-        assert!(!is_letter('2'), "digits are not letters for the leading guard");
+        assert!(
+            !is_letter('2'),
+            "digits are not letters for the leading guard"
+        );
         assert!(!is_letter('.'));
         assert!(!is_letter('('));
-        assert!(!is_letter('é'), "non-ASCII letters are excluded (ASCII-only)");
+        assert!(
+            !is_letter('é'),
+            "non-ASCII letters are excluded (ASCII-only)"
+        );
     }
 
     #[test]
     fn is_word_char_is_ascii_alphanumeric() {
         assert!(is_word_char('a'));
         assert!(is_word_char('Z'));
-        assert!(is_word_char('2'), "digits ARE word chars for trailing fusion");
+        assert!(
+            is_word_char('2'),
+            "digits ARE word chars for trailing fusion"
+        );
         assert!(!is_word_char('.'));
         assert!(!is_word_char('('));
         assert!(!is_word_char('é'));
@@ -107,7 +116,10 @@ mod tests {
     fn ends_with_word_char_includes_digits() {
         assert!(ends_with_word_char("approx"));
         assert!(ends_with_word_char("R2"), "trailing digit is a word char");
-        assert!(!ends_with_word_char("dot.c."), "trailing dot is not a word char");
+        assert!(
+            !ends_with_word_char("dot.c."),
+            "trailing dot is not a word char"
+        );
         assert!(!ends_with_word_char("f("));
         assert!(!ends_with_word_char(""));
     }

@@ -16,7 +16,11 @@ fn explain_maps_fragments_back_to_source() {
             e.src_start < e.src_end && e.src_end <= src.len(),
             "bad range: {e:?}"
         );
-        assert_eq!(&src[e.src_start..e.src_end], e.src_fragment, "range/fragment mismatch");
+        assert_eq!(
+            &src[e.src_start..e.src_end],
+            e.src_fragment,
+            "range/fragment mismatch"
+        );
     }
 
     // The bold command and its rendered text are represented somewhere.
@@ -30,14 +34,30 @@ fn explain_maps_fragments_back_to_source() {
 fn convert_fragment_math_hint_produces_math() {
     // Bare `\frac{1}{2}` with a math hint must convert as math, not as an
     // unknown text command: `$\frac{1}{2}$` → `$(1) / (2)$`.
-    let out = convert_fragment("\\frac{1}{2}", FragmentContext::Math, &ConvertOptions::default());
-    assert!(out.typst.contains('$'), "expected math wrap; got {:?}", out.typst);
-    assert!(out.typst.contains('/'), "expected a fraction; got {:?}", out.typst);
+    let out = convert_fragment(
+        "\\frac{1}{2}",
+        FragmentContext::Math,
+        &ConvertOptions::default(),
+    );
+    assert!(
+        out.typst.contains('$'),
+        "expected math wrap; got {:?}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains('/'),
+        "expected a fraction; got {:?}",
+        out.typst
+    );
 }
 
 #[test]
 fn convert_fragment_inline_passes_through() {
-    let out = convert_fragment("\\textbf{hi}", FragmentContext::Inline, &ConvertOptions::default());
+    let out = convert_fragment(
+        "\\textbf{hi}",
+        FragmentContext::Inline,
+        &ConvertOptions::default(),
+    );
     assert!(
         out.typst.contains("*hi*") || out.typst.contains("strong"),
         "got {:?}",
@@ -48,7 +68,10 @@ fn convert_fragment_inline_passes_through() {
 #[test]
 fn fragment_context_parse_defaults_to_inline() {
     assert_eq!(FragmentContext::parse("math"), FragmentContext::Math);
-    assert_eq!(FragmentContext::parse("math_display"), FragmentContext::MathDisplay);
+    assert_eq!(
+        FragmentContext::parse("math_display"),
+        FragmentContext::MathDisplay
+    );
     assert_eq!(FragmentContext::parse("block"), FragmentContext::Block);
     assert_eq!(FragmentContext::parse(""), FragmentContext::Inline);
     assert_eq!(FragmentContext::parse("nonsense"), FragmentContext::Inline);

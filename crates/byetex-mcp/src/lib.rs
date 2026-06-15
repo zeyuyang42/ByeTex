@@ -209,12 +209,10 @@ impl ByeTexServer {
         )]))
     }
 
-    #[tool(
-        description = "Convert a LaTeX fragment with a context hint \
+    #[tool(description = "Convert a LaTeX fragment with a context hint \
                           (inline | block | math | math_display). Math hints wrap the \
                           fragment so bare math like `\\frac{1}{2}` converts as Typst math \
-                          rather than an unknown text command. Returns { typst, warnings }."
-    )]
+                          rather than an unknown text command. Returns { typst, warnings }.")]
     async fn convert_fragment(
         &self,
         Parameters(p): Parameters<ConvertFragmentParams>,
@@ -382,12 +380,13 @@ impl ByeTexServer {
             McpError::internal_error(format!("ensure_typ {}: {}", input.display(), e), None)
         })?;
         let out_pdf = p.out_pdf.as_ref().map(std::path::PathBuf::from);
-        let res = byetex_core::compile::compile_typ(&typ, out_pdf.as_deref(), &typst)
-            .map_err(|e| {
+        let res =
+            byetex_core::compile::compile_typ(&typ, out_pdf.as_deref(), &typst).map_err(|e| {
                 McpError::internal_error(format!("compile {}: {}", typ.display(), e), None)
             })?;
-        let json = serde_json::to_string(&res)
-            .map_err(|e| McpError::internal_error(format!("serialize compile result: {e}"), None))?;
+        let json = serde_json::to_string(&res).map_err(|e| {
+            McpError::internal_error(format!("serialize compile result: {e}"), None)
+        })?;
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 

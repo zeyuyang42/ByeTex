@@ -24,6 +24,9 @@ fn textwidth_fraction_becomes_percent() {
 #[test]
 fn plain_spec_keeps_integer_count_form() {
     let t = typ(r"\begin{tabular}{lcc}A & B & C \\ \end{tabular}");
-    assert!(t.contains("columns: 3"), "plain spec should stay a count; got:\n{t}");
+    assert!(
+        t.contains("columns: 3"),
+        "plain spec should stay a count; got:\n{t}"
+    );
     assert!(!t.contains("columns: ("), "got:\n{t}");
 }

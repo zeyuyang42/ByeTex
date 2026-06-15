@@ -49,7 +49,10 @@ fn defaults_kept_when_no_layout_options() {
     let src = "\\documentclass{article}\n\\begin{document}\nBody.\n\\end{document}";
     let t = typ(src);
     // LaTeX `\documentclass{article}` with no size option is 10pt.
-    assert!(t.contains("size: 10pt"), "default 10pt font expected; got:\n{t}");
+    assert!(
+        t.contains("size: 10pt"),
+        "default 10pt font expected; got:\n{t}"
+    );
     assert!(
         t.contains("paper: \"us-letter\""),
         "default us-letter paper expected; got:\n{t}"

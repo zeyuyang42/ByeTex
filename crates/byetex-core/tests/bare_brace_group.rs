@@ -15,7 +15,10 @@ fn typst(src: &str) -> String {
 #[test]
 fn bare_group_drops_literal_braces() {
     let t = typst(r"{\Large\bfseries Appendix title}");
-    assert!(t.contains("Appendix title"), "content must survive;\noutput:\n{t}");
+    assert!(
+        t.contains("Appendix title"),
+        "content must survive;\noutput:\n{t}"
+    );
     assert!(
         !t.contains('{') && !t.contains('}'),
         "a bare grouping `{{...}}` must not emit literal Typst braces;\noutput:\n{t}"
@@ -29,7 +32,10 @@ fn nested_braces_in_bold_do_not_leak() {
         t.contains("*Lumos-Nexus*"),
         "nested grouping braces inside bold must not leak;\noutput:\n{t}"
     );
-    assert!(!t.contains("*{"), "no literal brace inside the bold;\noutput:\n{t}");
+    assert!(
+        !t.contains("*{"),
+        "no literal brace inside the bold;\noutput:\n{t}"
+    );
 }
 
 #[test]

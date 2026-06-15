@@ -26,8 +26,14 @@ fn bare_algorithmic_labels_are_anchored() {
         \\end{algorithmic}\n";
     let t = typ(src);
     // Both referenced step labels must be anchored, or @alg:step:* dangles.
-    assert!(t.contains("<alg:step:1>"), "alg:step:1 must be anchored; got:\n{t}");
-    assert!(t.contains("<alg:step:2>"), "alg:step:2 must be anchored; got:\n{t}");
+    assert!(
+        t.contains("<alg:step:1>"),
+        "alg:step:1 must be anchored; got:\n{t}"
+    );
+    assert!(
+        t.contains("<alg:step:2>"),
+        "alg:step:2 must be anchored; got:\n{t}"
+    );
     // The step text must survive (body passed through, not dropped).
     assert!(
         t.contains("Sample the signals") && t.contains("Update the matrices"),
@@ -75,6 +81,12 @@ fn algorithm_float_with_inputed_body_anchors_step_labels() {
         },
     );
     let t = &out.typst;
-    assert!(t.contains("<alg:step:1>"), "input-ed alg:step:1 must anchor; got:\n{t}");
-    assert!(t.contains("<alg:step:2>"), "input-ed alg:step:2 must anchor; got:\n{t}");
+    assert!(
+        t.contains("<alg:step:1>"),
+        "input-ed alg:step:1 must anchor; got:\n{t}"
+    );
+    assert!(
+        t.contains("<alg:step:2>"),
+        "input-ed alg:step:2 must anchor; got:\n{t}"
+    );
 }

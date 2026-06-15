@@ -44,7 +44,10 @@ fn diagnose_flat_maps_a_real_typst_error() {
         byetex_core::diagnose::diagnose_flat(&tex, None, &typst).expect("diagnose_flat");
 
     assert!(typ_path.exists(), "the .typ was written");
-    assert!(!diags.is_empty(), "expected at least one diagnostic; got {diags:?}");
+    assert!(
+        !diags.is_empty(),
+        "expected at least one diagnostic; got {diags:?}"
+    );
     assert!(
         diags.iter().any(|d| d.message.contains("smith2020")),
         "expected the dangling-cite error; got {diags:?}"

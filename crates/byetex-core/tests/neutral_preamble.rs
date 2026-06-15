@@ -32,8 +32,14 @@ fn templated_classes_emit_no_universe_import() {
 fn every_class_gets_the_neutral_preamble() {
     for (name, src) in [("IEEE", IEEE), ("ACM", ACM), ("article", ARTICLE)] {
         let t = typ(src);
-        assert!(t.contains("#set page("), "{name}: neutral page setup missing; got:\n{t}");
-        assert!(t.contains("#set text("), "{name}: neutral text setup missing; got:\n{t}");
+        assert!(
+            t.contains("#set page("),
+            "{name}: neutral page setup missing; got:\n{t}"
+        );
+        assert!(
+            t.contains("#set text("),
+            "{name}: neutral text setup missing; got:\n{t}"
+        );
         assert!(
             t.contains("#set par("),
             "{name}: neutral paragraph setup missing; got:\n{t}"
@@ -45,7 +51,10 @@ fn every_class_gets_the_neutral_preamble() {
 fn title_block_preserved_for_templated_class() {
     // The generated title block must still carry the title (content preserved).
     let t = typ(IEEE);
-    assert!(t.contains("#align(center)"), "title block missing; got:\n{t}");
+    assert!(
+        t.contains("#align(center)"),
+        "title block missing; got:\n{t}"
+    );
     assert!(t.contains("My Title"), "title text lost; got:\n{t}");
     assert!(t.contains("An abstract."), "abstract lost; got:\n{t}");
 }

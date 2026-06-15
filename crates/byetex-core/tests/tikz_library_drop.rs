@@ -34,7 +34,11 @@ fn usetikzlibrary_is_dropped_not_leaked() {
         out.typst
     );
     // The real body must still be present.
-    assert!(out.typst.contains("Body."), "body content lost; got:\n{}", out.typst);
+    assert!(
+        out.typst.contains("Body."),
+        "body content lost; got:\n{}",
+        out.typst
+    );
 }
 
 #[test]

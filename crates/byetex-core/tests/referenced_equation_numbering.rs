@@ -18,7 +18,10 @@ fn referenced_single_label_equation_enables_numbering() {
         t.contains("#set math.equation(numbering:"),
         "a referenced equation must enable equation numbering;\noutput:\n{t}"
     );
-    assert!(t.contains("@LF_eq"), "the reference must be emitted;\noutput:\n{t}");
+    assert!(
+        t.contains("@LF_eq"),
+        "the reference must be emitted;\noutput:\n{t}"
+    );
 }
 
 #[test]

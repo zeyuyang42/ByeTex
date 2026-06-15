@@ -13,13 +13,19 @@ fn typ(src: &str) -> String {
 #[test]
 fn colorbox_becomes_highlight() {
     let t = typ(r"\colorbox{yellow}{important}");
-    assert!(t.contains("#highlight(fill: yellow)[important]"), "got:\n{t}");
+    assert!(
+        t.contains("#highlight(fill: yellow)[important]"),
+        "got:\n{t}"
+    );
 }
 
 #[test]
 fn fcolorbox_keeps_content_in_a_box() {
     let t = typ(r"\fcolorbox{red}{yellow}{boxed}");
-    assert!(t.contains("boxed"), "content must not be dropped; got:\n{t}");
+    assert!(
+        t.contains("boxed"),
+        "content must not be dropped; got:\n{t}"
+    );
     assert!(
         t.contains("#box(fill: yellow, stroke: red"),
         "frame+bg box not emitted; got:\n{t}"
@@ -29,7 +35,10 @@ fn fcolorbox_keeps_content_in_a_box() {
 #[test]
 fn math_textcolor_applies_fill() {
     let t = typ(r"$\textcolor{red}{x}$");
-    assert!(t.contains("#text(fill: red)[$"), "math colour not applied; got:\n{t}");
+    assert!(
+        t.contains("#text(fill: red)[$"),
+        "math colour not applied; got:\n{t}"
+    );
 }
 
 #[test]

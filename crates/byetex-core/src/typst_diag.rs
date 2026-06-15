@@ -42,7 +42,7 @@ pub fn parse_typst_errors(stderr: &str) -> Vec<TypstError> {
 /// prefix varies; key on the trailing `:<line>:<col>`.
 fn parse_location(line: &str) -> Option<(usize, usize)> {
     let after = line.rsplit("─ ").next()?; // text after the box-drawing rule
-    // after looks like `main.typ:134:0`
+                                           // after looks like `main.typ:134:0`
     let mut parts = after.rsplitn(3, ':');
     let col: usize = parts.next()?.trim().parse().ok()?;
     let ln: usize = parts.next()?.trim().parse().ok()?;

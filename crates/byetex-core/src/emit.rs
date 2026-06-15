@@ -33,36 +33,40 @@ mod preamble;
 mod sections;
 mod tables;
 mod typography;
-pub(crate) use escape::{escape_text_for_typst_content, needs_text_escape, is_typst_label_char, sanitize_label_key, escape_paren_semicolons, escape_unbalanced_math_brackets, strip_trailing_typst_label, escape_text_cell};
-pub(crate) use math_symbols::lookup_math_symbol;
-pub(in crate::emit) use node_utils::{
-    brace_balanced_end, brace_groups, color_command_parts, color_from_model_spec, command_name_of,
-    command_name_text, environment_name,
-    extract_label_name, extract_label_name_and_end, extract_label_ref_keys_and_end,
-    first_curly_group, first_curly_like, flatten_text_children, is_command, is_comment,
-    is_section_kind, leading_font_switch, math_font_decl_wrapper, named_color, needs_empty_base,
-    needs_subscript_parens, nth_curly_group, parse_definecolor, range_of, section_level,
-    skip_balanced_braces, split_math_rows,
-};
+pub(in crate::emit) use bibliography::harvest_bib_keys_from_dir;
 pub(crate) use braceless::{consume_braceless_arg, try_consume_math_arg, BracelessArg};
 pub(in crate::emit) use braceless::{consume_trailing_brace_groups, substitute_macro_args};
-pub(crate) use macros::{harvest_macros_from_source, harvest_referenced_labels_from_source, MacroDef};
+pub(crate) use escape::{
+    escape_paren_semicolons, escape_text_cell, escape_text_for_typst_content,
+    escape_unbalanced_math_brackets, is_typst_label_char, needs_text_escape, sanitize_label_key,
+    strip_trailing_typst_label,
+};
+pub(in crate::emit) use figures::parse_graphicspath_dirs;
 pub(in crate::emit) use macros::{
     extract_declare_math_operator_from_newcmd, extract_def_and_record, extract_environment_def,
     extract_let, extract_newcommand, extract_newcommandx, extract_newcommandx_and_end,
     extract_theorem_def, find_makeatother_end, let_alias_def, new_command_token_kind,
     read_newif_flag,
 };
+pub(crate) use macros::{
+    harvest_macros_from_source, harvest_referenced_labels_from_source, MacroDef,
+};
+pub(crate) use math_symbols::lookup_math_symbol;
+pub(in crate::emit) use node_utils::{
+    brace_balanced_end, color_command_parts, color_from_model_spec, command_name_of,
+    command_name_text, environment_name, extract_label_name, extract_label_name_and_end,
+    extract_label_ref_keys_and_end, first_curly_group, first_curly_like, flatten_text_children,
+    is_command, is_comment, is_section_kind, leading_font_switch, math_font_decl_wrapper,
+    named_color, needs_empty_base, needs_subscript_parens, nth_curly_group, parse_definecolor,
+    range_of, section_level, skip_balanced_braces, split_math_rows,
+};
 pub(in crate::emit) use preamble::{
     build_neutral_preamble, extract_class_and_options, extract_latex_include_path,
     extract_package_names, extract_package_options, is_known_noop_package, resolve_input_path,
     resolve_package_path,
 };
-pub(in crate::emit) use bibliography::harvest_bib_keys_from_dir;
-pub(in crate::emit) use figures::parse_graphicspath_dirs;
 pub(crate) use typography::apply_text_accent;
 use typography::{is_operatorname_only_function, should_split_math_word};
-
 
 /// Sentinel character emitted by `push_math_symbol` immediately after a
 /// multi-character math identifier so that `collapse_math_spaces` can
@@ -71,7 +75,6 @@ use typography::{is_operatorname_only_function, should_split_math_word};
 /// — `_`, `^`, `,`, `(`, `)`). Chosen as U+0017 ETB which has no
 /// legitimate use in either LaTeX source or rendered Typst.
 const MATH_WORD_BOUNDARY: char = '\u{17}';
-
 
 pub(crate) struct Emitter<'a> {
     out: String,
@@ -573,17 +576,15 @@ impl<'a> Emitter<'a> {
         kinds.sort();
         let mut s = String::new();
         for k in kinds {
-            let _ = write!(
+            let _ = writeln!(
                 s,
-                "#show figure.where(kind: \"{k}\"): it => block(width: 100%, above: 1.1em, below: 1.1em)[#strong[#it.supplement #context it.counter.display(it.numbering)#if it.caption != none [ (#it.caption.body)].] #it.body]\n"
+                "#show figure.where(kind: \"{k}\"): it => block(width: 100%, above: 1.1em, below: 1.1em)[#strong[#it.supplement #context it.counter.display(it.numbering)#if it.caption != none [ (#it.caption.body)].] #it.body]"
             );
         }
         s
     }
 
-    pub(crate) fn finish(
-        mut self,
-    ) -> FinishOutput {
+    pub(crate) fn finish(mut self) -> FinishOutput {
         // A full document (had a `\documentclass`, or carries title/authors)
         // is rendered with the self-generated, self-contained neutral preamble
         // + generalized title block — no Typst Universe import. Bare fragments
@@ -634,8 +635,7 @@ impl<'a> Emitter<'a> {
                 // abstract (and IEEE keywords) here, so they render INSIDE the
                 // two-column body — matching the LaTeX layout where these
                 // classes' abstracts share the column width.
-                let profile =
-                    crate::style_profile::StyleProfile::for_class(&self.detected_class);
+                let profile = crate::style_profile::StyleProfile::for_class(&self.detected_class);
                 if profile.abstract_in_columns {
                     if let Some(a) = self.metadata.r#abstract.take() {
                         if !a.is_empty() {
@@ -651,10 +651,8 @@ impl<'a> Emitter<'a> {
                             .drain(..)
                             .collect::<Vec<_>>()
                             .join(", ");
-                        let _ = writeln!(
-                            self.out,
-                            "#v(0.3em)\n#text(size: 0.9em)[*Keywords:* {kws}]"
-                        );
+                        let _ =
+                            writeln!(self.out, "#v(0.3em)\n#text(size: 0.9em)[*Keywords:* {kws}]");
                     }
                 }
                 self.out.push_str(body.trim_start_matches('\n'));
@@ -744,7 +742,8 @@ impl<'a> Emitter<'a> {
         // didn't set one explicitly, so every warning points at a repair guide.
         for w in &mut self.warnings {
             if w.suggested_skill.is_none() {
-                w.suggested_skill = crate::skill_map::default_skill_for(&w.category).map(str::to_string);
+                w.suggested_skill =
+                    crate::skill_map::default_skill_for(&w.category).map(str::to_string);
             }
         }
 
@@ -1628,7 +1627,6 @@ impl<'a> Emitter<'a> {
     }
 
     // ─── Generic commands & macro expansion ───────────────────────────────────
-
 
     fn emit_generic_command(&mut self, node: Node<'_>) -> usize {
         let name = command_name_text(node, self.src);
@@ -3260,11 +3258,6 @@ impl<'a> Emitter<'a> {
         }
     }
 
-
-
-
-
-
     // ─── Environment dispatch & lists ─────────────────────────────────────────
 
     fn emit_generic_environment(&mut self, node: Node<'_>) -> usize {
@@ -3416,9 +3409,7 @@ impl<'a> Emitter<'a> {
         }
     }
 
-
     // ===== Math mode =====
-
 
     // ─── Math commands & operators ────────────────────────────────────────────
 
@@ -3742,7 +3733,6 @@ impl<'a> Emitter<'a> {
         }
     }
 
-
     // ─── Cross-references & bibliography ──────────────────────────────────────
 
     /// Returns true the first time `key` is seen as a `<key>` label definition,
@@ -3769,9 +3759,6 @@ impl<'a> Emitter<'a> {
         }
     }
 
-
-
-
     fn warn_ambiguous_math(&mut self, node: Node<'_>, reason: &str) {
         let snippet = self.src[node.start_byte()..node.end_byte()].to_string();
         self.warnings.push(Warning {
@@ -3785,8 +3772,6 @@ impl<'a> Emitter<'a> {
             suggested_skill: None,
         });
     }
-
-
 
     /// Render the inside of a `{ ... }` or `[ ... ]` group into a fresh
     /// sub-string. The leading and trailing delimiter tokens are stripped if
@@ -3886,7 +3871,6 @@ impl<'a> Emitter<'a> {
     }
 }
 
-
 /// Escape unbalanced paired delimiters (`[`, `]`, `(`, `)`) in a Typst math
 /// body. LaTeX half-open intervals such as `(0, s_*]` or `[a, b)` mix
 /// delimiter kinds: Typst pairs `[..]` and `(..)` independently, so when one
@@ -3918,8 +3902,6 @@ fn collapse_inline_whitespace(s: &str) -> String {
     }
     out
 }
-
-
 
 // ─── Document class, path & package resolution ────────────────────────────────
 
@@ -3963,8 +3945,6 @@ pub(crate) fn wrap_for_command_name(name: &str) -> Option<(&'static str, &'stati
         _ => return None,
     })
 }
-
-
 
 /// be preserved, but in our text-mode output the only `\`` we emit comes from
 /// `\texttt{...}` — those wrappers are short and don't typically contain
@@ -4222,4 +4202,3 @@ fn consume_trailing_inline_space(src: &str, mut pos: usize) -> usize {
     }
     pos
 }
-

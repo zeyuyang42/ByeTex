@@ -38,14 +38,20 @@ fn individual_margins_from_package() {
 #[test]
 fn geometry_command_applies() {
     let t = typ(&doc("\\geometry{margin=20mm}"));
-    assert!(t.contains("margin: 20mm"), "expected `margin: 20mm`; got:\n{t}");
+    assert!(
+        t.contains("margin: 20mm"),
+        "expected `margin: 20mm`; got:\n{t}"
+    );
 }
 
 #[test]
 fn paper_flag_from_geometry() {
     let t = typ(&doc("\\usepackage[a4paper,margin=1in]{geometry}"));
     assert!(t.contains("paper: \"a4\""), "expected a4 paper; got:\n{t}");
-    assert!(t.contains("margin: 1in"), "expected `margin: 1in`; got:\n{t}");
+    assert!(
+        t.contains("margin: 1in"),
+        "expected `margin: 1in`; got:\n{t}"
+    );
 }
 
 #[test]

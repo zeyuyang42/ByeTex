@@ -174,7 +174,7 @@ fn elsarticle_keeps_neutral_title() {
 /// The portion of the output AFTER the title block — i.e. from the `Abstract`
 /// heading onward. Used to assert the article \small wrapper sits in the
 /// abstract region (not the title block).
-fn after_title<'a>(t: &'a str) -> &'a str {
+fn after_title(t: &str) -> &str {
     let idx = t.find("Abstract").unwrap_or(0);
     &t[idx.saturating_sub(120)..]
 }

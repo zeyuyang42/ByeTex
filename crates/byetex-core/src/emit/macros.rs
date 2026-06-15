@@ -20,7 +20,11 @@ impl<'a> Emitter<'a> {
     /// is newif machinery (emitting the taken branch and/or updating state),
     /// or `None` to fall through to normal command dispatch. TeX's builtin
     /// `\if`-family (`\ifx`, `\ifnum`, `\iftrue`, ...) is left untouched.
-    pub(in crate::emit) fn try_newif_command(&mut self, node: Node<'_>, name: Option<&str>) -> Option<usize> {
+    pub(in crate::emit) fn try_newif_command(
+        &mut self,
+        node: Node<'_>,
+        name: Option<&str>,
+    ) -> Option<usize> {
         let name = name?;
 
         // Definition: `\newif\ifX` registers flag X (default false) and skips
@@ -732,7 +736,11 @@ pub(crate) fn harvest_macros_from_source(source: &str) -> HashMap<String, MacroD
 /// macro from argument #1). Expands each call with its source args and
 /// re-harvests the resulting `\newcommand` definitions into `out`.
 /// Uses `or_insert` so direct definitions always win over derived ones.
-pub(in crate::emit) fn harvest_wrapper_newcommands(root: Node<'_>, src: &str, out: &mut HashMap<String, MacroDef>) {
+pub(in crate::emit) fn harvest_wrapper_newcommands(
+    root: Node<'_>,
+    src: &str,
+    out: &mut HashMap<String, MacroDef>,
+) {
     let mut stack: Vec<Node<'_>> = vec![root];
     while let Some(n) = stack.pop() {
         if n.kind() == "generic_command" {
@@ -821,7 +829,10 @@ pub(in crate::emit) fn extract_let(node: Node<'_>, src: &str) -> Option<(String,
 /// zero-arg alias whose body is `\old`. The body form covers builtins,
 /// math symbols, and forward references — they resolve when `\new` is later
 /// expanded and `\old` is re-parsed in context.
-pub(in crate::emit) fn let_alias_def(old_name: &str, table: &HashMap<String, MacroDef>) -> MacroDef {
+pub(in crate::emit) fn let_alias_def(
+    old_name: &str,
+    table: &HashMap<String, MacroDef>,
+) -> MacroDef {
     table.get(old_name).cloned().unwrap_or_else(|| MacroDef {
         params: 0,
         body: old_name.to_string(),
@@ -919,7 +930,10 @@ pub(in crate::emit) fn read_newif_flag(src: &str, after_newif: usize) -> Option<
 /// `curly_group_text` (fall back to the first `curly_group_text`/
 /// `curly_group_word` child) and the argument count as an `argc:`-field
 /// `brack_group_argc`. `nargs` is 0 when the env takes no arguments.
-pub(in crate::emit) fn extract_environment_def(node: Node<'_>, src: &str) -> Option<(String, usize)> {
+pub(in crate::emit) fn extract_environment_def(
+    node: Node<'_>,
+    src: &str,
+) -> Option<(String, usize)> {
     let name_node = match node.child_by_field_name("name") {
         Some(n) => n,
         None => {
@@ -1109,7 +1123,10 @@ pub(in crate::emit) fn extract_newcommand(node: Node<'_>, src: &str) -> Option<(
 ///
 /// Returns `None` if the source doesn't parse cleanly as a
 /// `\newcommandx` definition.
-pub(in crate::emit) fn extract_newcommandx(node: Node<'_>, src: &str) -> Option<(String, MacroDef)> {
+pub(in crate::emit) fn extract_newcommandx(
+    node: Node<'_>,
+    src: &str,
+) -> Option<(String, MacroDef)> {
     extract_newcommandx_and_end(node, src).map(|(def, _end)| def)
 }
 
@@ -1117,7 +1134,10 @@ pub(in crate::emit) fn extract_newcommandx(node: Node<'_>, src: &str) -> Option<
 /// after the closing `}` of the body. The emit-time dispatcher uses
 /// this to bump `skip_until` so the sibling AST nodes carrying the
 /// definition's bracket/body fragments don't leak into the output.
-pub(in crate::emit) fn extract_newcommandx_and_end(node: Node<'_>, src: &str) -> Option<((String, MacroDef), usize)> {
+pub(in crate::emit) fn extract_newcommandx_and_end(
+    node: Node<'_>,
+    src: &str,
+) -> Option<((String, MacroDef), usize)> {
     let bytes = src.as_bytes();
     let mut i = node.end_byte();
 

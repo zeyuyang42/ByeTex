@@ -143,7 +143,10 @@ impl DocClass {
             // acmart: the proceedings formats are two-column; the journal /
             // manuscript formats (acmsmall/acmlarge/acmtog/manuscript) are not.
             Self::AcmArt { format } => {
-                matches!(format.as_str(), "sigconf" | "sigplan" | "sigchi" | "sigchi-a")
+                matches!(
+                    format.as_str(),
+                    "sigconf" | "sigplan" | "sigchi" | "sigchi-a"
+                )
             }
             // ICML camera-ready is two-column.
             Self::Icml => true,
@@ -194,10 +197,7 @@ impl Margin {
 
     /// Whether any per-side key (not just `margin=`) was set.
     fn has_sides(&self) -> bool {
-        self.top.is_some()
-            || self.bottom.is_some()
-            || self.left.is_some()
-            || self.right.is_some()
+        self.top.is_some() || self.bottom.is_some() || self.left.is_some() || self.right.is_some()
     }
 
     /// The value for Typst's `page(margin: ...)`. With nothing set this is the
@@ -249,7 +249,8 @@ impl Layout {
     /// `twocolumn`/`onecolumn` option wins, otherwise fall back to the class's
     /// own default.
     pub fn is_two_column(&self, class: &DocClass) -> bool {
-        self.two_column.unwrap_or_else(|| class.default_two_column())
+        self.two_column
+            .unwrap_or_else(|| class.default_two_column())
     }
 
     /// Merge `geometry` options (from `\usepackage[...]{geometry}` or
@@ -345,7 +346,6 @@ fn map_font_size_option(opt: &str) -> Option<&'static str> {
         _ => return None,
     })
 }
-
 
 /// Public entry point: turn raw `\author{...}` strings (one per call in
 /// the source) into structured `Author` records. The generic parser
@@ -445,7 +445,11 @@ fn split_top_level_commas_owned(s: &str) -> Vec<String> {
         i += 1;
     }
     parts.push(s[start..].to_string());
-    parts.into_iter().map(|p| p.trim().to_string()).filter(|p| !p.is_empty()).collect()
+    parts
+        .into_iter()
+        .map(|p| p.trim().to_string())
+        .filter(|p| !p.is_empty())
+        .collect()
 }
 
 /// From the `\\`-separated lines that follow the name list, derive a shared
@@ -484,8 +488,10 @@ fn extract_email_token(line: &str) -> Option<String> {
         }
     }
     line.split_whitespace().find(|t| t.contains('@')).map(|t| {
-        t.trim_matches(|c: char| !c.is_alphanumeric() && c != '@' && c != '.' && c != '_' && c != '-')
-            .to_string()
+        t.trim_matches(|c: char| {
+            !c.is_alphanumeric() && c != '@' && c != '.' && c != '_' && c != '-'
+        })
+        .to_string()
     })
 }
 
@@ -502,7 +508,10 @@ fn strip_email_token(line: &str) -> String {
             }
         }
     }
-    out.split_whitespace().filter(|t| !t.contains('@')).collect::<Vec<_>>().join(" ")
+    out.split_whitespace()
+        .filter(|t| !t.contains('@'))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Parse a single `\author{...}` chunk that may contain embedded
@@ -578,8 +587,9 @@ fn parse_one_author(chunk: &str) -> Author {
                             affiliation_raw = Some(body);
                         }
                         "orcid" | "orcidID" => orcid = Some(body),
-                        "thanks" if body.to_ascii_lowercase().contains("equal")
-                            || body.to_ascii_lowercase().contains("contribut") =>
+                        "thanks"
+                            if body.to_ascii_lowercase().contains("equal")
+                                || body.to_ascii_lowercase().contains("contribut") =>
                         {
                             equal = true;
                         }
@@ -615,8 +625,9 @@ fn parse_one_author(chunk: &str) -> Author {
     Author {
         name: Content::Typst(latex_text_to_typst(&cleaned_name)),
         email,
-        affiliation: affiliation_raw
-            .map(|raw| crate::document::Affiliation::from_raw(Content::Typst(latex_text_to_typst(&raw)))),
+        affiliation: affiliation_raw.map(|raw| {
+            crate::document::Affiliation::from_raw(Content::Typst(latex_text_to_typst(&raw)))
+        }),
         orcid,
         equal_contribution: equal,
     }
@@ -1170,20 +1181,58 @@ fn raw_latex_accents_to_unicode(s: &str) -> String {
 // flows back through the sanitizer as text, so `~`/`&` inside one become spaces
 // (harmless for the emails/affiliations these carry).
 const AUTHOR_KEEP_CMDS: &[&str] = &[
-    "and", "And", "AND", "quad", "qquad",
-    "email", "affiliation", "affil", "institute", "institution", "address",
-    "orcid", "orcidID", "thanks", "texttt",
-    "IEEEauthorblockN", "IEEEauthorblockA",
-    "corref", "fnref", "authorrefmark", "inst", "textsuperscript",
+    "and",
+    "And",
+    "AND",
+    "quad",
+    "qquad",
+    "email",
+    "affiliation",
+    "affil",
+    "institute",
+    "institution",
+    "address",
+    "orcid",
+    "orcidID",
+    "thanks",
+    "texttt",
+    "IEEEauthorblockN",
+    "IEEEauthorblockA",
+    "corref",
+    "fnref",
+    "authorrefmark",
+    "inst",
+    "textsuperscript",
 ];
 /// Font-style/size commands whose inner text is KEPT (the command stripped) —
 /// e.g. affiliation lines wrapped in `\small{University}` keep "University".
 const AUTHOR_UNWRAP_CMDS: &[&str] = &[
-    "textbf", "textit", "emph", "text", "textnormal", "textrm", "textsf", "textsc",
-    "small", "footnotesize", "scriptsize", "tiny",
-    "large", "Large", "LARGE", "huge", "Huge", "normalsize",
-    "bfseries", "mdseries", "itshape", "scshape", "upshape",
-    "sffamily", "rmfamily", "ttfamily",
+    "textbf",
+    "textit",
+    "emph",
+    "text",
+    "textnormal",
+    "textrm",
+    "textsf",
+    "textsc",
+    "small",
+    "footnotesize",
+    "scriptsize",
+    "tiny",
+    "large",
+    "Large",
+    "LARGE",
+    "huge",
+    "Huge",
+    "normalsize",
+    "bfseries",
+    "mdseries",
+    "itshape",
+    "scshape",
+    "upshape",
+    "sffamily",
+    "rmfamily",
+    "ttfamily",
 ];
 
 /// Strip `%`…end-of-line LaTeX comments, honoring an escaped `\%`.
@@ -1545,7 +1594,10 @@ mod author_sanitize_tests {
     #[test]
     fn unwraps_font_styles_drops_unknown_braced() {
         assert_eq!(sanitize_author_block(r"\textbf{Alice}"), "Alice");
-        assert_eq!(sanitize_author_block(r"\emph{Bob} \unknown{drop me}"), "Bob");
+        assert_eq!(
+            sanitize_author_block(r"\emph{Bob} \unknown{drop me}"),
+            "Bob"
+        );
     }
 
     #[test]
@@ -1567,4 +1619,3 @@ mod author_sanitize_tests {
         assert!(once.contains("ller"));
     }
 }
-

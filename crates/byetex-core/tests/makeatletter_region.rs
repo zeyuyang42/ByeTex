@@ -90,8 +90,16 @@ fn makeatletter_region_emits_no_leak_warnings_for_body() {
                \\makeatletter\n\\def\\x@y{1}\n\\makeatother\n\
                \\begin{document}\n\\section{Intro}\nText.\n\\end{document}";
     let out = convert_str(src);
-    assert!(out.typst.contains("= Intro"), "heading lost; got:\n{}", out.typst);
-    assert!(!out.typst.contains("x@y"), "def leaked; got:\n{}", out.typst);
+    assert!(
+        out.typst.contains("= Intro"),
+        "heading lost; got:\n{}",
+        out.typst
+    );
+    assert!(
+        !out.typst.contains("x@y"),
+        "def leaked; got:\n{}",
+        out.typst
+    );
 }
 
 // ── #2: definitions inside the region that the prepass does NOT cover ──────────
@@ -111,13 +119,21 @@ fn newtheorem_defined_in_region_is_registered() {
     let unsupported = out.warnings.iter().any(|w| {
         matches!(&w.category, byetex_core::Category::UnsupportedEnvironment { name } if name == "mythm")
     });
-    assert!(!unsupported, "mythm should be a registered theorem env; warnings: {:?}", out.warnings);
+    assert!(
+        !unsupported,
+        "mythm should be a registered theorem env; warnings: {:?}",
+        out.warnings
+    );
     assert!(
         out.typst.contains("supplement: ["),
         "theorem defined in makeatletter region should render as a theorem block; got:\n{}",
         out.typst
     );
-    assert!(out.typst.contains("Statement here."), "theorem body lost; got:\n{}", out.typst);
+    assert!(
+        out.typst.contains("Statement here."),
+        "theorem body lost; got:\n{}",
+        out.typst
+    );
 }
 
 #[test]
@@ -135,7 +151,11 @@ fn newif_flag_defined_in_region_is_registered() {
         "false \\newif conditional must hide its branch (flag registered); got:\n{}",
         out.typst
     );
-    assert!(out.typst.contains("VISIBLE"), "trailing body lost; got:\n{}", out.typst);
+    assert!(
+        out.typst.contains("VISIBLE"),
+        "trailing body lost; got:\n{}",
+        out.typst
+    );
 }
 
 #[test]
@@ -149,8 +169,16 @@ fn newtcolorbox_defined_in_region_is_transparent() {
     let unsupported = out.warnings.iter().any(|w| {
         matches!(&w.category, byetex_core::Category::UnsupportedEnvironment { name } if name == "mybox")
     });
-    assert!(!unsupported, "mybox should be registered transparent; warnings: {:?}", out.warnings);
-    assert!(out.typst.contains("Boxed content."), "box body lost; got:\n{}", out.typst);
+    assert!(
+        !unsupported,
+        "mybox should be registered transparent; warnings: {:?}",
+        out.warnings
+    );
+    assert!(
+        out.typst.contains("Boxed content."),
+        "box body lost; got:\n{}",
+        out.typst
+    );
 }
 
 // ── #3: the region-closer search must be comment- and word-boundary-aware ──────
@@ -172,7 +200,11 @@ fn makeatother_in_a_comment_does_not_end_region_early() {
         "a commented \\makeatother ended the region early and leaked internals; got:\n{}",
         out.typst
     );
-    assert!(out.typst.contains("Clean body."), "body lost; got:\n{}", out.typst);
+    assert!(
+        out.typst.contains("Clean body."),
+        "body lost; got:\n{}",
+        out.typst
+    );
 }
 
 #[test]
@@ -191,7 +223,11 @@ fn makeatother_prefixed_command_is_not_treated_as_closer() {
         "a \\makeatother-prefixed command was matched as the closer, leaking internals; got:\n{}",
         out.typst
     );
-    assert!(out.typst.contains("Clean body."), "body lost; got:\n{}", out.typst);
+    assert!(
+        out.typst.contains("Clean body."),
+        "body lost; got:\n{}",
+        out.typst
+    );
 }
 
 // ── #4: unmatched \makeatletter (no closing \makeatother) ──────────────────────
@@ -217,6 +253,14 @@ fn unmatched_makeatletter_in_main_document_keeps_body() {
     let src = "\\documentclass{article}\n\\makeatletter\n\
                \\begin{document}\n\\section{Intro}\nReal body content.\n\\end{document}";
     let out = convert_str(src);
-    assert!(out.typst.contains("= Intro"), "body heading lost; got:\n{}", out.typst);
-    assert!(out.typst.contains("Real body content."), "body lost; got:\n{}", out.typst);
+    assert!(
+        out.typst.contains("= Intro"),
+        "body heading lost; got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("Real body content."),
+        "body lost; got:\n{}",
+        out.typst
+    );
 }

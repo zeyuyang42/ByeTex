@@ -467,8 +467,7 @@ impl<'a> Emitter<'a> {
                         // juxtaposed atoms (`d b 2mag` → `unknown variable: 2mag`,
                         // corpus 2605.31510). A single atom or any group with a
                         // command (`{\mathbb Q}`) renders as math, brace-stripped.
-                        if raw.chars().count() > 1
-                            && raw.chars().all(|c| c.is_ascii_alphanumeric())
+                        if raw.chars().count() > 1 && raw.chars().all(|c| c.is_ascii_alphanumeric())
                         {
                             let _ = write!(self.out, "\"{}\"", raw);
                         } else {
@@ -535,7 +534,11 @@ impl<'a> Emitter<'a> {
         node.end_byte()
     }
 
-    pub(in crate::emit) fn emit_unknown_math_command(&mut self, node: Node<'_>, name: &str) -> usize {
+    pub(in crate::emit) fn emit_unknown_math_command(
+        &mut self,
+        node: Node<'_>,
+        name: &str,
+    ) -> usize {
         if self.macros.contains_key(name) {
             return self.expand_user_macro(node, name);
         }
@@ -827,7 +830,11 @@ impl<'a> Emitter<'a> {
     /// 2 for the "nonempty" branch of \ifstrempty). Source-byte
     /// scanning picks up curly_groups that tree-sitter attached as
     /// AST siblings; `skip_until` is advanced past them.
-    pub(in crate::emit) fn emit_math_then_branch(&mut self, node: Node<'_>, branch_idx: usize) -> usize {
+    pub(in crate::emit) fn emit_math_then_branch(
+        &mut self,
+        node: Node<'_>,
+        branch_idx: usize,
+    ) -> usize {
         self.emit_chosen_curly_branch(node, branch_idx, /* skip_optional_brack = */ false)
     }
 
@@ -837,7 +844,11 @@ impl<'a> Emitter<'a> {
     /// index (0 for `\smash` which takes only the content, 1 for the
     /// two-arg helpers). `\smash` also has an optional `[t]`/`[b]`
     /// we silently drop.
-    pub(in crate::emit) fn emit_math_layout_inner(&mut self, node: Node<'_>, content_idx: usize) -> usize {
+    pub(in crate::emit) fn emit_math_layout_inner(
+        &mut self,
+        node: Node<'_>,
+        content_idx: usize,
+    ) -> usize {
         self.emit_chosen_curly_branch(node, content_idx, /* skip_optional_brack = */ true)
     }
 
@@ -947,7 +958,11 @@ impl<'a> Emitter<'a> {
 
     // ─── Math layout & structures ─────────────────────────────────────────────
 
-    pub(in crate::emit) fn emit_math_extensible_arrow(&mut self, node: Node<'_>, name: &str) -> usize {
+    pub(in crate::emit) fn emit_math_extensible_arrow(
+        &mut self,
+        node: Node<'_>,
+        name: &str,
+    ) -> usize {
         // Map command name → Typst arrow base symbol. The `x` family
         // is the "extensible" form (auto-stretched in LaTeX); Typst's
         // base arrow already auto-stretches when annotated, so we
@@ -1106,7 +1121,12 @@ impl<'a> Emitter<'a> {
     /// Wrap the first curly_group argument in a Typst math function call:
     /// `\mathbf{X}` → `bold(X)`. Recursively renders the inner content in
     /// math mode so nested commands are translated.
-    pub(in crate::emit) fn emit_math_wrap(&mut self, node: Node<'_>, left: &str, right: &str) -> usize {
+    pub(in crate::emit) fn emit_math_wrap(
+        &mut self,
+        node: Node<'_>,
+        left: &str,
+        right: &str,
+    ) -> usize {
         if let Some(arg) = first_curly_group(node) {
             let inner = self.render_math_group(arg);
             let inner_trimmed = inner.trim();

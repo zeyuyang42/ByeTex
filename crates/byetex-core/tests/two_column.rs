@@ -23,7 +23,10 @@ fn twocolumn_option_wraps_body_in_columns() {
     let src = "\\documentclass[twocolumn]{article}\n\
                \\begin{document}\n\\section{Intro}\nBody text.\n\\end{document}";
     let t = typ(src);
-    assert!(t.contains("#columns(2)["), "expected a 2-column body wrapper; got:\n{t}");
+    assert!(
+        t.contains("#columns(2)["),
+        "expected a 2-column body wrapper; got:\n{t}"
+    );
     // The section heading (body) must sit inside the columns wrapper.
     assert!(
         pos(&t, "#columns(2)[") < pos(&t, "= Intro"),
@@ -36,7 +39,10 @@ fn ieee_class_is_two_column() {
     let src = "\\documentclass[conference]{IEEEtran}\n\\title{T}\n\\author{A}\n\
                \\begin{document}\n\\maketitle\n\\section{Intro}\nBody.\n\\end{document}";
     let t = typ(src);
-    assert!(t.contains("#columns(2)["), "IEEEtran should be two-column; got:\n{t}");
+    assert!(
+        t.contains("#columns(2)["),
+        "IEEEtran should be two-column; got:\n{t}"
+    );
     // Title block stays full-width: it appears BEFORE the columns wrapper.
     assert!(
         pos(&t, "#align(center)") < pos(&t, "#columns(2)["),
@@ -49,12 +55,16 @@ fn acmart_sigconf_is_two_column() {
     let src = "\\documentclass[sigconf]{acmart}\n\
                \\begin{document}\n\\section{Intro}\nBody.\n\\end{document}";
     let t = typ(src);
-    assert!(t.contains("#columns(2)["), "acmart sigconf should be two-column; got:\n{t}");
+    assert!(
+        t.contains("#columns(2)["),
+        "acmart sigconf should be two-column; got:\n{t}"
+    );
 }
 
 #[test]
 fn plain_article_stays_single_column() {
-    let src = "\\documentclass{article}\n\\begin{document}\n\\section{Intro}\nBody.\n\\end{document}";
+    let src =
+        "\\documentclass{article}\n\\begin{document}\n\\section{Intro}\nBody.\n\\end{document}";
     let t = typ(src);
     assert!(
         !t.contains("#columns("),

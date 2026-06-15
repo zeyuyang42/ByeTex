@@ -123,11 +123,7 @@ fn nocite_emits_form_none_not_bare_at() {
 
 #[test]
 fn multi_key_citet_emits_two_prose_tokens() {
-    let (typ, dir) = convert_authoritative(
-        "multi",
-        TWO_KEY_BIB,
-        "\\citet{Smith.2024,Jones.2023}",
-    );
+    let (typ, dir) = convert_authoritative("multi", TWO_KEY_BIB, "\\citet{Smith.2024,Jones.2023}");
     assert!(
         typ.contains("#cite(<Smith.2024>, form: \"prose\")"),
         "missing Smith prose token; got:\n{typ}"

@@ -19,9 +19,15 @@ fn booktabs_table_gets_stroke_none_and_three_rules() {
         \\toprule\nName & Value \\\\\n\\midrule\nA & 1 \\\\\nB & 2 \\\\\n\\bottomrule\n\
         \\end{tabular}\n";
     let t = typ(src);
-    assert!(t.contains("stroke: none"), "table must disable the default grid; got:\n{t}");
+    assert!(
+        t.contains("stroke: none"),
+        "table must disable the default grid; got:\n{t}"
+    );
     let rules = t.matches("table.hline(").count();
-    assert_eq!(rules, 3, "booktabs table needs 3 rules (top/header/bottom); got {rules}:\n{t}");
+    assert_eq!(
+        rules, 3,
+        "booktabs table needs 3 rules (top/header/bottom); got {rules}:\n{t}"
+    );
 }
 
 #[test]
@@ -30,7 +36,10 @@ fn ruleless_tabular_has_no_lines() {
     // get Typst's grid NOR spurious booktabs rules.
     let src = "\\begin{tabular}{cc}\nA & 1 \\\\\nB & 2 \\\\\n\\end{tabular}\n";
     let t = typ(src);
-    assert!(t.contains("stroke: none"), "rule-less table must have no grid; got:\n{t}");
+    assert!(
+        t.contains("stroke: none"),
+        "rule-less table must have no grid; got:\n{t}"
+    );
     assert!(
         !t.contains("table.hline("),
         "rule-less table must get no horizontal rules; got:\n{t}"
@@ -43,5 +52,8 @@ fn hline_table_is_treated_as_ruled() {
     let src = "\\begin{tabular}{cc}\n\\hline\nName & Value \\\\\n\\hline\nA & 1 \\\\\n\\hline\n\\end{tabular}\n";
     let t = typ(src);
     assert!(t.contains("stroke: none"), "got:\n{t}");
-    assert!(t.contains("table.hline("), "an \\hline table must get rules; got:\n{t}");
+    assert!(
+        t.contains("table.hline("),
+        "an \\hline table must get rules; got:\n{t}"
+    );
 }

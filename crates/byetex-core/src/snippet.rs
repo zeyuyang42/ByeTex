@@ -34,7 +34,10 @@ pub fn explain(source: &str, opts: &ConvertOptions) -> Vec<Explanation> {
         .filter_map(|n| {
             let (a, b) = n.src;
             // Guard against degenerate / out-of-range spans before slicing.
-            if a >= b || b > source.len() || !source.is_char_boundary(a) || !source.is_char_boundary(b)
+            if a >= b
+                || b > source.len()
+                || !source.is_char_boundary(a)
+                || !source.is_char_boundary(b)
             {
                 return None;
             }

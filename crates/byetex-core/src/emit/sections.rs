@@ -4,7 +4,9 @@ use std::fmt::Write;
 
 use tree_sitter::Node;
 
-use super::{collapse_inline_whitespace, extract_label_name, sanitize_label_key, section_level, Emitter};
+use super::{
+    collapse_inline_whitespace, extract_label_name, sanitize_label_key, section_level, Emitter,
+};
 
 impl<'a> Emitter<'a> {
     // ─── Sectioning ───────────────────────────────────────────────────────────

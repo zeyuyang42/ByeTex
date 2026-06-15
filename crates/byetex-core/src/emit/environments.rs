@@ -262,7 +262,11 @@ impl<'a> Emitter<'a> {
     /// so it would otherwise leak into the body as escaped `\[(a)\]`. The label
     /// byte range is skipped via `skip_until` so a single `text` node spanning
     /// `[label] body` emits only its `body` tail.
-    pub(in crate::emit) fn render_enum_item_body(&mut self, item: Node<'_>, _is_description: bool) -> String {
+    pub(in crate::emit) fn render_enum_item_body(
+        &mut self,
+        item: Node<'_>,
+        _is_description: bool,
+    ) -> String {
         let body_start = item_body_start(item, self.src);
         let mut cursor = item.walk();
         let body: Vec<Node<'_>> = item
@@ -296,9 +300,12 @@ impl<'a> Emitter<'a> {
         if label.is_empty() {
             return None;
         }
-        Some(self.render_in_sub_emitter(label, false, false).trim().to_string())
+        Some(
+            self.render_in_sub_emitter(label, false, false)
+                .trim()
+                .to_string(),
+        )
     }
-
 
     // ─── Theorem / proof / bibliography environments ──────────────────────────
 
@@ -398,7 +405,11 @@ impl<'a> Emitter<'a> {
         // per-kind head show rule (emitted in finish()) renders it as
         // "Theorem N (Note). body".
         let note = theorem_note(env, self.src)
-            .map(|n| self.render_in_sub_emitter(&n, false, true).trim().to_string())
+            .map(|n| {
+                self.render_in_sub_emitter(&n, false, true)
+                    .trim()
+                    .to_string()
+            })
             .filter(|n| !n.is_empty());
         self.used_theorem_kinds.insert(kind.clone());
         let _ = write!(
@@ -445,8 +456,11 @@ impl<'a> Emitter<'a> {
         env.end_byte()
     }
 
-
-    pub(in crate::emit) fn warn_unsupported_environment(&mut self, node: Node<'_>, env_name: Option<&str>) {
+    pub(in crate::emit) fn warn_unsupported_environment(
+        &mut self,
+        node: Node<'_>,
+        env_name: Option<&str>,
+    ) {
         let snippet = self.src[node.start_byte()..node.end_byte()].to_string();
         let name = env_name.unwrap_or("?").to_string();
         self.warnings.push(Warning {

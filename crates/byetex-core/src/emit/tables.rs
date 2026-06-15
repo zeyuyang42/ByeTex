@@ -92,8 +92,11 @@ impl<'a> Emitter<'a> {
             if n.kind() == "generic_environment"
                 && matches!(
                     environment_name(n, &source).as_deref(),
-                    Some("tabular") | Some("tabular*") | Some("tabularx")
-                        | Some("tabulary") | Some("array")
+                    Some("tabular")
+                        | Some("tabular*")
+                        | Some("tabularx")
+                        | Some("tabulary")
+                        | Some("array")
                 )
             {
                 tabular = Some(n);
@@ -110,12 +113,8 @@ impl<'a> Emitter<'a> {
         // leading `#` so it sits inside the `#figure(...)` call.
         let visited = std::mem::take(&mut self.visited_includes);
         let macros = self.macros.clone();
-        let mut sub = Emitter::with_includes(
-            &source,
-            self.source_name,
-            self.base_dir.clone(),
-            visited,
-        );
+        let mut sub =
+            Emitter::with_includes(&source, self.source_name, self.base_dir.clone(), visited);
         sub.macros = macros;
         sub.referenced_labels = self.referenced_labels.clone();
         let rendered = sub.with_sub_buffer(|e| {
@@ -302,11 +301,7 @@ impl<'a> Emitter<'a> {
                     let (cs, rs) = table_cell_span(cell);
                     if rs > 1 {
                         // Mark every column this rowspan covers.
-                        for slot in rowspan_cols
-                            .iter_mut()
-                            .take((col + cs).min(cols))
-                            .skip(col)
-                        {
+                        for slot in rowspan_cols.iter_mut().take((col + cs).min(cols)).skip(col) {
                             *slot = rs - 1;
                         }
                     }
@@ -360,9 +355,9 @@ impl<'a> Emitter<'a> {
                 for &(start, end) in rules {
                     let end = end.min(cols);
                     let start = start.min(end.saturating_sub(1));
-                    let _ = write!(
+                    let _ = writeln!(
                         self.out,
-                        "  table.hline(start: {start}, end: {end}, stroke: 0.05em),\n"
+                        "  table.hline(start: {start}, end: {end}, stroke: 0.05em),"
                     );
                 }
             }
@@ -410,7 +405,8 @@ fn split_cells_on_unescaped_amp(row: &str) -> Vec<String> {
 /// `(start, end)` = `(a-1, b)` (end-exclusive column boundary).
 fn parse_cmidrule_rules(raw: &str) -> std::collections::HashMap<usize, Vec<(usize, usize)>> {
     let bytes = raw.as_bytes();
-    let mut map: std::collections::HashMap<usize, Vec<(usize, usize)>> = std::collections::HashMap::new();
+    let mut map: std::collections::HashMap<usize, Vec<(usize, usize)>> =
+        std::collections::HashMap::new();
     let mut i = 0usize;
     let mut row_breaks = 0usize;
     while i < bytes.len() {
@@ -483,7 +479,11 @@ fn effective_column_count(rows_2d: &[Vec<String>], spec_count: usize) -> usize {
             } else if let Some(cell) = src.next() {
                 let (cs, rs) = table_cell_span(cell);
                 if rs > 1 {
-                    for slot in rowspan.iter_mut().take((col + cs).min(spec_count)).skip(col) {
+                    for slot in rowspan
+                        .iter_mut()
+                        .take((col + cs).min(spec_count))
+                        .skip(col)
+                    {
                         *slot = rs - 1;
                     }
                 }
@@ -517,7 +517,9 @@ fn normalize_table_width(raw: &str) -> String {
             return format!("{:.0}%", f * 100.0);
         }
     }
-    if ["cm", "mm", "in", "pt", "em", "ex"].iter().any(|u| s.ends_with(u))
+    if ["cm", "mm", "in", "pt", "em", "ex"]
+        .iter()
+        .any(|u| s.ends_with(u))
         && s[..s.len() - 2].trim().parse::<f64>().is_ok()
     {
         return s.to_string();
