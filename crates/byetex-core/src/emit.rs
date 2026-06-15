@@ -1959,19 +1959,27 @@ impl<'a> Emitter<'a> {
                     }
                     self.out.push('\\');
                 }
-                // `\\[len]` carries an optional vertical-space argument. The
-                // grammar does NOT attach the `[len]` to this node (it surfaces
-                // as following raw text), so consume it from the source here —
-                // otherwise it leaks as `\[len\]` into the next table cell and
-                // breaks the surrounding Typst content block. The bracketed
-                // length has no Typst analog in a row break and is dropped.
-                let end = node.end_byte();
+                // `\\*` (the no-page-break variant) and `\\[len]` (an optional
+                // vertical skip) carry trailing modifiers the grammar does NOT
+                // attach to this node — they surface as following source, so
+                // consume them here (LaTeX order: `\\*[len]`). Otherwise the `*`
+                // is emitted as an escaped `\*` glued onto the linebreak `\`,
+                // which Typst reads as a live strong toggle; a run of verse `\\*`
+                // lines then unbalances `*` → `unclosed delimiter` reported far
+                // downstream (corpus ctan-memoir, the Villon ballade). The `[len]`
+                // would otherwise leak as `\[len\]` into the next table cell.
+                // Neither modifier has a Typst row-break analog → drop both.
+                let mut end = node.end_byte();
+                if self.src.as_bytes().get(end) == Some(&b'*') {
+                    end += 1;
+                }
                 if self.src.as_bytes().get(end) == Some(&b'[') {
                     if let Some(rel) = self.src[end..].find(']') {
-                        let consumed = end + rel + 1;
-                        self.skip_until = self.skip_until.max(consumed);
-                        return consumed;
+                        end += rel + 1;
                     }
+                }
+                if end != node.end_byte() {
+                    self.skip_until = self.skip_until.max(end);
                 }
                 end
             }

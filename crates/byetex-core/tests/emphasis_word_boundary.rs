@@ -67,6 +67,44 @@ fn textbf_followed_by_punctuation_keeps_shorthand() {
 }
 
 #[test]
+fn emph_ending_in_ref_uses_emph_fn() {
+    // A closing `_`/`*` glued to a trailing Typst `@ref` is absorbed into the
+    // label name (`@ex_` → reference to label `ex_`), so the opening `_` never
+    // closes → `error: unclosed delimiter` (corpus gh-dzwaneveld-tudelft-thesis,
+    // gh-maurovm-thesis-template). The outer boundary is a clean word boundary,
+    // so the alphanumeric heuristic alone misses it — the absorber is INSIDE the
+    // content. Use the boundary-independent function form.
+    let t = typ(r"\emph{An introduction \ref{ex}} done");
+    assert!(
+        t.contains("#emph[") && t.contains("@ex"),
+        "ref-trailing emph must use function form; got:\n{t}"
+    );
+    assert!(
+        !t.contains("@ex_"),
+        "closing `_` must not glue to the ref label; got:\n{t}"
+    );
+}
+
+#[test]
+fn textbf_ending_in_ref_keeps_shorthand() {
+    // Asymmetry: `_` IS a Typst label char (absorbed → `\emph` breaks), but `*`
+    // is NOT, so `@ex*` closes strong fine. `\textbf` ending in a ref is safe —
+    // keep the shorthand, don't over-trigger the function form.
+    let t = typ(r"a \textbf{see \cite{ex}} here");
+    assert!(t.contains("*see @ex*"), "got:\n{t}");
+    assert!(!t.contains("#strong"), "got:\n{t}");
+}
+
+#[test]
+fn emph_with_ref_not_at_edge_keeps_shorthand() {
+    // The ref is mid-content; the closing `_` follows a plain word → safe.
+    // Don't over-trigger the function form.
+    let t = typ(r"a \emph{see \ref{ex} and more} word");
+    assert!(t.contains("_see @ex and more_"), "got:\n{t}");
+    assert!(!t.contains("#emph"), "got:\n{t}");
+}
+
+#[test]
 fn makecell_internal_linebreak_does_not_glue_markup() {
     // `\makecell{\textbf{A}\\\textbf{B}}`: the intra-cell `\\` must become a
     // `#linebreak()`, not a bare `\` glued to the next `*` (which Typst reads as

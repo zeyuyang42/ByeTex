@@ -9,6 +9,25 @@ use super::{
     named_color, Emitter,
 };
 
+/// True if `s` (ignoring trailing whitespace) ends with an *unterminated* Typst
+/// reference: an `@` followed by one or more label-continuation characters, with
+/// no closing `]` supplement and no whitespace after. Such a ref greedily
+/// absorbs a following `_` into its label name (Typst labels accept
+/// `A-Za-z0-9_-:.`), which breaks an emph shorthand whose closing `_` is glued
+/// to it. `@ex[p.5]` (supplement) and `@ex .` (space-separated) are safe → false.
+fn ends_with_open_ref(s: &str) -> bool {
+    let is_label = |c: char| c.is_alphanumeric() || matches!(c, '_' | '-' | ':' | '.');
+    let mut saw_label = false;
+    for c in s.trim_end().chars().rev() {
+        if is_label(c) {
+            saw_label = true;
+        } else {
+            return saw_label && c == '@';
+        }
+    }
+    false
+}
+
 impl<'a> Emitter<'a> {
     /// Emit a typographic-logo command (`\LaTeX`, `\TeX`, etc.) as plain text.
     /// LaTeX users normally write `\LaTeX{}` so the empty group blocks LaTeX
@@ -112,8 +131,17 @@ impl<'a> Emitter<'a> {
                         .chars()
                         .next()
                         .is_some_and(is_word);
+                // A closing `_` glued to a content-final Typst `@ref` is absorbed
+                // into the label name (`_… @ex_` → reference to label `ex_`), so
+                // the opening `_` never closes → `unclosed delimiter` (corpus
+                // gh-dzwaneveld-tudelft-thesis, gh-maurovm-thesis-template). `*`
+                // is NOT a valid label char, so strong is unaffected — only guard
+                // the emph (`_`) marker. The outer boundary here is clean, so the
+                // alphanumeric heuristic alone misses it; the absorber is the ref
+                // INSIDE the content.
+                let ref_absorbs = right == "_" && ends_with_open_ref(mid);
                 match emph_fn {
-                    Some(name) if lead_glue || trail_glue => {
+                    Some(name) if lead_glue || trail_glue || ref_absorbs => {
                         let _ = write!(self.out, "#{name}[{mid}]");
                     }
                     _ => {
