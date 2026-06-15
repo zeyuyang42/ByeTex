@@ -5,7 +5,7 @@
 //!       ┌─ <file>:<line>:<col>
 //! (optionally followed by source-snippet lines we ignore).
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct TypstError {
     pub message: String,
     /// 1-based line in the `.typ`, as typst reports.

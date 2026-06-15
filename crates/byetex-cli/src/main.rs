@@ -162,6 +162,32 @@ enum Command {
         #[arg(long)]
         full: bool,
     },
+
+    /// Compile a generated `.typ` to PDF with `typst`, printing STRUCTURED
+    /// errors (message + line:col) instead of raw typst stderr. `input` may be
+    /// a `.typ` or a `.tex` (converted flat first). Set `BYETEX_TYPST_BIN` to
+    /// point at a non-default `typst` binary.
+    Compile {
+        /// Path to a `.typ` file (or a `.tex`, converted flat first).
+        input: PathBuf,
+        /// Output PDF path. Defaults to `<input>.pdf`.
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+
+    /// Render a generated `.typ` to per-page PNG images at a chosen DPI, for
+    /// visual inspection / fidelity grading. `input` may be a `.typ` or a
+    /// `.tex` (converted flat first). Prints the page image paths to stdout.
+    Render {
+        /// Path to a `.typ` file (or a `.tex`, converted flat first).
+        input: PathBuf,
+        /// Pixels-per-inch for the PNG export. Defaults to 144.
+        #[arg(long, default_value_t = 144)]
+        dpi: u32,
+        /// Output directory for the page PNGs. Defaults to `<input-stem>.pages/`.
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -264,6 +290,8 @@ fn main() -> Result<()> {
             strict,
             full,
         } => run_doctor(input, strict, full),
+        Command::Compile { input, out } => run_compile(input, out),
+        Command::Render { input, dpi, out } => run_render(input, dpi, out),
     }
 }
 
@@ -375,6 +403,68 @@ fn run_doctor(input: PathBuf, strict: bool, full: bool) -> Result<()> {
         std::process::exit(2);
     }
 
+    Ok(())
+}
+
+/// Compile a generated `.typ` (or flat-convert a `.tex` first) and print the
+/// structured typst errors. Exits 0 even on compile errors — they're printed
+/// for the agent to read, not signalled via exit code. The PDF is written
+/// alongside the `.typ` (or to `--out`).
+fn run_compile(input: PathBuf, out: Option<PathBuf>) -> Result<()> {
+    let typst = typst_bin();
+    let typ = byetex_core::compile::ensure_typ(&input)?;
+    let res = byetex_core::compile::compile_typ(&typ, out.as_deref(), &typst)?;
+    if res.ok {
+        eprintln!(
+            "byetex compile: {} → {} ✅",
+            typ.display(),
+            res.pdf_path.as_deref().unwrap_or("<pdf>")
+        );
+    } else {
+        eprintln!(
+            "byetex compile: {} FAILED with {} error(s):",
+            typ.display(),
+            res.errors.len()
+        );
+        for e in &res.errors {
+            eprintln!("  {}:{}  {}", e.line, e.col, e.message);
+        }
+    }
+    Ok(())
+}
+
+/// Render a generated `.typ` (or flat-convert a `.tex` first) to per-page PNGs
+/// and print their paths to stdout (one per line) so they can be piped.
+fn run_render(input: PathBuf, dpi: u32, out: Option<PathBuf>) -> Result<()> {
+    let typst = typst_bin();
+    let typ = byetex_core::compile::ensure_typ(&input)?;
+    let out_dir = out.unwrap_or_else(|| {
+        let stem = typ.file_stem().and_then(|s| s.to_str()).unwrap_or("output");
+        typ.parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+            .join(format!("{stem}.pages"))
+    });
+    let res = byetex_core::compile::render_typ(&typ, &out_dir, dpi, &typst)?;
+    if res.ok {
+        eprintln!(
+            "byetex render: {} → {} page image(s) in {} ✅",
+            typ.display(),
+            res.image_paths.len(),
+            out_dir.display()
+        );
+    } else {
+        eprintln!(
+            "byetex render: {} produced {} error(s):",
+            typ.display(),
+            res.errors.len()
+        );
+        for e in &res.errors {
+            eprintln!("  {}:{}  {}", e.line, e.col, e.message);
+        }
+    }
+    for p in &res.image_paths {
+        println!("{p}");
+    }
     Ok(())
 }
 
