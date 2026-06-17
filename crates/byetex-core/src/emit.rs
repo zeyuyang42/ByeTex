@@ -605,6 +605,10 @@ impl<'a> Emitter<'a> {
                 // (which runs unconditionally) doesn't prepend it a second time.
                 self.used_subpar = false;
             }
+            // Venue styles (e.g. ACL's acl.sty) hard-code page geometry over the
+            // class options; apply now that the class, packages and user geometry
+            // are all resolved.
+            self.layout.apply_venue_style(&self.detected_class);
             self.out
                 .push_str(&build_neutral_preamble(&self.layout, &self.detected_class));
             self.out.push_str("#set heading(numbering: \"1.\")\n");
