@@ -19,58 +19,72 @@ Item id scheme: `F<n>`. Severity peaks 1–5 (reader/agent impact).
 
 ---
 
+All 3 tick-1 (2026-06-17) reports are **complete real reports** (each agent ran
+~40–66 min and emitted a final report; seeds already COMPILED, so all work was
+fidelity polish). Verdicts: all `NEEDS_FIX` (clean compile reached only via
+workaround/gave-up). Re-dogfood any item's evidence papers twice before marking it
+Resolved.
+
 ## Open — P0 (frequent × blocking)
 
-_None yet — populated by the first dogfood cycles._
+### F1. `diagnose --incremental` — re-diagnosing an edited `.typ` WIPES the edits — 3 papers, peak sev 4 — ROUTE: Loop B (CLI/diagnostic)
+- **Symptom (agent's words):** "After I found fidelity issues by visual inspection,
+  there was no way to get a skill-mapped diagnostic scan of the edited file. I had to
+  manually scan main.typ." All 3 agents independently asked for this.
+- **Evidence:** `2606.12397`, `2605.31564`, `2605.31586` (all `missing_tool_wishlist`,
+  each "would_have_saved 1–2 iterations").
+- **Signal:** `missing_tool_wishlist` recurring across **3/3** papers. The seam:
+  `diagnose --project --out` does a clean materialize that wipes `--out` first
+  (known gotcha), so an agent that edits `main.typ` can never re-scan it.
+- **Next:** add a `diagnose` mode (CLI flag / MCP param) that scans an existing `.typ`
+  in place (no re-materialize) and emits the same fragment→skill map.
 
 ## Open — P1 (class / recipe gaps)
 
-> ⚠️ The 3 items below are **provisional** — the tick-1 (2026-06-17) dogfood agents
-> were suspended mid-run and never emitted a final report (see
-> `project-autonomous-dev-loop` memory). Signals are **observed from the agent
-> transcripts + the deterministic `score` fidelity deltas**, not self-reported. Each
-> MUST be re-dogfooded (un-truncated) twice before it's acted on or Resolved.
+### F2. ACL / venue style overrides class defaults (a4 + 10pt + 2.5cm) — 3 papers, peak sev 4 — ROUTE: Loop A (class fidelity)
+- **Symptom (agent's words):** "ACL style overrides documentclass font size (11pt→10pt),
+  letter→a4, 1in→2.5cm margins. byetex did not pick this up, leading to ~50% page-count
+  inflation that I had to fix manually by reading acl.sty." This is the dominant
+  `page_ratio` driver across all 3 hardest papers.
+- **Evidence:** `2605.31586` (page 27→21 vs 18 truth after a4/10pt by hand; +0.043
+  fidelity), `2605.31564` (page_ratio 1.32), `2606.12397` (1.14).
+- **Signal:** deterministic `page_ratio` overshoot on 3/3 + explicit ACL trace. ACL is
+  already detected for two-column ([[project-two-column-layout]] #247) and there's a
+  per-DocClass `StyleProfile` ([[project-class-fidelity]] #210–214) — extend the ACL
+  hook to set a4 paper + 2.5cm margins + 10pt body when `acl.sty`/`\usepackage{acl}`
+  is present (PACKAGE-keyed, not DocClass — `\documentclass{article}`+`\usepackage{acl}`).
+- **Note:** render-affecting → run the fidelity gate; expect page_ratio to *improve*
+  (legit baseline bump), guard non-ACL papers with precise detection.
 
-### F1. Two-column `figure*` / large floats don't span columns — 2 papers, peak sev 4 — ROUTE: Loop A (likely)
-- **Symptom (observed):** in a two-column layout, a wide float (`figure*`, a big
-  `tcolorbox`) is emitted with `placement: none` (inline) instead of a parent-scope
-  spanning float, so it overflows a column → blank page before it + page-count
-  overshoot. The agent manually reached for `#place(scope: "parent", float: true)`
-  (the [[project-two-column-layout]] recipe) but burned many turns and on 2605.31564
-  made `page_ratio` *worse* (1.32→1.37).
-- **Evidence:** `2605.31564` (after=0.77 vs before=0.768, page_ratio 1.32→1.37),
-  `2606.12397` (after≈0.74 vs before=0.74 flat, page_ratio 1.14).
-- **Signal:** deterministic page_ratio overshoot + observed stuck point (manual
-  `scope:"parent"` fight).
-- **Next:** check whether the converter emits `figure*` / wide floats with
-  `#place(scope:"parent", float:true)` under `#set page(columns: 2)`; if not, that's
-  the deterministic fix.
-
-### F2. `lstlisting` code listing inside a figure float is dropped — 1 paper, peak sev 3 — ROUTE: Loop A/B (TBD)
-- **Symptom (observed):** a `figure` whose body is a `\begin{lstlisting}` Python
-  pseudocode block landed in `warnings.json` as `needs_manual_review` and its content
-  was omitted from `main.typ`; the agent identified it but could not recover the
-  listing from the surface alone → fidelity stayed ~flat at 0.74.
-- **Evidence:** `2606.12397` (after≈0.74 vs before=0.74, word_recall 0.707).
-- **Signal:** silent content loss flagged only as `needs_manual_review`; agent had no
-  recipe to translate `lstlisting` → Typst `raw` block.
-- **Next:** decide route — deterministic `lstlisting`→`#raw(block:true, lang:…)` emit
-  (Loop A) vs a skill recipe for code listings (Loop B). Confirm on re-dogfood.
-
-### F3. page_ratio overshoot dominates the hardest-3 fidelity gap — 3 papers, peak sev 3 — ROUTE: Loop A (density)
-- **Symptom (observed):** across all 3 hardest papers the largest single fidelity
-  drag is `page_ratio` (Typst renders more pages than the LaTeX truth). 2605.31586's
-  agent recovered +0.044 fidelity almost entirely by cutting page_ratio 1.5→1.17 by
-  hand — a lever the converter should pull deterministically. Known long-tail per
-  [[project-layout-density-fidelity]]; re-confirm whether a generic density knob moves
-  the corpus before opening a PR.
-- **Evidence:** `2605.31586` (1.5→1.167 by agent), `2605.31564` (1.32), `2606.12397`
-  (1.14).
-- **Signal:** deterministic page_ratio is the top metric gap on every hardest-3 paper.
+### F3. `tcolorbox` has no conversion recipe — 1 paper, peak sev 3 (major skill gap) — ROUTE: Loop B (skill)
+- **Symptom (agent's words):** "byetex-unsupported-environment covers theorem/lstlisting/
+  beamer but NOT tcolorbox… I improvised a custom Typst block." `tcolorbox` (framed
+  colored boxes, title bars) is used extensively in ML papers.
+- **Evidence:** `2605.31564` (tcolorbox figure rendered as a 4em placeholder rect;
+  resolution=workaround; `unclear_skill_notes` severity **major**).
+- **Signal:** `needs_manual_review` float with no actionable recipe; the
+  `byetex-unsupported-environment` skill gap. (Note: `lstlisting` *was* recovered fine
+  via that skill — so the earlier "lstlisting dropped" guess was wrong; only the
+  `needs_manual_review`→suggested_skill *routing* is off, pointing to
+  `byetex-using-warnings-json` instead of the actionable skill.)
+- **Next:** add a tcolorbox→Typst `#block(fill:…, stroke:…)[title + body]` recipe to
+  `byetex-unsupported-environment`; fix needs_manual_review routing.
 
 ## Open — P2 (polish / low frequency)
 
-_None yet._
+### F4. Converter content-leak bugs surfaced by dogfood (Loop A) — 1–2 papers each
+- **`\footnotemark[N]` → `#footnote[]\[N\]`** (`2606.12397`): emits a spurious *empty*
+  footnote **and** leaks the optional `[N]` as escaped literal `\[N\]`. Confirmed by
+  repro. Fix: consume the optional arg, emit `#super[N]`, no footnote. **← tick-2 fix.**
+- **Numeric assignment tail leak** (`2605.31586`): `\interfootnotelinepenalty=10000`
+  dropped but `=10000` leaked as a Typst heading. A dropped `\<dimen/count>=NNNN`
+  should consume its `=value` tail.
+- **Leaked `\label` fragments as body text** (`2605.31586`): 6 labels (`\_main`,
+  `\_data`, …) placed on the heading *and* emitted standalone as escaped-underscore
+  body text.
+- **`warnings --fidelity` leak scanner** (Loop B wish, `2605.31586`): a post-convert
+  scan that flags leaked label/numeric-tail/custom-comment-macro fragments in the
+  `.typ` body (all invisible to `warnings.json`, which only logs the original command).
 
 ## Resolved
 
