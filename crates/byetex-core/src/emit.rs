@@ -2543,21 +2543,18 @@ impl<'a> Emitter<'a> {
                 self.out.push_str("#context counter(page).display()");
                 node.end_byte()
             }
-            Some("\\thesection") => {
-                self.out.push_str("#context counter(heading.1).display()");
-                node.end_byte()
-            }
-            Some("\\thesubsection") => {
-                self.out.push_str("#context counter(heading.2).display()");
-                node.end_byte()
-            }
-            Some("\\thesubsubsection") => {
-                self.out.push_str("#context counter(heading.3).display()");
-                node.end_byte()
-            }
-            Some("\\thechapter") => {
-                // Chapters are top-level headings in Typst.
-                self.out.push_str("#context counter(heading.1).display()");
+            // `counter(heading.N)` is INVALID Typst (`.N` is field access on the
+            // `heading` element function → "expected comma"). The heading counter
+            // is `counter(heading)`; `.display()` formats it per the document's
+            // own numbering and reflects the current position. We deliberately
+            // display the full current heading number rather than slicing to the
+            // command's level — simpler, always valid, and works in markup AND
+            // math mode (corpus ctan-memoir, gh-sikatikenmogne-report).
+            Some("\\thesection")
+            | Some("\\thesubsection")
+            | Some("\\thesubsubsection")
+            | Some("\\thechapter") => {
+                self.out.push_str("#context counter(heading).display()");
                 node.end_byte()
             }
             Some("\\thefigure") => {
