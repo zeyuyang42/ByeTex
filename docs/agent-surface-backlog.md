@@ -73,9 +73,9 @@ Resolved.
 ## Open — P2 (polish / low frequency)
 
 ### F4. Converter content-leak bugs surfaced by dogfood (Loop A) — 1–2 papers each
-- **`\footnotemark[N]` → `#footnote[]\[N\]`** (`2606.12397`): emits a spurious *empty*
-  footnote **and** leaks the optional `[N]` as escaped literal `\[N\]`. Confirmed by
-  repro. Fix: consume the optional arg, emit `#super[N]`, no footnote. **← tick-2 fix.**
+- ~~**`\footnotemark[N]` → `#footnote[]\[N\]`** (`2606.12397`)~~ — ✅ RESOLVED (PR #265):
+  emitted a spurious empty footnote + leaked `[N]` as `\[N\]`. Now consumes the optional
+  arg, emits `#super[N]`, no footnote (4 TDD tests; gates green).
 - **Numeric assignment tail leak** (`2605.31586`): `\interfootnotelinepenalty=10000`
   dropped but `=10000` leaked as a Typst heading. A dropped `\<dimen/count>=NNNN`
   should consume its `=value` tail.
