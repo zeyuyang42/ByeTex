@@ -1,5 +1,5 @@
 {
-  "corpus_dir": "corpus",
+  "corpus_dir": "/Users/zeyuyang42/Workspace/byetex-120626/ByeTex/corpus",
   "papers_total": 59,
   "papers_audited": 59,
   "papers_skipped": 0,
@@ -8,7 +8,7 @@
       "kind": "needs_manual_review",
       "name": "",
       "papers": 35,
-      "occurrences": 127
+      "occurrences": 126
     },
     {
       "kind": "drop_only",
@@ -19,8 +19,8 @@
     {
       "kind": "ambiguous_math",
       "name": "",
-      "papers": 25,
-      "occurrences": 1632
+      "papers": 24,
+      "occurrences": 1631
     },
     {
       "kind": "drop_only",
@@ -30,15 +30,15 @@
     },
     {
       "kind": "unsupported_command",
-      "name": "\\",
-      "papers": 9,
-      "occurrences": 325
-    },
-    {
-      "kind": "unsupported_command",
       "name": "usepackage:latexsym",
       "papers": 9,
       "occurrences": 9
+    },
+    {
+      "kind": "unsupported_command",
+      "name": "\\",
+      "papers": 8,
+      "occurrences": 323
     },
     {
       "kind": "drop_only",
@@ -67,12 +67,6 @@
     {
       "kind": "unsupported_command",
       "name": "\\allowdisplaybreaks",
-      "papers": 5,
-      "occurrences": 5
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "usepackage:acl",
       "papers": 5,
       "occurrences": 5
     },
@@ -239,12 +233,6 @@
       "occurrences": 27
     },
     {
-      "kind": "unsupported_command",
-      "name": "\\rotatebox",
-      "papers": 2,
-      "occurrences": 8
-    },
-    {
       "kind": "drop_only",
       "name": "\\pagebreak",
       "papers": 2,
@@ -371,12 +359,6 @@
       "occurrences": 2
     },
     {
-      "kind": "drop_only",
-      "name": "\\printbibliography",
-      "papers": 2,
-      "occurrences": 2
-    },
-    {
       "kind": "unsupported_command",
       "name": "\\useunder",
       "papers": 2,
@@ -493,12 +475,6 @@
     {
       "kind": "unsupported_command",
       "name": "\\nu",
-      "papers": 1,
-      "occurrences": 13
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\IEEEauthorrefmark",
       "papers": 1,
       "occurrences": 13
     },
@@ -720,12 +696,6 @@
     },
     {
       "kind": "unsupported_command",
-      "name": "\\heavyrulewidth",
-      "papers": 1,
-      "occurrences": 3
-    },
-    {
-      "kind": "unsupported_command",
       "name": "usepackage:circuitikz",
       "papers": 1,
       "occurrences": 2
@@ -871,12 +841,6 @@
     {
       "kind": "unsupported_command",
       "name": "\\newlist",
-      "papers": 1,
-      "occurrences": 2
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\IEEEmembership",
       "papers": 1,
       "occurrences": 2
     },
@@ -1110,12 +1074,6 @@
     },
     {
       "kind": "unsupported_command",
-      "name": "\\faEnvelope",
-      "papers": 1,
-      "occurrences": 1
-    },
-    {
-      "kind": "unsupported_command",
       "name": "\\AddToShipoutPictureFG*",
       "papers": 1,
       "occurrences": 1
@@ -1302,19 +1260,7 @@
     },
     {
       "kind": "unsupported_command",
-      "name": "\\newtcbtheorem",
-      "papers": 1,
-      "occurrences": 1
-    },
-    {
-      "kind": "unsupported_command",
       "name": "\\defcitealias",
-      "papers": 1,
-      "occurrences": 1
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\rule",
       "papers": 1,
       "occurrences": 1
     },
@@ -1621,30 +1567,6 @@
     {
       "kind": "unsupported_command",
       "name": "\\dag",
-      "papers": 1,
-      "occurrences": 1
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\faPizzaSlice",
-      "papers": 1,
-      "occurrences": 1
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\faGopuram",
-      "papers": 1,
-      "occurrences": 1
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\faMountain",
-      "papers": 1,
-      "occurrences": 1
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\faRobot",
       "papers": 1,
       "occurrences": 1
     },
