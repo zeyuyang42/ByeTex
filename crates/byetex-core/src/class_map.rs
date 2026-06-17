@@ -256,6 +256,24 @@ impl Layout {
         layout
     }
 
+    /// Apply venue page geometry that a `\usepackage`-based style hard-codes over
+    /// the document class. ACL's `acl.sty` forces a4 paper, 2.5cm margins and a
+    /// 10pt body (`\PassOptionsToPackage{a4paper,margin=2.5cm}{geometry}` + `\xpt`)
+    /// regardless of the `\documentclass[11pt]{article}` option — keeping the
+    /// article defaults (us-letter, 11pt) inflated the page count ~50%. Call this
+    /// after class/package detection and any user `geometry` are resolved.
+    pub fn apply_venue_style(&mut self, class: &DocClass) {
+        if matches!(class, DocClass::Acl) {
+            // Style-forced over the class options.
+            self.paper = Some("a4");
+            self.font_size = Some("10pt");
+            // Don't clobber an explicit user `geometry` margin.
+            if self.margin.is_default() {
+                self.margin.uniform = Some("2.5cm".to_string());
+            }
+        }
+    }
+
     /// Resolve the effective column count given the detected class: an explicit
     /// `twocolumn`/`onecolumn` option wins, otherwise fall back to the class's
     /// own default.

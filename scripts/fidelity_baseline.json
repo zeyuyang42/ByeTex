@@ -1,6 +1,6 @@
 {
   "_comment": "Fidelity baseline for scripts/fidelity_check.py. Per-paper render metrics + corpus fidelity_score from scripts/visual_test.py. Regenerate with `./scripts/fidelity_gate.sh --update-baseline` (or fidelity_check.py --emit-baseline).",
-  "fidelity_score": 0.821,
+  "fidelity_score": 0.826,
   "papers": {
     "2605.22159": {
       "heading_recall": 1.0,
@@ -372,19 +372,19 @@
     },
     "2605.31563": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.499,
-      "page_ratio": 1.75,
-      "status": "structure_failed",
-      "structure_ok": false,
-      "word_recall": 0.825
+      "mean_ssim": 0.507,
+      "page_ratio": 1.25,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.867
     },
     "2605.31564": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.486,
-      "page_ratio": 1.526,
-      "status": "structure_failed",
-      "structure_ok": false,
-      "word_recall": 0.737
+      "mean_ssim": 0.49,
+      "page_ratio": 1.053,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.785
     },
     "2605.31567": {
       "heading_recall": 0.923,
@@ -404,19 +404,19 @@
     },
     "2605.31584": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.55,
-      "page_ratio": 1.286,
+      "mean_ssim": 0.54,
+      "page_ratio": 0.762,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.824
+      "word_recall": 0.866
     },
     "2605.31586": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.493,
-      "page_ratio": 1.722,
-      "status": "structure_failed",
-      "structure_ok": false,
-      "word_recall": 0.728
+      "mean_ssim": 0.495,
+      "page_ratio": 1.167,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.747
     },
     "2605.31596": {
       "heading_recall": 1.0,
@@ -460,11 +460,11 @@
     },
     "2606.12397": {
       "heading_recall": 0.87,
-      "mean_ssim": 0.516,
-      "page_ratio": 1.643,
-      "status": "structure_failed",
-      "structure_ok": false,
-      "word_recall": 0.646
+      "mean_ssim": 0.502,
+      "page_ratio": 0.929,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.717
     },
     "2606.12406": {
       "heading_recall": 1.0,
