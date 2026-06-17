@@ -533,22 +533,26 @@ fn normalize_table_width(raw: &str) -> String {
 fn parse_column_spec(spec: &str) -> (usize, Vec<String>, Vec<String>) {
     let mut aligns: Vec<String> = Vec::new();
     let mut widths: Vec<String> = Vec::new();
+    // An array-package `>{…}` decorator applies to the column that FOLLOWS it; an
+    // alignment verb in it (`\centering` / `\raggedleft` / `\raggedright`)
+    // overrides that column's default alignment. Held here until the next column.
+    let mut pending_align: Option<String> = None;
     let bytes = spec.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
         match bytes[i] as char {
             'l' | 'L' => {
-                aligns.push("left".to_string());
+                aligns.push(resolve_col_align("left", &mut pending_align));
                 widths.push("auto".to_string());
                 i += 1;
             }
             'c' | 'C' => {
-                aligns.push("center".to_string());
+                aligns.push(resolve_col_align("center", &mut pending_align));
                 widths.push("auto".to_string());
                 i += 1;
             }
             'r' | 'R' => {
-                aligns.push("right".to_string());
+                aligns.push(resolve_col_align("right", &mut pending_align));
                 widths.push("auto".to_string());
                 i += 1;
             }
@@ -556,7 +560,7 @@ fn parse_column_spec(spec: &str) -> (usize, Vec<String>, Vec<String>) {
             // first; w/W → `{align}{width}`, width second).
             'p' | 'm' | 'b' | 'w' | 'W' => {
                 let is_w = matches!(bytes[i], b'w' | b'W');
-                aligns.push("left".to_string());
+                aligns.push(resolve_col_align("left", &mut pending_align));
                 i += 1;
                 let mut width = "auto".to_string();
                 if bytes.get(i) == Some(&b'{') {
@@ -575,7 +579,7 @@ fn parse_column_spec(spec: &str) -> (usize, Vec<String>, Vec<String>) {
             }
             // tabularx X column — count as left-aligned, width auto.
             'X' => {
-                aligns.push("left".to_string());
+                aligns.push(resolve_col_align("left", &mut pending_align));
                 widths.push("auto".to_string());
                 i += 1;
             }
@@ -602,15 +606,38 @@ fn parse_column_spec(spec: &str) -> (usize, Vec<String>, Vec<String>) {
                     let inner = &spec[i + 1..close.saturating_sub(1)];
                     i = close;
                     let (_, inner_aligns, inner_widths) = parse_column_spec(inner);
+                    let first_idx = aligns.len();
                     for _ in 0..count {
                         aligns.extend(inner_aligns.iter().cloned());
                         widths.extend(inner_widths.iter().cloned());
                     }
+                    // A `>{…}` decorator just before `*{N}{…}` applies to the
+                    // first expanded column only.
+                    if let Some(a) = pending_align.take() {
+                        if let Some(slot) = aligns.get_mut(first_idx) {
+                            *slot = a;
+                        }
+                    }
+                }
+            }
+            // >{...}: column format decorator (array package) — applies to the
+            // NEXT column. Recover an alignment verb from it (the dominant corpus
+            // use is `>{\centering\arraybackslash}` / `>{\raggedleft…}` on a
+            // p-column); other decorator material is still dropped.
+            '>' => {
+                i += 1;
+                if bytes.get(i) == Some(&b'{') {
+                    let close = skip_balanced_braces(spec, i);
+                    let content = &spec[i + 1..close.saturating_sub(1)];
+                    if let Some(a) = decorator_align(content) {
+                        pending_align = Some(a);
+                    }
+                    i = close;
                 }
             }
             // @{...} and !{...}: inter-column material, not data columns.
-            // >{...} and <{...}: column format decorators (array package).
-            '@' | '!' | '>' | '<' => {
+            // <{...}: trailing column decorator (no alignment effect).
+            '@' | '!' | '<' => {
                 i += 1;
                 if bytes.get(i) == Some(&b'{') {
                     i = skip_balanced_braces(spec, i);
@@ -623,6 +650,28 @@ fn parse_column_spec(spec: &str) -> (usize, Vec<String>, Vec<String>) {
         }
     }
     (aligns.len(), aligns, widths)
+}
+
+/// A column's alignment is its spec default unless a preceding `>{…}` decorator
+/// supplied an override (consumed here so it applies to one column only).
+fn resolve_col_align(default: &str, pending: &mut Option<String>) -> String {
+    pending.take().unwrap_or_else(|| default.to_string())
+}
+
+/// Map an array `>{…}` decorator body to a Typst column alignment, if it carries
+/// an alignment verb. Handles plain LaTeX (`\centering`, `\raggedright`,
+/// `\raggedleft`) and ragged2e's capitalised variants; case-insensitive.
+fn decorator_align(content: &str) -> Option<String> {
+    let lc = content.to_lowercase();
+    if lc.contains("centering") {
+        Some("center".to_string())
+    } else if lc.contains("raggedleft") {
+        Some("right".to_string())
+    } else if lc.contains("raggedright") {
+        Some("left".to_string())
+    } else {
+        None
+    }
 }
 
 /// Parse the `colspan` and `rowspan` from a Typst `table.cell(...)` string.
