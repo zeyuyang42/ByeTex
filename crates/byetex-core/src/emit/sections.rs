@@ -5,7 +5,8 @@ use std::fmt::Write;
 use tree_sitter::Node;
 
 use super::{
-    collapse_inline_whitespace, extract_label_name, sanitize_label_key, section_level, Emitter,
+    collapse_inline_whitespace, extract_label_name_and_end, sanitize_label_key, section_level,
+    Emitter,
 };
 
 impl<'a> Emitter<'a> {
@@ -71,10 +72,16 @@ impl<'a> Emitter<'a> {
                 "label_definition" => {
                     // Collect every label alias (the chosen one is decided
                     // after the full sweep — see pick_label_to_attach).
-                    if let Some(k) = extract_label_name(*child, self.src) {
+                    // tree-sitter truncates a label token at the first `_`, so
+                    // `\label{sec:exp1_main}` leaves the tail (`_main}`) as sibling
+                    // subscript/word/ERROR nodes that would leak as body text.
+                    // `extract_label_name_and_end` byte-scans the real brace span;
+                    // advance `skip_until` past it so the tail isn't re-emitted.
+                    if let Some((k, end)) = extract_label_name_and_end(*child, self.src) {
                         if !labels.contains(&k) {
                             labels.push(k);
                         }
+                        self.skip_until = self.skip_until.max(end);
                     }
                 }
                 // Bug #35: tree-sitter mis-parses curly groups whose
