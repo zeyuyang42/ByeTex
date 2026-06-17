@@ -2143,11 +2143,54 @@ impl<'a> Emitter<'a> {
                 self.out.push_str("\n\n");
                 node.end_byte()
             }
-            // `\footnotemark` — superscript footnote counter reference. Without
-            // coordinated `\footnotetext` tracking, emit a footnote placeholder.
+            // `\footnotemark[N]` prints footnote mark N *without* creating a
+            // footnote (the body is supplied separately by `\footnotetext`).
+            // tree-sitter parses the optional `[N]` as an AST sibling, so peek the
+            // source bytes to consume it — otherwise it leaked as literal `\[N\]`
+            // (corpus 2606.12397 author block). Render the mark as a superscript.
+            // A bare `\footnotemark` keeps the placeholder behaviour.
             Some("\\footnotemark") => {
-                self.out.push_str("#footnote[]");
-                node.end_byte()
+                let bytes = self.src.as_bytes();
+                let mut i = node.end_byte();
+                while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                    i += 1;
+                }
+                let mut end = node.end_byte();
+                let mut mark: Option<String> = None;
+                if i < bytes.len() && bytes[i] == b'[' {
+                    let mut j = i + 1;
+                    let mut depth = 0i32;
+                    let mut closed = false;
+                    while j < bytes.len() {
+                        match bytes[j] {
+                            b'\\' if j + 1 < bytes.len() => {
+                                j += 2;
+                                continue;
+                            }
+                            b'{' => depth += 1,
+                            b'}' => depth -= 1,
+                            b']' if depth == 0 => {
+                                closed = true;
+                                break;
+                            }
+                            _ => {}
+                        }
+                        j += 1;
+                    }
+                    if closed {
+                        mark = Some(self.src.get(i + 1..j).unwrap_or("").trim().to_string());
+                        end = j + 1;
+                    }
+                }
+                match mark.as_deref() {
+                    Some(m) if !m.is_empty() => {
+                        let _ = write!(self.out, "#super[{m}]");
+                    }
+                    _ => self.out.push_str("#footnote[]"),
+                }
+                // Mark the consumed `[N]` so its AST-sibling node isn't re-emitted.
+                self.skip_until = self.skip_until.max(end);
+                end
             }
             // `\mathtt{X}` in text mode — typewriter math font; render as code.
             Some("\\mathtt") => self.emit_inline_raw(node),
