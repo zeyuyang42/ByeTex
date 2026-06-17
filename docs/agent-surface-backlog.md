@@ -83,9 +83,10 @@ Resolved.
 - **Numeric assignment tail leak** (`2605.31586`): `\interfootnotelinepenalty=10000`
   dropped but `=10000` leaked as a Typst heading. A dropped `\<dimen/count>=NNNN`
   should consume its `=value` tail.
-- **Leaked `\label` fragments as body text** (`2605.31586`): 6 labels (`\_main`,
-  `\_data`, …) placed on the heading *and* emitted standalone as escaped-underscore
-  body text.
+- ~~**Leaked `\label` fragments as body text** (`2605.31586`)~~ — ✅ RESOLVED (PR #269):
+  underscore labels on a heading (`\label{sec:exp1_main}`) leaked the `_main` tail as
+  body text. `emit_section` now consumes the full brace span via
+  `extract_label_name_and_end` + `skip_until`. 4 TDD tests.
 - **`warnings --fidelity` leak scanner** (Loop B wish, `2605.31586`): a post-convert
   scan that flags leaked label/numeric-tail/custom-comment-macro fragments in the
   `.typ` body (all invisible to `warnings.json`, which only logs the original command).
