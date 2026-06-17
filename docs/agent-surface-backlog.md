@@ -41,7 +41,11 @@ Resolved.
 
 ## Open — P1 (class / recipe gaps)
 
-### F2. ACL / venue style overrides class defaults (a4 + 10pt + 2.5cm) — 3 papers, peak sev 4 — ROUTE: Loop A (class fidelity)
+### F2. ACL / venue style overrides class defaults (a4 + 10pt + 2.5cm) — 3 papers, peak sev 4 — ROUTE: Loop A (class fidelity) — ✅ RESOLVED (PR #267)
+- **Fix:** `Layout::apply_venue_style(class)` forces a4 + 10pt for `DocClass::Acl`
+  + 2.5cm margin (unless explicit user geometry), at begin-document. Corpus fidelity
+  **0.821→0.826**; 5 ACL papers' page_ratio → ~1.0 (2606.12397 1.643→0.929) and
+  word_recall up (0.646→0.717); +4 structure_ok; baseline promoted. 5 TDD tests.
 - **Symptom (agent's words):** "ACL style overrides documentclass font size (11pt→10pt),
   letter→a4, 1in→2.5cm margins. byetex did not pick this up, leading to ~50% page-count
   inflation that I had to fix manually by reading acl.sty." This is the dominant
