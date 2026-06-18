@@ -40,7 +40,7 @@ Resolved.
   that doesn't node-parse) still leak (2605.22765); per-author affiliation-superscript
   display is approximate. Low value — revisit if a dogfood re-flags it.
 
-### G2. `unsupported_command` → `byetex-using-warnings-json` circular routing — 2 papers, sev 4 (major) — ROUTE: Loop B
+### G2. `unsupported_command` → `byetex-using-warnings-json` circular routing — 2 papers, sev 4 — ✅ RESOLVED (PR #303)
 - **Symptom:** 96 `unsupported_command` warnings all `suggested_skill =
   byetex-using-warnings-json`, which only explains the schema — "lands on the same page
   they started from" (2605.22765, 2605.22786). Same class as the `needs_manual_review`
