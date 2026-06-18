@@ -298,6 +298,11 @@ impl<'a> Emitter<'a> {
         // sub-`\caption`. A figure with N subfigures must emit ALL N images, not
         // just one (Bug D5); collected here and rendered as a grid of panels.
         let mut subfigures: Vec<Node<'_>> = Vec::new();
+        // An `algorithm` float wraps one or more `\begin{algorithmic}` blocks; they
+        // are the float's BODY. Captured here so they render instead of the empty
+        // `(figure)` placeholder (dogfood F7). A Vec so a float with several blocks
+        // keeps them all (the bare-algorithmic path emits every env).
+        let mut algorithmic_bodies: Vec<Node<'_>> = Vec::new();
 
         // Walk the entire subtree because IEEE-style templates often wrap
         // `\includegraphics` in `\centerline{...}` or `\centering{...}`.
@@ -370,6 +375,18 @@ impl<'a> Emitter<'a> {
                         ) && nested_tabular.is_none()
                         {
                             nested_tabular = Some(child);
+                        }
+                        // The pseudocode body of an `algorithm` float — render each
+                        // whole (don't descend, or the steps scatter as loose text).
+                        if matches!(
+                            env.as_deref(),
+                            Some("algorithmic")
+                                | Some("algorithmicx")
+                                | Some("algpseudocode")
+                                | Some("algpseudocodex")
+                        ) {
+                            algorithmic_bodies.push(child);
+                            continue;
                         }
                         stack.push(child);
                     }
@@ -499,6 +516,24 @@ impl<'a> Emitter<'a> {
             // `\input`-ed file. Render it (already a bare `table(...)`).
             body_is_table = true;
             tbl
+        } else if !algorithmic_bodies.is_empty() {
+            // An `algorithm` float's body is its `algorithmic` pseudocode. Render
+            // every block's steps (left-aligned) as the figure body instead of an
+            // empty placeholder; `\State`/`\For`/… degrade to text (dogfood F7).
+            let mut steps = String::new();
+            for alg in &algorithmic_bodies {
+                let block = self
+                    .with_sub_buffer(|emitter| {
+                        emitter.emit_environment_body(*alg);
+                    })
+                    .trim()
+                    .to_string();
+                if !steps.is_empty() {
+                    steps.push_str("\n\n");
+                }
+                steps.push_str(&block);
+            }
+            format!("align(left)[{steps}]")
         } else {
             // Neither graphics nor a tabular body — warn and placeholder.
             self.warnings.push(Warning {
