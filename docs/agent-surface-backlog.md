@@ -115,12 +115,13 @@ Resolved.
   an algorithm→Typst recipe to `byetex-unsupported-environment` (it covers tcolorbox/
   lstlisting/beamer but not algorithm/algorithmic pseudocode).
 
-### F8. `\accentset{accent}{base}` drops its argument → `"accentset"` string — 1 paper (37×), peak sev 4 — ROUTE: Loop A (math)
-- **Symptom:** `\accentset{\circ}{\bm h}` emits the bare string `"accentset"` in math
-  with the base/accent lost (37 sites, different targets) — not recoverable by the
-  agent (2605.31510, resolution=gave_up). byetex-math documents `attach`, but only
-  works when the argument survived.
-- **Next:** handle `\accentset{a}{b}` in math → `accent(b, a)` / `attach(b, t: a)`.
+### F8. overset family drops args → `"accentset"`/`"overset"` strings — 1 paper (37×), peak sev 4 — ✅ RESOLVED (PR #286)
+- **Symptom:** `\accentset{\circ}{\bm h}` (and `\overset`/`\underset`/`\stackrel`)
+  emitted the bare command name as a string in math with both args lost (2605.31510:
+  37 `\accentset` sites). byetex-math documented `attach` but the converter never did it.
+- **Fix:** `emit_math_attach` maps the whole family to `attach(base, t|b: script)`
+  (top-set overset/stackrel/accentset, bottom-set underset/underaccent). 2605.31510:
+  `"accentset"` 37→0, replaced by 37 `attach(...)`. 5 TDD tests.
 
 ### F9. `byetex-using-warnings-json`: ranges are LaTeX lines, not `.typ` lines — 2 papers, peak sev 4 (major) — ROUTE: Loop B (skill + tool)
 - **Symptom:** the skill says "fix the `.typ` at the given line/column range", but the
