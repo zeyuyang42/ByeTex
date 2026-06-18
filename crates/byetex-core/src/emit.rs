@@ -3528,6 +3528,12 @@ impl<'a> Emitter<'a> {
             "\\frac" | "\\tfrac" | "\\dfrac" | "\\cfrac" => self.emit_math_frac(node),
             "\\sqrt" => self.emit_math_sqrt(node),
             "\\binom" | "\\dbinom" | "\\tbinom" => self.emit_math_binom(node),
+            // The overset family — `\cmd{script}{base}` places `script` above (or
+            // below, for `\underset`) `base`. Typst: `attach(base, t|b: script)`.
+            // Without this they dropped both args and leaked the bare name as a
+            // string (`"accentset"`, …). `\stackrel`/`\accentset` are top-set.
+            "\\overset" | "\\stackrel" | "\\accentset" => self.emit_math_attach(node, false),
+            "\\underset" | "\\underaccent" => self.emit_math_attach(node, true),
             // `\text{X}` and `\mathrm{X}` switch to upright text inside math.
             // Typst renders quoted strings as upright text in math context.
             // `\mbox{X}` and `\hbox{X}` are TeX-primitive boxes; in math

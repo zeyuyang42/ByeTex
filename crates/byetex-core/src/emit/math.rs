@@ -1212,6 +1212,43 @@ impl<'a> Emitter<'a> {
         consumed_end
     }
 
+    /// The overset family: `\overset{script}{base}` / `\stackrel{script}{rel}` /
+    /// `\accentset{accent}{base}` (top-set, `bottom=false`) and
+    /// `\underset{script}{base}` (`bottom=true`). LaTeX puts the FIRST arg above
+    /// (or below) the SECOND. Typst: `attach(base, t|b: script)`. Same two-arg
+    /// extraction as `\binom` (braced or braceless).
+    pub(in crate::emit) fn emit_math_attach(&mut self, node: Node<'_>, bottom: bool) -> usize {
+        let mut cursor = node.walk();
+        let groups: Vec<Node<'_>> = node
+            .children(&mut cursor)
+            .filter(|c| c.kind() == "curly_group")
+            .collect();
+        let mut rendered: Vec<String> = groups.iter().map(|g| self.render_math_group(*g)).collect();
+        let mut consumed_end = node.end_byte();
+        while rendered.len() < 2 {
+            match try_consume_math_arg(self.src, consumed_end) {
+                Some((arg, end)) => {
+                    rendered.push(self.render_braceless_math_arg(arg));
+                    consumed_end = end;
+                }
+                None => break,
+            }
+        }
+        if rendered.len() < 2 {
+            self.warn_ambiguous_math(node, "\\overset-family (missing args)");
+            return node.end_byte();
+        }
+        if consumed_end > node.end_byte() {
+            self.skip_until = self.skip_until.max(consumed_end);
+        }
+        let script = rendered[0].trim();
+        let base = rendered[1].trim();
+        let mark = if bottom { "b" } else { "t" };
+        self.ensure_math_letter_boundary("attach(");
+        let _ = write!(self.out, "attach({base}, {mark}: {script})");
+        consumed_end
+    }
+
     /// Subscript/superscript: emit the marker, then the argument. Single-char
     /// args go through unwrapped; multi-char args wrap in parens.
     pub(in crate::emit) fn emit_subscript(&mut self, node: Node<'_>, marker: &str) -> usize {
