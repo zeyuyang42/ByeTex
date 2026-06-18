@@ -3,7 +3,7 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
-## [0.4.2] — unreleased
+## [0.4.3] — unreleased
 
 Autonomous-dev cycle: a self-improving loop that raises converter fidelity and
 hardens the agent surface, dogfooded by a fresh model each tick. Highlights below.
@@ -34,6 +34,8 @@ hardens the agent surface, dogfooded by a fresh model each tick. Highlights belo
   like the `abstract` environment instead of being dropped.
 - Author-block marker leak: `\footnotemark[N]` (and other `\cmd[opt]` markers) no
   longer leak their `[N]` as literal text next to author names.
+- NeurIPS multi-author blocks (`\textbf{Name}$^{n}$ \quad …` with a `$^{n}$`
+  affiliation legend) now split into separate authors instead of one concatenated name.
 
 ## [0.3.0] — 2026-06-15
 

@@ -383,8 +383,17 @@ fn map_font_size_option(opt: &str) -> Option<&'static str> {
 /// hints rewrite IEEE / NeurIPS-style author blocks first.
 pub(crate) fn parse_authors(raw: &[String], class: &DocClass) -> Vec<Author> {
     let mut out = Vec::new();
-    for s in raw {
-        let s = sanitize_author_block(s);
+    for s_raw in raw {
+        // The NeurIPS multi-`\textbf{Name}$^{n}$ \quad …` pattern must be detected on
+        // the RAW string: `sanitize_author_block` unwraps `\textbf` and drops `\quad`,
+        // destroying the author boundaries before the line-based parser can see them.
+        if matches!(class, DocClass::Neurips | DocClass::Icml | DocClass::Iclr) {
+            if let Some(authors) = parse_neurips_textbf_authors(s_raw) {
+                out.extend(authors);
+                continue;
+            }
+        }
+        let s = sanitize_author_block(s_raw);
         let s = s.as_str();
         match class {
             DocClass::IeeeTran { .. } => out.extend(parse_ieee_block(s)),
@@ -747,7 +756,110 @@ fn parse_ieee_affiliation(raw: &str) -> crate::document::Affiliation {
 }
 
 /// NeurIPS / lucky-icml — `\author{Alice\thanks{equal}\\Affil\\\texttt{alice@x.org}}`.
+/// Find the digits of the first `^{n}` / `^n` superscript in `s` (e.g. an
+/// affiliation ref after an author name). Returns `None` if there's no numeric
+/// superscript.
+fn first_superscript_digits(s: &str) -> Option<String> {
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'^' {
+            let mut j = i + 1;
+            if j < bytes.len() && bytes[j] == b'{' {
+                j += 1;
+            }
+            let start = j;
+            while j < bytes.len() && bytes[j].is_ascii_digit() {
+                j += 1;
+            }
+            if j > start {
+                return Some(s[start..j].to_string());
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
+/// A NeurIPS affiliation-legend token like `$^{1}$Rensselaer Polytechnic Institute`
+/// → `("1", "Rensselaer Polytechnic Institute")`. Returns `None` for non-legend
+/// tokens (no leading superscript ref).
+fn parse_affil_legend(tok: &str) -> Option<(String, String)> {
+    let t = tok.trim().trim_start_matches('$').trim_start();
+    let after = t.strip_prefix('^')?;
+    let (refnum, rest) = if let Some(after_brace) = after.strip_prefix('{') {
+        let close = after_brace.find('}')?;
+        (after_brace[..close].trim().to_string(), &after_brace[close + 1..])
+    } else {
+        let end = after
+            .find(|c: char| !c.is_ascii_digit())
+            .unwrap_or(after.len());
+        (after[..end].to_string(), &after[end..])
+    };
+    let inst = rest.trim().trim_start_matches('$').trim().to_string();
+    if refnum.is_empty() || inst.is_empty() {
+        return None;
+    }
+    Some((refnum, inst))
+}
+
+/// NeurIPS multi-author pattern with NO `\and`: `\textbf{Name}$^{n}$` entries
+/// separated by `\quad` / `\\`, followed by a `$^{n}$Institution` legend (corpus
+/// 2605.22786). Splits each `\textbf` into its own author and attaches the legend
+/// affiliation by ref. Returns `None` (fall through to the line-based parser) unless
+/// the pattern clearly matches (≥2 `\textbf` authors, no `\and`).
+fn parse_neurips_textbf_authors(s: &str) -> Option<Vec<Author>> {
+    // Require `\quad` — the in-row author separator that defines this pattern. Its
+    // presence distinguishes a multi-author row from `\textbf{Name}\\\textbf{Affil}`
+    // (a bold affiliation on its own `\\` line), which must NOT be split.
+    if s.contains("\\and") || !s.contains("\\quad") || s.matches("\\textbf{").count() < 2 {
+        return None;
+    }
+    let tokens: Vec<String> = s
+        .split("\\quad")
+        .flat_map(|t| t.split("\\\\"))
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+        .collect();
+    let mut specs: Vec<(String, Option<String>)> = Vec::new();
+    let mut legend: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for tok in &tokens {
+        if let Some(tb) = tok.find("\\textbf{") {
+            let brace = tb + "\\textbf".len();
+            if let Some(close) = matched_close_brace(tok, brace) {
+                let raw_name = &tok[brace + 1..close];
+                let name = latex_text_to_typst(&strip_textsuperscript(raw_name))
+                    .trim()
+                    .to_string();
+                let refnum = first_superscript_digits(&tok[close..]);
+                if !name.is_empty() {
+                    specs.push((name, refnum));
+                }
+            }
+        } else if let Some((r, inst)) = parse_affil_legend(tok) {
+            legend.entry(r).or_insert(inst);
+        }
+    }
+    if specs.len() < 2 {
+        return None;
+    }
+    Some(
+        specs
+            .into_iter()
+            .map(|(name, refnum)| Author {
+                affiliation: refnum.and_then(|r| legend.get(&r)).map(|inst| {
+                    crate::document::Affiliation::from_raw(Content::Typst(latex_text_to_typst(inst)))
+                }),
+                name: Content::Typst(name),
+                ..Author::default()
+            })
+            .collect(),
+    )
+}
+
 fn parse_neurips_block(s: &str) -> Vec<Author> {
+    // (The multi-`\textbf` no-`\and` pattern is handled pre-sanitize in
+    // `parse_authors`, since sanitize strips `\textbf`/`\quad`.)
     // Normalise \And / \AND → \and so a single split covers all variants.
     let normalised = s.replace("\\AND", "\\and").replace("\\And", "\\and");
     let s = normalised.as_str();
@@ -1566,6 +1678,35 @@ mod tests {
         assert_eq!(v[0].name.as_content().trim(), "Alice");
         assert_eq!(v[1].name.as_content().trim(), "Bob");
         assert_eq!(v[2].name.as_content().trim(), "Carol");
+    }
+
+    #[test]
+    fn neurips_quad_separated_textbf_authors_split() {
+        // NeurIPS pattern with NO \and: `\textbf{Name}$^{n}$` separated by \quad /
+        // \\, then a `$^{n}$Institution` legend. Used to collapse all names into one
+        // (corpus 2605.22786). Each \textbf author must become its own entry, and the
+        // legend lines must NOT be parsed as authors.
+        let raw = "\\textbf{Sadia Asif}$^{1}$ \\quad \\textbf{Mohammad Amiri}$^{1}$ \\quad \\textbf{Momin Abbas}$^{2}$ \\\\ $^{1}$Rensselaer Polytechnic Institute \\\\ $^{2}$IBM Research".to_string();
+        let authors = parse_authors(&[raw], &DocClass::Neurips);
+        let names: Vec<String> = authors
+            .iter()
+            .map(|a| a.name.as_content().trim().to_string())
+            .collect();
+        assert_eq!(authors.len(), 3, "expected 3 authors, got: {names:?}");
+        assert_eq!(names[0], "Sadia Asif");
+        assert_eq!(names[1], "Mohammad Amiri");
+        assert_eq!(names[2], "Momin Abbas");
+    }
+
+    #[test]
+    fn bold_affiliation_not_split_as_author() {
+        // Code-review guard: a single author that bolds BOTH name and affiliation on
+        // `\\` lines (no `\quad`) must NOT be split into two authors.
+        let raw = "\\textbf{Alice}\\\\\\textbf{MIT}\\\\alice@x.org".to_string();
+        let authors = parse_authors(&[raw], &DocClass::Neurips);
+        assert_eq!(authors.len(), 1, "must stay 1 author; got: {:?}",
+            authors.iter().map(|a| a.name.as_content()).collect::<Vec<_>>());
+        assert_eq!(authors[0].name.as_content().trim(), "Alice");
     }
 
     #[test]
