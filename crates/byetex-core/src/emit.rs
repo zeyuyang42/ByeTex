@@ -35,7 +35,9 @@ mod tables;
 mod typography;
 pub(in crate::emit) use bibliography::harvest_bib_keys_from_dir;
 pub(crate) use braceless::{consume_braceless_arg, try_consume_math_arg, BracelessArg};
-pub(in crate::emit) use braceless::{consume_trailing_brace_groups, substitute_macro_args};
+pub(in crate::emit) use braceless::{
+    consume_trailing_arg_groups, consume_trailing_brace_groups, substitute_macro_args,
+};
 pub(crate) use escape::{
     escape_paren_semicolons, escape_text_cell, escape_text_for_typst_content,
     escape_unbalanced_math_brackets, is_typst_label_char, needs_text_escape, sanitize_label_key,
@@ -1172,6 +1174,25 @@ impl<'a> Emitter<'a> {
         // leaked verbatim through the default walker (corpus 2605.22779 spilled
         // `\begin{comment}`/`\end{comment}` next to the body). Drop it whole.
         if node.kind() == "comment_environment" {
+            return node.end_byte();
+        }
+
+        // Counter-manipulation commands (`\setcounter`, `\addtocounter`,
+        // `\stepcounter`, `\refstepcounter`, `\newcounter`) get dedicated
+        // tree-sitter node kinds, so they never reach `emit_generic_command` and
+        // the default walker copied them verbatim into the body (dogfood F5). They
+        // produce no visible output — drop the whole node (args are children).
+        // NOT `counter_value`/`counter_typesetting` (`\value`/`\arabic`/`\the…`),
+        // which DO render and must fall through.
+        if matches!(
+            node.kind(),
+            "counter_definition"
+                | "counter_addition"
+                | "counter_increment"
+                | "counter_declaration"
+                | "counter_within_declaration"
+                | "counter_without_declaration"
+        ) {
             return node.end_byte();
         }
 
@@ -2349,8 +2370,22 @@ impl<'a> Emitter<'a> {
                 self.warn_silently_dropped(node);
                 consume_trailing_inline_space(self.src, node.end_byte())
             }
-            // Float/figure placement specifiers + page-style controls. These are
-            // inert in Typst and carry no visible content — drop silently.
+            // minted config — takes an OPTIONAL `[lang]` plus a `{opts}` brace
+            // group. No visible output; drop it with its args (the options leaked
+            // into the body, dogfood F5). Only these take a `[opt]`, so they're the
+            // only commands allowed to consume a leading `[...]`.
+            Some("\\setminted") | Some("\\setmintedinline") | Some("\\usemintedstyle") => {
+                let end = consume_trailing_arg_groups(self.src, node.end_byte(), true);
+                self.skip_until = self.skip_until.max(end);
+                end
+            }
+            // Inert no-output commands: counter/length setters + page-style
+            // controls. They carry no visible content — drop silently. Their
+            // `{arg}` groups are parsed as CHILDREN (covered by `node.end_byte()`),
+            // so we must NOT greedily consume following groups — that would eat real
+            // body content (`\pagestyle{x} {bold}` / `\pagestyle{x}\n\n{para}`).
+            // The `\setcounter`-family that DID leak gets its own node-kind drop
+            // higher up (`counter_*`), so these never need trailing consumption.
             Some("\\setcounter")
             | Some("\\pagestyle")
             | Some("\\thispagestyle")
@@ -2361,9 +2396,7 @@ impl<'a> Emitter<'a> {
             | Some("\\setlength")
             | Some("\\addtolength")
             | Some("\\settowidth")
-            | Some("\\bibliographystyle") => {
-                node.end_byte()
-            }
+            | Some("\\bibliographystyle") => node.end_byte(),
             // `\geometry{key=val,...}` — page margins / paper size. Parse the
             // raw argument into the layout (same keys as the geometry package
             // options); drop the command itself.
