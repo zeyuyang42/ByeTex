@@ -34,7 +34,7 @@ Cargo.lock.bak
 /byetex-*/
 
 # Visual regression test artifacts (composites, rasterized pages, reports)
-/tests/visual/
+/tests/visual
 
 # Generated outputs from manual CLI demo runs against fixtures
 /tests/fixtures/**/*.typ
