@@ -112,6 +112,17 @@ BYETEX_BIN=../ByeTex-<slug>/target/release/byetex ./scripts/acceptance.sh   # ex
 CI is unreliable and **red CI is acceptable** — the *local* gates above are the real
 check. Never block on GitHub Actions.
 
+### 4.5. Code-review the diff (every tick, before merge)
+Run `/code-review` on the worktree diff (the `code-review` skill, effort `medium` for a
+typical one-item fix; `high` for a larger/riskier change). It reviews for correctness
+bugs and reuse/simplification cleanups.
+- **Triage every finding.** Apply the real ones (re-run the step-4 gates after any
+  edit). Genuinely-wrong or out-of-scope findings: note why and skip — do not
+  perform-fix. A finding that reveals a real correctness bug is a **merge blocker**:
+  fix it (or, if the fix is ambiguous, stop and ask the user) before step 5.
+- This is a *quality* gate layered on the *correctness* gates above; it does not replace
+  `cargo test` / acceptance / fidelity. Keep it to the diff, not a whole-repo audit.
+
 ### 5. Open the PR and auto-merge on green
 ```bash
 gh pr create --fill --base main
@@ -188,9 +199,10 @@ compile reached only via a *workaround* is still `NEEDS_FIX` — that's the gap 
 ## Division of labor
 
 **Orchestrator (Claude), each tick:** measure → pick one item → TDD fix in a worktree →
-local gates → auto-merge on green → dogfood the hardest 3 with a fresh Sonnet agent →
-route friction into the backlog → run the visual grader on render changes → self-pace
-the next tick. Keeps `cargo test`, acceptance, and fidelity green; one PR per fix.
+local gates → **`/code-review` the diff and apply real findings** → auto-merge on green →
+dogfood the hardest 3 with a fresh Sonnet agent → route friction into the backlog → run
+the visual grader on render changes → self-pace the next tick. Keeps `cargo test`,
+acceptance, and fidelity green; one PR per fix.
 
 **User:** start the loop (`/loop`); answer the corpus-expansion gate (which use cases to
 add, approve pulling data); adjudicate ambiguous gate regressions and legitimate
