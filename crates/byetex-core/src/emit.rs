@@ -58,7 +58,7 @@ pub(in crate::emit) use node_utils::{
     extract_label_ref_keys_and_end, first_curly_group, first_curly_like, flatten_text_children,
     is_command, is_comment, is_section_kind, leading_font_switch, math_font_decl_wrapper,
     named_color, needs_empty_base, needs_subscript_parens, nth_curly_group, parse_definecolor,
-    range_of, section_level, skip_balanced_braces, split_math_rows,
+    peek_tex_assignment_end, range_of, section_level, skip_balanced_braces, split_math_rows,
 };
 pub(in crate::emit) use preamble::{
     build_neutral_preamble, extract_class_and_options, extract_latex_include_path,
@@ -1662,6 +1662,20 @@ impl<'a> Emitter<'a> {
         if self.in_math {
             return self.emit_math_command(node, name.as_deref());
         }
+
+        // TeX register/penalty/dimen/skip assignments (`\clubpenalty=300`,
+        // `\interfootnotelinepenalty=10000`, `\parindent=2em`,
+        // `\parskip=0pt plus 1pt minus 1pt`) are preamble-tuning primitives with no
+        // visual content. The grammar parses the command alone and leaves the
+        // `=<value>` tail as sibling tokens that leaked into the body as text
+        // (corpus 2605.31586: `=10000` rendered as a stray heading). Drop the
+        // command (still warned) AND consume the assignment tail.
+        if let Some(end) = peek_tex_assignment_end(self.src, node.end_byte()) {
+            self.warn_unsupported_command(node);
+            self.skip_until = self.skip_until.max(end);
+            return end;
+        }
+
         // `\verb<delim>content<delim>`: tree-sitter does not model the verb
         // delimiter scope, so we manually consume the source from the byte
         // after `\verb` to the next occurrence of the delimiter, and skip any

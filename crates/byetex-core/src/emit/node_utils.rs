@@ -719,3 +719,74 @@ pub(in crate::emit) fn normalize_label_key(raw: &str) -> String {
     }
     sanitize_label_key(&out)
 }
+
+/// Detect a TeX register/penalty/dimen/skip assignment tail immediately following
+/// a control word — `\clubpenalty=300`, `\interfootnotelinepenalty=10000`,
+/// `\parindent=2em`, `\parskip=0pt plus 1pt minus 1pt`. Given the byte offset just
+/// past the command, returns the offset past the whole `=<value>[ plus <d>][ minus
+/// <d>]` tail, or `None` when no numeric assignment follows. The leading `=` plus a
+/// numeric value is required, so ordinary text and non-assignment commands never
+/// match.
+pub(in crate::emit) fn peek_tex_assignment_end(src: &str, after_cmd: usize) -> Option<usize> {
+    let bytes = src.as_bytes();
+    let mut i = after_cmd;
+    let skip_blanks = |i: &mut usize| {
+        while *i < bytes.len() && (bytes[*i] == b' ' || bytes[*i] == b'\t') {
+            *i += 1;
+        }
+    };
+    skip_blanks(&mut i);
+    if bytes.get(i) != Some(&b'=') {
+        return None;
+    }
+    i += 1;
+    skip_blanks(&mut i);
+    // A dimension/number: optional sign, digits with optional decimal point, then
+    // an optional unit (letters: pt/em/cm/in/sp/ex/bp/pc/mu/dd/cc…). Returns the
+    // end offset, or None if no digit is present.
+    let read_number = |start: usize| -> Option<usize> {
+        let mut i = start;
+        if matches!(bytes.get(i), Some(b'-') | Some(b'+')) {
+            i += 1;
+        }
+        let mut saw_digit = false;
+        while i < bytes.len() && (bytes[i].is_ascii_digit() || bytes[i] == b'.') {
+            if bytes[i].is_ascii_digit() {
+                saw_digit = true;
+            }
+            i += 1;
+        }
+        if !saw_digit {
+            return None;
+        }
+        while i < bytes.len() && bytes[i].is_ascii_alphabetic() {
+            i += 1;
+        }
+        Some(i)
+    };
+    i = read_number(i)?;
+    // Optional glue stretch/shrink: ` plus <dim>` / ` minus <dim>`, repeatable.
+    loop {
+        let mut j = i;
+        while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t') {
+            j += 1;
+        }
+        let rest = &src[j..];
+        let kw_len = if rest.starts_with("plus") {
+            4
+        } else if rest.starts_with("minus") {
+            5
+        } else {
+            break;
+        };
+        let mut k = j + kw_len;
+        while k < bytes.len() && (bytes[k] == b' ' || bytes[k] == b'\t') {
+            k += 1;
+        }
+        match read_number(k) {
+            Some(end) => i = end,
+            None => break,
+        }
+    }
+    Some(i)
+}
