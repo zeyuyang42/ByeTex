@@ -73,8 +73,10 @@ Resolved.
   used the recipe successfully ("provided the exact recipe to rebuild tcolorboxes");
   grey placeholder → 3 styled framed boxes matching truth. The major `unclear_skill_note`
   that drove that run's NEEDS_FIX was the routing gap, now closed by #274.
-- **Residual (→ F1):** the agent still had to improvise `figure*` two-column spanning
-  (`placement: top, scope: "parent"`) — folded into F1/two-column-spanning, not F3.
+- ~~**Residual: `figure*` two-column spanning**~~ — ✅ RESOLVED (PR #276): `emit_figure`
+  now wraps a starred float (`figure*`/`table*`) in `#place(top, scope: "parent",
+  float: true)[…]` under two-column, so wide floats (and rebuilt `needs_manual_review`
+  boxes) span both columns automatically. 5 TDD tests.
 
 ## Open — P2 (polish / low frequency)
 
