@@ -551,6 +551,19 @@ impl<'a> Emitter<'a> {
         });
         let inner = self.emit_figure_inner(&body_str, kind, caption_text.as_deref());
         self.ensure_paragraph_break();
+        // A starred float (`figure*` / `table*`) spans BOTH columns in a
+        // two-column layout; Typst needs an explicit parent-scope floating place
+        // for that (a plain `#figure` stays inside one column). In one-column mode
+        // the star is a no-op, so only wrap when the document is two-column.
+        let spanning = environment_name(node, self.src)
+            .as_deref()
+            .map(|n| n.ends_with('*'))
+            .unwrap_or(false)
+            && self.layout.is_two_column(&self.detected_class);
+        if spanning {
+            self.out
+                .push_str("#place(top, scope: \"parent\", float: true)[\n  ");
+        }
         self.out.push('#');
         self.out.push_str(&inner);
         // Attach the referenced alias (or the first label); then give every
@@ -562,6 +575,9 @@ impl<'a> Emitter<'a> {
             if self.label_first_use(l) {
                 let _ = write!(self.out, " <{}>", l);
             }
+        }
+        if spanning {
+            self.out.push_str("\n]");
         }
         for l in &labels {
             if Some(l) != primary.as_ref()
