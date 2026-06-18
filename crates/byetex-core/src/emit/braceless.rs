@@ -87,38 +87,48 @@ pub(crate) fn try_consume_math_arg(src: &str, start: usize) -> Option<(Braceless
     consume_braceless_arg(src, start)
 }
 
-/// Starting at `start`, skip leading whitespace then consume zero or more
-/// consecutive balanced `{...}` argument groups, returning the byte index past
-/// the last one (or `start` if none follow). Used to gather the brace args of a
-/// structural command that was consumed brace-less, e.g. the `{a}{b}` of
-/// `\sqrt\frac{a}{b}`.
-pub(in crate::emit) fn consume_trailing_brace_groups(src: &str, start: usize) -> usize {
+/// Shared scanner for [`consume_trailing_brace_groups`] and
+/// [`consume_trailing_arg_groups`]: from `start`, skip inter-group whitespace and
+/// consume consecutive balanced groups, returning the byte index past the last one.
+/// `allow_bracket` also accepts `[...]` groups (optional args); `stop_at_paragraph`
+/// halts at a blank line (so a `{...}`/`[...]` that opens the NEXT paragraph isn't
+/// swallowed — required when *dropping* groups, vs *emitting* them).
+fn consume_groups(src: &str, start: usize, allow_bracket: bool, stop_at_paragraph: bool) -> usize {
     let bytes = src.as_bytes();
     let mut i = start;
     loop {
         let mut j = i;
+        let mut newlines = 0;
         while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+            if bytes[j] == b'\n' {
+                newlines += 1;
+                // A blank line ends the argument list: the next group belongs to
+                // a new paragraph, not this command.
+                if stop_at_paragraph && newlines >= 2 {
+                    return i;
+                }
+            }
             j += 1;
         }
-        if j >= bytes.len() || bytes[j] != b'{' {
-            return i;
-        }
+        let (opener, closer) = match bytes.get(j) {
+            Some(b'{') => (b'{', b'}'),
+            Some(b'[') if allow_bracket => (b'[', b']'),
+            _ => return i,
+        };
         let mut depth = 1i32;
         let mut k = j + 1;
         while k < bytes.len() {
-            match bytes[k] {
-                b'\\' if k + 1 < bytes.len() => {
-                    k += 2;
-                    continue;
+            let c = bytes[k];
+            if c == b'\\' && k + 1 < bytes.len() {
+                k += 2;
+                continue;
+            } else if c == opener {
+                depth += 1;
+            } else if c == closer {
+                depth -= 1;
+                if depth == 0 {
+                    break;
                 }
-                b'{' => depth += 1,
-                b'}' => {
-                    depth -= 1;
-                    if depth == 0 {
-                        break;
-                    }
-                }
-                _ => {}
             }
             k += 1;
         }
@@ -128,6 +138,29 @@ pub(in crate::emit) fn consume_trailing_brace_groups(src: &str, start: usize) ->
         }
         i = k + 1;
     }
+}
+
+/// Starting at `start`, skip leading whitespace then consume zero or more
+/// consecutive balanced `{...}` argument groups, returning the byte index past
+/// the last one (or `start` if none follow). Used to gather the brace args of a
+/// structural command that was consumed brace-less, e.g. the `{a}{b}` of
+/// `\sqrt\frac{a}{b}` — the groups are then EMITTED, so it greedily spans
+/// whitespace (math args don't contain paragraph breaks).
+pub(in crate::emit) fn consume_trailing_brace_groups(src: &str, start: usize) -> usize {
+    consume_groups(src, start, false, false)
+}
+
+/// Consume the trailing argument groups of a no-output command that is being
+/// DROPPED (`\setcounter{c}{n}`, `\setminted[opt]{opts}`, …) so they don't leak
+/// into the body. `allow_bracket` accepts a leading `[opt]` (only the minted-family
+/// commands take one); always stops at a paragraph break so a following
+/// paragraph's leading group is never eaten.
+pub(in crate::emit) fn consume_trailing_arg_groups(
+    src: &str,
+    start: usize,
+    allow_bracket: bool,
+) -> usize {
+    consume_groups(src, start, allow_bracket, true)
 }
 
 pub(crate) fn consume_braceless_arg(src: &str, start: usize) -> Option<(BracelessArg, usize)> {
