@@ -3,7 +3,33 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
-## [0.3.0] — unreleased
+## [0.4.0] — unreleased
+
+Autonomous-dev cycle: a self-improving loop that raises converter fidelity and
+hardens the agent surface, dogfooded by a fresh model each tick. Highlights below.
+
+### Added
+- **`byetex diagnose <file.typ>`** — diagnose an already-edited Typst file IN PLACE
+  (compile + map errors, no re-convert), so an agent's fixes survive; wired into the
+  CLI, the MCP `diagnose` tool, and the agent_brief / repair-loop guidance.
+- **ACL venue page geometry** — auto-detect `acl.sty` and apply a4 paper, 2.5cm
+  margins and a 10pt body (the values the venue forces over the class options).
+- **`tcolorbox` recipe** — a reusable `#block`-based translation in the
+  `byetex-unsupported-environment` skill, plus `needs_manual_review` skill routing.
+- **overset family** — `\overset`/`\underset`/`\stackrel`/`\accentset` → Typst
+  `attach(base, t|b: script)` (previously dropped both args).
+
+### Fixed
+- array `>{…}` column-decorator alignment now propagates to the Typst column.
+- Numerous body-leak bugs: `\footnotemark[N]`, heading underscore `\label`, TeX
+  register/penalty `=NNNN` tails, `\ExplSyntaxOn…\ExplSyntaxOff` expl3 regions,
+  `\setminted`/counter-command arguments.
+- `figure*` / `table*` now span both columns in two-column layouts.
+- `byetex-math` skill: `op(..., limits: #true)` (bare `true` doesn't compile) +
+  `chevron.l/.r` over deprecated `angle.l/.r`; `byetex-getting-started` gained a
+  fidelity-phase section.
+
+## [0.3.0] — 2026-06-15
 
 Agent-in-the-loop hardening + distribution. The MCP server grows from 7 to
 **11 tools**, the visual-fidelity loop becomes one command, and ByeTex ships as a
