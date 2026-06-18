@@ -14,7 +14,10 @@ pub fn default_skill_for(cat: &Category) -> Option<&'static str> {
         Category::ParseError { .. } => Some("byetex-parse-error"),
         Category::AmbiguousMath { .. } => Some("byetex-math"),
         Category::UnsupportedCommand { .. } => Some("byetex-using-warnings-json"),
-        Category::NeedsManualReview { .. } => Some("byetex-using-warnings-json"),
+        // A `needs_manual_review` construct was dropped for the agent to rebuild by
+        // hand — point at the actionable translation recipe (covers tcolorbox,
+        // custom environments, …), not the meta-guide on reading warnings.json.
+        Category::NeedsManualReview { .. } => Some("byetex-unsupported-environment"),
         Category::UnknownPackage { .. } => Some("byetex-using-warnings-json"),
         Category::DropOnly { .. } => None,
     }

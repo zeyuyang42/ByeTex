@@ -37,6 +37,16 @@ fn tikz_maps_to_tikz_skill() {
 }
 
 #[test]
+fn needs_manual_review_routes_to_unsupported_environment() {
+    // A `needs_manual_review` construct (e.g. a dropped tcolorbox figure) needs the
+    // actionable rebuild recipe, not the meta-guide on reading warnings.json.
+    assert_eq!(
+        default_skill_for(&Category::NeedsManualReview { reason: "x".into() }),
+        Some("byetex-unsupported-environment")
+    );
+}
+
+#[test]
 fn ambiguous_math_maps_to_math_skill() {
     assert_eq!(
         default_skill_for(&Category::AmbiguousMath { reason: "x".into() }),
