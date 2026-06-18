@@ -43,15 +43,16 @@ Resolved.
   options, `\begin{document}`+affiliation, `\refstepcounter{ALC@line}`/`12pt`/
   `url@samestyle` leak sources. Pairs with F12 (`leaked_to_body` vs `dropped_silently`).
 
-### F6. `byetex diagnose <main.typ>` (PR #278) is shipped but not DISCOVERABLE — 3 papers, peak sev 4 — ROUTE: Loop B (surface)
+### F6. `byetex diagnose <main.typ>` (PR #278) is shipped but not DISCOVERABLE — 3 papers, peak sev 4 — ✅ ADDRESSED (PR #284), verify next round
 - **Symptom:** all 3 agents *still* wished for "diagnose --incremental on the edited
-  .typ" — even though #278 added exactly that and updated `byetex-repair-loop`. During
-  **fidelity** work the seed already compiles, so agents never enter the repair loop /
-  read that skill, and never discover the capability.
-- **Next:** surface "re-scan an edited `.typ` with `byetex diagnose <main.typ>`" where
-  fidelity agents actually look — the agent_brief's fidelity guidance (not just the
-  "How to repair" section) and `byetex-getting-started`. Cheap, high-leverage (the
-  feature already exists; it just isn't found).
+  .typ" — even though #278 added exactly that. Root cause: `byetex-getting-started` (the
+  FIRST skill read) still carried the stale "Critical rule: do NOT re-run byetex
+  diagnose" and had **no fidelity-phase guidance**, so during fidelity work (seed already
+  compiles) agents never reached `byetex-repair-loop` where #278 was documented.
+- **Fix (PR #284):** rewrote `byetex-getting-started` — replaced the stale rule with the
+  in-place `byetex diagnose paper.typ` guidance, added a "fidelity phase" section, framed
+  the task as compile→fidelity. **Verify on the next dogfood round** (do the agents stop
+  asking for it / start using `diagnose <main.typ>`).
 
 
 ### F1. `diagnose --incremental` — re-diagnosing an edited `.typ` WIPES the edits — 3 papers, peak sev 4 — ✅ RESOLVED (PR #278)
