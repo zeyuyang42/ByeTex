@@ -31,16 +31,14 @@ Resolved.
 > (`2606.12397`, `2605.22765`, `2605.22786`) after round-2 cleared. **F6 VERIFIED
 > LANDED** (all 3 agents now use `byetex diagnose paper.typ`). New theme below.
 
-### G1. Author-block parsing — 3 papers, peak sev 4 (major) — ROUTE: Loop A (authors)
+### G1. Author-block parsing — 3 papers, peak sev 4 (major) — ✅ MOSTLY RESOLVED (#299 + #301)
 - **Symptom:** author blocks mis-parse across all 3 papers. (a) marker leak
-  `\footnotemark[1]`→`\[1\]` (2606.12397) — **✅ fixed PR #299**; (b) **5 authors
-  CONCATENATED into one name** string (2605.22786, NeurIPS `\textbf`+`\quad`+`\\`
-  pattern) — the main remaining bug; (c) missing per-author affiliation superscripts +
-  bracket/`\blfootnote`/`\addtocounter` leaks (2605.22765).
-- **Next:** fix author SPLITTING for the `\textbf{Name}$^{n}$ \quad \textbf{Name}…\\
-  affil` pattern (parse_neurips_block / parse_generic_block) so each author is separate
-  with its affiliation; strip `\blfootnote`/leaked markers. The memory note
-  [[project-visual-grading-loop]] flagged this as MAJOR in 6/8 papers — high value.
+  `\footnotemark[1]`→`\[1\]` (2606.12397) — **✅ #299**; (b) **5 authors CONCATENATED
+  into one name** (2605.22786, NeurIPS `\textbf`+`\quad` pattern) — **✅ #301**
+  (`parse_neurips_textbf_authors`, splits + attaches `$^{n}$` legend affiliations).
+- **Residual (P2):** `\blfootnote` / `\addtocounter{c}{-1}` (negative-value counter
+  that doesn't node-parse) still leak (2605.22765); per-author affiliation-superscript
+  display is approximate. Low value — revisit if a dogfood re-flags it.
 
 ### G2. `unsupported_command` → `byetex-using-warnings-json` circular routing — 2 papers, sev 4 (major) — ROUTE: Loop B
 - **Symptom:** 96 `unsupported_command` warnings all `suggested_skill =
