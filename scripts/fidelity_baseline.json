@@ -10,21 +10,13 @@
       "structure_ok": true,
       "word_recall": 0.871
     },
-    "2605.22159\n2605.22281\n2605.22312\n2605.22315\n2605.22485\n2605.22507\n2605.22549\n2605.22557\n2605.22579\n2605.22584\n2605.22724\n2605.22728\n2605.22736\n2605.22738\n2605.22746\n2605.22765\n2605.22776\n2605.22779\n2605.22786\n2605.22794\n2605.22795\n2605.22800\n2605.22814\n2605.22817\n2605.22820\n2605.22821\n2605.30609\n2605.30718\n2605.30843\n2605.31009\n2605.31011\n2605.31063\n2605.31072\n2605.31203\n2605.31244\n2605.31306\n2605.31345\n2605.31394\n2605.31440\n2605.31443\n2605.31499\n2605.31510\n2605.31526\n2605.31549\n2605.31561\n2605.31563\n2605.31564\n2605.31567\n2605.31579\n2605.31584\n2605.31586\n2605.31596\n2605.31597\n2605.31598\n2605.31603\n2605.31604\n2606.12397\n2606.12406\n2606.12411": {
-      "heading_recall": null,
-      "mean_ssim": null,
-      "page_ratio": null,
-      "status": "exception",
-      "structure_ok": false,
-      "word_recall": null
-    },
     "2605.22281": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.486,
+      "mean_ssim": 0.482,
       "page_ratio": 0.84,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.877
+      "word_recall": 0.882
     },
     "2605.22312": {
       "heading_recall": 1.0,
@@ -44,8 +36,8 @@
     },
     "2605.22485": {
       "heading_recall": 0.765,
-      "mean_ssim": 0.611,
-      "page_ratio": 1.0,
+      "mean_ssim": 0.612,
+      "page_ratio": 0.962,
       "status": "ok",
       "structure_ok": true,
       "word_recall": 0.921
@@ -56,15 +48,15 @@
       "page_ratio": 1.0,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.894
+      "word_recall": 0.893
     },
     "2605.22549": {
       "heading_recall": 0.952,
-      "mean_ssim": 0.553,
+      "mean_ssim": 0.552,
       "page_ratio": 1.231,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.883
+      "word_recall": 0.888
     },
     "2605.22557": {
       "heading_recall": 0.938,
@@ -76,7 +68,7 @@
     },
     "2605.22579": {
       "heading_recall": 0.975,
-      "mean_ssim": 0.489,
+      "mean_ssim": 0.478,
       "page_ratio": 1.2,
       "status": "ok",
       "structure_ok": true,
@@ -84,7 +76,7 @@
     },
     "2605.22584": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.554,
+      "mean_ssim": 0.552,
       "page_ratio": 1.0,
       "status": "ok",
       "structure_ok": true,
@@ -96,23 +88,23 @@
       "page_ratio": 1.109,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.847
+      "word_recall": 0.848
     },
     "2605.22728": {
       "heading_recall": 0.375,
       "mean_ssim": 0.598,
-      "page_ratio": 1.318,
+      "page_ratio": 1.273,
       "status": "structure_failed",
       "structure_ok": false,
       "word_recall": 0.898
     },
     "2605.22736": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.55,
+      "mean_ssim": 0.548,
       "page_ratio": 0.962,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.898
+      "word_recall": 0.899
     },
     "2605.22738": {
       "heading_recall": 0.925,
@@ -124,7 +116,7 @@
     },
     "2605.22746": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.585,
+      "mean_ssim": 0.582,
       "page_ratio": 1.111,
       "status": "ok",
       "structure_ok": true,
@@ -132,11 +124,11 @@
     },
     "2605.22765": {
       "heading_recall": 0.95,
-      "mean_ssim": 0.619,
+      "mean_ssim": 0.617,
       "page_ratio": 1.021,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.726
+      "word_recall": 0.728
     },
     "2605.22776": {
       "heading_recall": 1.0,
@@ -148,7 +140,7 @@
     },
     "2605.22779": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.394,
+      "mean_ssim": 0.395,
       "page_ratio": 1.333,
       "status": "structure_failed",
       "structure_ok": false,
@@ -156,11 +148,11 @@
     },
     "2605.22786": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.563,
+      "mean_ssim": 0.562,
       "page_ratio": 1.231,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.724
+      "word_recall": 0.725
     },
     "2605.22794": {
       "heading_recall": 1.0,
@@ -196,7 +188,7 @@
     },
     "2605.22817": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.54,
+      "mean_ssim": 0.543,
       "page_ratio": 1.083,
       "status": "ok",
       "structure_ok": true,
@@ -212,15 +204,15 @@
     },
     "2605.22821": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.585,
-      "page_ratio": 1.462,
+      "mean_ssim": 0.58,
+      "page_ratio": 1.308,
       "status": "structure_failed",
       "structure_ok": false,
       "word_recall": 0.746
     },
     "2605.30609": {
       "heading_recall": 0.917,
-      "mean_ssim": 0.606,
+      "mean_ssim": 0.607,
       "page_ratio": 0.75,
       "status": "ok",
       "structure_ok": true,
@@ -236,11 +228,11 @@
     },
     "2605.30843": {
       "heading_recall": 0.85,
-      "mean_ssim": 0.601,
+      "mean_ssim": 0.602,
       "page_ratio": 0.741,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.882
+      "word_recall": 0.883
     },
     "2605.31009": {
       "heading_recall": 1.0,
@@ -268,23 +260,23 @@
     },
     "2605.31072": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.586,
-      "page_ratio": 0.785,
+      "mean_ssim": 0.583,
+      "page_ratio": 0.772,
       "status": "ok",
       "structure_ok": true,
       "word_recall": 0.913
     },
     "2605.31203": {
       "heading_recall": 0.714,
-      "mean_ssim": 0.48,
+      "mean_ssim": 0.481,
       "page_ratio": 1.071,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.754
+      "word_recall": 0.748
     },
     "2605.31244": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.482,
+      "mean_ssim": 0.481,
       "page_ratio": 0.967,
       "status": "ok",
       "structure_ok": true,
@@ -296,11 +288,11 @@
       "page_ratio": 0.944,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.871
+      "word_recall": 0.865
     },
     "2605.31345": {
       "heading_recall": 0.944,
-      "mean_ssim": 0.571,
+      "mean_ssim": 0.57,
       "page_ratio": 1.26,
       "status": "ok",
       "structure_ok": true,
@@ -308,7 +300,7 @@
     },
     "2605.31394": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.559,
+      "mean_ssim": 0.558,
       "page_ratio": 0.971,
       "status": "ok",
       "structure_ok": true,
@@ -320,19 +312,19 @@
       "page_ratio": 1.0,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.934
+      "word_recall": 0.933
     },
     "2605.31443": {
       "heading_recall": 0.8,
-      "mean_ssim": 0.512,
+      "mean_ssim": 0.509,
       "page_ratio": 0.829,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.89
+      "word_recall": 0.893
     },
     "2605.31499": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.401,
+      "mean_ssim": 0.407,
       "page_ratio": 1.333,
       "status": "structure_failed",
       "structure_ok": false,
@@ -340,32 +332,32 @@
     },
     "2605.31510": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.456,
-      "page_ratio": 1.455,
-      "status": "structure_failed",
-      "structure_ok": false,
-      "word_recall": 0.823
-    },
-    "2605.31526": {
-      "heading_recall": 1.0,
-      "mean_ssim": 0.446,
+      "mean_ssim": 0.405,
       "page_ratio": 1.0,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.902
+      "word_recall": 0.846
+    },
+    "2605.31526": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.449,
+      "page_ratio": 1.077,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.904
     },
     "2605.31549": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.421,
-      "page_ratio": 1.2,
-      "status": "ok",
-      "structure_ok": true,
+      "mean_ssim": 0.43,
+      "page_ratio": 1.4,
+      "status": "structure_failed",
+      "structure_ok": false,
       "word_recall": 0.92
     },
     "2605.31561": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.577,
-      "page_ratio": 1.222,
+      "mean_ssim": 0.578,
+      "page_ratio": 1.167,
       "status": "ok",
       "structure_ok": true,
       "word_recall": 0.931
@@ -376,7 +368,7 @@
       "page_ratio": 1.25,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.867
+      "word_recall": 0.868
     },
     "2605.31564": {
       "heading_recall": 1.0,
@@ -396,11 +388,11 @@
     },
     "2605.31579": {
       "heading_recall": 0.967,
-      "mean_ssim": 0.562,
-      "page_ratio": 0.743,
+      "mean_ssim": 0.57,
+      "page_ratio": 0.771,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.856
+      "word_recall": 0.857
     },
     "2605.31584": {
       "heading_recall": 1.0,
@@ -408,27 +400,27 @@
       "page_ratio": 0.762,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.866
+      "word_recall": 0.865
     },
     "2605.31586": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.495,
+      "mean_ssim": 0.49,
       "page_ratio": 1.167,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.747
+      "word_recall": 0.748
     },
     "2605.31596": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.459,
-      "page_ratio": 0.895,
+      "mean_ssim": 0.462,
+      "page_ratio": 0.842,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.754
+      "word_recall": 0.755
     },
     "2605.31597": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.594,
+      "mean_ssim": 0.596,
       "page_ratio": 0.789,
       "status": "ok",
       "structure_ok": true,
@@ -448,23 +440,23 @@
       "page_ratio": 0.912,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.735
+      "word_recall": 0.737
     },
     "2605.31604": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.532,
-      "page_ratio": 0.938,
+      "mean_ssim": 0.536,
+      "page_ratio": 1.0,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.678
+      "word_recall": 0.673
     },
     "2606.12397": {
       "heading_recall": 0.87,
-      "mean_ssim": 0.502,
-      "page_ratio": 0.929,
+      "mean_ssim": 0.531,
+      "page_ratio": 1.0,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.717
+      "word_recall": 0.72
     },
     "2606.12406": {
       "heading_recall": 1.0,
@@ -472,15 +464,79 @@
       "page_ratio": 1.182,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.934
+      "word_recall": 0.935
     },
     "2606.12411": {
       "heading_recall": 0.95,
-      "mean_ssim": 0.503,
-      "page_ratio": 1.136,
+      "mean_ssim": 0.501,
+      "page_ratio": 1.182,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.843
+      "word_recall": 0.875
+    },
+    "ctan-memoir": {
+      "heading_recall": null,
+      "mean_ssim": null,
+      "page_ratio": null,
+      "status": "truth_render_failed",
+      "structure_ok": false,
+      "word_recall": null
+    },
+    "gh-amberj-latex-book-template": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.775,
+      "page_ratio": 0.312,
+      "status": "structure_failed",
+      "structure_ok": false,
+      "word_recall": 0.917
+    },
+    "gh-calpolycsc-thesis": {
+      "heading_recall": null,
+      "mean_ssim": null,
+      "page_ratio": null,
+      "status": "truth_render_failed",
+      "structure_ok": false,
+      "word_recall": null
+    },
+    "gh-dzwaneveld-tudelft-thesis": {
+      "heading_recall": null,
+      "mean_ssim": null,
+      "page_ratio": null,
+      "status": "truth_render_failed",
+      "structure_ok": false,
+      "word_recall": null
+    },
+    "gh-fmarotta-kaobook": {
+      "heading_recall": null,
+      "mean_ssim": null,
+      "page_ratio": null,
+      "status": "truth_render_failed",
+      "structure_ok": false,
+      "word_recall": null
+    },
+    "gh-maurovm-thesis-template": {
+      "heading_recall": null,
+      "mean_ssim": null,
+      "page_ratio": null,
+      "status": "truth_render_failed",
+      "structure_ok": false,
+      "word_recall": null
+    },
+    "gh-pelegs-maths-book": {
+      "heading_recall": null,
+      "mean_ssim": null,
+      "page_ratio": null,
+      "status": "truth_render_failed",
+      "structure_ok": false,
+      "word_recall": null
+    },
+    "gh-sikatikenmogne-report": {
+      "heading_recall": null,
+      "mean_ssim": null,
+      "page_ratio": null,
+      "status": "truth_render_failed",
+      "structure_ok": false,
+      "word_recall": null
     }
   }
 }
