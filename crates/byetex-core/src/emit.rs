@@ -45,8 +45,8 @@ pub(in crate::emit) use figures::parse_graphicspath_dirs;
 pub(in crate::emit) use macros::{
     extract_declare_math_operator_from_newcmd, extract_def_and_record, extract_environment_def,
     extract_let, extract_newcommand, extract_newcommandx, extract_newcommandx_and_end,
-    extract_theorem_def, find_makeatother_end, let_alias_def, new_command_token_kind,
-    read_newif_flag,
+    extract_theorem_def, find_explsyntaxoff_end, find_makeatother_end, let_alias_def,
+    new_command_token_kind, read_newif_flag,
 };
 pub(crate) use macros::{
     harvest_macros_from_source, harvest_referenced_labels_from_source, MacroDef,
@@ -2390,6 +2390,28 @@ impl<'a> Emitter<'a> {
             // `\makeatletter` block of an `\input`ed file would otherwise be
             // dropped). `harvest_definitions` re-parses the region and registers
             // them, parent-wins.
+            // `\ExplSyntaxOn ... \ExplSyntaxOff` brackets expl3 code (`\cs_new:Npn`,
+            // `\seq_new:N`, `\tl_set:Nn`, …) whose `:`/`_` argument-spec catcodes
+            // tree-sitter can't parse, so the region leaks verbatim through the copy
+            // path as garbage (corpus 2605.22821 leaked ~294 such lines). It is
+            // preamble-only with no renderable body, so skip it wholesale to the
+            // matching `\ExplSyntaxOff`, mirroring the `\makeatletter` region-skip.
+            Some("\\ExplSyntaxOn") => {
+                if let Some(end) = find_explsyntaxoff_end(self.src, node.end_byte()) {
+                    self.skip_until = self.skip_until.max(end);
+                    end
+                } else if !self.saw_document_class {
+                    // Unmatched in a preamble fragment — the remainder is all expl3.
+                    self.skip_until = self.src.len();
+                    self.src.len()
+                } else {
+                    node.end_byte()
+                }
+            }
+            // A stray `\ExplSyntaxOff` (no matching `\ExplSyntaxOn` on this walk —
+            // e.g. the `\ExplSyntaxOn` lived in an already-skipped region) is a
+            // no-op switch; drop it so it doesn't leak.
+            Some("\\ExplSyntaxOff") => node.end_byte(),
             Some("\\makeatletter") => {
                 if let Some(end) = find_makeatother_end(self.src, node.end_byte()) {
                     let region = &self.src[node.end_byte()..end];

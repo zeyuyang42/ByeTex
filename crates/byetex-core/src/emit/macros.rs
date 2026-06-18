@@ -1467,7 +1467,11 @@ pub(in crate::emit) fn extract_def_and_record(
 /// `\makeatother` mentioned in a comment doesn't end the region early), and the
 /// match is on the whole control word (so `\makeatotherwise` is not mistaken
 /// for the closer).
-pub(in crate::emit) fn find_makeatother_end(src: &str, from: usize) -> Option<usize> {
+/// Scan source bytes from `from` for the control word `target` (e.g.
+/// `\makeatother`), skipping `%` comments and control symbols, and return the byte
+/// offset just past it (or `None` if it never appears). Used to find the end of a
+/// region opened by a paired switch like `\makeatletter` or `\ExplSyntaxOn`.
+fn find_control_word_end(src: &str, from: usize, target: &str) -> Option<usize> {
     let bytes = src.as_bytes();
     let mut i = from;
     while i < bytes.len() {
@@ -1488,7 +1492,7 @@ pub(in crate::emit) fn find_makeatother_end(src: &str, from: usize) -> Option<us
                     i += 2;
                     continue;
                 }
-                if &src[cs_start..j] == "\\makeatother" {
+                if &src[cs_start..j] == target {
                     return Some(j);
                 }
                 i = j;
@@ -1497,4 +1501,13 @@ pub(in crate::emit) fn find_makeatother_end(src: &str, from: usize) -> Option<us
         }
     }
     None
+}
+
+pub(in crate::emit) fn find_makeatother_end(src: &str, from: usize) -> Option<usize> {
+    find_control_word_end(src, from, "\\makeatother")
+}
+
+/// The byte offset just past the `\ExplSyntaxOff` that closes an expl3 region.
+pub(in crate::emit) fn find_explsyntaxoff_end(src: &str, from: usize) -> Option<usize> {
+    find_control_word_end(src, from, "\\ExplSyntaxOff")
 }
