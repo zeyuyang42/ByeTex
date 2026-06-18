@@ -27,17 +27,20 @@ Resolved.
 
 ## Open — P0 (frequent × blocking)
 
-### F1. `diagnose --incremental` — re-diagnosing an edited `.typ` WIPES the edits — 3 papers, peak sev 4 — ROUTE: Loop B (CLI/diagnostic)
+_None — F1 resolved._
+
+### F1. `diagnose --incremental` — re-diagnosing an edited `.typ` WIPES the edits — 3 papers, peak sev 4 — ✅ RESOLVED (PR #278)
 - **Symptom (agent's words):** "After I found fidelity issues by visual inspection,
   there was no way to get a skill-mapped diagnostic scan of the edited file. I had to
   manually scan main.typ." All 3 agents independently asked for this.
-- **Evidence:** `2606.12397`, `2605.31564`, `2605.31586` (all `missing_tool_wishlist`,
-  each "would_have_saved 1–2 iterations").
-- **Signal:** `missing_tool_wishlist` recurring across **3/3** papers. The seam:
-  `diagnose --project --out` does a clean materialize that wipes `--out` first
-  (known gotcha), so an agent that edits `main.typ` can never re-scan it.
-- **Next:** add a `diagnose` mode (CLI flag / MCP param) that scans an existing `.typ`
-  in place (no re-materialize) and emits the same fragment→skill map.
+- **Evidence:** `2606.12397`, `2605.31564`, `2605.31586` (all `missing_tool_wishlist`).
+- **Fix:** `byetex diagnose <file.typ>` (and the MCP `diagnose` tool with a `.typ`
+  path) now compiles an existing `.typ` IN PLACE and maps its typst errors without
+  re-converting, so edits survive (`src_fragment`/`skill_name` null — no source map).
+  The agent_brief + `byetex-repair-loop` skill now tell agents to re-scan via
+  `byetex diagnose <main.typ>` instead of the old "never re-run diagnose" rule.
+  New `diagnose_typ.rs` integration test; verified end-to-end (edited `.typ` →
+  error mapped at the right line, edit preserved).
 
 ## Open — P1 (class / recipe gaps)
 
