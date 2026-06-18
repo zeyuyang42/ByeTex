@@ -318,7 +318,9 @@ impl ByeTexServer {
                           array of {message, line, col, src_fragment, typ_region, skill_name} \
                           diagnostics that map each typst error back to its LaTeX source fragment \
                           and repair skill. Writes <stem>.typ (or a materialised project dir) as a \
-                          side effect. Set `project: true` (or pass a directory) for multi-file papers."
+                          side effect. Set `project: true` (or pass a directory) for multi-file papers. \
+                          Pass a `.typ` path to re-scan an already-edited file IN PLACE (no re-convert, \
+                          edits preserved; src_fragment/skill_name are null since there's no source map)."
     )]
     async fn diagnose(
         &self,
@@ -326,10 +328,15 @@ impl ByeTexServer {
     ) -> Result<CallToolResult, McpError> {
         let path = std::path::PathBuf::from(&p.path);
         let typst = std::env::var("BYETEX_TYPST_BIN").unwrap_or_else(|_| "typst".to_string());
-        let (_out, diags) = if p.project || path.is_dir() {
-            byetex_core::diagnose::diagnose_project(&path, None, &typst)
+        // A `.typ` input is an already-converted (often edited) file: diagnose it in
+        // place without re-converting, so edits survive (src_fragment/skill_name null).
+        let path_is_typ = path.extension().and_then(|e| e.to_str()) == Some("typ");
+        let diags = if path_is_typ {
+            byetex_core::diagnose::diagnose_typ(&path, &typst)
+        } else if p.project || path.is_dir() {
+            byetex_core::diagnose::diagnose_project(&path, None, &typst).map(|(_out, d)| d)
         } else {
-            byetex_core::diagnose::diagnose_flat(&path, None, &typst)
+            byetex_core::diagnose::diagnose_flat(&path, None, &typst).map(|(_out, d)| d)
         }
         .map_err(|e| {
             McpError::internal_error(format!("diagnose {}: {}", path.display(), e), None)
