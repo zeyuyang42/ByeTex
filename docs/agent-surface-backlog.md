@@ -38,10 +38,13 @@ Resolved.
   `\refstepcounter{ALC@line}`, `12pt`, `url@samestyle` (2605.31510). Flagged
   `unsupported_command` "raw source dropped" but **not** dropped — leaked.
 - **Signal:** stuck_point(workaround) on 3/3 + `unclear_skill_notes` **blocker**.
-- **Progress:** `\ExplSyntaxOn … \ExplSyntaxOff` region-skip ✅ (PR #282 — the biggest
-  source, ~294 leaked lines in 2605.22821 → 0). **Still open:** `\setminted[..]{..}`
-  options, `\begin{document}`+affiliation, `\refstepcounter{ALC@line}`/`12pt`/
-  `url@samestyle` leak sources. Pairs with F12 (`leaked_to_body` vs `dropped_silently`).
+- **Progress:** `\ExplSyntaxOn … \ExplSyntaxOff` region-skip ✅ (PR #282, ~294 lines
+  → 0); `\setminted[..]{..}` options + counter commands (`\setcounter`/`\stepcounter`/
+  `\refstepcounter`) ✅ (PR #289 — node-kind drop + minted arg consumption; code-review
+  caught & fixed an over-consumption regression). **Still open:** `\begin{document}`+
+  affiliation leak (2605.22728), and the pre-existing tree-sitter over-attachment where
+  a `{...}`-led paragraph after a no-output command is swallowed. Pairs with F12
+  (`leaked_to_body` vs `dropped_silently`).
 
 ### F6. `byetex diagnose <main.typ>` (PR #278) is shipped but not DISCOVERABLE — 3 papers, peak sev 4 — ✅ ADDRESSED (PR #284), verify next round
 - **Symptom:** all 3 agents *still* wished for "diagnose --incremental on the edited
