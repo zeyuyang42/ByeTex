@@ -94,6 +94,34 @@ pub fn compile_typ_stderr(typ_path: &Path, typst_bin: &str) -> String {
     }
 }
 
+/// Diagnose an EXISTING `.typ` file in place: compile it and map the typst errors
+/// WITHOUT re-converting from LaTeX source, so an agent's manual edits survive
+/// (re-running the source-based diagnose would overwrite them). Because there is no
+/// LaTeX source map for an edited `.typ`, each [`Diagnostic`] carries the typst
+/// message + the offending `.typ` line only — `src_fragment` and `skill_name` are
+/// `None`. The `.typ` is left untouched.
+pub fn diagnose_typ(typ_path: &Path, typst_bin: &str) -> Result<Vec<Diagnostic>> {
+    let typst = std::fs::read_to_string(typ_path)
+        .with_context(|| format!("read {}", typ_path.display()))?;
+    let stderr = compile_typ_stderr(typ_path, typst_bin);
+    let typ_lines: Vec<&str> = typst.lines().collect();
+    Ok(parse_typst_errors(&stderr)
+        .into_iter()
+        .map(|e| Diagnostic {
+            typ_region: typ_lines
+                .get(e.line.saturating_sub(1))
+                .copied()
+                .unwrap_or("")
+                .to_string(),
+            message: e.message,
+            line: e.line,
+            col: e.col,
+            src_fragment: None,
+            skill_name: None,
+        })
+        .collect())
+}
+
 /// Base directory for a `.tex` file: its parent, or `.` for a bare filename.
 fn base_dir_of(input: &Path) -> PathBuf {
     input

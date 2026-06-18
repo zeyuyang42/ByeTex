@@ -47,8 +47,8 @@ fn brief_has_start_here_repair_loop_and_skill_suffix() {
         "Start here should point at the getting-started skill; got:\n{brief}"
     );
     assert!(
-        brief.contains("Do not re-run"),
-        "brief must state the don't-re-run-diagnose rule; got:\n{brief}"
+        brief.contains("re-scan AFTER edits") && brief.contains("IN PLACE"),
+        "brief must tell the agent how to re-diagnose an edited .typ in place; got:\n{brief}"
     );
     assert!(
         brief.contains("byetex skills read byetex-repair-loop"),

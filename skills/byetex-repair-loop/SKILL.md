@@ -23,9 +23,12 @@ When a converted paper doesn't compile, repair the `.typ` one error at a time.
 
 ## Rules
 
-- **Do NOT re-run `byetex diagnose` after editing** — it re-converts from source and
-  overwrites your edits to `paper.typ`. Use `typst compile paper.typ` to iterate; only
-  re-run `diagnose` to start over from the LaTeX source.
+- **To re-scan after editing, run `byetex diagnose paper.typ`** (pass the `.typ`, not
+  the `.tex`) — it diagnoses the edited file IN PLACE and does NOT overwrite it, so you
+  get fresh line-anchored typst errors after your fixes. `src_fragment`/`skill_name` are
+  `null` for a `.typ` (no source map). Faster `typst compile paper.typ` still works to
+  iterate; only re-run `byetex diagnose paper.tex` (the SOURCE) to start over from
+  LaTeX — that one re-converts and overwrites your edits.
 - `src_fragment` / `skill_name` are `null` when an error can't be mapped (e.g. it's in the
   preamble or a region you already edited) — fall back to the raw typst `message`.
 - Fix the smallest, most local thing per error; don't rewrite whole blocks.

@@ -130,7 +130,11 @@ enum Command {
     /// With `--project` (or a directory input) it materialises a self-contained
     /// Typst project (assets, `.bib`, `main.typ`) and diagnoses that.
     Diagnose {
-        /// Path to the input `.tex` file, or a project directory.
+        /// Path to the input `.tex` file, a project directory, or an already-edited
+        /// `.typ` file. A `.typ` input is diagnosed IN PLACE — compiled and its typst
+        /// errors mapped without re-converting from source — so manual edits survive
+        /// (use this to re-scan between fixes). `src_fragment`/`skill_name` are null
+        /// for a `.typ` input since there is no LaTeX source map.
         input: PathBuf,
         /// Convert as a project: materialise a self-contained Typst project
         /// (copy assets, preprocess `.bib`, resolve `\input`) before compiling.
@@ -397,7 +401,13 @@ fn run_diagnose(input: PathBuf, project: bool, out: Option<PathBuf>) -> Result<(
     // so `typst compile` of the produced `main.typ` sees a self-contained tree.
     // A single .tex without --project uses the fast flat path. The orchestration
     // lives in `byetex_core::diagnose` so the MCP `diagnose` tool shares it.
-    let (typ_path, diags) = if project || input.is_dir() {
+    // A `.typ` input is an already-converted (often agent-edited) file: diagnose it
+    // IN PLACE — compile + map errors without re-converting, so edits survive.
+    let input_is_typ = input.extension().and_then(|e| e.to_str()) == Some("typ");
+    let (typ_path, diags) = if input_is_typ {
+        let diags = byetex_core::diagnose::diagnose_typ(&input, &typst)?;
+        (input.clone(), diags)
+    } else if project || input.is_dir() {
         byetex_core::diagnose::diagnose_project(&input, out.as_deref(), &typst)?
     } else {
         byetex_core::diagnose::diagnose_flat(&input, out.as_deref(), &typst)?
@@ -1482,8 +1492,11 @@ compile error; preserve what already works.
 Run `byetex diagnose {src_rel}` to map each typst error to its LaTeX fragment +
 repair skill (`{stem}.diagnostics.json`). For each: read the named skill with
 `byetex skills read <skill_name>`, edit `{typ_rel}`, then re-run
-`typst compile {typ_rel}`. **Do not re-run `byetex diagnose` between edits** — it
-re-converts from source and overwrites your edits. Full procedure:
+`typst compile {typ_rel}`. To re-scan AFTER edits, run `byetex diagnose {typ_rel}`
+(pass the `.typ`) — it diagnoses the edited file IN PLACE and does not overwrite it
+(`src_fragment`/`skill_name` are null, since there's no source map for an edited
+file). Do NOT re-run `byetex diagnose {src_rel}` (the source) between edits — that
+re-converts and overwrites your work. Full procedure:
 `byetex skills read byetex-repair-loop`.{diag_note}
 
 ## Compile status
