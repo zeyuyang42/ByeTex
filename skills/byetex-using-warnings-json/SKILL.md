@@ -32,21 +32,42 @@ Each warning has this shape:
 2. Group warnings by `category.kind`.
 3. For each group, if `suggested_skill` is non-null, read that skill with
    `byetex skills read <name>` (or open `skills/<name>.md`) BEFORE editing the `.typ`.
-4. Apply fixes to the `.typ` file at the line/column ranges given.
+4. Apply the fix in the `.typ`. NOTE: `range` is the LaTeX **source** location, not a
+   `.typ` line — find the spot in the `.typ` by searching for the rendered text /
+   `snippet` (or run `byetex diagnose input.typ` for `.typ`-line-anchored compile errors).
 5. Re-run `typst compile input.typ` to confirm the document still builds.
 
 ## Common categories
 
-| `category.kind`            | What it means                                       | Skill                              |
+| `category.kind`            | What it means                                       | Skill / action                     |
 |----------------------------|-----------------------------------------------------|------------------------------------|
-| `unsupported_command`      | Backslash command outside the v1 subset.            | (use general Typst knowledge)      |
+| `unsupported_command`      | Backslash command outside the v1 subset.            | **Triage below** (don't guess)     |
 | `unsupported_environment`  | LaTeX environment outside the v1 subset.            | `byetex-unsupported-environment`  |
 | `custom_macro`             | User-defined `\newcommand`; body left as raw call.  | `byetex-custom-macros`            |
 | `tikz`                     | TikZ picture; needs a CeTZ or sketch rewrite.       | `byetex-tikz-to-typst`            |
 | `parse_error`              | tree-sitter could not parse this region.            | `byetex-parse-error`              |
-| `ambiguous_math`           | Math command without a Typst equivalent.            | (use Typst math docs)              |
-| `needs_manual_review`      | Construct converted approximately; verify manually. | (general)                          |
+| `ambiguous_math`           | Math command without a Typst equivalent.            | `byetex-math`                      |
+| `needs_manual_review`      | Construct converted approximately; verify manually. | `byetex-unsupported-environment`  |
 | `drop_only`                | Benign — already handled by ByeTex.                 | (no action needed)                 |
+
+## Triaging `unsupported_command`
+
+`unsupported_command` is a catch-all, so it points here rather than at one skill.
+Look at the command name (`category.name` / `snippet`) and route it — **most are
+benign** (a dropped no-output preamble command, not lost content):
+
+| Command pattern                                                        | Action |
+|------------------------------------------------------------------------|--------|
+| `\STATE` `\State` `\FOR` `\ENDFOR` `\REQUIRE` `\Require` `\Ensure` …    | Algorithm pseudocode — `byetex-unsupported-environment` (its `algorithmic` body now renders as prose; reformat to a numbered block if you want the box). |
+| `usepackage:<name>` (e.g. `latexsym`, `inconsolata`, `orcidlink`)      | Unsupported PACKAGE — **benign**, no body content lost. Ignore unless a specific symbol/font it provides renders wrong. |
+| `\vskip` `\vspace` `\allowdisplaybreaks` `\begingroup` `\endgroup` `\onecolumn` `\twocolumn` `\clearpage` `\penalty` | Layout / spacing / grouping — **benign drop**, no content. Ignore. |
+| `\DeclareMathAlphabet` `\SetMathAlphabet` `\newcolumntype` `\tcbset`   | Preamble config/declarations — **benign drop**. Ignore. |
+| A `\command` that renders as literal text or a `"name"` string in the `.typ` | A math or custom command that wasn't translated — `byetex-math` (math context) or `byetex-custom-macros` (user `\newcommand`). |
+| Anything else producing visible garbage in the body                    | Read `snippet`, decide math vs macro vs environment, and use the matching skill above. |
+
+**Rule of thumb:** if the command had no visible output in the source (spacing,
+counters, font declarations, package loads), the drop is correct — move on. Only act
+when real content or a symbol is missing/wrong in the rendered `.typ`.
 
 ## Rules
 
