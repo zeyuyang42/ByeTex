@@ -80,9 +80,10 @@ Resolved.
 - ~~**`\footnotemark[N]` → `#footnote[]\[N\]`** (`2606.12397`)~~ — ✅ RESOLVED (PR #265):
   emitted a spurious empty footnote + leaked `[N]` as `\[N\]`. Now consumes the optional
   arg, emits `#super[N]`, no footnote (4 TDD tests; gates green).
-- **Numeric assignment tail leak** (`2605.31586`): `\interfootnotelinepenalty=10000`
-  dropped but `=10000` leaked as a Typst heading. A dropped `\<dimen/count>=NNNN`
-  should consume its `=value` tail.
+- ~~**Numeric assignment tail leak** (`2605.31586`)~~ — ✅ RESOLVED (PR #271):
+  `\interfootnotelinepenalty=10000` dropped but `=10000` leaked as a heading.
+  `emit_generic_command` now consumes a `=<number>[unit][ plus/minus <d>]` tail after
+  an unhandled control word (`peek_tex_assignment_end`). 5 TDD tests.
 - ~~**Leaked `\label` fragments as body text** (`2605.31586`)~~ — ✅ RESOLVED (PR #269):
   underscore labels on a heading (`\label{sec:exp1_main}`) leaked the `_main` tail as
   body text. `emit_section` now consumes the full brace span via
