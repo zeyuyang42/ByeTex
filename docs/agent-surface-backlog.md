@@ -27,6 +27,30 @@ Resolved.
 
 ## Open — P0 (frequent × blocking)
 
+> **Round 3 (2026-06-19)** — re-dogfood of the lowest-recall arxiv papers
+> (`2606.12397`, `2605.22765`, `2605.22786`) after round-2 cleared. **F6 VERIFIED
+> LANDED** (all 3 agents now use `byetex diagnose paper.typ`). New theme below.
+
+### G1. Author-block parsing — 3 papers, peak sev 4 (major) — ROUTE: Loop A (authors)
+- **Symptom:** author blocks mis-parse across all 3 papers. (a) marker leak
+  `\footnotemark[1]`→`\[1\]` (2606.12397) — **✅ fixed PR #299**; (b) **5 authors
+  CONCATENATED into one name** string (2605.22786, NeurIPS `\textbf`+`\quad`+`\\`
+  pattern) — the main remaining bug; (c) missing per-author affiliation superscripts +
+  bracket/`\blfootnote`/`\addtocounter` leaks (2605.22765).
+- **Next:** fix author SPLITTING for the `\textbf{Name}$^{n}$ \quad \textbf{Name}…\\
+  affil` pattern (parse_neurips_block / parse_generic_block) so each author is separate
+  with its affiliation; strip `\blfootnote`/leaked markers. The memory note
+  [[project-visual-grading-loop]] flagged this as MAJOR in 6/8 papers — high value.
+
+### G2. `unsupported_command` → `byetex-using-warnings-json` circular routing — 2 papers, sev 4 (major) — ROUTE: Loop B
+- **Symptom:** 96 `unsupported_command` warnings all `suggested_skill =
+  byetex-using-warnings-json`, which only explains the schema — "lands on the same page
+  they started from" (2605.22765, 2605.22786). Same class as the `needs_manual_review`
+  routing fixed in #274.
+- **Next:** route common `unsupported_command`s to an actionable skill (math/custom-
+  macros/unsupported-environment by name), or make `byetex-using-warnings-json` a real
+  dispatch table. Pairs with adding an `algorithm` recipe (G4).
+
 > **Round 2 (2026-06-18)** — fresh dogfood of the new hardest-3 (`2605.22821`,
 > `2605.31510`, `2605.22728`) after the tick-1 backlog cleared. All 3 seeds compiled;
 > all work was fidelity; all `NEEDS_FIX`.
@@ -137,6 +161,20 @@ Resolved.
   `.typ` line numbers to `warnings.json` (overlaps F13).
 
 ## Open — P2 (polish / low frequency)
+
+### G3. `byetex diagnose <.typ>` should also surface FIDELITY warnings — 3 papers — Loop B
+- **Symptom:** all 3 round-3 agents now USE `byetex diagnose paper.typ` (F6 landed) but
+  note it only maps COMPILE errors, not the fidelity `warnings.json` against the edited
+  `.typ`. They want a re-scan that flags leaked-LaTeX / fidelity issues post-edit.
+- **Next:** extend the in-place `diagnose <.typ>` to also run a leaked-fragment scan
+  (overlaps the old F12/F13 `warnings --fidelity` wish).
+
+### G4. `algorithm` box framing (skill recipe) — 2 papers — Loop B
+- **Symptom:** #294 preserves the algorithm pseudocode as prose, but agents want the
+  numbered-box framing (`\STATE`/`\FOR`/`\ENDFOR` → numbered indented steps). No
+  `algorithm`/`algorithmic` entry in `byetex-unsupported-environment`.
+- **Next:** add an algorithm→Typst recipe (numbered block / `#enum` with indent) to the
+  skill; route `\STATE`/`\FOR` unsupported_command warnings there (pairs with G2).
 
 ### F10. `@`-command (`\makeatletter`) macros leak as strings — 1 paper (19×) — Loop A
 - `\E` (defined via `\@ifstar`) renders as `"@ifstar" "@@E" "@E"` strings in math
