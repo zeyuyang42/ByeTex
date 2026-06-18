@@ -60,19 +60,21 @@ Resolved.
 - **Note:** render-affecting → run the fidelity gate; expect page_ratio to *improve*
   (legit baseline bump), guard non-ACL papers with precise detection.
 
-### F3. `tcolorbox` has no conversion recipe — 1 paper, peak sev 3 (major skill gap) — ROUTE: Loop B (skill)
+### F3. `tcolorbox` has no conversion recipe — 1 paper, peak sev 3 — ✅ RESOLVED (PR #273 + #274)
 - **Symptom (agent's words):** "byetex-unsupported-environment covers theorem/lstlisting/
   beamer but NOT tcolorbox… I improvised a custom Typst block." `tcolorbox` (framed
   colored boxes, title bars) is used extensively in ML papers.
-- **Evidence:** `2605.31564` (tcolorbox figure rendered as a 4em placeholder rect;
-  resolution=workaround; `unclear_skill_notes` severity **major**).
-- **Signal:** `needs_manual_review` float with no actionable recipe; the
-  `byetex-unsupported-environment` skill gap. (Note: `lstlisting` *was* recovered fine
-  via that skill — so the earlier "lstlisting dropped" guess was wrong; only the
-  `needs_manual_review`→suggested_skill *routing* is off, pointing to
-  `byetex-using-warnings-json` instead of the actionable skill.)
-- **Next:** add a tcolorbox→Typst `#block(fill:…, stroke:…)[title + body]` recipe to
-  `byetex-unsupported-environment`; fix needs_manual_review routing.
+- **Fix:** (1) PR #273 added a reusable `#let tcolorbox(...)` recipe + option-mapping
+  table to `byetex-unsupported-environment` (and broadened its description to cover
+  `needs_manual_review` boxes). (2) PR #274 routed the `needs_manual_review` default
+  `suggested_skill` from `byetex-using-warnings-json` → `byetex-unsupported-environment`
+  so agents are auto-routed to the recipe.
+- **Verified:** re-dogfood of `2605.31564` (2026-06-18) — **stuck_points: []**, agent
+  used the recipe successfully ("provided the exact recipe to rebuild tcolorboxes");
+  grey placeholder → 3 styled framed boxes matching truth. The major `unclear_skill_note`
+  that drove that run's NEEDS_FIX was the routing gap, now closed by #274.
+- **Residual (→ F1):** the agent still had to improvise `figure*` two-column spanning
+  (`placement: top, scope: "parent"`) — folded into F1/two-column-spanning, not F3.
 
 ## Open — P2 (polish / low frequency)
 
