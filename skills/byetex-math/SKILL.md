@@ -28,11 +28,13 @@ identifiers are variables in Typst, so wrap upright text with `upright("...")` o
 ## Custom operators
 
 `\operatorname{Foo}` / `\DeclareMathOperator{\Foo}{Foo}` / `\mathrm{Foo}` used as
-an operator → Typst `op("Foo")` (add `limits: true` for sum-like
-under/over-script placement):
+an operator → Typst `op("Foo")` (add `limits: #true` for sum-like
+under/over-script placement). NOTE: inside math mode a boolean must be
+hash-prefixed — `limits: #true`, NOT bare `limits: true` (which Typst rejects with
+`unknown variable: true`):
 
 ```typ
-op("argmax", limits: true)_x f(x)
+op("argmax", limits: #true)_x f(x)
 ```
 
 ## Matrices, cases, stacks
@@ -42,6 +44,9 @@ op("argmax", limits: true)_x f(x)
 - `\begin{cases}…\end{cases}` → `cases(a & "if" x, b & "otherwise")`.
 - `\substack{a\\b}` / stacked limits → `stack(a, b)` or `attach`.
 - `\overset{a}{b}` / `\stackrel{a}{b}` → `attach(b, t: a)`.
+- `\langle … \rangle` (angle brackets, e.g. token strings) → `chevron.l … chevron.r`.
+  Use `chevron.l`/`chevron.r`, NOT `angle.l`/`angle.r` — the `angle.*` names are
+  deprecated in current Typst and emit a deprecation warning.
 
 ## Unknown user macro in math
 
