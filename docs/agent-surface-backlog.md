@@ -27,7 +27,32 @@ Resolved.
 
 ## Open — P0 (frequent × blocking)
 
-_None — F1 resolved._
+> **Round 2 (2026-06-18)** — fresh dogfood of the new hardest-3 (`2605.22821`,
+> `2605.31510`, `2605.22728`) after the tick-1 backlog cleared. All 3 seeds compiled;
+> all work was fidelity; all `NEEDS_FIX`.
+
+### F5. Preamble / non-body content leaks verbatim into the body — 3 papers, peak sev 5 (blocker) — ROUTE: Loop A (region-skip)
+- **Symptom (agent's words):** content that should be dropped is rendered as garbage
+  text. `\ExplSyntaxOn … \ExplSyntaxOff` (expl3) leaked **~294 lines** + `\setminted{}`
+  options (2605.22821); `\begin{document}` + affiliation block (2605.22728);
+  `\refstepcounter{ALC@line}`, `12pt`, `url@samestyle` (2605.31510). Flagged
+  `unsupported_command` "raw source dropped" but **not** dropped — leaked.
+- **Signal:** stuck_point(workaround) on 3/3 + `unclear_skill_notes` **blocker**.
+- **Next (biggest first):** skip `\ExplSyntaxOn … \ExplSyntaxOff` regions like the
+  existing `\makeatletter` region-skip ([[project-preamble-leakage]] #131); then the
+  `\setminted`/`\refstepcounter`/`\begin{document}` leak sources. Pairs with F12
+  (a `leaked_to_body` vs `dropped_silently` warning category).
+
+### F6. `byetex diagnose <main.typ>` (PR #278) is shipped but not DISCOVERABLE — 3 papers, peak sev 4 — ROUTE: Loop B (surface)
+- **Symptom:** all 3 agents *still* wished for "diagnose --incremental on the edited
+  .typ" — even though #278 added exactly that and updated `byetex-repair-loop`. During
+  **fidelity** work the seed already compiles, so agents never enter the repair loop /
+  read that skill, and never discover the capability.
+- **Next:** surface "re-scan an edited `.typ` with `byetex diagnose <main.typ>`" where
+  fidelity agents actually look — the agent_brief's fidelity guidance (not just the
+  "How to repair" section) and `byetex-getting-started`. Cheap, high-leverage (the
+  feature already exists; it just isn't found).
+
 
 ### F1. `diagnose --incremental` — re-diagnosing an edited `.typ` WIPES the edits — 3 papers, peak sev 4 — ✅ RESOLVED (PR #278)
 - **Symptom (agent's words):** "After I found fidelity issues by visual inspection,
@@ -81,7 +106,47 @@ _None — F1 resolved._
   float: true)[…]` under two-column, so wide floats (and rebuilt `needs_manual_review`
   boxes) span both columns automatically. 5 TDD tests.
 
+### F7. Algorithm/pseudocode environments dropped entirely — 2 papers, peak sev 4 — ROUTE: Loop A (+ skill)
+- **Symptom:** `\begin{algorithm}` bodies are **completely absent** from the `.typ`
+  (empty `needs_manual_review` placeholder), not even raw text — so the agent has
+  nothing to translate (2605.31510: 3 algos; 2605.22728: 5 algos; resolution=gave_up).
+- **Next:** preserve the algorithm body (raw/structured) so it's recoverable, AND add
+  an algorithm→Typst recipe to `byetex-unsupported-environment` (it covers tcolorbox/
+  lstlisting/beamer but not algorithm/algorithmic pseudocode).
+
+### F8. `\accentset{accent}{base}` drops its argument → `"accentset"` string — 1 paper (37×), peak sev 4 — ROUTE: Loop A (math)
+- **Symptom:** `\accentset{\circ}{\bm h}` emits the bare string `"accentset"` in math
+  with the base/accent lost (37 sites, different targets) — not recoverable by the
+  agent (2605.31510, resolution=gave_up). byetex-math documents `attach`, but only
+  works when the argument survived.
+- **Next:** handle `\accentset{a}{b}` in math → `accent(b, a)` / `attach(b, t: a)`.
+
+### F9. `byetex-using-warnings-json`: ranges are LaTeX lines, not `.typ` lines — 2 papers, peak sev 4 (major) — ROUTE: Loop B (skill + tool)
+- **Symptom:** the skill says "fix the `.typ` at the given line/column range", but the
+  ranges are in the **LaTeX source**; after conversion (and edits) they don't map to
+  `.typ` lines, so agents grep for rendered strings by hand (2605.31510, 2605.22728).
+- **Next:** correct the skill to say the ranges are source-side + route to
+  `byetex diagnose <main.typ>` (F6) for `.typ`-line-anchored errors; consider adding
+  `.typ` line numbers to `warnings.json` (overlaps F13).
+
 ## Open — P2 (polish / low frequency)
+
+### F10. `@`-command (`\makeatletter`) macros leak as strings — 1 paper (19×) — Loop A
+- `\E` (defined via `\@ifstar`) renders as `"@ifstar" "@@E" "@E"` strings in math
+  (2605.31510). `@`-named macro call sites lose their structure.
+
+### F11. More deprecated Typst symbols in math — minor
+- `times.circle` → `times.o` (2605.22728); `angle.l/.r` → `chevron.l/.r` already added
+  to byetex-math (#280). Consider a deprecated-symbol cheatsheet in the skill.
+
+### F12. `leaked_to_body` vs `dropped_silently` warning category — Loop B (taxonomy)
+- Agents can't tell from `warnings.json` whether an `unsupported_command` was dropped
+  or leaked into the body (it claims "dropped" even when it leaked — see F5). A distinct
+  category would tell them to go delete the garbage. (Best paired with fixing F5.)
+
+### F13. `warnings.json` → `.typ` line numbers — Loop B
+- Several agents wanted each warning to carry the `.typ` line it maps to, not just the
+  LaTeX source range (overlaps F9). Largely subsumed by F6's `diagnose <main.typ>`.
 
 ### F4. Converter content-leak bugs surfaced by dogfood (Loop A) — 1–2 papers each
 - ~~**`\footnotemark[N]` → `#footnote[]\[N\]`** (`2606.12397`)~~ — ✅ RESOLVED (PR #265):
