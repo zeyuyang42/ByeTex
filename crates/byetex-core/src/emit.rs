@@ -188,6 +188,10 @@ pub(crate) struct Emitter<'a> {
     /// (not a bare fragment). Gates the self-generated neutral preamble so
     /// fragment conversions stay preamble-free.
     saw_document_class: bool,
+    /// True once we've entered the `document` environment, i.e. we're past the
+    /// preamble. Gates preamble-only commands like `\abstract{…}` (the command form)
+    /// so an incidental `{…}` group in the BODY isn't mistaken for the abstract.
+    in_document_body: bool,
     /// `\newtheorem{name}{Display}` declarations harvested as we walk the
     /// source. When `emit_generic_environment` encounters an unknown env name
     /// that matches a key here, it routes to `emit_theorem_env_dyn` instead of
@@ -354,6 +358,7 @@ impl<'a> Emitter<'a> {
             referenced_labels: HashSet::new(),
             emitted_labels: HashSet::new(),
             saw_document_class: false,
+            in_document_body: false,
             theorem_kinds: HashMap::new(),
             used_theorem_kinds: std::collections::HashSet::new(),
             env_arg_counts: HashMap::new(),
@@ -3008,6 +3013,22 @@ impl<'a> Emitter<'a> {
                 }
                 node.end_byte()
             }
+            // `\abstract{text}` COMMAND form — some classes `\renewcommand{\abstract}`
+            // to take the abstract as an argument (e.g. bytedance_seed.cls, corpus
+            // 2605.31604) instead of the `abstract` environment. Like `\title`, it's a
+            // PREAMBLE title-block command; capture it into the abstract field instead
+            // of dropping the content. Restricted to the preamble so an incidental
+            // body `{…}` group after a (rare) no-arg `\abstract` isn't mis-captured;
+            // an earlier preamble command also can't clobber a real `abstract` env,
+            // which is always in the body.
+            Some("\\abstract") if !self.in_document_body && self.metadata.r#abstract.is_none() => {
+                if let Some(arg) = first_curly_group(node) {
+                    self.metadata.r#abstract = Some(Content::Typst(
+                        self.render_curly_group_content(arg).trim().to_string(),
+                    ));
+                }
+                node.end_byte()
+            }
             // `\graphicspath{{dir1/}{dir2/}}` — register the search dirs so bare
             // `\includegraphics{name}` resolves against them (D7). Renders
             // nothing; the dirs feed `emit_graphics_include`'s probe list.
@@ -3429,7 +3450,12 @@ impl<'a> Emitter<'a> {
             // skipped — otherwise the width group leaks as a stray `{}` and the
             // `\linewidth`/`\textwidth` inside it warns as unsupported.
             Some("minipage") => self.emit_minipage(node),
-            Some("document") | Some("center") | Some("flushleft")
+            // Entering `document` marks the end of the preamble.
+            Some("document") => {
+                self.in_document_body = true;
+                self.emit_environment_body(node)
+            }
+            Some("center") | Some("flushleft")
             | Some("flushright") | Some("quote") | Some("quotation") | Some("verse")
             | Some("titlepage")
             // Acknowledgements, keyword-list, and conference-specific metadata
