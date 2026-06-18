@@ -1388,8 +1388,10 @@ fn sanitize_macros(s: &str) -> String {
                 }
                 continue;
             }
-            // Bare unknown command (no body) — drop the token.
-            i = k;
+            // Bare unknown command (no body) — drop the token AND its optional
+            // `[..]` arg (which `a` already skipped past). Using `k` here left the
+            // `[1]` of e.g. `\footnotemark[1]` to leak next to the author name.
+            i = a;
             continue;
         }
         let ch = s[i..].chars().next().unwrap();
