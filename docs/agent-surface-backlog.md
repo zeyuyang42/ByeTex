@@ -110,13 +110,15 @@ Resolved.
   float: true)[…]` under two-column, so wide floats (and rebuilt `needs_manual_review`
   boxes) span both columns automatically. 5 TDD tests.
 
-### F7. Algorithm/pseudocode environments dropped entirely — 2 papers, peak sev 4 — ROUTE: Loop A (+ skill)
-- **Symptom:** `\begin{algorithm}` bodies are **completely absent** from the `.typ`
-  (empty `needs_manual_review` placeholder), not even raw text — so the agent has
-  nothing to translate (2605.31510: 3 algos; 2605.22728: 5 algos; resolution=gave_up).
-- **Next:** preserve the algorithm body (raw/structured) so it's recoverable, AND add
-  an algorithm→Typst recipe to `byetex-unsupported-environment` (it covers tcolorbox/
-  lstlisting/beamer but not algorithm/algorithmic pseudocode).
+### F7. Algorithm/pseudocode environments dropped entirely — 2 papers, peak sev 4 — ✅ RESOLVED (converter; PR #294)
+- **Symptom:** `\begin{algorithm}` bodies were **completely absent** from the `.typ`
+  (empty `needs_manual_review` placeholder) — agent had nothing to translate.
+- **Fix (PR #294):** `emit_figure` now captures the nested `algorithmic` block(s) and
+  renders their steps (left-aligned; `\State`/`\For`/… degrade to text) as the figure
+  body. 2605.31510 word_recall 0.823→0.846, structure_ok False→True. 4 TDD tests.
+- **Residual (Loop B, lower value now):** a dedicated algorithm→Typst recipe in
+  `byetex-unsupported-environment` would let an agent restore the pseudocode STRUCTURE
+  (keywords/indent), not just the content. Defer until a dogfood shows it still hurts.
 
 ### F8. overset family drops args → `"accentset"`/`"overset"` strings — 1 paper (37×), peak sev 4 — ✅ RESOLVED (PR #286)
 - **Symptom:** `\accentset{\circ}{\bm h}` (and `\overset`/`\underset`/`\stackrel`)
