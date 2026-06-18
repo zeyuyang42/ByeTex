@@ -38,10 +38,10 @@ Resolved.
   `\refstepcounter{ALC@line}`, `12pt`, `url@samestyle` (2605.31510). Flagged
   `unsupported_command` "raw source dropped" but **not** dropped — leaked.
 - **Signal:** stuck_point(workaround) on 3/3 + `unclear_skill_notes` **blocker**.
-- **Next (biggest first):** skip `\ExplSyntaxOn … \ExplSyntaxOff` regions like the
-  existing `\makeatletter` region-skip ([[project-preamble-leakage]] #131); then the
-  `\setminted`/`\refstepcounter`/`\begin{document}` leak sources. Pairs with F12
-  (a `leaked_to_body` vs `dropped_silently` warning category).
+- **Progress:** `\ExplSyntaxOn … \ExplSyntaxOff` region-skip ✅ (PR #282 — the biggest
+  source, ~294 leaked lines in 2605.22821 → 0). **Still open:** `\setminted[..]{..}`
+  options, `\begin{document}`+affiliation, `\refstepcounter{ALC@line}`/`12pt`/
+  `url@samestyle` leak sources. Pairs with F12 (`leaked_to_body` vs `dropped_silently`).
 
 ### F6. `byetex diagnose <main.typ>` (PR #278) is shipped but not DISCOVERABLE — 3 papers, peak sev 4 — ROUTE: Loop B (surface)
 - **Symptom:** all 3 agents *still* wished for "diagnose --incremental on the edited
