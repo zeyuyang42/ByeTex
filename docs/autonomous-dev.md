@@ -123,6 +123,15 @@ bugs and reuse/simplification cleanups.
 - This is a *quality* gate layered on the *correctness* gates above; it does not replace
   `cargo test` / acceptance / fidelity. Keep it to the diff, not a whole-repo audit.
 
+### 4.6. Version bump for a major change
+If the tick's change is **user-visible / major** — a new feature or capability, a
+fidelity-moving converter fix, an agent-surface addition — bump the workspace version
+in the same PR (`[workspace.package].version` in `Cargo.toml` **and** the mirrored
+`byetex-core`/`byetex-mcp` path-dep `version =` strings in each crate's `Cargo.toml`)
+and add a `CHANGELOG.md` entry under the current `— unreleased` section. Semver: patch
+for fixes, minor for features. Routine internal refactors / bookkeeping don't bump.
+Group a run of small fixes under one unreleased section rather than bumping every tick.
+
 ### 5. Open the PR and auto-merge on green
 ```bash
 gh pr create --fill --base main
