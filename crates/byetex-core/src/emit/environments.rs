@@ -274,7 +274,11 @@ impl<'a> Emitter<'a> {
             let text = self.render_curly_group_content(*child).trim().to_string();
             if !text.is_empty() {
                 let size = if i == 0 { "1.2em" } else { "1.0em" };
-                let _ = write!(self.out, "#text(size: {size}, weight: \"{weight}\")[{text}]\n\n");
+                let fill = self.beamer_title_fill();
+                let _ = write!(
+                    self.out,
+                    "#text(size: {size}, weight: \"{weight}\", fill: {fill})[{text}]\n\n"
+                );
             }
             body_start = i + 1;
             prev_end = child.end_byte();

@@ -78,6 +78,29 @@ use typography::{is_operatorname_only_function, should_split_math_word};
 /// legitimate use in either LaTeX source or rendered Typst.
 const MATH_WORD_BOUNDARY: char = '\u{17}';
 
+/// Beamer's default theme "structure" color — `rgb(0.2, 0.2, 0.7)` ≈ `#3333b3`.
+/// Used for frame titles so slides match beamer's blue title style.
+pub(in crate::emit) const BEAMER_TITLE_BLUE: &str = "#3333b3";
+
+/// Approximate Typst color expression for a beamer `\usecolortheme{<name>}`'s
+/// structure color. Exact `\setbeamercolor`/`\definecolor` values are resolved
+/// separately; this only covers the named built-in color themes. `None` (unknown
+/// theme) leaves the default blue.
+fn colortheme_structure_color(name: &str) -> Option<String> {
+    let expr = match name.trim() {
+        // Blue family (beamer's default-ish structure).
+        "default" | "whale" | "dolphin" | "orchid" => "rgb(\"#3333b3\")",
+        "beaver" => "rgb(\"#a62640\")",  // dark red
+        "crane" => "rgb(\"#d4900a\")",   // orange
+        "rose" | "lily" => "rgb(\"#b03060\")",
+        "seahorse" => "rgb(\"#7a6da8\")", // muted purple
+        "dove" => "black",                // grayscale theme
+        "seagull" | "beetle" | "fly" => "rgb(\"#4d4d4d\")", // gray
+        _ => return None,
+    };
+    Some(expr.to_string())
+}
+
 pub(crate) struct Emitter<'a> {
     out: String,
     warnings: Vec<Warning>,
@@ -192,6 +215,13 @@ pub(crate) struct Emitter<'a> {
     /// preamble. Gates preamble-only commands like `\abstract{…}` (the command form)
     /// so an incidental `{…}` group in the BODY isn't mistaken for the abstract.
     in_document_body: bool,
+    /// Beamer frame-title color resolved from `\setbeamercolor{frametitle}{fg=…}`
+    /// (most specific) — a Typst color expression. Wins over `beamer_structure_color`.
+    beamer_frametitle_color: Option<String>,
+    /// Beamer structure color from `\setbeamercolor{structure}{fg=…}` or
+    /// `\usecolortheme{name}` — used for the frame title when no explicit
+    /// `frametitle` color is set. Both `None` → beamer's default structure blue.
+    beamer_structure_color: Option<String>,
     /// `\newtheorem{name}{Display}` declarations harvested as we walk the
     /// source. When `emit_generic_environment` encounters an unknown env name
     /// that matches a key here, it routes to `emit_theorem_env_dyn` instead of
@@ -351,6 +381,8 @@ impl<'a> Emitter<'a> {
             root_dir: base_dir.clone(),
             graphics_paths: Vec::new(),
             colors: HashMap::new(),
+            beamer_frametitle_color: None,
+            beamer_structure_color: None,
             base_dir,
             visited_includes: visited,
             macros: preseeded_macros,
@@ -2515,6 +2547,15 @@ impl<'a> Emitter<'a> {
             //   (the contained body is processed separately by tree-sitter's normal
             //   child walk). Dropping these tokens is safe; the content nodes are
             //   emitted normally.
+            // Beamer color-theme commands (beamer only) — harvest the frame-title /
+            // structure color BEFORE the presentation-layer drop below silently
+            // consumes them, so titles match the deck's theme not a hard-coded blue.
+            Some(cmd @ "\\setbeamercolor") | Some(cmd @ "\\usecolortheme")
+                if self.detected_class == DocClass::Beamer =>
+            {
+                self.harvest_beamer_color(node, cmd);
+                node.end_byte()
+            }
             Some("\\typeout")
             | Some("\\theoremstyle")
             | Some("\\crefname")
@@ -3020,9 +3061,10 @@ impl<'a> Emitter<'a> {
                     let title = self.render_curly_group_content(arg).trim().to_string();
                     if !title.is_empty() {
                         self.ensure_paragraph_break();
+                        let fill = self.beamer_title_fill();
                         let _ = write!(
                             self.out,
-                            "#text(size: 1.2em, weight: \"bold\")[{title}]\n\n"
+                            "#text(size: 1.2em, weight: \"bold\", fill: {fill})[{title}]\n\n"
                         );
                     }
                 }
@@ -3975,6 +4017,60 @@ impl<'a> Emitter<'a> {
     /// still resolve to the surviving definition.
     fn label_first_use(&mut self, key: &str) -> bool {
         self.emitted_labels.insert(key.to_string())
+    }
+
+    /// The Typst color expression for beamer frame titles, resolved from the deck's
+    /// theme: an explicit `\setbeamercolor{frametitle}{fg=…}` wins, else the structure
+    /// color (`\setbeamercolor{structure}` / `\usecolortheme`), else beamer's default
+    /// structure blue.
+    fn beamer_title_fill(&self) -> String {
+        self.beamer_frametitle_color
+            .clone()
+            .or_else(|| self.beamer_structure_color.clone())
+            .unwrap_or_else(|| format!("rgb(\"{BEAMER_TITLE_BLUE}\")"))
+    }
+
+    /// Record a beamer color command's effect on the frame-title color.
+    /// `\setbeamercolor{frametitle|titlelike}{fg=C}` → frametitle color;
+    /// `\setbeamercolor{structure}{fg=C}` / `\usecolortheme{name}` → structure color.
+    fn harvest_beamer_color(&mut self, node: Node<'_>, kind: &str) {
+        match kind {
+            "\\usecolortheme" => {
+                if let Some(name) = first_curly_group(node)
+                    .map(|g| self.curly_group_inner_trimmed(g).trim().to_string())
+                {
+                    if let Some(c) = colortheme_structure_color(&name) {
+                        self.beamer_structure_color = Some(c);
+                    }
+                }
+            }
+            "\\setbeamercolor" => {
+                // `{element}{fg=color, bg=…}` — resolve `fg` for title-bearing elements.
+                let element = first_curly_group(node)
+                    .map(|g| self.curly_group_inner_trimmed(g).trim().to_string())
+                    .unwrap_or_default();
+                if !matches!(element.as_str(), "frametitle" | "titlelike" | "structure") {
+                    return;
+                }
+                let Some(opts) = nth_curly_group(node, 1)
+                    .map(|g| self.curly_group_inner_trimmed(g).to_string())
+                else {
+                    return;
+                };
+                let fg = opts.split(',').find_map(|kv| {
+                    let (k, v) = kv.split_once('=')?;
+                    (k.trim() == "fg").then(|| v.trim().to_string())
+                });
+                if let Some(color) = fg.and_then(|c| self.resolve_color_arg(None, &c)) {
+                    if element == "structure" {
+                        self.beamer_structure_color = Some(color);
+                    } else {
+                        self.beamer_frametitle_color = Some(color);
+                    }
+                }
+            }
+            _ => {}
+        }
     }
 
     /// Advance `skip_until` past a beamer `<overlay-spec>` that begins at (or just

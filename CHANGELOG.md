@@ -3,6 +3,14 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.5.2] — unreleased
+
+### Added
+- Beamer frame titles now render in the deck's theme color, DETECTED per deck:
+  `\setbeamercolor{frametitle|structure}{fg=…}` + `\definecolor` are honored exactly,
+  `\usecolortheme{name}` maps to the theme's structure color, and a stock deck falls
+  back to beamer's default structure blue (instead of a hard-coded blue for all decks).
+
 ## [0.5.1] — unreleased
 
 ### Fixed
