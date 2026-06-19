@@ -39,8 +39,11 @@ Use `--project` (or pass a directory) for multi-file papers; `byetex diagnose
 **Re-scanning after edits:** run `byetex diagnose paper.typ` (pass the **`.typ`**, not
 the `.tex`) — it compiles the edited file IN PLACE and maps the typst errors WITHOUT
 re-converting, so your edits survive (`src_fragment`/`skill_name` are null — there's
-no source map for an edited file). Only `byetex diagnose paper.tex` (the **source**)
-re-converts and overwrites `paper.typ`, so never run *that* between edits.
+no source map for an edited file). It ALSO scans for **leaked LaTeX** — un-converted
+`\command`s and `\[..\]` markers that compile fine but render literally — so the
+in-place diagnose surfaces fidelity bugs too, not just compile errors. Only
+`byetex diagnose paper.tex` (the **source**) re-converts and overwrites `paper.typ`,
+so never run *that* between edits.
 
 ## The fidelity phase (when it already compiles)
 
