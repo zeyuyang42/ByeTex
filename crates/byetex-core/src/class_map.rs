@@ -249,6 +249,9 @@ impl Layout {
         for opt in opts {
             if let Some(p) = map_paper_option(opt) {
                 layout.paper = Some(p);
+            } else if let Some(p) = map_beamer_aspectratio(opt) {
+                // beamer `[aspectratio=…]` selects the slide page shape.
+                layout.paper = Some(p);
             } else if let Some(s) = map_font_size_option(opt) {
                 layout.font_size = Some(s);
             } else if opt == "twocolumn" {
@@ -374,6 +377,18 @@ fn map_paper_option(opt: &str) -> Option<&'static str> {
         "legalpaper" => "us-legal",
         "executivepaper" => "us-executive",
         _ => return None,
+    })
+}
+
+/// Map a beamer `aspectratio=<N>` class option to a Typst presentation paper.
+/// Widescreen ratios (16:9, 16:10, 14:9) → `presentation-16-9`; everything else
+/// (4:3, 5:4, 3:2, …) → `presentation-4-3` (beamer's default shape). `None` if `opt`
+/// isn't an `aspectratio=` option at all.
+fn map_beamer_aspectratio(opt: &str) -> Option<&'static str> {
+    let val = opt.trim().strip_prefix("aspectratio=")?.trim();
+    Some(match val {
+        "169" | "1610" | "149" => "presentation-16-9",
+        _ => "presentation-4-3",
     })
 }
 

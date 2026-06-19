@@ -14,7 +14,8 @@ const DECK: &str =
 #[test]
 fn beamer_uses_presentation_page() {
     let t = typ(DECK);
-    assert!(t.contains("presentation-16-9"), "16:9 slide page; got:\n{t}");
+    // A slide page (default 4:3; aspect-ratio detection covered in beamer_aspectratio).
+    assert!(t.contains("presentation-"), "a slide presentation page; got:\n{t}");
     assert!(!t.contains("us-letter"), "not the article us-letter page");
 }
 

@@ -3,6 +3,13 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.5.1] — unreleased
+
+### Fixed
+- Beamer aspect ratio: decks now default to the beamer-standard **4:3** slide page and
+  honor `\documentclass[aspectratio=169]{beamer}` (and 16:10/14:9) for widescreen,
+  instead of always forcing 16:9. (Class-option parsing now keeps `key=value` values.)
+
 ## [0.5.0] — unreleased
 
 Autonomous-dev cycle: a self-improving loop that raises converter fidelity and
