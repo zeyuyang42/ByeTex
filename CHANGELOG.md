@@ -3,7 +3,7 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
-## [0.4.4] — unreleased
+## [0.4.5] — unreleased
 
 Autonomous-dev cycle: a self-improving loop that raises converter fidelity and
 hardens the agent surface, dogfooded by a fresh model each tick. Highlights below.
@@ -38,6 +38,8 @@ hardens the agent surface, dogfooded by a fresh model each tick. Highlights belo
   affiliation legend) now split into separate authors instead of one concatenated name.
 - `byetex-using-warnings-json` skill: actionable triage table for `unsupported_command`
   (most are benign drops) instead of a circular self-pointer; range note clarified.
+- `byetex-unsupported-environment` skill: `algorithm`/`algorithmic` pseudocode recipe
+  (captioned `#figure` + numbered `#enum`, with a `\STATE`/`\FOR`/`\IF` line mapping).
 
 ## [0.3.0] — 2026-06-15
 

@@ -15,6 +15,7 @@ description, math envs, tabular, figure). Anything outside this set emits an
 |------------------------------|---------------------------------------------------------------|
 | `theorem` / `lemma` / `proof`| `#theorem(...)` from `@preview/ctheorems` package             |
 | `lstlisting` / `minted`      | `#raw(lang: "rust", "code")` or fenced ``` ```lang ``` block  |
+| `algorithm` / `algorithmic`  | A captioned `#figure(kind: "algorithm")` + numbered `#enum` — see the recipe below |
 | `verbatim`                   | `#raw("text")` or a backtick raw block                        |
 | `quote` / `quotation`        | `#quote[text]`                                                |
 | `center`                     | `#align(center)[text]`                                        |
@@ -74,6 +75,46 @@ Map the options:
 xcolor mixes like `blue!5` (5% blue on white) have no exact Typst form — eyeball a
 light `rgb("#…")` tint; the goal is a faithful *look*, not a pixel match. For the
 inline `\tcbox{…}` form use `#box(fill: …, stroke: …, inset: 3pt)[…]`.
+
+## Recipe: `algorithm` / `algorithmic` (pseudocode)
+
+ByeTex keeps the `algorithmic` body as left-aligned prose, so no *content* is lost —
+but the numbered, ruled algorithm box is gone. The dominant unsupported commands are
+the `algorithmic` control words (`\STATE` `\State` `\FOR` `\ENDFOR` `\WHILE` `\IF`
+`\REQUIRE`/`\Require` `\ENSURE` `\RETURN`). Rebuild the box with a captioned
+`#figure(kind: "algorithm")` + a numbered `#enum` (no package needed):
+
+```typst
+// \begin{algorithm} \caption{Gradient Descent} \begin{algorithmic}[1] …
+#figure(kind: "algorithm", supplement: [Algorithm], caption: [Gradient Descent])[
+  #set align(left)
+  #block(stroke: (top: 1pt, bottom: 1pt), inset: 8pt, width: 100%)[
+    #set enum(numbering: "1:")
+    + *Require:* learning rate $eta$, data $X$   // \REQUIRE
+    + $w <- 0$                                    // \STATE $w \gets 0$
+    + *for* $i = 1$ *to* $n$ *do*                 // \FOR{$i=1$ to $n$}
+      + $w <- w - eta nabla L(w)$                 // nested \STATE (indent = nested +)
+    + *end for*                                   // \ENDFOR
+    + *return* $w$                                // \RETURN
+  ]
+]
+```
+
+Command → line mapping:
+
+| `algorithmic`                       | Typst line                                  |
+|-------------------------------------|---------------------------------------------|
+| `\STATE x`                          | `+ x`                                        |
+| `\REQUIRE` / `\ENSURE`              | `+ *Require:* …` / `+ *Ensure:* …`          |
+| `\FOR{c}` … `\ENDFOR`               | `+ *for* c *do*` … `+ *end for*`            |
+| `\WHILE{c}` … `\ENDWHILE`           | `+ *while* c *do*` … `+ *end while*`        |
+| `\IF{c}` … `\ELSE` … `\ENDIF`       | `+ *if* c *then*` … `+ *else*` … `+ *end if*` |
+| `\RETURN x`                         | `+ *return* x`                              |
+| nested body of a loop/if            | indent one more `+` level                   |
+
+Use `<-` (not `\gets`/`gets`) for the assignment arrow — `gets` is not a reliable
+Typst symbol alias. If you'd rather import a package, `@preview/lovelace`'s
+`pseudocode-list` does the same job.
 
 ## Procedure
 
