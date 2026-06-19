@@ -3,7 +3,7 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
-## [0.4.10] — unreleased
+## [0.4.11] — unreleased
 
 Autonomous-dev cycle: a self-improving loop that raises converter fidelity and
 hardens the agent surface, dogfooded by a fresh model each tick. Highlights below.
@@ -55,6 +55,8 @@ hardens the agent surface, dogfooded by a fresh model each tick. Highlights belo
   so two-column slide layouts keep their content instead of being dropped.
 - Beamer `block`/`alertblock`/`exampleblock` → a titled `#block` (accent-colored header
   + left rule) instead of being dropped.
+- Beamer `\frame{…}` command form renders as a slide (short-form slides no longer
+  dropped); `\frame{\titlepage}`/`\titlepage` resolve to the auto-emitted title slide.
 
 ## [0.3.0] — 2026-06-15
 
