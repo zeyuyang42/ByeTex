@@ -3,7 +3,7 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
-## [0.4.8] — unreleased
+## [0.4.9] — unreleased
 
 Autonomous-dev cycle: a self-improving loop that raises converter fidelity and
 hardens the agent surface, dogfooded by a fresh model each tick. Highlights below.
@@ -51,6 +51,8 @@ hardens the agent surface, dogfooded by a fresh model each tick. Highlights belo
   and each `frame` renders as its own page with a bold slide title (`\begin{frame}{T}`
   or `\frametitle{T}`) instead of being dropped. (Columns, blocks, and the title slide
   are follow-ups.)
+- Beamer `columns`/`column` → a Typst `#grid` (column widths mapped to `fr` ratios),
+  so two-column slide layouts keep their content instead of being dropped.
 
 ## [0.3.0] — 2026-06-15
 
