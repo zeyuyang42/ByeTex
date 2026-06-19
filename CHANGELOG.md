@@ -3,6 +3,12 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.5.3] — unreleased
+
+### Fixed
+- Beamer title slide shows the author and `\institute` as plain centered lines instead
+  of the academic-paper superscript-numbered affiliation footnoting.
+
 ## [0.5.2] — unreleased
 
 ### Added

@@ -80,6 +80,9 @@ impl<'a> Emitter<'a> {
             // Clone (not take): `finish()` still needs `metadata.authors` to
             // emit `#set document(author: …)` for the PDF metadata field.
             let authors = self.metadata.authors.clone();
+            // Beamer title slides show author + `\institute` as plain centered lines,
+            // not academic-paper superscript-numbered affiliations.
+            let beamer = matches!(self.detected_class, crate::class_map::DocClass::Beamer);
 
             // Collect per-author affiliation text, deduplicating to assign
             // superscript indices (1-based, in order of first appearance).
@@ -112,7 +115,9 @@ impl<'a> Emitter<'a> {
                 .map(|(author, aff_idx)| {
                     let mut part = escape_text_for_typst_content(author.name.as_content());
                     if let Some(idx) = aff_idx {
-                        let _ = write!(part, "#super[{}]", idx + 1);
+                        if !beamer {
+                            let _ = write!(part, "#super[{}]", idx + 1);
+                        }
                     }
                     if let Some(orcid) = &author.orcid {
                         let _ = write!(
@@ -131,11 +136,16 @@ impl<'a> Emitter<'a> {
                 self.out.push_str("  #v(0.3em)\n  #text(size: 0.9em)[\n");
                 for (i, aff_text) in deduped.iter().enumerate() {
                     let aff_text = escape_text_for_typst_content(aff_text);
-                    if i + 1 < deduped.len() {
-                        let _ =
-                            writeln!(self.out, "    #super[{}] {} #linebreak()", i + 1, aff_text);
+                    // Beamer: plain centered line, no superscript ref number.
+                    let marker = if beamer {
+                        String::new()
                     } else {
-                        let _ = writeln!(self.out, "    #super[{}] {}", i + 1, aff_text);
+                        format!("#super[{}] ", i + 1)
+                    };
+                    if i + 1 < deduped.len() {
+                        let _ = writeln!(self.out, "    {marker}{aff_text} #linebreak()");
+                    } else {
+                        let _ = writeln!(self.out, "    {marker}{aff_text}");
                     }
                 }
                 self.out.push_str("  ]\n");
