@@ -114,6 +114,59 @@ impl<'a> Emitter<'a> {
         env.end_byte()
     }
 
+    /// Emit a beamer `block`/`alertblock`/`exampleblock` as a titled `#block`:
+    /// the `{Title}` argument becomes a bold accent-colored header, the body the
+    /// box content. `accent` is the theme-ish hex color for the title + left rule.
+    pub(in crate::emit) fn emit_beamer_block(&mut self, env: Node<'_>, accent: &str) -> usize {
+        let mut cursor = env.walk();
+        let children: Vec<Node<'_>> = env
+            .children(&mut cursor)
+            .filter(|c| !matches!(c.kind(), "begin" | "end"))
+            .collect();
+
+        // First curly group is the `{Title}` argument.
+        let mut body_start = 0;
+        let mut title = String::new();
+        if let Some(first) = children.first() {
+            if matches!(
+                first.kind(),
+                "curly_group" | "curly_group_text" | "curly_group_word"
+            ) {
+                title = self.render_curly_group_content(*first).trim().to_string();
+                body_start = 1;
+            }
+        }
+
+        let body_nodes = &children[body_start..];
+        let body = if body_nodes.is_empty() {
+            String::new()
+        } else {
+            self.with_sub_buffer(|emitter| {
+                let mut last = body_nodes[0].start_byte();
+                for child in body_nodes {
+                    emitter.safe_copy(last, child.start_byte());
+                    last = emitter.emit_node(*child);
+                }
+                emitter.safe_copy(last, body_nodes.last().unwrap().end_byte());
+            })
+        };
+
+        self.ensure_paragraph_break();
+        let _ = write!(
+            self.out,
+            "#block(width: 100%, inset: 8pt, radius: 2pt, fill: rgb(\"{accent}\").lighten(88%), \
+             stroke: (left: 2pt + rgb(\"{accent}\")))[\n"
+        );
+        if !title.is_empty() {
+            let _ = write!(
+                self.out,
+                "  #text(weight: \"bold\", fill: rgb(\"{accent}\"))[{title}]\n\n"
+            );
+        }
+        let _ = write!(self.out, "  {}\n]\n", body.trim());
+        env.end_byte()
+    }
+
     /// Emit a beamer `columns` block as a Typst `#grid`: one track per inner
     /// `column`, its `{width}` mapped to a Typst column spec, its body rendered as
     /// a content cell. Falls back to a transparent body emit if no `column` is found.
