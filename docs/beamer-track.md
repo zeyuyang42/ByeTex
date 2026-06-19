@@ -19,9 +19,8 @@ a deck rendered as only its title (all slides lost).
 
 - **B3 — title slide / `\frame{…}` cmd. ✅ DONE (PR #315, v0.4.11).** `\frame{X}`
   → slide; `\frame{\titlepage}`/`\titlepage` → auto-emitted title (no blank slide).
-- **B4 — presentation page geometry.** Beamer slides are 4:3/16:9 landscape, larger
-  base font, no justification. Give `DocClass::Beamer` a presentation `StyleProfile` +
-  `#set page(paper: "presentation-16-9")`.
+- **B4 — presentation page geometry. ✅ DONE (PR #317, v0.4.12).** Beamer →
+  `presentation-16-9` landscape page, 22pt font, tight margins, ragged-right.
 - **B5 — overlays.** `\item<1->`, `\onslide`, `\pause`, `\only<>`/`\uncover<>` —
   overlay specs. MVP: drop the overlay spec, show all content (no animation in a PDF).
   Currently `<1->` may leak. Verify.
