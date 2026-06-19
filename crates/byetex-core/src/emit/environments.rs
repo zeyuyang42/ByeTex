@@ -448,7 +448,12 @@ impl<'a> Emitter<'a> {
         item: Node<'_>,
         _is_description: bool,
     ) -> String {
-        let body_start = item_body_start(item, self.src);
+        let mut body_start = item_body_start(item, self.src);
+        // Beamer `\item<1->` — drop the leading overlay spec (gated on the class so a
+        // non-beamer `\item <0,1>` keeps its literal text).
+        if self.detected_class == crate::class_map::DocClass::Beamer {
+            body_start = skip_leading_overlay_spec(self.src, body_start);
+        }
         let mut cursor = item.walk();
         let body: Vec<Node<'_>> = item
             .children(&mut cursor)
@@ -855,6 +860,32 @@ fn item_body_start(item: Node<'_>, src: &str) -> usize {
         .map(|c| c.end_byte())
         .unwrap_or_else(|| item.start_byte());
     start
+}
+
+/// If `src[start..]` (after optional spaces) begins with a beamer `<overlay-spec>`
+/// (`<` + only `0-9 + - . , | space` + `>`), return the byte just past `>`; else `start`.
+/// Used (beamer-only) to drop the `<…>` of `\item<1->`.
+pub(in crate::emit) fn skip_leading_overlay_spec(src: &str, start: usize) -> usize {
+    let bytes = src.as_bytes();
+    let mut i = start;
+    while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t') {
+        i += 1;
+    }
+    if bytes.get(i) != Some(&b'<') {
+        return start;
+    }
+    let mut j = i + 1;
+    while j < bytes.len() && bytes[j] != b'>' {
+        if !matches!(bytes[j], b'0'..=b'9' | b'+' | b'-' | b'.' | b',' | b'|' | b' ') {
+            return start;
+        }
+        j += 1;
+    }
+    if bytes.get(j) == Some(&b'>') {
+        j + 1
+    } else {
+        start
+    }
 }
 
 /// The optional `[label]` of an `enum_item`, matched from source (depth-aware
