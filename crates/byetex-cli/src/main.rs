@@ -416,8 +416,13 @@ fn run_diagnose(input: PathBuf, project: bool, out: Option<PathBuf>) -> Result<(
     std::fs::write(&diag_path, serde_json::to_string_pretty(&diags)?)
         .with_context(|| format!("write {}", diag_path.display()))?;
     eprintln!(
-        "byetex diagnose: {} typst error(s) → {}",
+        "byetex diagnose: {} {} → {}",
         diags.len(),
+        if input_is_typ {
+            "diagnostic(s) (typst errors + leaked-LaTeX scan)"
+        } else {
+            "typst error(s)"
+        },
         diag_path.display()
     );
     Ok(())

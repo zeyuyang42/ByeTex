@@ -105,7 +105,7 @@ pub fn diagnose_typ(typ_path: &Path, typst_bin: &str) -> Result<Vec<Diagnostic>>
         .with_context(|| format!("read {}", typ_path.display()))?;
     let stderr = compile_typ_stderr(typ_path, typst_bin);
     let typ_lines: Vec<&str> = typst.lines().collect();
-    Ok(parse_typst_errors(&stderr)
+    let mut diags: Vec<Diagnostic> = parse_typst_errors(&stderr)
         .into_iter()
         .map(|e| Diagnostic {
             typ_region: typ_lines
@@ -119,7 +119,96 @@ pub fn diagnose_typ(typ_path: &Path, typst_bin: &str) -> Result<Vec<Diagnostic>>
             src_fragment: None,
             skill_name: None,
         })
-        .collect())
+        .collect();
+    // Compile errors don't cover leaked LaTeX (it compiles but renders literally) —
+    // append a leak scan so the in-place diagnose surfaces fidelity issues too.
+    diags.extend(scan_typ_leaks(&typst));
+    Ok(diags)
+}
+
+/// Scan an already-converted `.typ` for **leaked LaTeX** — un-converted commands
+/// (`\textbf`, `\cite`, `\STATE`, …) and `\[..\]` markers that compile fine but render
+/// as literal text. These are invisible to `typst compile` (no error) yet are exactly
+/// the fidelity bugs agents hit; surfacing them is the dogfood loop's most-requested
+/// `diagnose <.typ>` capability.
+///
+/// Pure and IO-free. Skips fenced ```` ``` ```` code blocks and `//` comment lines,
+/// ignores single-char escapes (`\#` `\$` `\_` `\&` `\%`) and the Typst linebreak `\`,
+/// and de-dups repeated commands per line. Each hit is a [`Diagnostic`] with no
+/// `src_fragment` (the source map is gone for an edited `.typ`).
+pub fn scan_typ_leaks(typst: &str) -> Vec<Diagnostic> {
+    let leak = |line: usize, col: usize, line_text: &str, message: String| Diagnostic {
+        message,
+        line,
+        col,
+        src_fragment: None,
+        typ_region: line_text.to_string(),
+        skill_name: Some("byetex-using-warnings-json".to_string()),
+    };
+    let mut out = Vec::new();
+    let mut in_fence = false;
+    for (idx, line) in typst.lines().enumerate() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("```") {
+            in_fence = !in_fence;
+            continue;
+        }
+        if in_fence || trimmed.starts_with("//") {
+            continue;
+        }
+        let bytes = line.as_bytes();
+        let mut seen: Vec<String> = Vec::new();
+        let mut j = 0;
+        while j < bytes.len() {
+            if bytes[j] == b'\\' {
+                // Escaped backslash `\\` — inside a `#raw("…")` code string the emitter
+                // DOUBLES backslashes, so a LaTeX listing reads `\\textbf` etc. Those are
+                // literal, correctly-rendered code, not leaks: skip both backslashes so
+                // the following letters aren't mistaken for a leaked command. A real leak
+                // is a SINGLE backslash (`\textbf`) in ordinary markup/math.
+                if bytes.get(j + 1) == Some(&b'\\') {
+                    j += 2;
+                    continue;
+                }
+                // `\cmd` — backslash followed by 2+ ASCII letters.
+                let mut k = j + 1;
+                while k < bytes.len() && bytes[k].is_ascii_alphabetic() {
+                    k += 1;
+                }
+                if k - (j + 1) >= 2 {
+                    let name = line[j..k].to_string();
+                    if !seen.contains(&name) {
+                        let msg = format!(
+                            "possible leaked LaTeX command `{name}` — renders literally in Typst; \
+                             convert or remove it"
+                        );
+                        seen.push(name);
+                        out.push(leak(idx + 1, j, line, msg));
+                    }
+                    j = k;
+                    continue;
+                }
+                // `\[..\]` — escaped-bracket marker (footnote/optional-arg leak).
+                if bytes.get(j + 1) == Some(&b'[') {
+                    let key = "\\[".to_string();
+                    if !seen.contains(&key) {
+                        seen.push(key);
+                        out.push(leak(
+                            idx + 1,
+                            j,
+                            line,
+                            "possible leaked LaTeX `\\[..\\]` marker — renders as literal brackets"
+                                .to_string(),
+                        ));
+                    }
+                    j += 2;
+                    continue;
+                }
+            }
+            j += 1;
+        }
+    }
+    out
 }
 
 /// Base directory for a `.tex` file: its parent, or `.` for a bare filename.
