@@ -150,6 +150,9 @@ impl StyleProfile {
                 default_bib_style: Some("elsevier-with-titles"),
                 ..Self::neutral()
             },
+            // Beamer: the slide page-size/title-slide styling is applied in the
+            // emitter; the title-block knobs stay neutral for now.
+            DocClass::Beamer => Self::neutral(),
             DocClass::RevTeX | DocClass::Unknown => Self::neutral(),
         }
     }

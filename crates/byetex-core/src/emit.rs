@@ -3013,6 +3013,21 @@ impl<'a> Emitter<'a> {
                 }
                 node.end_byte()
             }
+            // `\frametitle{X}` (beamer): the slide title, when not given as the
+            // `\begin{frame}{X}` argument. Render it as a bold heading line.
+            Some("\\frametitle") if self.detected_class == DocClass::Beamer => {
+                if let Some(arg) = first_curly_group(node) {
+                    let title = self.render_curly_group_content(arg).trim().to_string();
+                    if !title.is_empty() {
+                        self.ensure_paragraph_break();
+                        let _ = write!(
+                            self.out,
+                            "#text(size: 1.2em, weight: \"bold\")[{title}]\n\n"
+                        );
+                    }
+                }
+                node.end_byte()
+            }
             // `\abstract{text}` COMMAND form — some classes `\renewcommand{\abstract}`
             // to take the abstract as an argument (e.g. bytedance_seed.cls, corpus
             // 2605.31604) instead of the `abstract` environment. Like `\title`, it's a
@@ -3405,6 +3420,12 @@ impl<'a> Emitter<'a> {
     fn emit_generic_environment(&mut self, node: Node<'_>) -> usize {
         let env = environment_name(node, self.src);
         match env.as_deref() {
+            // Beamer slide. Each `frame` becomes its own page with a bold title.
+            // Gated on the beamer class so a non-beamer `frame` env (custom package,
+            // poster) keeps its previous handling.
+            Some("frame") if self.detected_class == DocClass::Beamer => {
+                self.emit_beamer_frame(node)
+            }
             Some("itemize") => self.emit_simple_list(node, "-"),
             Some("enumerate") => self.emit_simple_list(node, "+"),
             Some("description") => self.emit_description(node),

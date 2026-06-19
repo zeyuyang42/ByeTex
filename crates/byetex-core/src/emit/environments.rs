@@ -114,6 +114,75 @@ impl<'a> Emitter<'a> {
         env.end_byte()
     }
 
+    /// Emit a beamer `frame` as a slide: a `#pagebreak()` before all but the
+    /// first frame, the `\begin{frame}{Title}` argument (if present) as a bold
+    /// slide title, then the frame body. A `\frametitle{…}` inside the body is
+    /// handled by its own command arm.
+    pub(in crate::emit) fn emit_beamer_frame(&mut self, env: Node<'_>) -> usize {
+        self.ensure_paragraph_break();
+        // A weak pagebreak before EVERY frame: Typst suppresses the leading one, so
+        // the first slide gets no blank page. Stateless (no emitter flag), so frames
+        // expanded inside a macro/sub-emitter still page correctly.
+        self.out.push_str("#pagebreak(weak: true)\n\n");
+
+        let mut cursor = env.walk();
+        let all: Vec<Node<'_>> = env.children(&mut cursor).collect();
+        // End of `\begin{frame}` — the title argument (if any) starts right after it.
+        let begin_end = all
+            .iter()
+            .find(|c| c.kind() == "begin")
+            .map_or_else(|| env.start_byte(), |c| c.end_byte());
+        let children: Vec<Node<'_>> = all
+            .into_iter()
+            .filter(|c| !matches!(c.kind(), "begin" | "end"))
+            .collect();
+
+        // `\begin{frame}{Title}{Subtitle}` — the title (and optional subtitle) are the
+        // leading curly group(s) on the SAME LINE as `\begin{frame}` (only `[opts]` /
+        // spaces in the gap). A group on a NEW line is body content, not a title — so
+        // a frame whose body opens with `{...}` (or uses `\frametitle`) keeps it.
+        let mut body_start = 0;
+        let mut prev_end = begin_end;
+        for (i, weight) in ["bold", "regular"].iter().enumerate() {
+            let Some(child) = children.get(i) else { break };
+            if !matches!(
+                child.kind(),
+                "curly_group" | "curly_group_text" | "curly_group_word"
+            ) {
+                break;
+            }
+            // Same line as `\begin{frame}` (or the previous title group)?
+            if self
+                .src
+                .get(prev_end..child.start_byte())
+                .is_none_or(|gap| gap.contains('\n'))
+            {
+                break;
+            }
+            let text = self.render_curly_group_content(*child).trim().to_string();
+            if !text.is_empty() {
+                let size = if i == 0 { "1.2em" } else { "1.0em" };
+                let _ = write!(self.out, "#text(size: {size}, weight: \"{weight}\")[{text}]\n\n");
+            }
+            body_start = i + 1;
+            prev_end = child.end_byte();
+        }
+
+        let body = &children[body_start..];
+        if body.is_empty() {
+            return env.end_byte();
+        }
+        let mut last = body[0].start_byte();
+        for child in body {
+            let cs = child.start_byte();
+            self.safe_copy(last, cs);
+            last = self.emit_node(*child);
+        }
+        let end = body.last().unwrap().end_byte();
+        self.safe_copy(last, end);
+        env.end_byte()
+    }
+
     /// Emit just the body of an environment (skip `begin` and `end` children).
     /// Strips trailing whitespace already in `self.out` so that preamble noise
     /// (dropped `\documentclass`, `\usepackage`, blank lines) doesn't leak

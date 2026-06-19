@@ -3,7 +3,7 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
-## [0.4.7] — unreleased
+## [0.4.8] — unreleased
 
 Autonomous-dev cycle: a self-improving loop that raises converter fidelity and
 hardens the agent surface, dogfooded by a fresh model each tick. Highlights below.
@@ -45,6 +45,12 @@ hardens the agent surface, dogfooded by a fresh model each tick. Highlights belo
   surfacing fidelity issues that `typst compile` reports as clean.
 - `byetex-getting-started` skill documents the new in-place leaked-LaTeX scan so agents
   discover it.
+
+### Added
+- Foundational **beamer** (LaTeX presentations) support: the `beamer` class is detected
+  and each `frame` renders as its own page with a bold slide title (`\begin{frame}{T}`
+  or `\frametitle{T}`) instead of being dropped. (Columns, blocks, and the title slide
+  are follow-ups.)
 
 ## [0.3.0] — 2026-06-15
 

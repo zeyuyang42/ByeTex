@@ -49,6 +49,9 @@ pub(crate) enum DocClass {
     /// volume class (`svmult.cls`). Same family as `llncs`; we route both to
     /// the same template binding.
     SvMult,
+    /// `\documentclass{beamer}` — LaTeX presentation class. Rendered as slides:
+    /// each `frame` becomes its own page with a slide title.
+    Beamer,
     /// Unrecognized class with no template binding — emits the hand-rolled
     /// title block fallback.
     Unknown,
@@ -103,6 +106,7 @@ impl DocClass {
             }
             "llncs" => Self::Lncs,
             "svmult" => Self::SvMult,
+            "beamer" => Self::Beamer,
             // Plain article / report / book — the most common arxiv
             // preprint case. Route to `ArxivArticle` so we get a
             // template instead of the hand-rolled fallback.
