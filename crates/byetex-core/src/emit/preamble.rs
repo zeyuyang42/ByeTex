@@ -303,13 +303,19 @@ pub(in crate::emit) fn build_neutral_preamble(
     let profile = crate::style_profile::StyleProfile::for_class(class);
     let body_font = profile.body_font;
     let [h1, h2, h3] = profile.heading_sizes;
-    // Beamer renders as slides: a landscape 16:9 page, a large slide font, tight
+    // Beamer renders as slides: a landscape slide page, a large slide font, tight
     // margins, ragged-right (no justify) and no paragraph indent. Frame titles are
     // emitted as bold `#text` by the frame handlers, so keep the heading rules for
     // any in-body `\section`.
     if matches!(class, crate::class_map::DocClass::Beamer) {
+        // beamer's default slide is 4:3; `[aspectratio=169]` (etc.) sets the paper in
+        // `from_class_options`. Honor it, else default to 4:3.
+        let slide_paper = match layout.paper {
+            Some(p) if p.starts_with("presentation") => p,
+            _ => "presentation-4-3",
+        };
         return format!(
-            "#set page(paper: \"presentation-16-9\", margin: (x: 2em, y: 1.5em))\n\
+            "#set page(paper: \"{slide_paper}\", margin: (x: 2em, y: 1.5em))\n\
              #set text(font: \"{body_font}\", size: 22pt)\n\
              #set par(justify: false, leading: 0.65em, spacing: 0.8em)\n\
              #show heading.where(level: 1): set text(size: {h1}, weight: \"bold\")\n\
@@ -360,17 +366,15 @@ pub(in crate::emit) fn extract_class_and_options(
                 let mut sub = child.walk();
                 for gc in child.children(&mut sub) {
                     if gc.kind() == "key_value_pair" {
-                        let mut kv_cursor = gc.walk();
-                        let mut key_buf = String::new();
-                        for kc in gc.children(&mut kv_cursor) {
-                            if kc.kind() == "=" {
-                                break;
-                            }
-                            key_buf.push_str(&src[kc.start_byte()..kc.end_byte()]);
-                        }
-                        let k = key_buf.trim().to_string();
-                        if !k.is_empty() {
-                            opts.push(k);
+                        // Push the whole `key=value` (or a bare flag) with whitespace
+                        // removed, so value-bearing options like `aspectratio=169`
+                        // survive — not just the key. Bare flags (`12pt`, `a4paper`)
+                        // come through unchanged.
+                        let token: String = src[gc.start_byte()..gc.end_byte()]
+                            .split_whitespace()
+                            .collect();
+                        if !token.is_empty() {
+                            opts.push(token);
                         }
                     }
                 }
