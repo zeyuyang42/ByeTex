@@ -82,6 +82,39 @@ const MATH_WORD_BOUNDARY: char = '\u{17}';
 /// Used for frame titles so slides match beamer's blue title style.
 pub(in crate::emit) const BEAMER_TITLE_BLUE: &str = "#3333b3";
 
+/// Advance past ASCII whitespace from `i`.
+fn skip_ascii_ws(bytes: &[u8], mut i: usize) -> usize {
+    while i < bytes.len() && matches!(bytes[i], b' ' | b'\t' | b'\n' | b'\r') {
+        i += 1;
+    }
+    i
+}
+
+/// Given `bytes[open] == b'{'`, return the index of the matching `}` (depth-aware,
+/// skipping `\{`/`\}` escapes), or `None` if unbalanced.
+fn match_brace_from(bytes: &[u8], open: usize) -> Option<usize> {
+    let mut depth = 0usize;
+    let mut i = open;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => {
+                i += 2; // skip the escaped char
+                continue;
+            }
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
 /// Approximate Typst color expression for a beamer `\usecolortheme{<name>}`'s
 /// structure color. Exact `\setbeamercolor`/`\definecolor` values are resolved
 /// separately; this only covers the named built-in color themes. `None` (unknown
@@ -3091,8 +3124,12 @@ impl<'a> Emitter<'a> {
             // the following `{content}` group render normally as a sibling. `\pause`
             // carries no content — drop it.
             Some("\\pause") if self.detected_class == DocClass::Beamer => node.end_byte(),
-            // Single-content overlay commands. (`\alt<spec>{a}{b}` is intentionally
-            // excluded — its two content args would both render and duplicate.)
+            // `\alt<spec>{default}{alternative}` — show the default (first) arg, drop
+            // the spec and the alternative (a static PDF can't switch overlays).
+            Some("\\alt") if self.detected_class == DocClass::Beamer => {
+                self.emit_beamer_alt(node)
+            }
+            // Single-content overlay commands.
             Some("\\only") | Some("\\onslide") | Some("\\uncover") | Some("\\visible")
             | Some("\\action") | Some("\\alert")
                 if self.detected_class == DocClass::Beamer =>
@@ -4071,6 +4108,44 @@ impl<'a> Emitter<'a> {
             }
             _ => {}
         }
+    }
+
+    /// Emit a beamer `\alt<spec>{default}{alternative}`: render the DEFAULT (first)
+    /// arg through the converter, and skip the `<spec>` + both brace groups (so the
+    /// alternative and the spec don't leak). Returns `node.end_byte()`; the sibling
+    /// groups are then skipped via `skip_until`.
+    fn emit_beamer_alt(&mut self, node: Node<'_>) -> usize {
+        let bytes = self.src.as_bytes();
+        // Scan from just after the `\alt` token, NOT `node.end_byte()`: when there's no
+        // `<spec>` the `{default}{alt}` groups attach as CHILDREN, so `end_byte()` would
+        // already be past them and the scan would find nothing (content lost).
+        // Skip an optional `<overlay-spec>` — validated + bounded (same rule as the
+        // `\item<…>` / `\only<…>` skippers), so a stray unclosed `<` or a `>` elsewhere
+        // in the body can't be mis-consumed.
+        let after_cmd = node.start_byte() + "\\alt".len();
+        let mut i = skip_ascii_ws(
+            bytes,
+            environments::skip_leading_overlay_spec(self.src, after_cmd),
+        );
+        // First group `{default}`.
+        if bytes.get(i) != Some(&b'{') {
+            return node.end_byte();
+        }
+        let Some(close1) = match_brace_from(bytes, i) else {
+            return node.end_byte();
+        };
+        let default_inner = self.src[i + 1..close1].to_string();
+        // Optional second group `{alternative}` — skip it.
+        let j = skip_ascii_ws(bytes, close1 + 1);
+        let end = if bytes.get(j) == Some(&b'{') {
+            match_brace_from(bytes, j).map_or(close1 + 1, |c| c + 1)
+        } else {
+            close1 + 1
+        };
+        let rendered = self.render_in_sub_emitter(&default_inner, false, false);
+        self.out.push_str(rendered.trim());
+        self.skip_until = self.skip_until.max(end);
+        node.end_byte()
     }
 
     /// Advance `skip_until` past a beamer `<overlay-spec>` that begins at (or just

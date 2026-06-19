@@ -3,6 +3,12 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.5.4] — unreleased
+
+### Fixed
+- Beamer `\alt<spec>{default}{alternative}` now shows the default arg and drops the
+  spec + the alternative (was leaking the `<spec>` and rendering both args).
+
 ## [0.5.3] — unreleased
 
 ### Fixed
