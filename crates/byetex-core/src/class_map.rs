@@ -282,6 +282,13 @@ impl Layout {
     /// `twocolumn`/`onecolumn` option wins, otherwise fall back to the class's
     /// own default.
     pub fn is_two_column(&self, class: &DocClass) -> bool {
+        // Beamer slides are never page-level two-column. The presentation preamble
+        // omits `columns: 2`, so honoring an explicit `[twocolumn]` option here would
+        // make finish() emit a parent-scoped float title with no column context
+        // (Typst errors). Beamer uses the `columns` environment for side-by-side.
+        if matches!(class, DocClass::Beamer) {
+            return false;
+        }
         self.two_column
             .unwrap_or_else(|| class.default_two_column())
     }
