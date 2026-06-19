@@ -303,6 +303,21 @@ pub(in crate::emit) fn build_neutral_preamble(
     let profile = crate::style_profile::StyleProfile::for_class(class);
     let body_font = profile.body_font;
     let [h1, h2, h3] = profile.heading_sizes;
+    // Beamer renders as slides: a landscape 16:9 page, a large slide font, tight
+    // margins, ragged-right (no justify) and no paragraph indent. Frame titles are
+    // emitted as bold `#text` by the frame handlers, so keep the heading rules for
+    // any in-body `\section`.
+    if matches!(class, crate::class_map::DocClass::Beamer) {
+        return format!(
+            "#set page(paper: \"presentation-16-9\", margin: (x: 2em, y: 1.5em))\n\
+             #set text(font: \"{body_font}\", size: 22pt)\n\
+             #set par(justify: false, leading: 0.65em, spacing: 0.8em)\n\
+             #show heading.where(level: 1): set text(size: {h1}, weight: \"bold\")\n\
+             #show heading.where(level: 2): set text(size: {h2}, weight: \"bold\")\n\
+             #show heading.where(level: 3): set text(size: {h3}, weight: \"bold\")\n\
+             #show heading: it => block(above: 0.8em, below: 0.5em, it)\n\n"
+        );
+    }
     // Document-level two-column: a PAGE-level `columns: 2` (the body flows in two
     // balanced columns across pages, with figures/floats handled natively). The
     // title block spans both columns via a `#place(scope: "parent", float: true)`
