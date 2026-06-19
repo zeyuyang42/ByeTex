@@ -3434,6 +3434,16 @@ impl<'a> Emitter<'a> {
             Some("column") if self.detected_class == DocClass::Beamer => {
                 self.emit_minipage(node)
             }
+            // Beamer titled callout boxes → a titled `#block` with a theme-ish accent.
+            Some("block") if self.detected_class == DocClass::Beamer => {
+                self.emit_beamer_block(node, "#2f5fb3")
+            }
+            Some("alertblock") if self.detected_class == DocClass::Beamer => {
+                self.emit_beamer_block(node, "#b33a3a")
+            }
+            Some("exampleblock") if self.detected_class == DocClass::Beamer => {
+                self.emit_beamer_block(node, "#2e7d4f")
+            }
             Some("itemize") => self.emit_simple_list(node, "-"),
             Some("enumerate") => self.emit_simple_list(node, "+"),
             Some("description") => self.emit_description(node),
