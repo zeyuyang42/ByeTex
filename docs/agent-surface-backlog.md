@@ -167,7 +167,7 @@ Resolved.
 - **Next:** extend the in-place `diagnose <.typ>` to also run a leaked-fragment scan
   (overlaps the old F12/F13 `warnings --fidelity` wish).
 
-### G4. `algorithm` box framing (skill recipe) — 2 papers — Loop B
+### G4. `algorithm` box framing (skill recipe) — 2 papers — ✅ RESOLVED (PR #305)
 - **Symptom:** #294 preserves the algorithm pseudocode as prose, but agents want the
   numbered-box framing (`\STATE`/`\FOR`/`\ENDFOR` → numbered indented steps). No
   `algorithm`/`algorithmic` entry in `byetex-unsupported-environment`.
