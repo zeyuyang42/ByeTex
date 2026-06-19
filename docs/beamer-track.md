@@ -17,9 +17,8 @@ a deck rendered as only its title (all slides lost).
 
 ## Open (ranked)
 
-- **B3 — title slide.** `\frame{\titlepage}` (a `\frame` COMMAND with `\titlepage`
-  arg) and bare `\titlepage` → render the title block as the first slide. Currently
-  `\frame` is `unsupported_command`; `\titlepage` does nothing.
+- **B3 — title slide / `\frame{…}` cmd. ✅ DONE (PR #315, v0.4.11).** `\frame{X}`
+  → slide; `\frame{\titlepage}`/`\titlepage` → auto-emitted title (no blank slide).
 - **B4 — presentation page geometry.** Beamer slides are 4:3/16:9 landscape, larger
   base font, no justification. Give `DocClass::Beamer` a presentation `StyleProfile` +
   `#set page(paper: "presentation-16-9")`.
