@@ -21,9 +21,9 @@ a deck rendered as only its title (all slides lost).
   → slide; `\frame{\titlepage}`/`\titlepage` → auto-emitted title (no blank slide).
 - **B4 — presentation page geometry. ✅ DONE (PR #317, v0.4.12).** Beamer →
   `presentation-16-9` landscape page, 22pt font, tight margins, ragged-right.
-- **B5 — overlays.** `\item<1->`, `\onslide`, `\pause`, `\only<>`/`\uncover<>` —
-  overlay specs. MVP: drop the overlay spec, show all content (no animation in a PDF).
-  Currently `<1->` may leak. Verify.
+- **B5 — overlays. ✅ DONE (PR #319, v0.5.0).** `\pause`/`\only`/`\uncover`/
+  `\onslide`/`\visible`/`\action`/`\alert` + `\item<spec>`: strip `<…>`, show content.
+  KNOWN GAP: `\alt<spec>{a}{b}` (two-arg) still leaks spec + duplicates — follow-up.
 - **B6 — `\section`/`\subsection` + `\tableofcontents`.** Section frames / TOC nav.
 - **B7 — corpus + fidelity.** Add real beamer decks to the corpus with slide-aware
   visual fidelity testing (page count, per-slide word recall).
