@@ -3028,6 +3028,22 @@ impl<'a> Emitter<'a> {
                 }
                 node.end_byte()
             }
+            // `\titlepage` (beamer): the title block is auto-emitted at the document
+            // head (like `\maketitle`), so this is a no-op — it just must not leak.
+            Some("\\titlepage") if self.detected_class == DocClass::Beamer => node.end_byte(),
+            // `\frame{X}` (beamer): the COMMAND form of a slide. Render X as a slide
+            // with a leading weak pagebreak. `\frame{\titlepage}` renders to nothing
+            // (titlepage is a no-op + the title is at the top), so emit no blank slide.
+            Some("\\frame") if self.detected_class == DocClass::Beamer => {
+                if let Some(arg) = first_curly_group(node) {
+                    let content = self.render_curly_group_content(arg);
+                    if !content.trim().is_empty() {
+                        self.ensure_paragraph_break();
+                        let _ = write!(self.out, "#pagebreak(weak: true)\n\n{}\n", content.trim());
+                    }
+                }
+                node.end_byte()
+            }
             // `\abstract{text}` COMMAND form — some classes `\renewcommand{\abstract}`
             // to take the abstract as an argument (e.g. bytedance_seed.cls, corpus
             // 2605.31604) instead of the `abstract` environment. Like `\title`, it's a
