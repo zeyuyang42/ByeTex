@@ -160,7 +160,7 @@ Resolved.
 
 ## Open — P2 (polish / low frequency)
 
-### G3. `byetex diagnose <.typ>` should also surface FIDELITY warnings — 3 papers — Loop B
+### G3. `byetex diagnose <.typ>` now surfaces FIDELITY warnings — 3 papers — ✅ RESOLVED (PR #307)
 - **Symptom:** all 3 round-3 agents now USE `byetex diagnose paper.typ` (F6 landed) but
   note it only maps COMPILE errors, not the fidelity `warnings.json` against the edited
   `.typ`. They want a re-scan that flags leaked-LaTeX / fidelity issues post-edit.
