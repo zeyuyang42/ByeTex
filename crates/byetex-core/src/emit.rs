@@ -3044,6 +3044,32 @@ impl<'a> Emitter<'a> {
                 }
                 node.end_byte()
             }
+            // Beamer overlay commands. A static PDF can't animate, so show content
+            // unconditionally: skip the `<overlay-spec>` (so it doesn't leak) and let
+            // the following `{content}` group render normally as a sibling. `\pause`
+            // carries no content — drop it.
+            Some("\\pause") if self.detected_class == DocClass::Beamer => node.end_byte(),
+            // Single-content overlay commands. (`\alt<spec>{a}{b}` is intentionally
+            // excluded — its two content args would both render and duplicate.)
+            Some("\\only") | Some("\\onslide") | Some("\\uncover") | Some("\\visible")
+            | Some("\\action") | Some("\\alert")
+                if self.detected_class == DocClass::Beamer =>
+            {
+                let before = self.skip_until;
+                self.skip_overlay_spec(node.end_byte());
+                if self.skip_until == before {
+                    // No `<spec>` → tree-sitter attaches the `{content}` group as a
+                    // CHILD of this command (returning end_byte would consume it
+                    // unrendered). Render it explicitly so content isn't dropped.
+                    if let Some(arg) = first_curly_group(node) {
+                        let content = self.render_curly_group_content(arg);
+                        self.out.push_str(&content);
+                    }
+                }
+                // With a spec, the spec breaks the attachment so `{content}` is a
+                // sibling and renders normally after the skipped spec.
+                node.end_byte()
+            }
             // `\abstract{text}` COMMAND form — some classes `\renewcommand{\abstract}`
             // to take the abstract as an argument (e.g. bytedance_seed.cls, corpus
             // 2605.31604) instead of the `abstract` environment. Like `\title`, it's a
@@ -3949,6 +3975,31 @@ impl<'a> Emitter<'a> {
     /// still resolve to the surviving definition.
     fn label_first_use(&mut self, key: &str) -> bool {
         self.emitted_labels.insert(key.to_string())
+    }
+
+    /// Advance `skip_until` past a beamer `<overlay-spec>` that begins at (or just
+    /// after whitespace from) byte `pos`, so the spec doesn't leak as text. An overlay
+    /// spec contains only `0-9 + - . , | <space>` between `<` and `>`
+    /// (e.g. `<1->`, `<2-3>`, `<+->`); a `<` followed by anything else is left alone.
+    fn skip_overlay_spec(&mut self, pos: usize) {
+        let bytes = self.src.as_bytes();
+        let mut i = pos;
+        while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t') {
+            i += 1;
+        }
+        if bytes.get(i) != Some(&b'<') {
+            return;
+        }
+        let mut j = i + 1;
+        while j < bytes.len() && bytes[j] != b'>' {
+            if !matches!(bytes[j], b'0'..=b'9' | b'+' | b'-' | b'.' | b',' | b'|' | b' ') {
+                return; // not an overlay spec — leave it
+            }
+            j += 1;
+        }
+        if bytes.get(j) == Some(&b'>') {
+            self.skip_until = self.skip_until.max(j + 1);
+        }
     }
 
     /// Ensure two trailing newlines for a Typst paragraph break before a block.

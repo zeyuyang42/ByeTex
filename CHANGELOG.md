@@ -3,7 +3,7 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
-## [0.4.12] — unreleased
+## [0.5.0] — unreleased
 
 Autonomous-dev cycle: a self-improving loop that raises converter fidelity and
 hardens the agent surface, dogfooded by a fresh model each tick. Highlights below.
@@ -59,6 +59,8 @@ hardens the agent surface, dogfooded by a fresh model each tick. Highlights belo
   dropped); `\frame{\titlepage}`/`\titlepage` resolve to the auto-emitted title slide.
 - Beamer decks now render on a landscape 16:9 slide page (presentation geometry: larger
   base font, tight margins, ragged-right) instead of the us-letter article layout.
+- Beamer overlay specs (`\item<1->`, `\pause`, `\only`/`\uncover`/`\onslide`/`\visible`/
+  `\alert`) are handled: content is shown unconditionally and the `<…>` spec no longer leaks.
 
 ## [0.3.0] — 2026-06-15
 
