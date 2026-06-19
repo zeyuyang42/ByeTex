@@ -4123,7 +4123,7 @@ impl<'a> Emitter<'a> {
         // `\item<…>` / `\only<…>` skippers), so a stray unclosed `<` or a `>` elsewhere
         // in the body can't be mis-consumed.
         let after_cmd = node.start_byte() + "\\alt".len();
-        let mut i = skip_ascii_ws(
+        let i = skip_ascii_ws(
             bytes,
             environments::skip_leading_overlay_spec(self.src, after_cmd),
         );
