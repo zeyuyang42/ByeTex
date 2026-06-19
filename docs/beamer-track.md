@@ -8,6 +8,8 @@ a deck rendered as only its title (all slides lost).
 
 - **B1 — `columns` / `column`. ✅ DONE (PR #311, v0.4.9).** → `#grid(columns: (Nfr,…),
   gutter: 1em, [cell],…)`; `{width}` → `fr` ratio (leading-dot `.45`→`0.45` normalized).
+- **B2 — `block`/`alertblock`/`exampleblock`. ✅ DONE (PR #313, v0.4.10).** → titled
+  `#block` (accent-colored header + left rule; blue/red/green accents).
 
 - **B0 — frame foundation (PR #309, v0.4.8).** `DocClass::Beamer` detection; each
   `frame` → one page per slide (weak `#pagebreak()`); `\begin{frame}{Title}{Subtitle}`
@@ -15,8 +17,6 @@ a deck rendered as only its title (all slides lost).
 
 ## Open (ranked)
 
-- **B2 — `block` / `alertblock` / `exampleblock`.** Titled callout boxes, dropped →
-  content lost. Map to a titled `#block(...)` (reuse the tcolorbox recipe shape).
 - **B3 — title slide.** `\frame{\titlepage}` (a `\frame` COMMAND with `\titlepage`
   arg) and bare `\titlepage` → render the title block as the first slide. Currently
   `\frame` is `unsupported_command`; `\titlepage` does nothing.
