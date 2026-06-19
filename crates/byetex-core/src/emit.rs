@@ -3426,6 +3426,14 @@ impl<'a> Emitter<'a> {
             Some("frame") if self.detected_class == DocClass::Beamer => {
                 self.emit_beamer_frame(node)
             }
+            // Beamer side-by-side columns → a Typst `#grid`. A bare `column`
+            // (shouldn't appear outside `columns`) skips its `{width}` like minipage.
+            Some("columns") if self.detected_class == DocClass::Beamer => {
+                self.emit_beamer_columns(node)
+            }
+            Some("column") if self.detected_class == DocClass::Beamer => {
+                self.emit_minipage(node)
+            }
             Some("itemize") => self.emit_simple_list(node, "-"),
             Some("enumerate") => self.emit_simple_list(node, "+"),
             Some("description") => self.emit_description(node),

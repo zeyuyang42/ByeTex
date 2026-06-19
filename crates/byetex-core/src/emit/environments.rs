@@ -114,6 +114,65 @@ impl<'a> Emitter<'a> {
         env.end_byte()
     }
 
+    /// Emit a beamer `columns` block as a Typst `#grid`: one track per inner
+    /// `column`, its `{width}` mapped to a Typst column spec, its body rendered as
+    /// a content cell. Falls back to a transparent body emit if no `column` is found.
+    pub(in crate::emit) fn emit_beamer_columns(&mut self, env: Node<'_>) -> usize {
+        let mut cursor = env.walk();
+        let columns: Vec<Node<'_>> = env
+            .children(&mut cursor)
+            .filter(|c| environment_name(*c, self.src).as_deref() == Some("column"))
+            .collect();
+        if columns.is_empty() {
+            return self.emit_environment_body(env);
+        }
+
+        let mut specs: Vec<String> = Vec::new();
+        let mut cells: Vec<String> = Vec::new();
+        for col in &columns {
+            let mut ccur = col.walk();
+            let children: Vec<Node<'_>> = col
+                .children(&mut ccur)
+                .filter(|c| !matches!(c.kind(), "begin" | "end"))
+                .collect();
+            // First curly group is the mandatory `{width}` (like minipage).
+            let mut body_start = 0;
+            let mut spec = "1fr".to_string();
+            if let Some(first) = children.first() {
+                if matches!(
+                    first.kind(),
+                    "curly_group" | "curly_group_text" | "curly_group_word"
+                ) {
+                    spec = column_width_to_typst(self.curly_group_inner_trimmed(*first));
+                    body_start = 1;
+                }
+            }
+            let body = &children[body_start..];
+            let cell = if body.is_empty() {
+                String::new()
+            } else {
+                self.with_sub_buffer(|emitter| {
+                    let mut last = body[0].start_byte();
+                    for child in body {
+                        emitter.safe_copy(last, child.start_byte());
+                        last = emitter.emit_node(*child);
+                    }
+                    emitter.safe_copy(last, body.last().unwrap().end_byte());
+                })
+            };
+            specs.push(spec);
+            cells.push(cell.trim().to_string());
+        }
+
+        self.ensure_paragraph_break();
+        let _ = write!(self.out, "#grid(columns: ({}), gutter: 1em,\n", specs.join(", "));
+        for cell in &cells {
+            let _ = write!(self.out, "  [{cell}],\n");
+        }
+        self.out.push_str(")\n");
+        env.end_byte()
+    }
+
     /// Emit a beamer `frame` as a slide: a `#pagebreak()` before all but the
     /// first frame, the `\begin{frame}{Title}` argument (if present) as a bold
     /// slide title, then the frame body. A `\frametitle{…}` inside the body is
@@ -696,6 +755,37 @@ impl<'a> Emitter<'a> {
         if !name.is_empty() && !display.is_empty() {
             self.theorem_kinds.entry(name).or_insert(display);
         }
+    }
+}
+
+/// Map a beamer `column` `{width}` to a Typst grid column spec. A
+/// `\textwidth`/`\linewidth`/`\columnwidth`-relative width (`0.5\textwidth`)
+/// becomes an `fr` ratio (`0.5fr`); a bare absolute length (`3cm`, `40mm`) passes
+/// through; anything else falls back to `1fr`.
+fn column_width_to_typst(raw: &str) -> String {
+    let s = raw.trim();
+    for unit in ["\\textwidth", "\\linewidth", "\\columnwidth", "\\paperwidth"] {
+        if let Some(num) = s.strip_suffix(unit) {
+            let n = num.trim().trim_end_matches('*').trim();
+            let n = if n.is_empty() { "1" } else { n };
+            return format!("{}fr", normalize_leading_dot(n));
+        }
+    }
+    // Absolute length like `3cm` / `.5cm` / `40mm` / `2in` — keep for Typst.
+    if s.starts_with(|c: char| c.is_ascii_digit() || c == '.')
+        && s.ends_with(|c: char| c.is_ascii_alphabetic())
+    {
+        return normalize_leading_dot(s);
+    }
+    "1fr".to_string()
+}
+
+/// `.5` → `0.5`: Typst number literals require a leading digit, but LaTeX widths
+/// idiomatically drop it (`{.45\textwidth}`). Leaves other values unchanged.
+fn normalize_leading_dot(s: &str) -> String {
+    match s.strip_prefix('.') {
+        Some(rest) => format!("0.{rest}"),
+        None => s.to_string(),
     }
 }
 
