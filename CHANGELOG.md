@@ -3,6 +3,14 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.5.5] — unreleased
+
+### Added
+- New `byetex-beamer` skill documenting how ByeTex converts beamer presentations
+  natively (frames, columns, blocks, overlays, theme colors) and the few constructs to
+  fix by hand — so agents stop re-implementing what the converter already does. Linked
+  from `byetex-getting-started` and `byetex-unsupported-environment` (round-4 dogfood R1).
+
 ## [0.5.4] — unreleased
 
 ### Fixed
