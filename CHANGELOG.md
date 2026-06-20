@@ -3,6 +3,12 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.5.9] — unreleased
+
+### Fixed
+- Beamer `\section`/`\subsection` between frames now starts its own section slide
+  instead of the heading bleeding onto the previous slide (round-4 B6).
+
 ## [0.5.8] — unreleased
 
 ### Fixed
