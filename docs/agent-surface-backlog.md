@@ -221,7 +221,7 @@ _None yet. Format:_
 
 Math-heavy diffusion paper; 113-min agent run. Compiled from the start; all fidelity work.
 Findings (general, non-beamer):
-- **A1 (P1, converter) — `\addtocounter{c}{n}` leaks as body text** (verified on main:
+- **A1 ✅ FIXED (PR #331, v0.5.7) — `\addtocounter{c}{n}` leaks as body text** (verified on main:
   `\addtocounter{footnote}{-1}` renders literally). Recurring across multiple dogfoods.
   Negative-value counters don't node-parse → fall to generic → args leak. Fix: drop the
   whole `\addtocounter{}{}` (incl. both arg groups) in any class.
