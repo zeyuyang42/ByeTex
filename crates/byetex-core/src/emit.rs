@@ -2724,10 +2724,18 @@ impl<'a> Emitter<'a> {
             | Some("\\setbeamercovered")
             | Some("\\AtBeginSection")
             | Some("\\AtBeginSubsection")
-            | Some("\\titlegraphic")
-            // \subtitle is beamer's title-block subtitle; no Typst subtitle
-            // slot is maintained, so silently drop the content.
-            | Some("\\subtitle") => {
+            | Some("\\titlegraphic") => {
+                node.end_byte()
+            }
+            // `\subtitle{…}`: rendered under the title on a beamer title slide. Papers
+            // have no subtitle slot, so for them it stays dropped.
+            Some("\\subtitle") => {
+                if self.detected_class == DocClass::Beamer && self.metadata.subtitle.is_none() {
+                    if let Some(arg) = first_curly_group(node) {
+                        self.metadata.subtitle =
+                            Some(Content::Typst(self.render_curly_group_content(arg)));
+                    }
+                }
                 node.end_byte()
             }
 

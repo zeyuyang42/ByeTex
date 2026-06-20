@@ -52,6 +52,15 @@ impl<'a> Emitter<'a> {
             }
         }
 
+        // Beamer subtitle: a smaller line just below the title.
+        if let Some(subtitle) = self.metadata.subtitle.take() {
+            let _ = writeln!(
+                self.out,
+                "  #v(0.2em)\n  #text(size: 1.1em)[{}]",
+                subtitle.as_content()
+            );
+        }
+
         if with_rules {
             // Close the title-only block and draw the bottom rule; authors
             // land in a second centred block below it (matching the LaTeX

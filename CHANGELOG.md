@@ -3,6 +3,12 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.5.6] — unreleased
+
+### Fixed
+- Beamer `\subtitle{…}` is rendered under the title on the title slide instead of being
+  dropped (round-4 dogfood B-subtitle).
+
 ## [0.5.5] — unreleased
 
 ### Added

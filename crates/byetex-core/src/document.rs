@@ -17,6 +17,8 @@ use std::collections::HashMap;
 #[derive(Debug, Default, Clone)]
 pub(crate) struct DocumentMetadata {
     pub title: Option<Content>,
+    /// Beamer `\subtitle{…}` — rendered under the title on the title slide.
+    pub subtitle: Option<Content>,
     pub authors: Vec<Author>,
     pub r#abstract: Option<Content>,
     pub keywords: Vec<String>,
@@ -32,7 +34,7 @@ impl DocumentMetadata {
     /// `build_template_preamble` should fall through to the hand-rolled
     /// path in that case.
     pub fn is_title_block_empty(&self) -> bool {
-        self.title.is_none() && self.authors.is_empty()
+        self.title.is_none() && self.subtitle.is_none() && self.authors.is_empty()
     }
 
     /// Merge another `DocumentMetadata` (e.g. from a `\input`ed file)
@@ -41,6 +43,9 @@ impl DocumentMetadata {
     pub fn merge_from(&mut self, other: &mut DocumentMetadata) {
         if self.title.is_none() {
             self.title = other.title.take();
+        }
+        if self.subtitle.is_none() {
+            self.subtitle = other.subtitle.take();
         }
         if self.authors.is_empty() {
             self.authors = std::mem::take(&mut other.authors);
