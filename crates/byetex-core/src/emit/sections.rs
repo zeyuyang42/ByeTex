@@ -221,6 +221,16 @@ impl<'a> Emitter<'a> {
         // anywhere (so the reference resolves), else the first label.
         let chosen_label = self.pick_label_to_attach(&labels);
 
+        // Beamer: a `\section`/`\subsection` between frames is a section page, not an
+        // inline heading on the previous slide. Start a new slide with a weak pagebreak
+        // (the following `\begin{frame}` supplies the break after, so the heading sits on
+        // its own slide). Keeps the heading a real Typst heading so `#outline` (the
+        // `\tableofcontents` slide) still lists it.
+        if self.detected_class == crate::class_map::DocClass::Beamer && level <= 2 {
+            self.ensure_paragraph_break();
+            self.out.push_str("#pagebreak(weak: true)\n\n");
+        }
+
         // A heading's `==` markers are only recognised by Typst at the start of
         // a line. If the previous content left the cursor mid-line (e.g. a
         // theorem/remark env ending in `<rem:foo>`), the markers would be glued
