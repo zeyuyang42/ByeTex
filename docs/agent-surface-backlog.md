@@ -216,3 +216,22 @@ _None yet. Format:_
 > - **Evidence:** `<id>` (resolution=gave_up, after=0.71 vs before=0.69), `<id>`, …
 > - **Signal:** unclear_skill_notes(blocker) + stuck_point(gave_up)
 > - **Fix:** <what changed> — re-dogfooded `<id>`,`<id>` twice → GOOD_ENOUGH.
+
+## Round-4 arxiv re-dogfood (2026-06-20, 2605.22765, v0.5.6)
+
+Math-heavy diffusion paper; 113-min agent run. Compiled from the start; all fidelity work.
+Findings (general, non-beamer):
+- **A1 (P1, converter) — `\addtocounter{c}{n}` leaks as body text** (verified on main:
+  `\addtocounter{footnote}{-1}` renders literally). Recurring across multiple dogfoods.
+  Negative-value counters don't node-parse → fall to generic → args leak. Fix: drop the
+  whole `\addtocounter{}{}` (incl. both arg groups) in any class.
+- **A2 (P2, converter) — `\label` leaks as text inside a `proposition`** (`\_to\_denoiser`
+  shown as body). A `\label` in a theorem-like env emitted as a text fragment.
+- **A3 (P2, skill) — `\newcommandx` (xargs) + `\ifthenelse` macros** → 838 ambiguous_math
+  upright-text literals. `byetex-custom-macros` only covers plain `\newcommand`. Hard
+  (conditional, arg-count-dependent macros); document the limitation + a manual recipe.
+- **A4 (P2, skill, quick) — extend `byetex-using-warnings-json` triage** to list
+  `\addtocounter`/`\setcounterref`/`\crefalias` as "benign if dropped; check body for leaked
+  text" so agents find the A1 leaks fast.
+- **A5 (P2) — `\text{…}` containing unconverted inner math/macros** (cases() conditions like
+  `\text{if $\mask$}`) — the outer `\text` converts but inner `$…$`/macros don't.
