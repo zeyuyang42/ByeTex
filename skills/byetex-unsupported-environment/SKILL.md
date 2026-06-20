@@ -23,7 +23,7 @@ description, math envs, tabular, figure). Anything outside this set emits an
 | `tabbing`                    | A custom table or `#stack(...)` layout                        |
 | `tcolorbox` / `\tcbox`       | `#block(fill: …, stroke: …, …)[…]` — see the recipe below     |
 | `mdframed` / `framed`        | `#block(stroke: …, inset: …, …)[…]` (same shape, no fill)     |
-| `beamer frame`               | Migrate to Touying (Typst slides) or polylux                  |
+| `beamer frame` / `beamer` deck | ByeTex converts beamer NATIVELY — read `byetex-beamer` (do NOT migrate to Touying/polylux) |
 | `appendix`                   | `#set heading(numbering: "A.1")` for the appendix region      |
 
 ## Recipe: `tcolorbox` (and other colored/framed boxes)

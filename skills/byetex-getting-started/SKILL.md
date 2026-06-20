@@ -45,6 +45,13 @@ in-place diagnose surfaces fidelity bugs too, not just compile errors. Only
 `byetex diagnose paper.tex` (the **source**) re-converts and overwrites `paper.typ`,
 so never run *that* between edits.
 
+## Document type matters
+
+If the source is `\documentclass{beamer}` (a **presentation**), read the `byetex-beamer`
+skill first — ByeTex converts slides natively (frames, columns, blocks, overlays, theme
+colors), so you only fix a small set of constructs and must NOT re-implement what's
+already done. For papers, continue below.
+
 ## The fidelity phase (when it already compiles)
 
 A `diagnose` with an empty `diagnostics.json` means the `.typ` already compiles — now

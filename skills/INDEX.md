@@ -15,6 +15,8 @@ to run, the diagnose-first repair loop, and how to read these skills. Then
 - `byetex-getting-started` — Cold-start overview: which command first, the
   repair loop, warnings.json vs diagnostics.json.
 - `byetex-using-warnings-json` — How to read and act on the `warnings.json` sidecar.
+- `byetex-beamer` — Converting a beamer PRESENTATION: what ByeTex handles natively
+  (frames, columns, blocks, overlays, theme colors) vs. the few constructs to fix by hand.
 - `byetex-repair-loop` — The `byetex diagnose` repair loop: iterating on compile
   errors without re-converting.
 - `byetex-math` — Math gaps: `#text(red)[\foo]` placeholders, `op()`, `mat()`.
