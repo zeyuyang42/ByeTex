@@ -3011,6 +3011,15 @@ impl<'a> Emitter<'a> {
                     end
                 }
             }
+            // Beamer `\tableofcontents` → a section outline. Beamer `\section`s convert
+            // to level-1/2 headings, so `#outline` lists them; the frame already supplies
+            // the "Outline" title, so the outline itself carries none. Slides only show
+            // sections/subsections, so cap the depth at 2.
+            Some("\\tableofcontents") if self.detected_class == DocClass::Beamer => {
+                self.ensure_paragraph_break();
+                self.out.push_str("#outline(title: none, depth: 2)\n");
+                node.end_byte()
+            }
             // Tables-of-contents et al. — Typst equivalents not yet emitted; warn
             // so the user knows these structural sections were not preserved.
             Some("\\tableofcontents")

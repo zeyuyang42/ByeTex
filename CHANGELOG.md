@@ -3,6 +3,12 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.5.8] — unreleased
+
+### Fixed
+- Beamer `\tableofcontents` now renders a section outline (`#outline`) on the slide
+  instead of being dropped — the Outline slide lists the deck's sections (round-4 B-toc).
+
 ## [0.5.7] — unreleased
 
 ### Fixed
