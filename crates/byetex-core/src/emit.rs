@@ -1052,6 +1052,36 @@ impl<'a> Emitter<'a> {
             {
                 return node.end_byte()
             }
+            // A counter setter with a value tree-sitter can't parse — most often a
+            // NEGATIVE step, `\addtocounter{footnote}{-1}` — comes through as an ERROR
+            // node that GREEDILY spans the call AND following content, which the walker
+            // would copy verbatim (dogfood A1). Skip only the command + its `{c}{n}`
+            // arg groups (paragraph-safe) and let the rest of the node emit normally,
+            // so a following paragraph's `{…}` isn't dropped with it.
+            "ERROR"
+                if {
+                    let trimmed = self.src[node.start_byte()..node.end_byte()].trim_start();
+                    ["\\setcounter", "\\addtocounter", "\\stepcounter", "\\refstepcounter"]
+                        .iter()
+                        .any(|c| trimmed.starts_with(c))
+                } =>
+            {
+                // `args_start` = byte just after the leading `\command` token (skip the
+                // node's leading whitespace, then the `\` + ASCII-letter command name).
+                let after_ws = node.start_byte()
+                    + (self.src[node.start_byte()..].len()
+                        - self.src[node.start_byte()..].trim_start().len());
+                let args_start = after_ws
+                    + 1
+                    + self.src[after_ws + 1..]
+                        .find(|c: char| !c.is_ascii_alphabetic())
+                        .unwrap_or(0);
+                // Skip the command + its `{c}{n}` arg groups (paragraph-safe), then fall
+                // through to the default child-walk so any post-arg content still emits.
+                self.skip_until = self
+                    .skip_until
+                    .max(consume_trailing_arg_groups(self.src, args_start, false));
+            }
             // `\left( ... \right)` in math: tree-sitter packages the whole
             // span as a single `math_delimiter` with `left_command`,
             // `left_delimiter`, body, `right_command`, `right_delimiter`
@@ -2449,13 +2479,12 @@ impl<'a> Emitter<'a> {
                 self.skip_until = self.skip_until.max(end);
                 end
             }
-            // Inert no-output commands: counter/length setters + page-style
-            // controls. They carry no visible content — drop silently. Their
-            // `{arg}` groups are parsed as CHILDREN (covered by `node.end_byte()`),
-            // so we must NOT greedily consume following groups — that would eat real
-            // body content (`\pagestyle{x} {bold}` / `\pagestyle{x}\n\n{para}`).
-            // The `\setcounter`-family that DID leak gets its own node-kind drop
-            // higher up (`counter_*`), so these never need trailing consumption.
+            // Inert no-output commands: counter/length setters + page-style controls.
+            // When these parse normally their `{arg}` groups are CHILDREN (covered by
+            // `node.end_byte()`), so we must NOT greedily consume following groups — that
+            // would eat real body content (`\pagestyle{x} {bold}`). The leak case is a
+            // counter setter whose VALUE breaks the parse (e.g. `\addtocounter{c}{-1}`);
+            // that surfaces as an ERROR node and is handled there (dogfood A1).
             Some("\\setcounter")
             | Some("\\pagestyle")
             | Some("\\thispagestyle")
