@@ -23,7 +23,7 @@ a deck rendered as only its title (all slides lost).
   `presentation-16-9` landscape page, 22pt font, tight margins, ragged-right.
 - **B5 — overlays. ✅ DONE (PR #319, v0.5.0).** `\pause`/`\only`/`\uncover`/
   `\onslide`/`\visible`/`\action`/`\alert` + `\item<spec>`: strip `<…>`, show content.
-  KNOWN GAP: `\alt<spec>{a}{b}` (two-arg) still leaks spec + duplicates — follow-up.
+  `\alt<spec>{a}{b}` → shows default, drops spec + alt (PR #325, v0.5.4). Overlays COMPLETE.
 - **B6 — `\section`/`\subsection` + `\tableofcontents`.** Section frames / TOC nav.
 - **B7 — corpus + fidelity.** Add real beamer decks to the corpus with slide-aware
   visual fidelity testing (page count, per-slide word recall).
@@ -47,3 +47,29 @@ Remaining visual gaps (ranked, low): frame-title COLOR (byetex black-bold vs bea
 blue); title-slide affiliation rendered as superscript-footnote (vs plain centered line).
 Both aesthetic, not content. A full corpus-ingest + automated slide fidelity harness is
 deferred (manual render-compare suffices for now).
+
+## Round-4 dogfood (2026-06-20, v0.5.4) — agent-surface verification
+
+Fresh Sonnet agent repaired a realistic Madrid 16:9 deck (`corpus/beamer-demo`, seed
+compiled, fidelity 0.867). **Verdict: the CONVERTER handles beamer well, but the AGENT
+SURFACE is silent about it** — the agent reinvented helpers ByeTex already provides
+(blocks, columns, `\alert`) because no skill documents ByeTex's native beamer support,
+and couldn't see what was dropped (no warnings.json in the sandbox).
+
+### Top findings (round-4 backlog)
+- **R1 (P0, BLOCKER) — no beamer skill.** `byetex-unsupported-environment` says only
+  "beamer frame → Touying or polylux" with no recipe. Need a `byetex-beamer` skill
+  documenting what ByeTex DOES natively (frames→pages, `columns`→grid, blocks→titled
+  `#block`, overlays→collapsed, theme colors→detected, title slide auto) + the known gaps,
+  so agents stop reinventing and target the real gaps.
+- **R2 (P1) — dogfood/diagnose sandbox lacks `warnings.json`.** `diagnose --project`
+  (used by dogfood prepare) writes `diagnostics.json` (compile errors) but not
+  `warnings.json` (dropped-construct signals), so agents can't see silent drops.
+- **B-toc (P1, converter) — `\tableofcontents` dropped** (warns): the Outline frame shows
+  only its title, no section list. Emit a section list / `#outline()`.
+- **B-subtitle (P1, converter) — `\subtitle{…}` dropped** from the title slide. Render it.
+- **B-alert-color (P2) — `\alert` content renders but loses the red color** (agent
+  misreported as "dropped"; content IS present).
+- Page count (5 vs 8 truth) is the intended OVERLAY COLLAPSE (each `\item<n->`/`\pause`
+  step is a separate page in beamer; ByeTex shows the final state) — NOT a bug; the agent
+  over-corrected by adding pages. Document this so agents/graders don't treat it as a gap.
