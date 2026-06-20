@@ -3,6 +3,13 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.5.7] — unreleased
+
+### Fixed
+- `\addtocounter{c}{-1}` (and the counter-setter family) no longer leak as literal body
+  text when a value breaks the parse — a negative step parses as a greedy ERROR node; the
+  command + its args are now dropped while following content is preserved (round-4 A1).
+
 ## [0.5.6] — unreleased
 
 ### Fixed
