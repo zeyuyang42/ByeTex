@@ -230,8 +230,8 @@ Findings (general, non-beamer):
 - **A3 (P2, skill) — `\newcommandx` (xargs) + `\ifthenelse` macros** → 838 ambiguous_math
   upright-text literals. `byetex-custom-macros` only covers plain `\newcommand`. Hard
   (conditional, arg-count-dependent macros); document the limitation + a manual recipe.
-- **A4 (P2, skill, quick) — extend `byetex-using-warnings-json` triage** to list
+- **A4 ✅ MOOT (resolved by A1 #331; all counter cmds now drop cleanly, no leak to triage) — extend `byetex-using-warnings-json` triage** to list
   `\addtocounter`/`\setcounterref`/`\crefalias` as "benign if dropped; check body for leaked
   text" so agents find the A1 leaks fast.
-- **A5 (P2) — `\text{…}` containing unconverted inner math/macros** (cases() conditions like
+- **A5 ✅ FIXED (PR #337, v0.5.11) — `\text{…}` containing unconverted inner math/macros** (cases() conditions like
   `\text{if $\mask$}`) — the outer `\text` converts but inner `$…$`/macros don't.
