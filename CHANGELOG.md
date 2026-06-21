@@ -3,6 +3,14 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.5.11] — unreleased
+
+### Fixed
+- `\text{…}` inside math now re-converts an embedded `$…$` to Typst math (e.g.
+  `\text{if $x_t = y$}` in a `cases()` condition) instead of leaving the dollar signs
+  literal. Handles escaped `\$`, unbalanced `$`, and quote/backslash escaping safely
+  (round-4 dogfood A5).
+
 ## [0.5.10] — unreleased
 
 ### Fixed
