@@ -3,6 +3,13 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.5.19] — unreleased
+
+### Fixed
+- `\appendix` now resets the heading counter (`#counter(heading).update(0)`), so the
+  first appendix is A — previously appendices continued the body count (e.g. D/E after
+  three chapters; round-6 dogfood).
+
 ## [0.5.18] — unreleased
 
 ### Added
