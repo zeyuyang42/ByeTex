@@ -280,7 +280,7 @@ worked well", warnings.json prioritized correctly, one skill read sufficed.
   (D/E → A/B). VERIFIED.
 
 ### New findings (round-6)
-- **A6 (P2, converter) — `\begin{titlepage}` emits as LOOSE body content** (not isolated):
+- **A6 ✅ FIXED (PR #353, v0.5.20) — `\begin{titlepage}` emits as LOOSE body content** (not isolated):
   in a thesis the inner titlepage tables flow into the frontmatter. VERIFIED. Fix: map
   `titlepage` env to a `#page[...]`/pagebreak-isolated scope.
 - **T4 (still open) — thesis author block article-style** (superscript affiliation on a
