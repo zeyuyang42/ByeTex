@@ -3634,10 +3634,12 @@ impl<'a> Emitter<'a> {
                 }
                 node.end_byte()
             }
-            // `\appendix` toggles section-number style to letters; emit as a
-            // set rule.
+            // `\appendix` toggles section-number style to letters AND resets the
+            // section/chapter counter so the first appendix is A (not a continuation of
+            // the body count — round-6 dogfood: appendices showed D/E after 3 chapters).
             Some("\\appendix") => {
-                self.out.push_str("\n#set heading(numbering: \"A.1\")\n");
+                self.out
+                    .push_str("\n#set heading(numbering: \"A.1\")\n#counter(heading).update(0)\n");
                 node.end_byte()
             }
             // `\label{X}` outside any section/equation context — keep the
