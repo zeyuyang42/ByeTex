@@ -250,7 +250,7 @@ by macro name with occurrence counts"; the thesis agent used it to find `\tableo
 - **T1 ✅ FIXED (PR #343, v0.5.14) — `\subtitle` dropped in non-beamer** (report/book). VERIFIED. The
   subtitle machinery exists (beamer #329); extend capture to report/book + render under
   `\maketitle` title. Quick.
-- **T2 (P1, converter) — `\section*` inside `\chapter` is level-1, not level-2** (book/report
+- **T2 ✅ FIXED (PR #345, v0.5.15) — `\section*` inside `\chapter` is level-1, not level-2** (book/report
   heading hierarchy: chapter=1, section=2). VERIFIED. Headings flattened, hierarchy lost.
 - **T3 (P1, skill) — no `byetex-book` skill** (like byetex-beamer R1): `\frontmatter`/
   `\mainmatter` page-numbering, `\tableofcontents`→#outline, chapter-vs-section depth,
