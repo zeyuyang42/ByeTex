@@ -62,7 +62,7 @@ and couldn't see what was dropped (no warnings.json in the sandbox).
   documenting what ByeTex DOES natively (frames→pages, `columns`→grid, blocks→titled
   `#block`, overlays→collapsed, theme colors→detected, title slide auto) + the known gaps,
   so agents stop reinventing and target the real gaps.
-- **R2 (P1) — dogfood/diagnose sandbox lacks `warnings.json`.** `diagnose --project`
+- **R2 ✅ FIXED (PR #339, v0.5.12) — dogfood/diagnose sandbox lacks `warnings.json`.** `diagnose --project`
   (used by dogfood prepare) writes `diagnostics.json` (compile errors) but not
   `warnings.json` (dropped-construct signals), so agents can't see silent drops.
 - **B-toc (P1, converter) — `\tableofcontents` dropped** (warns): the Outline frame shows
