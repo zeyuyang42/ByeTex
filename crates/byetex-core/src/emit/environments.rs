@@ -7,7 +7,7 @@ use tree_sitter::Node;
 
 use super::{
     command_name_text, environment_name, extract_def_and_record, extract_environment_def,
-    extract_label_name, extract_label_name_and_end, extract_let, extract_newcommand,
+    extract_label_name_and_end, extract_let, extract_newcommand,
     extract_newcommandx, extract_theorem_def, let_alias_def, range_of, read_newif_flag,
     sanitize_label_key, strip_trailing_typst_label, Emitter, MacroDef,
 };
@@ -508,7 +508,16 @@ impl<'a> Emitter<'a> {
             .children(&mut cursor)
             .filter(|c| {
                 if c.kind() == "label_definition" {
-                    label = extract_label_name(*c, self.src);
+                    // Use the `_and_end` form + `skip_until`: tree-sitter truncates the
+                    // label key at the first `_`, so the tail (`_to_denoiser}`) parses as
+                    // separate sibling nodes that would otherwise leak into the body
+                    // (dogfood A2). Skip past the real closing brace.
+                    if let Some((key, end)) = extract_label_name_and_end(*c, self.src) {
+                        if label.is_none() {
+                            label = Some(key);
+                        }
+                        self.skip_until = self.skip_until.max(end);
+                    }
                     return false;
                 }
                 // tree-sitter-latex may parse `\label{key}` as a
