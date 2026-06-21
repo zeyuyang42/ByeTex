@@ -3806,9 +3806,19 @@ impl<'a> Emitter<'a> {
                 self.in_document_body = true;
                 self.emit_environment_body(node)
             }
+            // `titlepage` is its own page in LaTeX — isolate the body with pagebreaks so
+            // a thesis's inner title page doesn't flow into the following frontmatter
+            // (round-6 dogfood A6). Typst suppresses the leading weak break at the head.
+            Some("titlepage") => {
+                self.ensure_paragraph_break();
+                self.out.push_str("#pagebreak(weak: true)\n\n");
+                self.emit_environment_body(node);
+                self.ensure_paragraph_break();
+                self.out.push_str("#pagebreak(weak: true)\n\n");
+                node.end_byte()
+            }
             Some("center") | Some("flushleft")
             | Some("flushright") | Some("quote") | Some("quotation") | Some("verse")
-            | Some("titlepage")
             // Acknowledgements, keyword-list, and conference-specific metadata
             // blocks that carry plain content with no Typst-renderable structure.
             | Some("ack") | Some("keywords") | Some("MSCcodes") | Some("icmlauthorlist")

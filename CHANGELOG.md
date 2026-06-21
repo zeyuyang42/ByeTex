@@ -3,6 +3,12 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.5.20] — unreleased
+
+### Fixed
+- `\begin{titlepage}` is now isolated on its own page (pagebreak before + after) instead
+  of its content flowing into the following frontmatter/chapter (round-6 dogfood A6).
+
 ## [0.5.19] — unreleased
 
 ### Fixed
