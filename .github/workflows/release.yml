@@ -1,9 +1,14 @@
 name: Release
 
+# Manual-only: releases are cut locally (scripts/build_release_local.sh) because the
+# hosted cross-compile matrix is flaky and wastes runtime. Kept as an opt-in fallback
+# via the Actions "Run workflow" button; it no longer fires on every `v*.*.*` tag push.
 on:
-  push:
-    tags:
-      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build (e.g. v0.5.21)"
+        required: true
 
 permissions:
   contents: write
@@ -31,6 +36,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -56,7 +63,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          NAME="byetex-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          NAME="byetex-${{ inputs.tag }}-${{ matrix.target }}"
           STAGE="dist/${NAME}"
           mkdir -p "${STAGE}"
           if [[ "${{ matrix.target }}" == *windows* ]]; then
@@ -107,6 +114,7 @@ jobs:
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.tag }}
           files: |
             dist/byetex-*.tar.gz
             dist/byetex-*.zip
