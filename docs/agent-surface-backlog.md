@@ -235,3 +235,33 @@ Findings (general, non-beamer):
   text" so agents find the A1 leaks fast.
 - **A5 ✅ FIXED (PR #337, v0.5.11) — `\text{…}` containing unconverted inner math/macros** (cases() conditions like
   `\text{if $\mask$}`) — the outer `\text` converts but inner `$…$`/macros don't.
+
+## Round-5 dogfood (2026-06-21, v0.5.12→13) — R2 verified helpful
+
+Two fresh agents WITH the new `warnings.json` sidecar (R2 #339). Both confirmed it HELPED:
+the math agent "warnings.json was very helpful for prioritizing… 840 ambiguous_math grouped
+by macro name with occurrence counts"; the thesis agent used it to find `\tableofcontents`/
+`\frontmatter` drops. R2 measurably improved agent effectiveness vs round-4.
+
+### Done this round
+- **longtable** dropped → `#table` (PR #341, v0.5.13). VERIFIED bug.
+
+### Thesis (book-class) findings — NEW track
+- **T1 (P1, converter) — `\subtitle` dropped in non-beamer** (report/book). VERIFIED. The
+  subtitle machinery exists (beamer #329); extend capture to report/book + render under
+  `\maketitle` title. Quick.
+- **T2 (P1, converter) — `\section*` inside `\chapter` is level-1, not level-2** (book/report
+  heading hierarchy: chapter=1, section=2). VERIFIED. Headings flattened, hierarchy lost.
+- **T3 (P1, skill) — no `byetex-book` skill** (like byetex-beamer R1): `\frontmatter`/
+  `\mainmatter` page-numbering, `\tableofcontents`→#outline, chapter-vs-section depth,
+  thesis title page. All had `suggested_skill: null`.
+- **T4 (P2) — book/thesis author block is article-style** (superscript affiliation) — wrong
+  for a thesis title page (title+subtitle only).
+- **T5 (P2, warnings) — `byetex-using-warnings-json` triage** conflates benign drops
+  (`\newpage`) with HIGH-IMPACT structural drops (ToC, frontmatter); should distinguish.
+
+### Math-paper findings (recurring, = round-4 A3)
+- **A3 (P2, HARD) — `\newcommandx`+`\ifthenelse` macros** = 840/943 warnings (89%); the #1
+  math-paper fidelity gap. `byetex-custom-macros` only covers plain `\newcommand`.
+- **M1 (P2, warnings) — `ambiguous_math` warnings have EMPTY src_fragment/typ_region** → agents
+  can't locate them in the .typ programmatically; had to grep. Fixable warning-quality bug.
