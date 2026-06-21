@@ -3,6 +3,13 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.5.10] — unreleased
+
+### Fixed
+- `\label{key_with_underscore}` inside a theorem-like environment no longer leaks its
+  tail (`_to_denoiser`) as body text — tree-sitter truncates the key at the first `_`, so
+  the whole `\label{…}` is now consumed (round-4 dogfood A2).
+
 ## [0.5.9] — unreleased
 
 ### Fixed
