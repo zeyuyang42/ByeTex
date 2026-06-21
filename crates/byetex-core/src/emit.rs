@@ -3147,6 +3147,21 @@ impl<'a> Emitter<'a> {
                 self.out.push_str("#outline(depth: 3)\n\n");
                 node.end_byte()
             }
+            // Book/report front/main-matter page numbering: `\frontmatter` → roman page
+            // numbers, `\mainmatter` → arabic reset to 1. Were dropped (numbering lost; the
+            // thesis dogfood added them by hand). Only in chapter-bearing classes; else they
+            // fall through to the drop arm below.
+            Some("\\frontmatter") if self.chapter_based => {
+                self.ensure_paragraph_break();
+                self.out.push_str("#set page(numbering: \"i\")\n\n");
+                consume_trailing_inline_space(self.src, node.end_byte())
+            }
+            Some("\\mainmatter") if self.chapter_based => {
+                self.ensure_paragraph_break();
+                self.out
+                    .push_str("#set page(numbering: \"1\")\n#counter(page).update(1)\n\n");
+                consume_trailing_inline_space(self.src, node.end_byte())
+            }
             // Tables-of-contents et al. — Typst equivalents not yet emitted; warn
             // so the user knows these structural sections were not preserved.
             Some("\\tableofcontents")
@@ -3159,6 +3174,7 @@ impl<'a> Emitter<'a> {
             | Some("\\printglossaries")
             // Book-class structure dividers — affect page numbering / heading
             // numbering in ways Typst doesn't model; warn so users are aware.
+            // (`\frontmatter`/`\mainmatter` are handled above for chapter classes.)
             | Some("\\frontmatter")
             | Some("\\mainmatter")
             | Some("\\backmatter") => {
