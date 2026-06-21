@@ -278,6 +278,10 @@ pub(crate) struct Emitter<'a> {
     /// (not a bare fragment). Gates the self-generated neutral preamble so
     /// fragment conversions stay preamble-free.
     saw_document_class: bool,
+    /// True for a chapter-bearing class (`book`/`report`/memoir/thesis), where
+    /// `\chapter` is the top level so `\section` sits at level 2 (not level 1 as in
+    /// article). Detected from the `\documentclass` name (round-5 dogfood T2).
+    chapter_based: bool,
     /// True once we've entered the `document` environment, i.e. we're past the
     /// preamble. Gates preamble-only commands like `\abstract{…}` (the command form)
     /// so an incidental `{…}` group in the BODY isn't mistaken for the abstract.
@@ -457,6 +461,7 @@ impl<'a> Emitter<'a> {
             referenced_labels: HashSet::new(),
             emitted_labels: HashSet::new(),
             saw_document_class: false,
+            chapter_based: false,
             in_document_body: false,
             theorem_kinds: HashMap::new(),
             used_theorem_kinds: std::collections::HashSet::new(),
@@ -1677,6 +1682,17 @@ impl<'a> Emitter<'a> {
             let (class, opts) = extract_class_and_options(node, self.src);
             self.layout = crate::class_map::Layout::from_class_options(&opts);
             if let Some(c) = class {
+                // Chapter-bearing class → `\section` is level 2 under `\chapter`. Detect
+                // from the class name (covers book/report/memoir KOMA variants and custom
+                // thesis classes like `tudelft-report`); article-family stays level-1.
+                let cl = c.to_ascii_lowercase();
+                self.chapter_based = matches!(
+                    cl.as_str(),
+                    // KOMA-Script chapter classes (scrreprt's name lacks a full "report").
+                    "book" | "report" | "memoir" | "scrbook" | "scrreprt"
+                ) || cl.contains("thesis")
+                    || cl.contains("dissertation")
+                    || ((cl.contains("book") || cl.contains("report")) && !cl.contains("article"));
                 self.detected_class = DocClass::from_class(&c, &opts);
             }
             return node.end_byte();

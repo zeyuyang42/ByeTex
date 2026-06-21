@@ -27,7 +27,7 @@ impl<'a> Emitter<'a> {
 
     pub(in crate::emit) fn emit_section(&mut self, node: Node<'_>) -> usize {
         let kind = node.kind();
-        let level = section_level(kind);
+        let level = section_level(kind, self.chapter_based);
 
         let mut cursor = node.walk();
         let children: Vec<Node<'_>> = node.children(&mut cursor).collect();

@@ -24,18 +24,30 @@ pub(in crate::emit) fn is_section_kind(kind: &str) -> bool {
     )
 }
 
-pub(in crate::emit) fn section_level(kind: &str) -> u8 {
-    // LaTeX has \part > \chapter > \section > ... \subparagraph. Typst has a
-    // single integer level. We collapse part/chapter/section to level 1 for
-    // article-class compatibility; M2 doesn't target book/report yet, so this
-    // is acceptable until M4. Within the M2 article subset, level 1 = section.
-    match kind {
-        "part" | "chapter" | "section" => 1,
-        "subsection" => 2,
-        "subsubsection" => 3,
-        "paragraph" => 4,
-        "subparagraph" => 5,
-        _ => 1,
+pub(in crate::emit) fn section_level(kind: &str, chapter_based: bool) -> u8 {
+    // LaTeX has \part > \chapter > \section > ... \subparagraph; Typst has a single
+    // integer level. In a chapter-bearing class (book/report/thesis) `\chapter` is the
+    // top level, so `\section` and below shift down by one (section = 2). In the article
+    // family there are no chapters, so `\section` = level 1 (the legacy mapping).
+    if chapter_based {
+        match kind {
+            "part" | "chapter" => 1,
+            "section" => 2,
+            "subsection" => 3,
+            "subsubsection" => 4,
+            "paragraph" => 5,
+            "subparagraph" => 6,
+            _ => 1,
+        }
+    } else {
+        match kind {
+            "part" | "chapter" | "section" => 1,
+            "subsection" => 2,
+            "subsubsection" => 3,
+            "paragraph" => 4,
+            "subparagraph" => 5,
+            _ => 1,
+        }
     }
 }
 
