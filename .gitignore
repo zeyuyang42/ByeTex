@@ -53,3 +53,7 @@ scripts/output/
 
 # Local scratch / diagnostic outputs
 /tmp/
+
+# Local release build artifacts (scripts/build_release_local.sh)
+/dist/
+dist_build.log
