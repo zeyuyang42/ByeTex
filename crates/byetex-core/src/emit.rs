@@ -3138,6 +3138,15 @@ impl<'a> Emitter<'a> {
                 self.out.push_str("#outline(title: none, depth: 2)\n");
                 node.end_byte()
             }
+            // Book/report/thesis `\tableofcontents` → a titled `#outline` of the
+            // chapters/sections (they convert to Typst headings). Was dropped (B-toc
+            // covered only beamer); the thesis dogfood had to add this by hand.
+            // depth 3 = chapter/section/subsection. Article-family keeps the drop below.
+            Some("\\tableofcontents") if self.chapter_based => {
+                self.ensure_paragraph_break();
+                self.out.push_str("#outline(depth: 3)\n\n");
+                node.end_byte()
+            }
             // Tables-of-contents et al. — Typst equivalents not yet emitted; warn
             // so the user knows these structural sections were not preserved.
             Some("\\tableofcontents")
