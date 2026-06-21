@@ -3,6 +3,14 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.5.13] — unreleased
+
+### Fixed
+- `longtable`/`longtable*`/`xltabular` (multi-page tables, common in theses and papers)
+  now render as a Typst `#table` instead of being dropped wholesale; the page-break
+  markers (`\endhead`/`\endfoot`/…) are dropped no-ops (round-5 dogfood). The table
+  `\caption` is not yet carried over.
+
 ## [0.5.12] — unreleased
 
 ### Fixed

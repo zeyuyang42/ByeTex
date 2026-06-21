@@ -3800,6 +3800,11 @@ impl<'a> Emitter<'a> {
             // tblr (tabularray): same layout shape as tabular; leading
             // key=value options group is ignored if emit_tabular trips on it.
             | Some("tblr")
+            // longtable: a multi-page table with the same `{colspec}` shape as tabular.
+            // Its page-break header/footer markers (`\endhead`, `\endfoot`, …) are
+            // dropped no-ops; the body rows render as a single Typst table. Was dropped
+            // wholesale (round-5 dogfood).
+            | Some("longtable") | Some("longtable*") | Some("xltabular")
                 => self.emit_tabular(node),
             Some("figure") | Some("figure*") | Some("table") | Some("table*")
             // algorithm / algorithm*: float wrapper around \begin{algorithmic}.
