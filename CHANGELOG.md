@@ -3,6 +3,12 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.5.16] — unreleased
+
+### Fixed
+- Book/report/thesis `\tableofcontents` now renders a `#outline` of the chapters/sections
+  instead of being dropped (extends the beamer ToC to chapter-bearing classes; round-5 T-toc).
+
 ## [0.5.15] — unreleased
 
 ### Fixed
