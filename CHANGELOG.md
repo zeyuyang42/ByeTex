@@ -3,20 +3,34 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
-## [0.5.20] — unreleased
+## [0.5.20] — 2026-06-22
+
+First release since v0.3.0 — it bundles all the 0.4.x/0.5.x work below. Highlights:
+
+- **Beamer presentation support** — a LaTeX beamer deck converts to Typst slides: frames
+  (one page each), `columns`→grid, blocks→titled `#block`, the title slide, overlays
+  collapsed, per-deck theme colors (detected, not hard-coded), and 4:3 / 16:9 geometry.
+- **Book/report/thesis support** — chapter/section heading hierarchy, `\tableofcontents`→
+  `#outline`, `\frontmatter`/`\mainmatter` page numbering, `longtable`→`#table`, `\subtitle`,
+  `\appendix` lettering, and isolated `\begin{titlepage}`.
+- **Agent surface** — `diagnose <.typ>` leaked-LaTeX scan, a `warnings.json` sidecar from
+  `diagnose --project`, and new `byetex-beamer` / `byetex-book` skills (15 skills total).
+- **Converter fixes** — author-block marker leaks, `\addtocounter`/theorem-`\label`
+  underscore leaks, `\text{$…$}` inner-math, the `\abstract`/algorithm-block recipes, and
+  many more (see the per-version sections below).
 
 ### Fixed
 - `\begin{titlepage}` is now isolated on its own page (pagebreak before + after) instead
   of its content flowing into the following frontmatter/chapter (round-6 dogfood A6).
 
-## [0.5.19] — unreleased
+## [0.5.19] — 2026-06-22
 
 ### Fixed
 - `\appendix` now resets the heading counter (`#counter(heading).update(0)`), so the
   first appendix is A — previously appendices continued the body count (e.g. D/E after
   three chapters; round-6 dogfood).
 
-## [0.5.18] — unreleased
+## [0.5.18] — 2026-06-22
 
 ### Added
 - New `byetex-book` skill documenting how ByeTex converts book/report/thesis classes
@@ -24,34 +38,34 @@ Notable changes to ByeTex. Format loosely follows
   constructs to fix by hand — so agents stop re-implementing what works (round-5 T3).
   Linked from `byetex-getting-started` (doc-type routing) and the skills INDEX.
 
-## [0.5.17] — unreleased
+## [0.5.17] — 2026-06-22
 
 ### Fixed
 - Book/report `\frontmatter`/`\mainmatter` now switch page numbering (roman → arabic
   reset to 1) via Typst `#set page(numbering:)` + a page-counter reset, instead of being
   dropped (round-5 dogfood T-frontmatter).
 
-## [0.5.16] — unreleased
+## [0.5.16] — 2026-06-22
 
 ### Fixed
 - Book/report/thesis `\tableofcontents` now renders a `#outline` of the chapters/sections
   instead of being dropped (extends the beamer ToC to chapter-bearing classes; round-5 T-toc).
 
-## [0.5.15] — unreleased
+## [0.5.15] — 2026-06-22
 
 ### Fixed
 - Book/report/thesis heading hierarchy: in a chapter-bearing class (`book`/`report`/
   `memoir`/KOMA/thesis), `\section` now renders at heading level 2 under `\chapter`
   (subsection at 3, …) instead of being flattened to level 1 (round-5 dogfood T2).
 
-## [0.5.14] — unreleased
+## [0.5.14] — 2026-06-22
 
 ### Fixed
 - `\subtitle{…}` is now rendered under the title for ALL document classes (report, book,
   thesis, article-with-subtitle-package), not just beamer — it was dropped elsewhere,
   losing the subtitle on title pages (round-5 dogfood T1).
 
-## [0.5.13] — unreleased
+## [0.5.13] — 2026-06-22
 
 ### Fixed
 - `longtable`/`longtable*`/`xltabular` (multi-page tables, common in theses and papers)
@@ -59,14 +73,14 @@ Notable changes to ByeTex. Format loosely follows
   markers (`\endhead`/`\endfoot`/…) are dropped no-ops (round-5 dogfood). The table
   `\caption` is not yet carried over.
 
-## [0.5.12] — unreleased
+## [0.5.12] — 2026-06-22
 
 ### Fixed
 - `byetex diagnose --project`/`--flat` now writes a `<stem>.warnings.json` sidecar next to
   the `.typ`, so an agent repairing a diagnosed project (e.g. the dogfood harness) can see
   silently-dropped constructs instead of only compile errors (round-4 dogfood R2).
 
-## [0.5.11] — unreleased
+## [0.5.11] — 2026-06-22
 
 ### Fixed
 - `\text{…}` inside math now re-converts an embedded `$…$` to Typst math (e.g.
@@ -74,39 +88,39 @@ Notable changes to ByeTex. Format loosely follows
   literal. Handles escaped `\$`, unbalanced `$`, and quote/backslash escaping safely
   (round-4 dogfood A5).
 
-## [0.5.10] — unreleased
+## [0.5.10] — 2026-06-22
 
 ### Fixed
 - `\label{key_with_underscore}` inside a theorem-like environment no longer leaks its
   tail (`_to_denoiser`) as body text — tree-sitter truncates the key at the first `_`, so
   the whole `\label{…}` is now consumed (round-4 dogfood A2).
 
-## [0.5.9] — unreleased
+## [0.5.9] — 2026-06-22
 
 ### Fixed
 - Beamer `\section`/`\subsection` between frames now starts its own section slide
   instead of the heading bleeding onto the previous slide (round-4 B6).
 
-## [0.5.8] — unreleased
+## [0.5.8] — 2026-06-22
 
 ### Fixed
 - Beamer `\tableofcontents` now renders a section outline (`#outline`) on the slide
   instead of being dropped — the Outline slide lists the deck's sections (round-4 B-toc).
 
-## [0.5.7] — unreleased
+## [0.5.7] — 2026-06-22
 
 ### Fixed
 - `\addtocounter{c}{-1}` (and the counter-setter family) no longer leak as literal body
   text when a value breaks the parse — a negative step parses as a greedy ERROR node; the
   command + its args are now dropped while following content is preserved (round-4 A1).
 
-## [0.5.6] — unreleased
+## [0.5.6] — 2026-06-22
 
 ### Fixed
 - Beamer `\subtitle{…}` is rendered under the title on the title slide instead of being
   dropped (round-4 dogfood B-subtitle).
 
-## [0.5.5] — unreleased
+## [0.5.5] — 2026-06-22
 
 ### Added
 - New `byetex-beamer` skill documenting how ByeTex converts beamer presentations
@@ -114,19 +128,19 @@ Notable changes to ByeTex. Format loosely follows
   fix by hand — so agents stop re-implementing what the converter already does. Linked
   from `byetex-getting-started` and `byetex-unsupported-environment` (round-4 dogfood R1).
 
-## [0.5.4] — unreleased
+## [0.5.4] — 2026-06-22
 
 ### Fixed
 - Beamer `\alt<spec>{default}{alternative}` now shows the default arg and drops the
   spec + the alternative (was leaking the `<spec>` and rendering both args).
 
-## [0.5.3] — unreleased
+## [0.5.3] — 2026-06-22
 
 ### Fixed
 - Beamer title slide shows the author and `\institute` as plain centered lines instead
   of the academic-paper superscript-numbered affiliation footnoting.
 
-## [0.5.2] — unreleased
+## [0.5.2] — 2026-06-22
 
 ### Added
 - Beamer frame titles now render in the deck's theme color, DETECTED per deck:
@@ -134,14 +148,14 @@ Notable changes to ByeTex. Format loosely follows
   `\usecolortheme{name}` maps to the theme's structure color, and a stock deck falls
   back to beamer's default structure blue (instead of a hard-coded blue for all decks).
 
-## [0.5.1] — unreleased
+## [0.5.1] — 2026-06-22
 
 ### Fixed
 - Beamer aspect ratio: decks now default to the beamer-standard **4:3** slide page and
   honor `\documentclass[aspectratio=169]{beamer}` (and 16:10/14:9) for widescreen,
   instead of always forcing 16:9. (Class-option parsing now keeps `key=value` values.)
 
-## [0.5.0] — unreleased
+## [0.5.0] — 2026-06-22
 
 Autonomous-dev cycle: a self-improving loop that raises converter fidelity and
 hardens the agent surface, dogfooded by a fresh model each tick. Highlights below.
