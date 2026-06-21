@@ -252,7 +252,7 @@ by macro name with occurrence counts"; the thesis agent used it to find `\tableo
   `\maketitle` title. Quick.
 - **T2 ✅ FIXED (PR #345, v0.5.15) — `\section*` inside `\chapter` is level-1, not level-2** (book/report
   heading hierarchy: chapter=1, section=2). VERIFIED. Headings flattened, hierarchy lost.
-- **T3 (P1, skill) — no `byetex-book` skill** (like byetex-beamer R1): `\frontmatter`/
+- **T3 ✅ DONE (PR #349, v0.5.18) — no `byetex-book` skill** (like byetex-beamer R1): `\frontmatter`/
   `\mainmatter` page-numbering, `\tableofcontents`→#outline, chapter-vs-section depth,
   thesis title page. All had `suggested_skill: null`.
 - **T4 (P2) — book/thesis author block is article-style** (superscript affiliation) — wrong
