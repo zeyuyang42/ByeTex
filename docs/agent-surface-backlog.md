@@ -247,7 +247,7 @@ by macro name with occurrence counts"; the thesis agent used it to find `\tableo
 - **longtable** dropped → `#table` (PR #341, v0.5.13). VERIFIED bug.
 
 ### Thesis (book-class) findings — NEW track
-- **T1 (P1, converter) — `\subtitle` dropped in non-beamer** (report/book). VERIFIED. The
+- **T1 ✅ FIXED (PR #343, v0.5.14) — `\subtitle` dropped in non-beamer** (report/book). VERIFIED. The
   subtitle machinery exists (beamer #329); extend capture to report/book + render under
   `\maketitle` title. Quick.
 - **T2 (P1, converter) — `\section*` inside `\chapter` is level-1, not level-2** (book/report
