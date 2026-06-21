@@ -265,3 +265,27 @@ by macro name with occurrence counts"; the thesis agent used it to find `\tableo
   math-paper fidelity gap. `byetex-custom-macros` only covers plain `\newcommand`.
 - **M1 (P2, warnings) — `ambiguous_math` warnings have EMPTY src_fragment/typ_region** → agents
   can't locate them in the .typ programmatically; had to grep. Fixable warning-quality bug.
+
+## Round-6 dogfood (2026-06-21, v0.5.18→19) — book-class work VALIDATED
+
+Thesis RE-TEST (same doc as round-5) + a hard paper, both with warnings.json + the new
+byetex-book skill. **Result: the book-class track measurably paid off.** Round-5 needed
+6 manual workarounds (ToC/page-num/subtitle/heading-levels/longtable/author-block all
+improvised); round-6 the agent confirmed those 5 are now auto-handled and "the byetex-book
+skill saved significant exploration time" — it did NOT reinvent them. Paper agent: "surface
+worked well", warnings.json prioritized correctly, one skill read sufficed.
+
+### Done this round
+- **A7 appendix counter** (PR #351, v0.5.19): `\appendix` now resets the heading counter
+  (D/E → A/B). VERIFIED.
+
+### New findings (round-6)
+- **A6 (P2, converter) — `\begin{titlepage}` emits as LOOSE body content** (not isolated):
+  in a thesis the inner titlepage tables flow into the frontmatter. VERIFIED. Fix: map
+  `titlepage` env to a `#page[...]`/pagebreak-isolated scope.
+- **T4 (still open) — thesis author block article-style** (superscript affiliation on a
+  thesis title page). The byetex-book skill flags it but no converter fix yet.
+- **M2 (P3, paper) — lstlisting per-line highlights** (`\bluebg`/`\pinkbg` via `(*..*)`):
+  #raw has no per-line bg API; document limitation (or `#show raw.line`). Niche.
+- **M3 (P3) — `dot.circle`/`bracket.double` Typst DEPRECATIONS** emitted by the converter;
+  could emit `dot.o`/`bracket.stroked` directly (Typst version drift). Low.
