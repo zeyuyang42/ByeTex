@@ -3,6 +3,13 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.5.17] — unreleased
+
+### Fixed
+- Book/report `\frontmatter`/`\mainmatter` now switch page numbering (roman → arabic
+  reset to 1) via Typst `#set page(numbering:)` + a page-counter reset, instead of being
+  dropped (round-5 dogfood T-frontmatter).
+
 ## [0.5.16] — unreleased
 
 ### Fixed
