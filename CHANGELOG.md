@@ -3,6 +3,14 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.5.18] — unreleased
+
+### Added
+- New `byetex-book` skill documenting how ByeTex converts book/report/thesis classes
+  natively (ToC, page numbering, chapter/section hierarchy, long tables) and the few
+  constructs to fix by hand — so agents stop re-implementing what works (round-5 T3).
+  Linked from `byetex-getting-started` (doc-type routing) and the skills INDEX.
+
 ## [0.5.17] — unreleased
 
 ### Fixed

@@ -50,7 +50,11 @@ so never run *that* between edits.
 If the source is `\documentclass{beamer}` (a **presentation**), read the `byetex-beamer`
 skill first — ByeTex converts slides natively (frames, columns, blocks, overlays, theme
 colors), so you only fix a small set of constructs and must NOT re-implement what's
-already done. For papers, continue below.
+already done.
+
+If it's a **book/report/thesis** (`\documentclass{book}`/`report`/`memoir` or a
+thesis/dissertation class), read `byetex-book` first — ByeTex handles the ToC, page
+numbering, chapter/section hierarchy, and long tables natively. For papers, continue below.
 
 ## The fidelity phase (when it already compiles)
 
