@@ -82,6 +82,40 @@ const MATH_WORD_BOUNDARY: char = '\u{17}';
 /// Used for frame titles so slides match beamer's blue title style.
 pub(in crate::emit) const BEAMER_TITLE_BLUE: &str = "#3333b3";
 
+/// Make a plain-text run safe inside a Typst `"…"` string literal: convert the common
+/// LaTeX char-escapes (`\$ \% \& \# \_ \{ \}`) to their literal characters, then escape
+/// any remaining `\` and `"` so the string is well-formed (no dangling backslash escaping
+/// the closing quote).
+fn typst_string_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < s.len() {
+        let c = bytes[i];
+        if c == b'\\' && i + 1 < s.len() {
+            let n = bytes[i + 1];
+            if matches!(n, b'$' | b'%' | b'&' | b'#' | b'_' | b'{' | b'}') {
+                out.push(n as char); // LaTeX literal-char escape → the char
+                i += 2;
+                continue;
+            }
+            out.push_str("\\\\"); // a real backslash → escaped for the Typst string
+            i += 1;
+            continue;
+        }
+        if c == b'"' {
+            out.push_str("\\\"");
+            i += 1;
+            continue;
+        }
+        // Preserve multi-byte UTF-8 as a unit.
+        let ch = s[i..].chars().next().unwrap_or('?');
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    out
+}
+
 /// Advance past ASCII whitespace from `i`.
 fn skip_ascii_ws(bytes: &[u8], mut i: usize) -> usize {
     while i < bytes.len() && matches!(bytes[i], b' ' | b'\t' | b'\n' | b'\r') {
@@ -884,6 +918,70 @@ impl<'a> Emitter<'a> {
     /// stays inline because it merges several additional fields
     /// (metadata, raw_authors, detected_class, needs_*_numbering)
     /// that aren't part of the common pattern.
+    /// Emit a `\text{…}` body that appears inside math. Plain runs become quoted
+    /// upright strings; an embedded `$…$` is re-entered as math (round-4 A5:
+    /// `\text{if $x_t = y$}` must render the inner math, not a literal `$x_t = y$`).
+    /// No `$` → a single quoted string (the historical behavior).
+    fn emit_math_text_mode(&mut self, inner: &str) {
+        // Split on UNESCAPED `$` only (a literal `\$` stays in the text run).
+        let has_math = {
+            let b = inner.as_bytes();
+            (0..b.len()).any(|i| b[i] == b'$' && (i == 0 || b[i - 1] != b'\\'))
+        };
+        if !has_math {
+            let _ = write!(self.out, "\"{}\"", typst_string_escape(inner));
+            return;
+        }
+        let mut pieces: Vec<String> = Vec::new();
+        let bytes = inner.as_bytes();
+        let mut i = 0;
+        while i < inner.len() {
+            // Plain-text run up to the next UNESCAPED `$` (skip `\x` escapes).
+            let text_start = i;
+            while i < inner.len() {
+                if bytes[i] == b'\\' && i + 1 < inner.len() {
+                    i += 2;
+                    continue;
+                }
+                if bytes[i] == b'$' {
+                    break;
+                }
+                i += 1;
+            }
+            let text = inner[text_start..i].trim();
+            if !text.is_empty() {
+                pieces.push(format!("\"{}\"", typst_string_escape(text)));
+            }
+            if i >= inner.len() {
+                break;
+            }
+            // `$ … $` math run (closing `$` need not be escape-aware — math ends it).
+            let dollar = i;
+            i += 1; // opening `$`
+            let math_start = i;
+            while i < inner.len() && bytes[i] != b'$' {
+                i += 1;
+            }
+            if i >= inner.len() {
+                // Unbalanced `$` (a literal dollar with no closer) — re-emit the `$` and
+                // the remainder as literal text rather than swallowing it as math.
+                let tail = inner[dollar..].trim();
+                if !tail.is_empty() {
+                    pieces.push(format!("\"{}\"", typst_string_escape(tail)));
+                }
+                break;
+            }
+            let math = &inner[math_start..i];
+            i += 1; // closing `$`
+            let rendered = self.render_in_sub_emitter(math, true, true);
+            let rendered = rendered.trim();
+            if !rendered.is_empty() {
+                pieces.push(rendered.to_string());
+            }
+        }
+        self.out.push_str(&pieces.join(" "));
+    }
+
     fn render_in_sub_emitter(&mut self, src: &str, in_math: bool, increment_depth: bool) -> String {
         // Source-map note: the fresh sub-emitter does NOT inherit
         // `record_source_map` and its `source_map` is not merged back, so content
@@ -1100,7 +1198,7 @@ impl<'a> Emitter<'a> {
                         .get(arg.start_byte() + 1..arg.end_byte() - 1)
                         .unwrap_or("")
                         .trim();
-                    let _ = write!(self.out, "\"{}\"", inner);
+                    self.emit_math_text_mode(inner);
                 }
                 return node.end_byte();
             }
