@@ -211,6 +211,18 @@ pub fn scan_typ_leaks(typst: &str) -> Vec<Diagnostic> {
     out
 }
 
+/// Write the conversion warnings as a `<stem>.warnings.json` sidecar next to `typ_path`
+/// (always — an empty `[]` distinguishes "0 warnings" from "no file / unknown"). This is
+/// what lets an agent repairing a diagnosed project (e.g. the dogfood harness, which runs
+/// `byetex diagnose --project`) see silently-dropped constructs. Best-effort: a write
+/// failure is ignored so it never breaks the diagnose run.
+fn write_warnings_sidecar(typ_path: &Path, warnings: &[Warning]) {
+    let sidecar = typ_path.with_extension("warnings.json");
+    if let Ok(json) = serde_json::to_string_pretty(warnings) {
+        let _ = std::fs::write(&sidecar, json);
+    }
+}
+
 /// Base directory for a `.tex` file: its parent, or `.` for a bare filename.
 fn base_dir_of(input: &Path) -> PathBuf {
     input
@@ -242,6 +254,7 @@ pub fn diagnose_flat(
         .unwrap_or_else(|| input.with_extension("typ"));
     std::fs::write(&typ_path, &converted.typst)
         .with_context(|| format!("write {}", typ_path.display()))?;
+    write_warnings_sidecar(&typ_path, &converted.warnings);
     let stderr = compile_typ_stderr(&typ_path, typst_bin);
     let diags = map_typst_errors(
         &stderr,
@@ -291,6 +304,7 @@ pub fn diagnose_project(
         .with_context(|| format!("materialising project to {}", out_dir.display()))?;
 
     let main_typ = out_dir.join("main.typ");
+    write_warnings_sidecar(&main_typ, &plan.warnings);
     let source = std::fs::read_to_string(&plan.entry_tex)
         .with_context(|| format!("read {}", plan.entry_tex.display()))?;
     let stderr = compile_typ_stderr(&main_typ, typst_bin);

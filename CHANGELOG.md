@@ -3,6 +3,13 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.5.12] — unreleased
+
+### Fixed
+- `byetex diagnose --project`/`--flat` now writes a `<stem>.warnings.json` sidecar next to
+  the `.typ`, so an agent repairing a diagnosed project (e.g. the dogfood harness) can see
+  silently-dropped constructs instead of only compile errors (round-4 dogfood R2).
+
 ## [0.5.11] — unreleased
 
 ### Fixed
