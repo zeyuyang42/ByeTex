@@ -52,7 +52,7 @@ impl<'a> Emitter<'a> {
             }
         }
 
-        // Beamer subtitle: a smaller line just below the title.
+        // `\subtitle{…}`: a smaller line just below the title (any class).
         if let Some(subtitle) = self.metadata.subtitle.take() {
             let _ = writeln!(
                 self.out,

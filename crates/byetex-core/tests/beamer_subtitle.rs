@@ -22,8 +22,9 @@ fn beamer_subtitle_alone_makes_title_block() {
 }
 
 #[test]
-fn non_beamer_subtitle_dropped() {
-    // Papers have no subtitle slot — keep the prior drop behavior.
-    let t = typ("\\documentclass{article}\\title{T}\\subtitle{NOPE}\\author{A}\\begin{document}\\maketitle\\end{document}");
-    assert!(!t.contains("NOPE"), "non-beamer subtitle stays dropped; got:\n{t}");
+fn non_beamer_subtitle_is_now_rendered() {
+    // Updated (round-5 T1): `\subtitle` is a title-block element for any class now, not
+    // beamer-only — a report/book/article subtitle is rendered, not dropped.
+    let t = typ("\\documentclass{article}\\title{T}\\subtitle{KEEPME}\\author{A}\\begin{document}\\maketitle\\end{document}");
+    assert!(t.contains("KEEPME"), "non-beamer subtitle now rendered; got:\n{t}");
 }
