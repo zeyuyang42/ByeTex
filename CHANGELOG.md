@@ -3,6 +3,13 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.5.15] — unreleased
+
+### Fixed
+- Book/report/thesis heading hierarchy: in a chapter-bearing class (`book`/`report`/
+  `memoir`/KOMA/thesis), `\section` now renders at heading level 2 under `\chapter`
+  (subsection at 3, …) instead of being flattened to level 1 (round-5 dogfood T2).
+
 ## [0.5.14] — unreleased
 
 ### Fixed
