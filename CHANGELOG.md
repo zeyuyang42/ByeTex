@@ -3,6 +3,13 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.5.14] — unreleased
+
+### Fixed
+- `\subtitle{…}` is now rendered under the title for ALL document classes (report, book,
+  thesis, article-with-subtitle-package), not just beamer — it was dropped elsewhere,
+  losing the subtitle on title pages (round-5 dogfood T1).
+
 ## [0.5.13] — unreleased
 
 ### Fixed

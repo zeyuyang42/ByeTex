@@ -2856,8 +2856,12 @@ impl<'a> Emitter<'a> {
             }
             // `\subtitle{…}`: rendered under the title on a beamer title slide. Papers
             // have no subtitle slot, so for them it stays dropped.
+            // `\subtitle{…}` — a title-block element (beamer, but also report/book/thesis
+            // and the `subtitle` package on article). Capture + render it under the title
+            // for any class (`flush_title_block`); was previously captured for beamer only
+            // and dropped elsewhere, losing content (round-5 dogfood T1).
             Some("\\subtitle") => {
-                if self.detected_class == DocClass::Beamer && self.metadata.subtitle.is_none() {
+                if self.metadata.subtitle.is_none() {
                     if let Some(arg) = first_curly_group(node) {
                         self.metadata.subtitle =
                             Some(Content::Typst(self.render_curly_group_content(arg)));
