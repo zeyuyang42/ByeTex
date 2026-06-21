@@ -225,7 +225,7 @@ Findings (general, non-beamer):
   `\addtocounter{footnote}{-1}` renders literally). Recurring across multiple dogfoods.
   Negative-value counters don't node-parse → fall to generic → args leak. Fix: drop the
   whole `\addtocounter{}{}` (incl. both arg groups) in any class.
-- **A2 (P2, converter) — `\label` leaks as text inside a `proposition`** (`\_to\_denoiser`
+- **A2 ✅ FIXED (PR #335, v0.5.10) — `\label` leaks as text inside a `proposition`** (`\_to\_denoiser`
   shown as body). A `\label` in a theorem-like env emitted as a text fragment.
 - **A3 (P2, skill) — `\newcommandx` (xargs) + `\ifthenelse` macros** → 838 ambiguous_math
   upright-text literals. `byetex-custom-macros` only covers plain `\newcommand`. Hard
