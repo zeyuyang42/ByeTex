@@ -526,6 +526,10 @@ impl<'a> Emitter<'a> {
         // against the real bib and abort the compile. \input'ed citations stay
         // `@key` (Unit 3's deliberate, conservative design).
         sub.natbib_mode = self.natbib_mode;
+        // Inherit chapter-bearing layout so a `\section` inside an `\input`'d chapter file
+        // renders at the right heading level. The sub-emitter never sees `\documentclass`,
+        // so without this it would default to article (flat) levels (health-check P1).
+        sub.chapter_based = self.chapter_based;
         sub.emit_root(tree.root_node());
         // Merge the child's body and state back into the parent.
         if !self.out.ends_with('\n') && !self.out.is_empty() {
@@ -606,6 +610,25 @@ pub(crate) struct MacroDef {
     /// Position -> default-value source. Positions in this map are
     /// optional at the call site; absent positions are mandatory.
     pub optional_defaults: HashMap<usize, String>,
+}
+
+/// True if `source` uses `\chapter` anywhere (parsed `chapter` node). Used by the
+/// project-mode pre-scan so a chapter that lives in an `\input`'d file still marks the
+/// whole document chapter-bearing (health-check P1) — the entry file's prepass alone never
+/// sees it.
+pub(crate) fn harvest_uses_chapter_from_source(source: &str) -> bool {
+    let tree = crate::parser::parse(source);
+    let mut stack: Vec<Node<'_>> = vec![tree.root_node()];
+    while let Some(n) = stack.pop() {
+        if n.kind() == "chapter" {
+            return true;
+        }
+        let mut cursor = n.walk();
+        for c in n.children(&mut cursor) {
+            stack.push(c);
+        }
+    }
+    false
 }
 
 /// Walk `source` once and collect every label key referenced by a

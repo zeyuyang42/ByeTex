@@ -213,3 +213,38 @@ fn wrapper_newcommand_calls_in_main_tex_are_harvested() {
             .collect::<Vec<_>>()
     );
 }
+
+#[test]
+fn project_chapter_in_included_file_is_chapter_based() {
+    // Health-check P1 regression: a custom-named class (no book/report/thesis token) whose
+    // `\chapter` lives in an `\input`'d sub-file must still be chapter-bearing — `\section`
+    // at level 2, `\tableofcontents` → `#outline`, `\frontmatter` page numbering. The entry
+    // file's prepass never sees the included `\chapter`; the project-wide harvest does.
+    let dir = tmpdir("ch-multifile");
+    write(
+        &dir,
+        "main.tex",
+        "\\documentclass{floofy}\n\\begin{document}\n\\frontmatter\n\\tableofcontents\n\\input{body}\n\\end{document}\n",
+    );
+    write(&dir, "body.tex", "\\chapter{Intro}\n\\section{Background}\ntext\n");
+    let plan = plan_project_from_dir(&dir, true, false).expect("plan");
+    let t = plan.main_typst;
+    assert!(t.contains("== Background"), "section under included chapter is level 2; got:\n{t}");
+    assert!(t.contains("#outline("), "\\tableofcontents renders; got:\n{t}");
+    assert!(t.contains("#set page(numbering: \"i\")"), "frontmatter page numbering; got:\n{t}");
+}
+
+#[test]
+fn project_booklet_without_chapter_stays_article() {
+    // The `\chapter` harvest must not false-positive: a `booklet` project (contains "book")
+    // with NO `\chapter` keeps `\section` at level 1.
+    let dir = tmpdir("ch-booklet");
+    write(
+        &dir,
+        "main.tex",
+        "\\documentclass{booklet}\n\\begin{document}\n\\section{S}\ntext\n\\end{document}\n",
+    );
+    let plan = plan_project_from_dir(&dir, true, false).expect("plan");
+    let t = plan.main_typst;
+    assert!(t.contains("= S") && !t.contains("== S"), "booklet section stays level 1; got:\n{t}");
+}
