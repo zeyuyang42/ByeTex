@@ -3,6 +3,16 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.5.21] — unreleased
+
+### Fixed
+- Chapter-bearing layout (`\section` level under `\chapter`, `\tableofcontents`→`#outline`,
+  `\frontmatter`/`\mainmatter` page numbering) is now decided by whether the document
+  actually uses `\chapter` — detected in the entry-file prepass and via a project-wide scan
+  of `\input`'d files — instead of a brittle class-NAME substring heuristic. Fixes false
+  positives (`booklet`/`workbook` were treated as chapter-based) and false negatives (a
+  custom chapter class whose chapters live in `\input`'d files; health-check P1).
+
 ## [0.5.20] — 2026-06-22
 
 First release since v0.3.0 — it bundles all the 0.4.x/0.5.x work below. Highlights:

@@ -51,7 +51,8 @@ pub(in crate::emit) use macros::{
     new_command_token_kind, read_newif_flag,
 };
 pub(crate) use macros::{
-    harvest_macros_from_source, harvest_referenced_labels_from_source, MacroDef,
+    harvest_macros_from_source, harvest_referenced_labels_from_source,
+    harvest_uses_chapter_from_source, MacroDef,
 };
 pub(crate) use math_symbols::lookup_math_symbol;
 pub(in crate::emit) use node_utils::{
@@ -278,10 +279,20 @@ pub(crate) struct Emitter<'a> {
     /// (not a bare fragment). Gates the self-generated neutral preamble so
     /// fragment conversions stay preamble-free.
     saw_document_class: bool,
-    /// True for a chapter-bearing class (`book`/`report`/memoir/thesis), where
-    /// `\chapter` is the top level so `\section` sits at level 2 (not level 1 as in
-    /// article). Detected from the `\documentclass` name (round-5 dogfood T2).
+    /// True for a chapter-bearing class, where `\chapter` is the top level so `\section`
+    /// sits at level 2 (not level 1 as in article). Set in the `\documentclass` arm from
+    /// `doc_uses_chapter` (the robust signal) OR a known-class-name hint (round-5 T2 +
+    /// health-check P1: name-only was brittle — `booklet` false-positived, custom thesis
+    /// classes false-negatived).
     chapter_based: bool,
+    /// True when the source actually uses `\chapter` anywhere — detected in the prepass so
+    /// it is known before the first `\section` is emitted. The authoritative signal for
+    /// `chapter_based`, independent of the class name.
+    doc_uses_chapter: bool,
+    /// True when ANY file in the project uses `\chapter` (seeded from the project-mode
+    /// pre-scan before emit). Covers a multi-file thesis whose chapters live in `\input`'d
+    /// sub-files the entry-file prepass never reaches.
+    project_uses_chapter: bool,
     /// True once we've entered the `document` environment, i.e. we're past the
     /// preamble. Gates preamble-only commands like `\abstract{…}` (the command form)
     /// so an incidental `{…}` group in the BODY isn't mistaken for the abstract.
@@ -462,6 +473,8 @@ impl<'a> Emitter<'a> {
             emitted_labels: HashSet::new(),
             saw_document_class: false,
             chapter_based: false,
+            doc_uses_chapter: false,
+            project_uses_chapter: false,
             in_document_body: false,
             theorem_kinds: HashMap::new(),
             used_theorem_kinds: std::collections::HashSet::new(),
@@ -495,6 +508,13 @@ impl<'a> Emitter<'a> {
         self.referenced_labels.extend(refs);
     }
 
+    /// Seed the project-wide `\chapter`-usage signal (from `harvest_project_uses_chapter`)
+    /// before the prepass, so a chapter in an `\input`'d sub-file still makes the entry
+    /// file chapter-bearing.
+    pub(crate) fn seed_project_uses_chapter(&mut self, uses_chapter: bool) {
+        self.project_uses_chapter = uses_chapter;
+    }
+
     pub(crate) fn prepass_collect(&mut self, root: Node<'_>) {
         // PR-3: harvest bibliography keys from any `.bib` file in
         // base_dir so `emit_citation` can validate `\cite{key}` calls
@@ -510,6 +530,12 @@ impl<'a> Emitter<'a> {
         self.had_bib_file = !self.bibliography_keys.is_empty();
         let mut stack: Vec<Node<'_>> = vec![root];
         while let Some(n) = stack.pop() {
+            // A `\chapter` anywhere makes this a chapter-bearing document regardless of the
+            // class name — the robust signal for `chapter_based` (health-check P1). Detected
+            // here so it is known before the first `\section` is emitted.
+            if n.kind() == "chapter" {
+                self.doc_uses_chapter = true;
+            }
             // A `\bibliography{...}` directive — paired with a resolvable .bib,
             // its `#bibliography(.bib)` is the authoritative reference list, so
             // any manual `\bibitem`/`thebibliography` entries are dropped.
@@ -1682,17 +1708,22 @@ impl<'a> Emitter<'a> {
             let (class, opts) = extract_class_and_options(node, self.src);
             self.layout = crate::class_map::Layout::from_class_options(&opts);
             if let Some(c) = class {
-                // Chapter-bearing class → `\section` is level 2 under `\chapter`. Detect
-                // from the class name (covers book/report/memoir KOMA variants and custom
-                // thesis classes like `tudelft-report`); article-family stays level-1.
+                // Chapter-bearing → `\section` is level 2 under `\chapter`. The authoritative
+                // signal is whether the source actually uses `\chapter` (`doc_uses_chapter`,
+                // from the prepass); the class-name hint only catches a known chapter class
+                // whose document happens to contain no `\chapter` yet (e.g. a bare template).
+                // The hint is kept tight (exact known classes + thesis/dissertation tokens) so
+                // it never false-positives on `booklet`/`workbook`/`reportage` — those resolve
+                // purely on real `\chapter` usage (health-check P1).
                 let cl = c.to_ascii_lowercase();
-                self.chapter_based = matches!(
+                let name_hint = matches!(
                     cl.as_str(),
                     // KOMA-Script chapter classes (scrreprt's name lacks a full "report").
                     "book" | "report" | "memoir" | "scrbook" | "scrreprt"
                 ) || cl.contains("thesis")
-                    || cl.contains("dissertation")
-                    || ((cl.contains("book") || cl.contains("report")) && !cl.contains("article"));
+                    || cl.contains("dissertation");
+                self.chapter_based =
+                    self.doc_uses_chapter || self.project_uses_chapter || name_hint;
                 self.detected_class = DocClass::from_class(&c, &opts);
             }
             return node.end_byte();

@@ -146,6 +146,14 @@ pub(crate) fn convert_with_macros(
     // Seed project-wide referenced labels before the prepass so a `\ref` in
     // one file informs multi-label attachment for a section in another.
     emitter.seed_referenced_labels(preseeded_refs);
+    // Detect project-wide `\chapter` usage so a chapter that lives in an `\input`'d file
+    // makes the entry file chapter-bearing (correct heading levels + ToC + front-matter
+    // numbering). Done here — keyed on `base_dir`, the same signal that enables `\input`
+    // resolution — so EVERY include-resolving caller (CLI `--project`, the project planners,
+    // MCP `convert_file`, `diagnose`) gets it, not just the project planners (health-check P1).
+    if let Some(dir) = opts.base_dir.as_deref() {
+        emitter.seed_project_uses_chapter(project::harvest_project_uses_chapter(dir));
+    }
     let root = tree.root_node();
     emitter.prepass_collect(root);
     emitter.emit_root(root);

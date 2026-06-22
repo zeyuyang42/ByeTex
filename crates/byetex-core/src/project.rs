@@ -137,6 +137,7 @@ pub fn plan_project(
     // sections attach the referenced alias (the `\ref` and the labelled
     // `\section` often live in different `\input`'d files).
     let refs = harvest_project_referenced_labels(&base_dir).unwrap_or_default();
+    // `\chapter`-usage detection is keyed on `base_dir` inside `convert_with_macros`.
     let out = convert_with_macros(&source, &opts, HashMap::new(), refs, record_source_map);
 
     let assets = out
@@ -346,6 +347,22 @@ pub(crate) fn harvest_project_referenced_labels(
     Ok(refs)
 }
 
+/// True if ANY `.tex` in the project uses `\chapter` — the include-aware signal for
+/// chapter-bearing layout (health-check P1). A thesis often declares `\documentclass`
+/// in an entry file whose chapters live in `\input`'d sub-files; the entry file's
+/// single-file prepass never sees them, so the class would otherwise be misjudged as an
+/// article (flat headings, dropped ToC / front-matter page numbering).
+pub(crate) fn harvest_project_uses_chapter(dir: &Path) -> bool {
+    let Ok(files) = walk_project_files(dir, &["tex"]) else {
+        return false;
+    };
+    files.iter().any(|path| {
+        std::fs::read_to_string(path)
+            .map(|s| crate::emit::harvest_uses_chapter_from_source(&s))
+            .unwrap_or(false)
+    })
+}
+
 /// Plan a conversion when the caller has a project directory rather
 /// than a specific main `.tex` file.
 ///
@@ -373,6 +390,7 @@ pub fn plan_project_from_dir(
         source_name: Some(entry.display().to_string()),
         base_dir: Some(dir.to_path_buf()),
     };
+    // `\chapter`-usage detection is keyed on `base_dir` inside `convert_with_macros`.
     let out = convert_with_macros(&source, &opts, preseeded, refs, record_source_map);
 
     let assets = out
