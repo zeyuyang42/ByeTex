@@ -133,6 +133,21 @@ def main(argv=None):
 
     cs, bs = current.get("fidelity_score"), baseline.get("fidelity_score")
     print(f"fidelity: score {cs} (baseline {bs})")
+
+    # Honesty surface: papers whose TRUTH render failed have no metrics (word_recall=None),
+    # so they contribute nothing to the score and CANNOT register a regression — the gate is
+    # blind to them. Name them explicitly so a green gate is never mistaken for "all papers
+    # are fine" (health-check P2). These are typically book/thesis classes tectonic can't build.
+    unmeasured = sorted(
+        pid
+        for pid, base in baseline.get("papers", {}).items()
+        if base.get("word_recall") is None or base.get("status") == "truth_render_failed"
+    )
+    if unmeasured:
+        print(f"  UNMEASURED (not gated — no truth render, {len(unmeasured)}):")
+        for pid in unmeasured:
+            print(f"    ? {pid}")
+
     if improvements:
         print("  IMPROVED (consider `--update-baseline`):")
         for i in improvements:

@@ -10,9 +10,24 @@ A change ships **iff**:
 2. **No pinned regression.** None of the 5 pinned papers may go PASS → FAIL.
 3. **Driver — structural fidelity holds or improves** on the pinned set (see *Secondary signals*).
 
-Compile-rate is the **gate**; structural fidelity is the **driver**. Compile-rate is already near
-its ceiling (23/25 ByeTex-attributable, see below), so most real quality headroom is in fidelity —
+Compile-rate is the **gate**; structural fidelity is the **driver**. Compile-rate is at its
+ceiling for the ByeTex-attributable corpus, so most real quality headroom is in fidelity —
 track both, never trade one for the other.
+
+## Current state (2026-06-23) — read the qualifiers
+
+- **Compile: `BYETEX_FAIL = 0`** — every paper whose failure is *attributable to ByeTex* emits
+  compiling Typst. Of ~67 corpus papers the sweep attempts, ~63 PASS and **4 are `INPUT_BROKEN`**
+  (their original LaTeX fails `tectonic` — invalid UTF-8 `.sty`, a missing font, a package
+  conflict). So the honest claim is **"100% of the ByeTex-*attributable* corpus compiles,"** not
+  "every corpus paper renders." The acceptance gate only fails on a *regression* of a `known_pass`
+  paper; it does not assert anything about `INPUT_BROKEN` papers.
+- **Fidelity is partially blind.** The corpus `fidelity_score` (~0.83) is computed over the papers
+  with a usable truth render. **7 `known_pass` papers (book/thesis classes) are UNMEASURED** —
+  `tectonic` can't build a truth PDF for them, so they have no `word_recall`/SSIM and cannot
+  register a fidelity regression (`scripts/fidelity_check.py` now prints them under `UNMEASURED`).
+  Any "validated" claim for those rests on **dogfood-agent reading**, not metrics — keep that
+  distinction explicit. Strengthening this is tracked as a gate-hardening follow-up.
 
 ## How to reproduce
 
