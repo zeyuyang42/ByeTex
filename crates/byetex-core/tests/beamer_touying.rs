@@ -100,9 +100,15 @@ fn frame_is_a_level2_slide_heading() {
 }
 
 #[test]
-fn section_is_a_level1_divider() {
+fn section_is_a_level1_heading_hidden_when_ungated() {
     let t = typ(DECK);
-    assert!(t.contains("= Motivation"), "section → `= X` divider; got:\n{t}");
+    // This DECK has no `\AtBeginSection`, so the section is navigation-only: a level-1
+    // heading tagged `<touying:hidden>` (no divider slide). See beamer_section_slide.rs
+    // for the gated/un-gated split.
+    assert!(
+        t.contains("= Motivation <touying:hidden>"),
+        "un-gated section → hidden level-1 heading; got:\n{t}"
+    );
 }
 
 #[test]

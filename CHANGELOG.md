@@ -3,7 +3,22 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
-## [0.6.0] — unreleased
+## [0.6.1] — unreleased
+
+### Changed
+- **Beamer theme colors map onto touying, and section-divider slides are gated**
+  (Phase 3b refinement of the touying conversion). A detected beamer "structure" color
+  — from `\setbeamercolor{frametitle|structure}{fg=…}` or `\usecolortheme{name}`
+  (`beaver`/`crane`/`default`/…) — is now mapped to the metropolis accent via
+  `config-colors(primary: …)`, so the header progress line / accent matches the deck's
+  theme instead of metropolis's default orange. Detect-don't-hardcode: no override is
+  emitted when the source defines no theme color. Section-divider slides are now gated on
+  the deck actually installing one: a `\section` produces a standalone divider slide only
+  when the preamble has `\AtBeginSection` (or `\setbeamertemplate{section page}`), matching
+  real beamer; otherwise the section becomes a navigation-only heading
+  (`= X <touying:hidden>`) that no longer renders a spurious extra page. The beamer-demo
+  deck drops from 8 pages (title + outline + 3 dividers + 3 content) to 5 (title + outline
+  + 3 content), matching the LaTeX truth.
 
 ### Added
 - **Beamer decks now emit native Typst `touying` slides** (Phase 3a). A `beamer`

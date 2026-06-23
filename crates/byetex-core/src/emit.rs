@@ -79,13 +79,6 @@ use typography::{is_operatorname_only_function, should_split_math_word};
 /// legitimate use in either LaTeX source or rendered Typst.
 const MATH_WORD_BOUNDARY: char = '\u{17}';
 
-/// Beamer's default theme "structure" color — `rgb(0.2, 0.2, 0.7)` ≈ `#3333b3`.
-/// Detected/stored by `harvest_beamer_color`; in Phase 3a touying owns the frame-title
-/// (header-bar) color, so this is not applied yet. Kept as groundwork for the Phase 3b
-/// theme-color → `config-colors` mapping.
-#[allow(dead_code)]
-pub(in crate::emit) const BEAMER_TITLE_BLUE: &str = "#3333b3";
-
 /// Make a plain-text run safe inside a Typst `"…"` string literal: convert the common
 /// LaTeX char-escapes (`\$ \% \& \# \_ \{ \}`) to their literal characters, then escape
 /// any remaining `\` and `"` so the string is well-formed (no dangling backslash escaping
@@ -307,6 +300,14 @@ pub(crate) struct Emitter<'a> {
     /// `\usecolortheme{name}` — used for the frame title when no explicit
     /// `frametitle` color is set. Both `None` → beamer's default structure blue.
     beamer_structure_color: Option<String>,
+    /// True when the beamer preamble installs a section-title slide, i.e. it has
+    /// `\AtBeginSection` or `\setbeamertemplate{section page}`. Real beamer only
+    /// shows a section-divider slide when one of these is present; otherwise a
+    /// `\section` is navigation-only (no standalone slide). Detected in the
+    /// prepass so it's known before the first `\section` is emitted. When `false`,
+    /// a beamer `\section` heading is tagged `<touying:hidden>` so touying keeps it
+    /// in the heading tree (for `#outline`) but renders no divider slide.
+    beamer_has_section_slide: bool,
     /// `\newtheorem{name}{Display}` declarations harvested as we walk the
     /// source. When `emit_generic_environment` encounters an unknown env name
     /// that matches a key here, it routes to `emit_theorem_env_dyn` instead of
@@ -468,6 +469,7 @@ impl<'a> Emitter<'a> {
             colors: HashMap::new(),
             beamer_frametitle_color: None,
             beamer_structure_color: None,
+            beamer_has_section_slide: false,
             base_dir,
             visited_includes: visited,
             macros: preseeded_macros,
@@ -663,6 +665,26 @@ impl<'a> Emitter<'a> {
                         if let Some((name, def)) = extract_newcommandx(n, self.src) {
                             self.macros.insert(name, def);
                         }
+                    }
+                    // Beamer section-divider installers. Real beamer only renders a
+                    // section-title slide when the preamble has `\AtBeginSection[…]{…}`
+                    // or `\setbeamertemplate{section page}{…}`. Detect either here so
+                    // `emit_section` knows whether to keep the `= X` divider or tag it
+                    // `<touying:hidden>` (navigation-only). Both `\AtBeginSubsection`
+                    // and `\setbeamertemplate{subsection page}` likewise install
+                    // subsection slides, but byetex demotes subsections to in-slide
+                    // headings, so only the section forms matter here.
+                    match command_name_text(n, self.src).as_deref() {
+                        Some("\\AtBeginSection") => self.beamer_has_section_slide = true,
+                        Some("\\setbeamertemplate")
+                            if first_curly_group(n)
+                                .map(|g| self.curly_group_inner_trimmed(g).trim().to_string())
+                                .as_deref()
+                                == Some("section page") =>
+                        {
+                            self.beamer_has_section_slide = true;
+                        }
+                        _ => {}
                     }
                     let mut cursor = n.walk();
                     for c in n.children(&mut cursor) {
@@ -4300,19 +4322,6 @@ impl<'a> Emitter<'a> {
     /// still resolve to the surviving definition.
     fn label_first_use(&mut self, key: &str) -> bool {
         self.emitted_labels.insert(key.to_string())
-    }
-
-    /// The Typst color expression for beamer frame titles, resolved from the deck's
-    /// theme: an explicit `\setbeamercolor{frametitle}{fg=…}` wins, else the structure
-    /// color (`\setbeamercolor{structure}` / `\usecolortheme`), else beamer's default
-    /// structure blue. Phase 3a: touying's metropolis theme owns the header-bar color,
-    /// so this resolver is dormant — retained for the Phase 3b theme-color mapping.
-    #[allow(dead_code)]
-    fn beamer_title_fill(&self) -> String {
-        self.beamer_frametitle_color
-            .clone()
-            .or_else(|| self.beamer_structure_color.clone())
-            .unwrap_or_else(|| format!("rgb(\"{BEAMER_TITLE_BLUE}\")"))
     }
 
     /// Record a beamer color command's effect on the frame-title color.
