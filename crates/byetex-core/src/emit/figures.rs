@@ -21,6 +21,169 @@ struct CaptionBlock {
 impl<'a> Emitter<'a> {
     // ─── Figures, graphics & tabular ──────────────────────────────────────────
 
+    /// Resolve an `\includegraphics`-style image path against the source tree
+    /// and, if found, register it as a copyable asset. Returns the Typst-side
+    /// path string to feed `image("…")`, or `None` when the file can't be
+    /// located (caller degrades gracefully). Shared by the cover page so cover
+    /// images get the same probe-then-copy plumbing as body figures.
+    pub(in crate::emit) fn resolve_image_asset(&mut self, path: &str) -> Option<String> {
+        let mut resolved_path = path.to_string();
+        let probe_dirs: Vec<PathBuf> = {
+            let mut v = Vec::new();
+            if let Some(ref b) = self.base_dir {
+                v.push(b.clone());
+            }
+            if let Some(ref r) = self.root_dir {
+                if !v.contains(r) {
+                    v.push(r.clone());
+                }
+            }
+            for gp in &self.graphics_paths {
+                if let Some(ref r) = self.root_dir {
+                    v.push(r.join(gp));
+                }
+                if let Some(ref b) = self.base_dir {
+                    let cand = b.join(gp);
+                    if !v.contains(&cand) {
+                        v.push(cand);
+                    }
+                }
+            }
+            v
+        };
+        let source_path = probe_dirs
+            .iter()
+            .find_map(|d| probe_image_on_disk(d, path))?;
+        // Fill in the extension if the LaTeX path omitted it.
+        if Path::new(path).extension().is_none() {
+            if let Some(name) = source_path.file_name().and_then(|n| n.to_str()) {
+                let dir = Path::new(path)
+                    .parent()
+                    .and_then(|p| p.to_str())
+                    .unwrap_or("");
+                resolved_path = if dir.is_empty() {
+                    name.to_string()
+                } else {
+                    format!("{}/{}", dir, name)
+                };
+            }
+        }
+        // Only register the asset when there's a base_dir for the project layer
+        // to relocate into (mirrors `emit_graphics_include`).
+        if self.base_dir.is_some() {
+            self.asset_refs.push(crate::AssetRef {
+                kind: crate::AssetKind::Image,
+                typst_path: resolved_path.clone(),
+                source_path,
+            });
+        }
+        Some(resolved_path)
+    }
+
+    /// Emit a GENERIC thesis/report cover page from `\coverimage` + the title
+    /// metadata: a near-full-bleed cover image with a title banner (title /
+    /// subtitle / subject / author) overlaid at the top. Approximate — the
+    /// bespoke per-class logo and exact banner colours/fonts are not replicated.
+    /// Degrades gracefully: a missing/absent image yields the banner alone.
+    pub(in crate::emit) fn emit_cover_page(&mut self) {
+        // Materialize authors now so the banner can name them (the same
+        // raw_authors → metadata.authors step flush_title_block runs later).
+        self.materialize_authors();
+
+        let image_path = self
+            .metadata
+            .cover_image
+            .clone()
+            .and_then(|p| self.resolve_image_asset(&p));
+
+        let title = self.metadata.title.take();
+        let subtitle = self.metadata.subtitle.take();
+        let subject = self.metadata.subject.take();
+        let author_line = if self.metadata.authors.is_empty() {
+            None
+        } else {
+            Some(
+                self.metadata
+                    .authors
+                    .iter()
+                    .map(|a| {
+                        super::escape_text_for_typst_content(a.name.as_content())
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            )
+        };
+
+        // Nothing to show at all → no cover (don't emit an empty page).
+        if image_path.is_none()
+            && title.is_none()
+            && subtitle.is_none()
+            && subject.is_none()
+            && author_line.is_none()
+        {
+            return;
+        }
+
+        self.ensure_paragraph_break();
+
+        // Build the banner body (title / subtitle / subject / author).
+        let mut banner = String::new();
+        if let Some(title) = &title {
+            let _ = write!(
+                banner,
+                "    #text(size: 2.2em, fill: rgb(\"#4884d6\"))[{}]\\\n",
+                title.as_content()
+            );
+        }
+        if let Some(subtitle) = &subtitle {
+            let _ = write!(
+                banner,
+                "    #text(size: 1.2em, fill: white)[{}]\\\n",
+                subtitle.as_content()
+            );
+        }
+        if let Some(subject) = &subject {
+            let _ = write!(
+                banner,
+                "    #text(size: 1em, fill: white)[{}]\\\n",
+                subject.as_content()
+            );
+        }
+        if let Some(author) = &author_line {
+            let _ = write!(
+                banner,
+                "    #text(size: 1em, fill: white)[{}]\n",
+                author
+            );
+        }
+
+        // Full-page cover: a `#page` with no margins. When a cover image is
+        // present it fills the page; the banner sits in a dark block placed
+        // near the top via a `#place`. Without the image the banner alone
+        // renders on the page.
+        self.out.push_str("#page(margin: 0pt)[\n");
+        if let Some(path) = &image_path {
+            let _ = write!(
+                self.out,
+                "  #image(\"{}\", width: 100%, height: 100%, fit: \"cover\")\n",
+                path
+            );
+            self.out.push_str("  #place(top + left, dx: 0pt, dy: 18%)[\n");
+            self.out.push_str("    #block(width: 100%, inset: (x: 8%, y: 18pt), fill: rgb(0, 0, 0, 200))[\n");
+            self.out.push_str(&banner);
+            self.out.push_str("    ]\n  ]\n");
+        } else {
+            // No image: just the banner block on the page (graceful fallback).
+            self.out.push_str("  #v(18%)\n");
+            self.out.push_str("  #block(width: 100%, inset: (x: 8%, y: 18pt), fill: rgb(0, 0, 0, 200))[\n");
+            self.out.push_str(&banner);
+            self.out.push_str("  ]\n");
+        }
+        self.out.push_str("]\n\n");
+
+        self.cover_emitted = true;
+    }
+
     pub(in crate::emit) fn emit_graphics_include(&mut self, node: Node<'_>) -> usize {
         let path = extract_graphics_path(node, self.src).unwrap_or_default();
         // Typst supports PNG/JPG/GIF/SVG and PDF (>=0.10), but NOT EPS or

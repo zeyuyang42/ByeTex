@@ -22,6 +22,7 @@ Run `byetex convert thesis.tex`, read the `.typ`, and only fix the small set bel
 | `\frontmatter` | `#set page(numbering: "i")` — roman page numbers |
 | `\mainmatter` | `#set page(numbering: "1")` + page-counter reset to 1 |
 | `\title`/`\subtitle`/`\author` + `\maketitle` | a centered title block (title, subtitle, author) |
+| `\coverimage{fig}` + `\makecover` (thesis/report) | a generic cover page — full-page `#image(fit: "cover")` + an overlaid title banner (title / subtitle / `\subject` / author); the cover image is copied into the output |
 | `\begin{longtable}{…}` / `xltabular` | a Typst `#table` (page-break markers dropped) |
 | `\begin{tabular}` / `\multicolumn` / `\multirow` | Typst tables (same as papers) |
 
@@ -31,6 +32,7 @@ Run `byetex convert thesis.tex`, read the `.typ`, and only fix the small set bel
 |---|---|---|
 | `\backmatter` | dropped (warns) | Only un-numbers chapters; if it matters, set `#set heading(numbering: none)` from that point. Page numbering is unaffected. |
 | Author block on a thesis title page | rendered article-style (superscript affiliation refs) | A thesis title page usually wants title + subtitle + a plain centered author/institute. Rewrite the title block without the `#super[1]` affiliation markers if it looks wrong. |
+| Cover-page exact design (`\coverimage`/`\makecover`) | a GENERIC cover (image + dark banner) is emitted, but the class's bespoke art is NOT replicated | ByeTex approximates: it does not reproduce the exact banner colours/fonts, the institution logo, or the rotated affiliation. If you need the class-faithful cover, tweak the emitted `#page(margin: 0pt)[…]` block — adjust the banner `fill`/`#text` colours, add a `#place(bottom + left)[#image("logo.…")]` for the logo, etc. |
 | `\listoffigures` / `\listoftables` | dropped (warns) | Add `#outline(target: figure.where(kind: image))` / `…kind: table)` if you need them. |
 | `\printnomenclature` / `\printglossary` | dropped (warns) | Rebuild the list by hand (usually a `#table` of symbols). |
 | `\chapter*{T}` frontmatter chapters (Preface, etc.) | numbered like a normal heading | Add `numbering: none` if it should be unnumbered (front-matter chapters usually are). |

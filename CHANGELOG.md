@@ -3,9 +3,21 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
-## [0.6.2] — unreleased
+## [0.6.3] — unreleased
 
 ### Added
+- **Generic thesis/report cover page for `\coverimage` + `\makecover`** (Phase 4). Thesis
+  and report classes (e.g. `tudelft-report`) define a designed cover page — a
+  near-full-bleed cover image plus a banner carrying the title / subtitle / subject /
+  author — that ByeTex previously dropped entirely (the directives `\coverimage`,
+  `\makecover`, `\subject` were unhandled). ByeTex now detects `\coverimage{path}` (the
+  asset is resolved and copied into the project output via the existing AssetRef
+  plumbing) and, on `\makecover`, emits a generic cover page as the document's first
+  page: a full-page `#image(..., fit: "cover")` with an overlaid dark title banner. Gated
+  on chapter-bearing classes so articles/papers are unaffected; degrades gracefully to a
+  banner-only page when the cover image is missing. The bespoke per-class art (logo, exact
+  banner colours/fonts) is approximated, not replicated. The tudelft thesis now renders a
+  cover page that was previously dropped.
 - **Beamer overlays become touying incremental builds** (Phase 3c). Previously every
   overlay collapsed to its final state (everything shown at once); now beamer build
   specs drive sub-slide reveals: `\pause` → `#pause`; a sequential

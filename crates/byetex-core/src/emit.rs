@@ -333,6 +333,10 @@ pub(crate) struct Emitter<'a> {
     /// health-check P1: name-only was brittle — `booklet` false-positived, custom thesis
     /// classes false-negatived).
     chapter_based: bool,
+    /// True once `\makecover` has emitted a generic cover page (which already
+    /// consumed the title/subtitle/author metadata into a banner). Suppresses
+    /// the centered `flush_title_block` so the title isn't duplicated.
+    cover_emitted: bool,
     /// True when the source actually uses `\chapter` anywhere — detected in the prepass so
     /// it is known before the first `\section` is emitted. The authoritative signal for
     /// `chapter_based`, independent of the class name.
@@ -537,6 +541,7 @@ impl<'a> Emitter<'a> {
             emitted_labels: HashSet::new(),
             saw_document_class: false,
             chapter_based: false,
+            cover_emitted: false,
             doc_uses_chapter: false,
             project_uses_chapter: false,
             in_document_body: false,
@@ -3018,6 +3023,50 @@ impl<'a> Emitter<'a> {
                 }
                 node.end_byte()
             }
+
+            // `\subject{…}` — thesis/report cover metadata (the course / topic
+            // line on the cover banner, e.g. tudelft-report). Captured for the
+            // generic cover page; otherwise inert (a paper has no subject slot).
+            Some("\\subject") => {
+                if self.metadata.subject.is_none() {
+                    if let Some(arg) = first_curly_group(node) {
+                        self.metadata.subject =
+                            Some(Content::Typst(self.render_curly_group_content(arg)));
+                    }
+                }
+                node.end_byte()
+            }
+
+            // `\coverimage{path}` — record the cover-page image path. The asset
+            // is resolved + registered later, when `\makecover` actually emits
+            // the cover (so a never-rendered cover doesn't copy an image).
+            Some("\\coverimage") => {
+                if let Some(arg) = first_curly_group(node) {
+                    let raw = self
+                        .src
+                        .get(arg.start_byte() + 1..arg.end_byte().saturating_sub(1))
+                        .unwrap_or("")
+                        .trim()
+                        .to_string();
+                    if !raw.is_empty() {
+                        self.metadata.cover_image = Some(raw);
+                    }
+                }
+                node.end_byte()
+            }
+
+            // `\makecover` — emit a GENERIC thesis/report cover page (cover
+            // image + a title banner). Gated on chapter-bearing classes so an
+            // article that (oddly) carries the directive is unaffected. The
+            // bespoke per-class art (logo, exact banner colours/fonts) is NOT
+            // replicated — this is an approximation.
+            Some("\\makecover") if self.chapter_based => {
+                self.emit_cover_page();
+                node.end_byte()
+            }
+            // Non-thesis class: drop the directive (and its cover metadata is
+            // simply never rendered).
+            Some("\\makecover") | Some("\\covertable") => node.end_byte(),
 
             // Standard LaTeX counter display commands — emit as Typst context
             // counter expressions.  These never take arguments so they are
