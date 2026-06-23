@@ -23,6 +23,13 @@ silent unmeasured "pass". Updated 2026-06-23 (health-check Phase 0a).
 `gh-maurovm` is the only remaining *font*-class failure (add the math font to
 `setup_truth_deps.sh` to recover it); the rest are source/ingestion issues.
 
+## Ingestion gate (Phase 0b)
+`scripts/corpus_add_local.py` now renders the truth BEFORE accepting a paper and records
+`truth_render_status` (`ok` | `failed` | `unverified`) in both `corpus/manifest.json` and the
+paper's `00README.json`. A failed render REJECTS the paper (removes the half-added dir) unless
+`--allow-no-truth` is passed — then it's accepted with `truth_render_status=failed` + the reason,
+so it's never a silent unmeasured "pass". Run `scripts/setup_truth_deps.sh` first.
+
 ## Surfaced bug — acceptance gate blind spot (separate fix)
 - **2605.31063** is in acceptance `known_pass` yet its ByeTex output **fails `typst compile`**
   on current `main` (`error: unexpected argument` at `main.typ:5244`). The acceptance sweep is

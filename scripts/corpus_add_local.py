@@ -201,6 +201,48 @@ def detect_toplevel(source_dir: Path) -> tuple[list[Path], dict[Path, str]]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Truth-render gate (truth-first rule — see docs/autonomous-dev.md)
+# ─────────────────────────────────────────────────────────────────────────────
+def decide_truth_gate(
+    render_ok: bool, reason: "str | None", tectonic_present: bool, allow_no_truth: bool
+) -> "tuple[bool, str, str | None]":
+    """Decide whether to accept a paper based on its truth render. Returns
+    (accept, truth_render_status, truth_render_error).
+
+    - tectonic absent → can't verify; accept as "unverified" (don't block what we can't check).
+    - render ok → accept, "ok".
+    - render fails → "failed"+reason; REJECT unless `--allow-no-truth` (then accept but record it,
+      so it's never a silent unmeasured "pass").
+    """
+    if not tectonic_present:
+        return (True, "unverified", None)
+    if render_ok:
+        return (True, "ok", None)
+    return (allow_no_truth, "failed", reason)
+
+
+def verify_truth_render(toplevel: Path) -> "tuple[bool, str | None]":
+    """Render the paper's truth with tectonic (deps via scripts/setup_truth_deps.sh).
+    Returns (ok, reason). Uses the stdlib-only `truth_render` module so this stays usable
+    without the metric deps (numpy/Pillow)."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import truth_render as tr
+
+    with tempfile.TemporaryDirectory(prefix=".truthgate-") as tmp:
+        ok = tr.render_reference_tectonic(toplevel, Path(tmp) / "truth.pdf")
+    return ok, (None if ok else tr.LAST_TRUTH_RENDER_ERROR)
+
+
+def tectonic_present() -> bool:
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import truth_render as tr
+        return tr.tectonic_available()
+    except Exception:
+        return False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -223,6 +265,10 @@ def main() -> None:
     p.add_argument("--needs-manual-download", action="store_true",
                    help="mark login-walled (not auto re-fetchable)")
     p.add_argument("--force", action="store_true", help="overwrite an existing corpus/<id>/")
+    p.add_argument("--allow-no-truth", action="store_true",
+                   help="accept even if the truth render fails (records truth_render_status=failed "
+                        "+ reason instead of rejecting). Use only when the failure is genuinely "
+                        "out of scope — see docs/truth-render-status.md.")
     p.add_argument("--dry-run", action="store_true", help="show what would happen; no writes")
     args = p.parse_args()
 
@@ -306,16 +352,45 @@ def main() -> None:
         shutil.copytree(root, source_dir, ignore=shutil.ignore_patterns(
             ".git", ".github", ".DS_Store", "__pycache__"))
 
-        # ── 4. write 00README.json (only `toplevel` is load-bearing for the harness) ──
+        # ── 4. truth-first gate: the original LaTeX must render a truth PDF (the fidelity
+        #    DRIVER's reference) before we accept the paper. Never let a paper become a
+        #    silent unmeasured "pass" (see docs/autonomous-dev.md). ──
+        has_tectonic = tectonic_present()
+        if not has_tectonic:
+            print("  [warn] tectonic not found — cannot verify truth render; accepting as "
+                  "'unverified'. Install tectonic + run scripts/setup_truth_deps.sh.", flush=True)
+            truth_ok, truth_reason = False, None
+        else:
+            print("  verifying truth render (tectonic) ...", flush=True)
+            truth_ok, truth_reason = verify_truth_render(source_dir / toplevel_rel)
+        accept, truth_status, truth_error = decide_truth_gate(
+            truth_ok, truth_reason, has_tectonic, args.allow_no_truth)
+        if truth_status == "ok":
+            print("  truth render: OK", flush=True)
+        elif truth_status == "failed":
+            print(f"  truth render: FAILED — {truth_error}", flush=True)
+        if not accept:
+            shutil.rmtree(dest, ignore_errors=True)  # don't leave a half-added paper (whole corpus/<id>)
+            p.error(
+                f"truth render failed for {toplevel_rel} — not adding {args.id!r} to the corpus.\n"
+                f"    reason: {truth_error}\n"
+                f"    fix the dep (scripts/setup_truth_deps.sh adds biber + fonts) and retry, or\n"
+                f"    pass --allow-no-truth if the failure is genuinely out of scope "
+                f"(record it in docs/truth-render-status.md).")
+
+        # ── 5. write 00README.json (only `toplevel` is load-bearing for the harness) ──
         readme = {
             "sources": [{"usage": "toplevel", "filename": toplevel_rel}],
             "spec_version": 1,
             "texlive_version": "2025",
             "process": {"compiler": "pdflatex"},
+            "truth_render_status": truth_status,
         }
+        if truth_error:
+            readme["truth_render_error"] = truth_error
         (source_dir / "00README.json").write_text(json.dumps(readme, indent=2) + "\n")
 
-        # ── 5. append manifest entry ──
+        # ── 6. append manifest entry ──
         entry = {
             "id": args.id,
             "pinned": False,
@@ -333,7 +408,10 @@ def main() -> None:
             "needs_manual_download": bool(args.needs_manual_download),
             "license_url": "",
             "fetched_at": _now(),
+            "truth_render_status": truth_status,
         }
+        if truth_error:
+            entry["truth_render_error"] = truth_error
         manifest["papers"] = [pp for pp in manifest["papers"] if pp["id"] != args.id]
         manifest["papers"].append(entry)
         flush_manifest(manifest)
