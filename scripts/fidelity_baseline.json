@@ -1,6 +1,6 @@
 {
   "_comment": "Fidelity baseline for scripts/fidelity_check.py. Per-paper render metrics + corpus fidelity_score from scripts/visual_test.py. Regenerate with `./scripts/fidelity_gate.sh --update-baseline` (or fidelity_check.py --emit-baseline).",
-  "fidelity_score": 0.826,
+  "fidelity_score": 0.827,
   "papers": {
     "2605.22159": {
       "heading_recall": 1.0,
@@ -499,12 +499,12 @@
       "word_recall": null
     },
     "gh-dzwaneveld-tudelft-thesis": {
-      "heading_recall": null,
-      "mean_ssim": null,
-      "page_ratio": null,
-      "status": "truth_render_failed",
+      "heading_recall": 1.0,
+      "mean_ssim": 0.759,
+      "page_ratio": 0.5,
+      "status": "structure_failed",
       "structure_ok": false,
-      "word_recall": null
+      "word_recall": 0.962
     },
     "gh-fmarotta-kaobook": {
       "heading_recall": null,

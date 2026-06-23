@@ -57,3 +57,6 @@ scripts/output/
 # Local release build artifacts (scripts/build_release_local.sh)
 /dist/
 dist_build.log
+
+# Truth-render dependencies provisioned by scripts/setup_truth_deps.sh
+/.truth-deps/

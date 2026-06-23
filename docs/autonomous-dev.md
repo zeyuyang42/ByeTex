@@ -24,7 +24,16 @@ It is two interlocking loops plus a corpus-expansion gate:
 cargo build --release                       # the byetex binary the loop drives
 export BYETEX_BIN="$PWD/target/release/byetex"
 bash scripts/sync_agents.sh                 # agents/*.md → .claude/agents/ (gitignored)
+bash scripts/setup_truth_deps.sh            # tectonic deps: pinned biber + fonts for the TRUTH render
 ```
+
+**Truth-first rule.** The fidelity DRIVER compares ByeTex output against the *truth* — the
+paper's original LaTeX rendered with tectonic. `scripts/setup_truth_deps.sh` provisions what
+that render needs (a biber pinned to tectonic's biblatex, plus fonts like Roboto Slab / Carlito
+that bespoke thesis classes require) into a gitignored `.truth-deps/`. Without it, font/biber
+papers silently land in `truth_render_failed` and the driver goes blind on them. **Never accept a
+corpus paper without a verified truth render** — fix the dep or record why it can't build; never
+let it become a silent unmeasured "pass."
 
 `.claude/agents/` is gitignored, so the canonical agent defs live in `agents/` and are
 synced in by `scripts/sync_agents.sh`. The Agent tool resolves `subagent_type` from
