@@ -11,14 +11,19 @@ fn typ(src: &str) -> String {
 #[test]
 fn book_tableofcontents_emits_outline() {
     let t = typ("\\documentclass{book}\\begin{document}\\tableofcontents\\chapter{Intro}\\section{S}body\\end{document}");
-    assert!(t.contains("#outline("), "book \\tableofcontents → #outline; got:\n{t}");
-    assert!(t.contains("Intro"), "chapters present");
+    // Exact form (chapter/section/subsection depth), not just "#outline(" presence.
+    assert!(t.contains("#outline(depth: 3)"), "book \\tableofcontents → #outline(depth: 3); got:\n{t}");
+    // The outline must come BEFORE the chapter heading it lists — not merely appear somewhere
+    // (the old `contains(\"Intro\")` was tautological: Intro is the chapter name from the input).
+    let outline_pos = t.find("#outline(").expect("outline present");
+    let chapter_pos = t.find("= Intro").expect("chapter heading emitted");
+    assert!(outline_pos < chapter_pos, "outline precedes the chapter content; got:\n{t}");
 }
 
 #[test]
 fn report_tableofcontents_emits_outline() {
     let t = typ("\\documentclass{report}\\begin{document}\\tableofcontents\\chapter{C}body\\end{document}");
-    assert!(t.contains("#outline("), "report \\tableofcontents → #outline; got:\n{t}");
+    assert!(t.contains("#outline(depth: 3)"), "report \\tableofcontents → #outline(depth: 3); got:\n{t}");
 }
 
 #[test]
