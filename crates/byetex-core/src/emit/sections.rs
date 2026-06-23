@@ -249,6 +249,43 @@ impl<'a> Emitter<'a> {
             return node.end_byte();
         }
 
+        // Beamer → touying: a level-1 `\section` is a section-divider slide ONLY
+        // when the deck installs one (`\AtBeginSection` / `\setbeamertemplate{section
+        // page}`). When it does NOT — beamer renders no standalone section slide, just
+        // navigation — emit the heading with touying's `<touying:hidden>` label so the
+        // heading stays in the document tree but produces no divider slide (touying's
+        // `_get-slide-fn` returns the default, non-section slide-fn for a hidden-labelled
+        // heading). This matches real beamer and stops the spurious "extra pages for
+        // section titles". The `#outline` then lists the frame (`==`) slides instead of
+        // the hidden sections — touying ties outline membership to a slide existing — an
+        // acceptable navigation that the un-gated deck never had a section slide for anyway.
+        if self.detected_class == crate::class_map::DocClass::Beamer
+            && level == 1
+            && !self.beamer_has_section_slide
+        {
+            self.ensure_paragraph_break();
+            self.out.push_str("= ");
+            let _ = write!(self.out, "{title}");
+            // The chosen `\label` (if any) must still be attached so `@ref`s
+            // resolve. Typst allows only ONE label per element; touying's hidden
+            // marker takes that slot, so a referenced section label would clash.
+            // Section labels in decks are rare and the hidden marker is required
+            // for the gating, so prefer the marker. (Subsection/figure labels are
+            // unaffected — those go through their own handlers.)
+            self.out.push_str(" <touying:hidden>\n\n");
+            let body = &children[body_start_idx..];
+            if !body.is_empty() {
+                let mut last = body[0].start_byte();
+                for child in body {
+                    let cs = child.start_byte();
+                    self.safe_copy(last, cs);
+                    last = self.emit_node(*child);
+                }
+                self.safe_copy(last, node.end_byte());
+            }
+            return node.end_byte();
+        }
+
         // A heading's `==` markers are only recognised by Typst at the start of
         // a line. If the previous content left the cursor mid-line (e.g. a
         // theorem/remark env ending in `<rem:foo>`), the markers would be glued

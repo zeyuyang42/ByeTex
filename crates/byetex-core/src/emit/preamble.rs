@@ -339,11 +339,25 @@ impl<'a> Emitter<'a> {
             let _ = writeln!(info, "    date: [{date}],");
         }
 
+        // Theme color → touying `config-colors`. Beamer's "structure" color is the
+        // accent used for title rules / section frames; metropolis's `primary` is the
+        // accent line + progress bar, so map structure→primary. An explicit
+        // `\setbeamercolor{frametitle}{fg=…}` is the most specific; else the structure
+        // color (`\setbeamercolor{structure}` / `\usecolortheme{name}`). Detect-don't-
+        // hardcode: only emit the override when a color was actually parsed from the
+        // source — otherwise leave the metropolis default untouched (no `config-colors`).
+        let colors = self
+            .beamer_frametitle_color
+            .clone()
+            .or_else(|| self.beamer_structure_color.clone())
+            .map(|c| format!("  config-colors(primary: {c}),\n"))
+            .unwrap_or_default();
+
         format!(
             "#import \"@preview/touying:0.7.3\": *\n\
              #import themes.metropolis: *\n\n\
              #show: metropolis-theme.with(\n\
-             \x20 aspect-ratio: \"{aspect}\",\n\
+             \x20 aspect-ratio: \"{aspect}\",\n{colors}\
              \x20 config-info(\n{info}  ),\n\
              )\n\n"
         )

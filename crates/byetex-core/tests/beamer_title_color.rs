@@ -52,3 +52,52 @@ fn non_beamer_unaffected() {
     let t = typ("\\documentclass{article}\\begin{document}\\section{Intro}x\\end{document}");
     assert!(!t.contains("metropolis-theme"), "non-beamer is not a slide deck; got:\n{t}");
 }
+
+// ─── Phase 3b: theme color → touying `config-colors` ────────────────────────────────
+
+#[test]
+fn no_color_detected_leaves_metropolis_default() {
+    // A bare beamer deck (no colortheme / setbeamercolor) must NOT emit a color override —
+    // detect-don't-hardcode: leave the metropolis default untouched.
+    let t = deck("");
+    assert!(t.contains("metropolis-theme.with("), "metropolis theme applied; got:\n{t}");
+    assert!(
+        !t.contains("config-colors("),
+        "no detected color → no config-colors override (metropolis default kept); got:\n{t}"
+    );
+}
+
+#[test]
+fn usecolortheme_beaver_maps_to_primary() {
+    // `\usecolortheme{beaver}` is beamer's red theme; its structure color maps onto the
+    // metropolis accent (`primary`).
+    let t = deck("\\usecolortheme{beaver}");
+    assert!(
+        t.contains("config-colors(primary: rgb(\"#a62640\"))"),
+        "beaver → red primary override; got:\n{t}"
+    );
+}
+
+#[test]
+fn setbeamercolor_structure_maps_to_primary() {
+    let t = deck("\\setbeamercolor{structure}{fg=green}");
+    assert!(
+        t.contains("config-colors(primary: green)"),
+        "structure fg=green → primary override; got:\n{t}"
+    );
+    assert!(!t.contains("fg=green"), "raw spec must not leak; got:\n{t}");
+}
+
+#[test]
+fn frametitle_color_wins_over_structure() {
+    // The most specific `\setbeamercolor{frametitle}{fg=…}` wins over the structure color.
+    let t = deck("\\setbeamercolor{structure}{fg=blue}\\setbeamercolor{frametitle}{fg=red}");
+    assert!(
+        t.contains("config-colors(primary: red)"),
+        "frametitle color wins over structure; got:\n{t}"
+    );
+    assert!(
+        !t.contains("primary: blue"),
+        "structure color must not override the more-specific frametitle; got:\n{t}"
+    );
+}
