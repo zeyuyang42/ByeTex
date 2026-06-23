@@ -1245,7 +1245,19 @@ impl<'a> Emitter<'a> {
         let base = rendered[1].trim();
         let mark = if bottom { "b" } else { "t" };
         self.ensure_math_letter_boundary("attach(");
-        let _ = write!(self.out, "attach({base}, {mark}: {script})");
+        // Typst `attach(base, t|b: script)` takes the script as ONE argument; a
+        // top-level comma in the over-text (e.g. `\overset{x_0, x_1}{=}`,
+        // corpus 2605.31063) would be read as a stray SECOND positional argument
+        // → `error: unexpected argument`. A top-level `;` is the same failure
+        // class (also an arg-list separator). Wrap such a script in `#box[$ … $]`,
+        // which contains the breaking token yet adds NO visible delimiters and
+        // renders the over-text as proper inline math. Scripts with neither token
+        // keep the bare form so the common `\overset{x}{=}` case is byte-identical.
+        if script.contains(',') || script.contains(';') {
+            let _ = write!(self.out, "attach({base}, {mark}: #box[${script}$])");
+        } else {
+            let _ = write!(self.out, "attach({base}, {mark}: {script})");
+        }
         consumed_end
     }
 

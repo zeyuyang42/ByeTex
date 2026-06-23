@@ -3,6 +3,19 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.5] — unreleased
+
+### Fixed
+- **Comma in `\overset`/`\stackrel`/`\underset`/`\accentset` over-text broke `attach`.**
+  These map to Typst `attach(base, t|b: script)`, where the script is ONE argument. A
+  top-level comma in the over-text (e.g. `\overset{x_0, x_1}{=}`) leaked into the arg
+  list, so Typst read the tail as a stray SECOND positional argument →
+  `error: unexpected argument`. This silently failed `typst compile` on corpus
+  2605.31063 despite the paper being acceptance `known_pass` (a gate blind spot). ByeTex
+  now wraps a comma-bearing script in `#box[$ … $]` — which contains the comma yet adds
+  NO visible delimiters and renders the over-text as proper inline math. Comma-free
+  scripts keep the bare form, so the common `\overset{x}{=}` case is byte-identical.
+
 ## [0.6.4] — unreleased
 
 ### Added
