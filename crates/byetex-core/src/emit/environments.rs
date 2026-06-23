@@ -141,6 +141,9 @@ impl<'a> Emitter<'a> {
         let body = if body_nodes.is_empty() {
             String::new()
         } else {
+            // A native Typst `#block` (NOT a touying context) tolerates a reveal, so a
+            // beamer `\only<…>` in the block body still becomes a real `#only`/`#uncover`
+            // (no `touying-fn-wrapper` panic; verified).
             self.with_sub_buffer(|emitter| {
                 let mut last = body_nodes[0].start_byte();
                 for child in body_nodes {
@@ -204,6 +207,9 @@ impl<'a> Emitter<'a> {
             let cell = if body.is_empty() {
                 String::new()
             } else {
+                // The cell is a native Typst `#grid` cell (NOT touying's `#cols`), which
+                // tolerates a reveal — so a beamer `\only<…>` here still becomes a real
+                // `#only`/`#uncover` (no `touying-fn-wrapper` panic; verified).
                 self.with_sub_buffer(|emitter| {
                     let mut last = body[0].start_byte();
                     for child in body {
@@ -375,14 +381,26 @@ impl<'a> Emitter<'a> {
                 return self.emit_enum_with_numbering(env, &numbering);
             }
         }
+        let is_beamer = self.detected_class == crate::class_map::DocClass::Beamer;
         let mut cursor = env.walk();
         let mut first = true;
+        // Count of spec-bearing items already emitted — a beamer `\item<n->` reveals
+        // one sub-slide later than the previous one, so emit a `#pause` BEFORE every
+        // spec-bearing item after the first (the cleanest touying idiom for sequential
+        // item reveals). Gated on beamer so non-beamer lists are unchanged.
+        let mut overlay_items_seen = 0usize;
         for child in env.children(&mut cursor) {
             if child.kind() != "enum_item" {
                 continue;
             }
             if !first {
                 self.out.push('\n');
+            }
+            if is_beamer && item_has_overlay_spec(child, self.src) {
+                if overlay_items_seen > 0 {
+                    self.out.push_str("#pause\n");
+                }
+                overlay_items_seen += 1;
             }
             // A custom `\item[label]` replaces the auto marker in LaTeX. The
             // Typst `+`/`-` shorthand can't carry a per-item label (and the
@@ -872,6 +890,14 @@ fn item_body_start(item: Node<'_>, src: &str) -> usize {
         .map(|c| c.end_byte())
         .unwrap_or_else(|| item.start_byte());
     start
+}
+
+/// True if an `enum_item` carries a beamer overlay spec right after `\item`
+/// (`\item<1-> body`). Used to decide whether to inject a `#pause` before the item
+/// for a touying sequential reveal.
+pub(in crate::emit) fn item_has_overlay_spec(item: Node<'_>, src: &str) -> bool {
+    let body_start = item_body_start(item, src);
+    skip_leading_overlay_spec(src, body_start) != body_start
 }
 
 /// If `src[start..]` (after optional spaces) begins with a beamer `<overlay-spec>`
