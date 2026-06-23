@@ -3,6 +3,12 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.5.22] — unreleased
+
+### Fixed
+- ACL papers: the title now renders at `\Large` (1.44em) per `acl.sty`, matching the truth,
+  instead of the oversized neutral 1.5em it inherited (the title was visibly too large).
+
 ## [0.5.21] — unreleased
 
 ### Fixed

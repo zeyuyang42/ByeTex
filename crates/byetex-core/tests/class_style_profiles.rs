@@ -155,6 +155,24 @@ fn llncs_title_is_large_bold() {
     );
 }
 
+#[test]
+fn acl_title_is_large_bold() {
+    // acl.sty:152 — `{\Large\bfseries \@title}` on a 10pt body → 1.44em bold (NOT the
+    // neutral 1.5em it used to inherit; the oversized title was visibly off vs the truth).
+    let t = typ(&format!(
+        "\\documentclass[11pt]{{article}}\\usepackage{{acl}}\\title{{{TITLE}}}\
+         \\author{{A}}\\begin{{document}}\\maketitle\\end{{document}}"
+    ));
+    assert!(
+        t.contains("#text(size: 1.44em, weight: \"bold\")["),
+        "acl title must be \\Large (1.44em) bold; got:\n{t}"
+    );
+    assert!(
+        !t.contains("#text(size: 1.5em, weight: \"bold\")["),
+        "acl title must NOT be the neutral 1.5em; got:\n{t}"
+    );
+}
+
 // ─── elsarticle (deliberately unprofiled) ─────────────────────────────────────
 
 #[test]
