@@ -13,6 +13,13 @@ impl<'a> Emitter<'a> {
     /// Typst Universe template binding).
     pub(in crate::emit) fn flush_title_block(&mut self) {
         self.materialize_authors();
+        // A `\makecover` cover page already rendered the title/subtitle/author
+        // into its banner; don't also draw a centered title block (the thesis
+        // gets its full title page from `\input{frontmatter/title-…}`). Authors
+        // are still materialized above so the PDF document metadata is set.
+        if self.cover_emitted {
+            return;
+        }
         if self.metadata.is_title_block_empty() {
             return;
         }

@@ -23,6 +23,13 @@ pub(crate) struct DocumentMetadata {
     pub r#abstract: Option<Content>,
     pub keywords: Vec<String>,
     pub date: Option<String>,
+    /// `\subject{…}` — thesis/report cover-page metadata (course / topic line),
+    /// rendered in the cover banner under the subtitle.
+    pub subject: Option<Content>,
+    /// `\coverimage{path}` — the cover-page background image path (raw LaTeX
+    /// argument, extension included). Consumed by `\makecover` to build a
+    /// generic thesis cover page.
+    pub cover_image: Option<String>,
     /// Class-specific metadata that doesn't fit other fields:
     /// `\acmDOI{...}`, `\IEEEpubid{...}`, `\conference{...}`, etc.
     /// Keyed by the LaTeX command name (without backslash).
@@ -58,6 +65,12 @@ impl DocumentMetadata {
         }
         if self.date.is_none() {
             self.date = other.date.take();
+        }
+        if self.subject.is_none() {
+            self.subject = other.subject.take();
+        }
+        if self.cover_image.is_none() {
+            self.cover_image = other.cover_image.take();
         }
         for (k, v) in other.class_metadata.drain() {
             self.class_metadata.entry(k).or_insert(v);
