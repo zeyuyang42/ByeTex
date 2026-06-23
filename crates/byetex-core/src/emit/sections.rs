@@ -293,6 +293,20 @@ impl<'a> Emitter<'a> {
         // `@label` would fail with `cannot reference text`. Force a break first.
         self.ensure_paragraph_break();
 
+        // Thesis/book density: in a chapter-bearing class (book/report/thesis)
+        // every `\chapter` (and `\chapter*`) issues a `\clearpage`, so each
+        // chapter STARTS ON A NEW PAGE. Emit a page break before each top-level
+        // (level-1 = `\part`/`\chapter`) heading so the converted document gets
+        // the same page density as the LaTeX truth (otherwise chapters pack
+        // together → roughly half the page count). The article family (no
+        // chapters) keeps sections inline — never break there. `\section` and
+        // below (level >= 2) never break. `weak: true` collapses the break
+        // against an existing one (the cover's `#page` block / a frontmatter
+        // numbering switch), so the first chapter never leaves a blank page.
+        if self.chapter_based && level == 1 {
+            self.out.push_str("#pagebreak(weak: true)\n\n");
+        }
+
         if starred {
             // A starred section with a label must still be referenceable via
             // @label. Typst's `numbering: none` makes headings unreferenceable

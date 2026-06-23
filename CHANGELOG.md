@@ -3,9 +3,22 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
-## [0.6.3] — unreleased
+## [0.6.4] — unreleased
 
 ### Added
+- **Chapter-per-page density for book/report/thesis classes.** In a chapter-bearing class
+  (`book`/`report`/thesis) every `\chapter` (and `\chapter*`) issues a `\clearpage` in
+  LaTeX, so each chapter starts on a fresh page. ByeTex previously emitted chapter headings
+  with no page break, so chapters packed together and converted theses ran roughly half the
+  page count of the truth (the tudelft thesis was ~6 pages vs the truth's 12). ByeTex now
+  emits a `#pagebreak(weak: true)` before each top-level (level-1 = `\part`/`\chapter`)
+  heading. Applies to both numbered `\chapter{…}` and starred `\chapter*{…}` (frontmatter
+  Preface / Summary / Nomenclature). `weak: true` collapses the break against an existing
+  one (the cover page, the titlepage isolation, a `\frontmatter`/`\mainmatter` numbering
+  switch), so the first chapter never leaves a blank page. Gated on chapter-bearing classes
+  only — the article family keeps `\section`s inline (`\section`/`\subsection`, level ≥ 2,
+  never break). The tudelft thesis now renders 10 pages (was 6).
+
 - **Generic thesis/report cover page for `\coverimage` + `\makecover`** (Phase 4). Thesis
   and report classes (e.g. `tudelft-report`) define a designed cover page — a
   near-full-bleed cover image plus a banner carrying the title / subtitle / subject /
