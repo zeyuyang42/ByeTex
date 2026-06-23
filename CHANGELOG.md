@@ -3,7 +3,21 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
-## [0.6.1] — unreleased
+## [0.6.2] — unreleased
+
+### Added
+- **Beamer overlays become touying incremental builds** (Phase 3c). Previously every
+  overlay collapsed to its final state (everything shown at once); now beamer build
+  specs drive sub-slide reveals: `\pause` → `#pause`; a sequential
+  `\item<1->`/`<2->`/`<3->` list reveals one item per sub-slide (a `#pause` is injected
+  between the spec-bearing items); a slide-top-level `\only<n>{X}` → `#only("n")[X]` and
+  `\uncover`/`\onslide`/`\visible<n->{X}` → `#uncover("n-")[X]`. Reveals work inside the
+  native `#grid`/`#block` that columns/blocks emit; only a reveal nested inside another
+  reveal (which touying panics on, "Unsupported mark `touying-fn-wrapper`") is rendered
+  collapsed. Incremental (`<+->`) and multi-segment (`<1,3>`) specs are also rendered
+  collapsed for now. All gated on the beamer document class; non-beamer overlay handling
+  is unchanged. The beamer-demo deck grows from 5 to 9 pages as the three-item
+  "Why Scaling Laws?" frame and the `\only<2>` of "Loss Model" expand into build steps.
 
 ### Changed
 - **Beamer theme colors map onto touying, and section-divider slides are gated**

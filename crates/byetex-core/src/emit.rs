@@ -146,6 +146,58 @@ fn match_brace_from(bytes: &[u8], open: usize) -> Option<usize> {
     None
 }
 
+/// Read a beamer `<overlay-spec>` starting at (or after whitespace from) `start`.
+/// Returns `(inner, end)` where `inner` is the text between `<` and `>` and `end`
+/// is the byte just past `>`; `None` if no spec is present. Only bare specs of
+/// `0-9 + - . , | space` are accepted (same alphabet as `skip_overlay_spec`).
+fn read_overlay_spec_extent(src: &str, start: usize) -> Option<(String, usize)> {
+    let bytes = src.as_bytes();
+    let mut i = skip_ascii_ws(bytes, start);
+    if bytes.get(i) != Some(&b'<') {
+        return None;
+    }
+    let open = i;
+    i += 1;
+    while i < bytes.len() && bytes[i] != b'>' {
+        if !matches!(bytes[i], b'0'..=b'9' | b'+' | b'-' | b'.' | b',' | b'|' | b' ') {
+            return None;
+        }
+        i += 1;
+    }
+    if bytes.get(i) != Some(&b'>') {
+        return None;
+    }
+    Some((src[open + 1..i].to_string(), i + 1))
+}
+
+/// Map a beamer overlay spec (the text between `<` and `>`) to a touying overlay
+/// string for `#only(...)` / `#uncover(...)`, or `None` if it can't be expressed
+/// safely (so the caller renders collapsed). Supported: a single slide `2`, an
+/// open range `2-`, a closed range `1-3`, an up-to range `-3`. `+`-incremental
+/// specs (`+`, `+-`, `.`) and multi-segment lists (`1,3`) are deferred → `None`.
+fn parse_touying_overlay_spec(src: &str, start: usize) -> Option<String> {
+    let (inner, _) = read_overlay_spec_extent(src, start)?;
+    let s = inner.trim();
+    if s.is_empty() {
+        return None;
+    }
+    // Defer anything with `+`, `.` (incremental), `,`/`|` (multi-segment): touying's
+    // string form can't faithfully express these and they're rare → collapse.
+    if s.chars().any(|c| matches!(c, '+' | '.' | ',' | '|')) {
+        return None;
+    }
+    // Now a single number `N` or a range with one `-`: `N-`, `-N`, `M-N`.
+    let dashes = s.matches('-').count();
+    if dashes > 1 {
+        return None;
+    }
+    // Every remaining char must be a digit or the single dash.
+    if !s.chars().all(|c| c.is_ascii_digit() || c == '-') {
+        return None;
+    }
+    Some(s.to_string())
+}
+
 /// Approximate Typst color expression for a beamer `\usecolortheme{<name>}`'s
 /// structure color. Exact `\setbeamercolor`/`\definecolor` values are resolved
 /// separately; this only covers the named built-in color themes. `None` (unknown
@@ -345,6 +397,13 @@ pub(crate) struct Emitter<'a> {
     /// row-splitter (`split_math_rows`) keys on — otherwise a minipage used as
     /// a table cell mis-splits across rows.
     in_minipage: bool,
+    /// True while emitting the CONTENT of a touying reveal (`\only`/`\uncover`/…).
+    /// A reveal nested inside another reveal panics ("Unsupported mark
+    /// `touying-fn-wrapper`"), so an inner beamer `\only<…>`/`\uncover<…>` is
+    /// rendered COLLAPSED (final state) while this is set. (Native `#grid`/`#block`
+    /// containers do NOT set this — they tolerate reveals — only a true reveal
+    /// nesting does.)
+    in_overlay_context: bool,
     /// Set when an inline `\label` in text/list context emits a hidden
     /// `kind: "anchor"` figure so the label is referenceable. Gates the
     /// `#show figure.where(kind: "anchor"): it => none` rule in `finish()`.
@@ -488,6 +547,7 @@ impl<'a> Emitter<'a> {
             asset_refs: Vec::new(),
             macro_depth: 0,
             in_minipage: false,
+            in_overlay_context: false,
             used_text_label_anchor: false,
             used_subpar: false,
             has_bibtex_include: false,
@@ -1059,6 +1119,15 @@ impl<'a> Emitter<'a> {
         let mut sub = Emitter::with_includes(src, self.source_name, self.base_dir.clone(), visited);
         sub.in_math = in_math;
         sub.macros = macros;
+        // Propagate the document class so class-gated handling (e.g. beamer overlay
+        // commands) also fires for sub-emitted content — a fragment has no
+        // `\documentclass`, so without this it would default to `Unknown` and a
+        // nested `\only<3>{…}` inside an overlay would leak its `<3>` spec as text.
+        sub.detected_class = self.detected_class.clone();
+        // Content sub-emitted from inside a touying reveal (or a columns/block body)
+        // is itself in an overlay context, so a further nested reveal must collapse
+        // (it would otherwise emit a wrapper that touying can't nest).
+        sub.in_overlay_context = self.in_overlay_context;
         sub.newif_flags = self.newif_flags.clone();
         sub.referenced_labels = self.referenced_labels.clone();
         if increment_depth {
@@ -3370,21 +3439,29 @@ impl<'a> Emitter<'a> {
                 }
                 node.end_byte()
             }
-            // Beamer overlay commands. A static PDF can't animate, so show content
-            // unconditionally: skip the `<overlay-spec>` (so it doesn't leak) and let
-            // the following `{content}` group render normally as a sibling. `\pause`
-            // carries no content — drop it.
-            Some("\\pause") if self.detected_class == DocClass::Beamer => node.end_byte(),
+            // Beamer overlay commands → touying incremental builds.
+            // `\pause` carries no content; it advances the build → `#pause`.
+            Some("\\pause") if self.detected_class == DocClass::Beamer => {
+                self.ensure_paragraph_break();
+                self.out.push_str("#pause\n");
+                node.end_byte()
+            }
             // `\alt<spec>{default}{alternative}` — show the default (first) arg, drop
             // the spec and the alternative (a static PDF can't switch overlays).
             Some("\\alt") if self.detected_class == DocClass::Beamer => {
                 self.emit_beamer_alt(node)
             }
-            // Single-content overlay commands.
-            Some("\\only") | Some("\\onslide") | Some("\\uncover") | Some("\\visible")
-            | Some("\\action") | Some("\\alert")
+            // Single-content reveal commands → a touying reveal at slide top-level
+            // (`#only("2")[X]` / `#uncover("2-")[X]`), or COLLAPSED inside a context
+            // (columns/block) where a reveal would panic ("touying-fn-wrapper").
+            Some(cmd @ ("\\only" | "\\onslide" | "\\uncover" | "\\visible"))
                 if self.detected_class == DocClass::Beamer =>
             {
+                self.emit_beamer_reveal(node, cmd)
+            }
+            // `\alert<spec>{x}` / `\action<spec>{x}` — these are NOT reveals (alert is
+            // colored text); just show the content unconditionally and drop the spec.
+            Some("\\action") | Some("\\alert") if self.detected_class == DocClass::Beamer => {
                 let before = self.skip_until;
                 self.skip_overlay_spec(node.end_byte());
                 if self.skip_until == before {
@@ -4365,6 +4442,66 @@ impl<'a> Emitter<'a> {
             }
             _ => {}
         }
+    }
+
+    /// Emit a beamer reveal command `\only<spec>{X}` / `\onslide<spec>{X}` /
+    /// `\uncover<spec>{X}` / `\visible<spec>{X}`.
+    ///
+    /// At slide top-level this becomes a touying reveal: `\only<…>` →
+    /// `#only("…")[X]`; the cover-style commands (`\uncover`/`\onslide`/`\visible`)
+    /// → `#uncover("…")[X]` (uncover leaves space for the hidden content, matching
+    /// their beamer semantics). INSIDE a touying context (columns/block) a reveal
+    /// panics ("Unsupported mark `touying-fn-wrapper`"), so the content is rendered
+    /// COLLAPSED there. A missing/unsupported (e.g. `+`-incremental) spec also falls
+    /// back to collapsed — content always shown, spec never leaked.
+    fn emit_beamer_reveal(&mut self, node: Node<'_>, cmd: &str) -> usize {
+        let bytes = self.src.as_bytes();
+        // Scan from just after the command token: with a `<spec>` the `{content}` is a
+        // sibling, but with NO spec tree-sitter attaches it as a CHILD past node.end —
+        // so always scan source from after the token (same rule as `emit_beamer_alt`).
+        let after_cmd = node.start_byte() + cmd.len();
+        let spec = parse_touying_overlay_spec(self.src, after_cmd);
+        let i = skip_ascii_ws(
+            bytes,
+            environments::skip_leading_overlay_spec(self.src, after_cmd),
+        );
+        // The `{content}` group.
+        if bytes.get(i) != Some(&b'{') {
+            // No content group (rare) — just drop the spec; nothing to render.
+            if let Some((_, end)) = read_overlay_spec_extent(self.src, after_cmd) {
+                self.skip_until = self.skip_until.max(end);
+            }
+            return node.end_byte();
+        }
+        let Some(close) = match_brace_from(bytes, i) else {
+            return node.end_byte();
+        };
+        let inner = self.src[i + 1..close].to_string();
+        let end = close + 1;
+        // Render the content through the converter (markup/math survive). The content
+        // of a reveal is itself an overlay context, so a nested `\only<…>` inside it
+        // must collapse rather than emit a wrapper — set the flag while sub-emitting.
+        let was_overlay_ctx = self.in_overlay_context;
+        self.in_overlay_context = true;
+        let rendered = self.render_in_sub_emitter(&inner, false, false);
+        self.in_overlay_context = was_overlay_ctx;
+        let rendered = rendered.trim();
+
+        // A reveal is only safe at slide top-level; collapse inside a context.
+        match spec {
+            Some(ref s) if !self.in_overlay_context => {
+                // `\only` → `#only`; cover-style commands → `#uncover`.
+                let func = if cmd == "\\only" { "only" } else { "uncover" };
+                self.ensure_paragraph_break();
+                let _ = write!(self.out, "#{func}(\"{s}\")[{rendered}]\n");
+            }
+            _ => {
+                // Collapsed: show content unconditionally, spec dropped.
+                self.out.push_str(rendered);
+            }
+        }
+        self.skip_until = self.skip_until.max(end);
+        node.end_byte()
     }
 
     /// Emit a beamer `\alt<spec>{default}{alternative}`: render the DEFAULT (first)
