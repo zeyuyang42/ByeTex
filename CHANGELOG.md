@@ -3,6 +3,12 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.6] — unreleased
+
+### Fixed
+- Book/report `\tableofcontents` outline depth now follows `\setcounter{tocdepth}{N}` (harvested
+  in the prepass) instead of a hard-coded depth 3; unchanged when no tocdepth is set (health-check P4).
+
 ## [0.6.5] — unreleased
 
 ### Fixed
