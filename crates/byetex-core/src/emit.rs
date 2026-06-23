@@ -83,6 +83,20 @@ const MATH_WORD_BOUNDARY: char = '\u{17}';
 /// LaTeX char-escapes (`\$ \% \& \# \_ \{ \}`) to their literal characters, then escape
 /// any remaining `\` and `"` so the string is well-formed (no dangling backslash escaping
 /// the closing quote).
+/// Parse `\setcounter{tocdepth}{N}` (the command's source text) → N. Returns None for any
+/// other counter or a malformed argument. Whitespace inside/around the groups is tolerated.
+fn parse_setcounter_tocdepth(cmd: &str) -> Option<i64> {
+    let after = cmd.strip_prefix("\\setcounter")?.trim_start();
+    let after = after.strip_prefix('{')?;
+    let close = after.find('}')?;
+    if after[..close].trim() != "tocdepth" {
+        return None;
+    }
+    let after = after[close + 1..].trim_start().strip_prefix('{')?;
+    let close2 = after.find('}')?;
+    after[..close2].trim().parse().ok()
+}
+
 fn typst_string_escape(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     let bytes = s.as_bytes();
@@ -333,6 +347,10 @@ pub(crate) struct Emitter<'a> {
     /// health-check P1: name-only was brittle — `booklet` false-positived, custom thesis
     /// classes false-negatived).
     chapter_based: bool,
+    /// `\setcounter{tocdepth}{N}` value if the source sets it — drives the `#outline`
+    /// depth for a chapter-based `\tableofcontents` (health-check P4). `None` → the
+    /// default depth (chapter/section/subsection).
+    tocdepth: Option<i64>,
     /// True once `\makecover` has emitted a generic cover page (which already
     /// consumed the title/subtitle/author metadata into a banner). Suppresses
     /// the centered `flush_title_block` so the title isn't duplicated.
@@ -541,6 +559,7 @@ impl<'a> Emitter<'a> {
             emitted_labels: HashSet::new(),
             saw_document_class: false,
             chapter_based: false,
+            tocdepth: None,
             cover_emitted: false,
             doc_uses_chapter: false,
             project_uses_chapter: false,
@@ -600,6 +619,14 @@ impl<'a> Emitter<'a> {
         self.had_bib_file = !self.bibliography_keys.is_empty();
         let mut stack: Vec<Node<'_>> = vec![root];
         while let Some(n) = stack.pop() {
+            // `\setcounter{tocdepth}{N}` (usually preamble) → the `#outline` depth. Harvested
+            // here so it's known before the body `\tableofcontents` is emitted (health-check P4).
+            if self.tocdepth.is_none() {
+                let text = &self.src[n.start_byte()..n.end_byte()];
+                if text.starts_with("\\setcounter") {
+                    self.tocdepth = parse_setcounter_tocdepth(text);
+                }
+            }
             // A `\chapter` anywhere makes this a chapter-bearing document regardless of the
             // class name — the robust signal for `chapter_based` (health-check P1). Detected
             // here so it is known before the first `\section` is emitted.
@@ -2737,6 +2764,8 @@ impl<'a> Emitter<'a> {
             // would eat real body content (`\pagestyle{x} {bold}`). The leak case is a
             // counter setter whose VALUE breaks the parse (e.g. `\addtocounter{c}{-1}`);
             // that surfaces as an ERROR node and is handled there (dogfood A1).
+            // `\setcounter{tocdepth}{N}` is harvested in the prepass (it usually sits in
+            // the preamble); here it's just dropped like the other counter commands.
             Some("\\setcounter")
             | Some("\\pagestyle")
             | Some("\\thispagestyle")
@@ -3326,7 +3355,11 @@ impl<'a> Emitter<'a> {
             // depth 3 = chapter/section/subsection. Article-family keeps the drop below.
             Some("\\tableofcontents") if self.chapter_based => {
                 self.ensure_paragraph_break();
-                self.out.push_str("#outline(depth: 3)\n\n");
+                // LaTeX book/report tocdepth (0=chapter,1=section,2=subsection,3=subsubsection)
+                // → Typst outline depth = tocdepth+1 (chapter=1,section=2,…). Default depth 3
+                // (chapter/section/subsection) when no `\setcounter{tocdepth}` is present.
+                let depth = self.tocdepth.map_or(3, |d| (d + 1).clamp(1, 6));
+                let _ = write!(self.out, "#outline(depth: {depth})\n\n");
                 node.end_byte()
             }
             // Book/report front/main-matter page numbering: `\frontmatter` → roman page
