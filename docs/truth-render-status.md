@@ -30,9 +30,10 @@ paper's `00README.json`. A failed render REJECTS the paper (removes the half-add
 `--allow-no-truth` is passed — then it's accepted with `truth_render_status=failed` + the reason,
 so it's never a silent unmeasured "pass". Run `scripts/setup_truth_deps.sh` first.
 
-## Surfaced bug — acceptance gate blind spot (separate fix)
-- **2605.31063** is in acceptance `known_pass` yet its ByeTex output **fails `typst compile`**
-  on current `main` (`error: unexpected argument` at `main.typ:5244`). The acceptance sweep is
-  not catching it (the gate-blindspot noted in the health check). This is a real converter bug,
-  **out of scope for the truth-pipeline tick** — file it as its own Loop-A item. Deliberately
-  NOT recorded as a fidelity regression here (it is unrelated to the truth-deps change).
+## Surfaced bug — acceptance gate blind spot (FIXED)
+- **2605.31063** — FIXED (PR fix/attach-comma, v0.6.5). Was in acceptance `known_pass` yet
+  its ByeTex output **failed `typst compile`** (`error: unexpected argument` at `main.typ:5244`):
+  an `\overset`-family construct with a COMMA in the over-text leaked the comma into the Typst
+  `attach(base, t: script)` arg list, where it was read as a stray second positional argument.
+  `emit_math_attach` now wraps a comma-bearing script in `#box[$ … $]` (contains the comma,
+  no visible delimiters). The paper now compiles cleanly (70 pages).
