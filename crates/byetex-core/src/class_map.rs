@@ -413,7 +413,9 @@ pub(crate) fn parse_authors(raw: &[String], class: &DocClass) -> Vec<Author> {
         // The NeurIPS multi-`\textbf{Name}$^{n}$ \quad …` pattern must be detected on
         // the RAW string: `sanitize_author_block` unwraps `\textbf` and drops `\quad`,
         // destroying the author boundaries before the line-based parser can see them.
-        if matches!(class, DocClass::Neurips | DocClass::Icml | DocClass::Iclr) {
+        // ACL Anthology papers use the same multi-`\textbf{Name\textsuperscript{n}}` + `\quad`
+        // author row + `\textsuperscript{n} Institution` legend as NeurIPS, so share the parser.
+        if matches!(class, DocClass::Neurips | DocClass::Icml | DocClass::Iclr | DocClass::Acl) {
             if let Some(authors) = parse_neurips_textbf_authors(s_raw) {
                 out.extend(authors);
                 continue;
@@ -423,7 +425,7 @@ pub(crate) fn parse_authors(raw: &[String], class: &DocClass) -> Vec<Author> {
         let s = s.as_str();
         match class {
             DocClass::IeeeTran { .. } => out.extend(parse_ieee_block(s)),
-            DocClass::Neurips | DocClass::Icml | DocClass::Iclr => {
+            DocClass::Neurips | DocClass::Icml | DocClass::Iclr | DocClass::Acl => {
                 out.extend(parse_neurips_block(s))
             }
             _ => out.extend(parse_generic_block(s)),
@@ -786,6 +788,14 @@ fn parse_ieee_affiliation(raw: &str) -> crate::document::Affiliation {
 /// affiliation ref after an author name). Returns `None` if there's no numeric
 /// superscript.
 fn first_superscript_digits(s: &str) -> Option<String> {
+    // `\textsuperscript{n}` (ACL command form) — take the digits inside the braces.
+    if let Some(p) = s.find("\\textsuperscript{") {
+        let start = p + "\\textsuperscript{".len();
+        let digits: String = s[start..].chars().take_while(|c| c.is_ascii_digit()).collect();
+        if !digits.is_empty() {
+            return Some(digits);
+        }
+    }
     let bytes = s.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
@@ -812,6 +822,16 @@ fn first_superscript_digits(s: &str) -> Option<String> {
 /// tokens (no leading superscript ref).
 fn parse_affil_legend(tok: &str) -> Option<(String, String)> {
     let t = tok.trim().trim_start_matches('$').trim_start();
+    // ACL legend form: `\textsuperscript{n} Institution …`.
+    if let Some(rest) = t.strip_prefix("\\textsuperscript{") {
+        let close = rest.find('}')?;
+        let refnum = rest[..close].trim().to_string();
+        let inst = rest[close + 1..].trim().trim_end_matches("\\smallskip").trim().to_string();
+        if !refnum.is_empty() && !inst.is_empty() {
+            return Some((refnum, inst));
+        }
+        return None;
+    }
     let after = t.strip_prefix('^')?;
     let (refnum, rest) = if let Some(after_brace) = after.strip_prefix('{') {
         let close = after_brace.find('}')?;
@@ -847,19 +867,31 @@ fn parse_neurips_textbf_authors(s: &str) -> Option<Vec<Author>> {
         .map(|t| t.trim().to_string())
         .filter(|t| !t.is_empty())
         .collect();
-    let mut specs: Vec<(String, Option<String>)> = Vec::new();
+    let mut specs: Vec<(String, Option<String>, bool)> = Vec::new();
     let mut legend: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     for tok in &tokens {
         if let Some(tb) = tok.find("\\textbf{") {
             let brace = tb + "\\textbf".len();
             if let Some(close) = matched_close_brace(tok, brace) {
                 let raw_name = &tok[brace + 1..close];
-                let name = latex_text_to_typst(&strip_textsuperscript(raw_name))
-                    .trim()
-                    .to_string();
-                let refnum = first_superscript_digits(&tok[close..]);
+                // The affiliation marker can sit INSIDE the braces (ACL:
+                // `\textbf{Name\textsuperscript{n}}`) or AFTER them (NeurIPS:
+                // `\textbf{Name}\textsuperscript{n}` / `$^{n}$`). Check both, BEFORE stripping.
+                let refnum = first_superscript_digits(raw_name)
+                    .or_else(|| first_superscript_digits(&tok[close..]));
+                // Drop the superscript marker plus any `\thanks{…}` / `\footnotemark[n]`
+                // (corresponding-author notes) so they don't leak into the rendered name.
+                let (no_thanks, thanks) = extract_thanks(raw_name);
+                // A `\thanks{Equal contribution}` marks equal contribution (parse_neurips_block
+                // does the same); other \thanks bodies are corresponding-author notes we drop.
+                let equal = thanks.is_some_and(|t| {
+                    let l = t.to_ascii_lowercase();
+                    l.contains("equal") || l.contains("contribut")
+                });
+                let cleaned = strip_footnote_marks(&strip_textsuperscript(&no_thanks));
+                let name = latex_text_to_typst(&cleaned).trim().to_string();
                 if !name.is_empty() {
-                    specs.push((name, refnum));
+                    specs.push((name, refnum, equal));
                 }
             }
         } else if let Some((r, inst)) = parse_affil_legend(tok) {
@@ -872,11 +904,12 @@ fn parse_neurips_textbf_authors(s: &str) -> Option<Vec<Author>> {
     Some(
         specs
             .into_iter()
-            .map(|(name, refnum)| Author {
+            .map(|(name, refnum, equal)| Author {
                 affiliation: refnum.and_then(|r| legend.get(&r)).map(|inst| {
                     crate::document::Affiliation::from_raw(Content::Typst(latex_text_to_typst(inst)))
                 }),
                 name: Content::Typst(name),
+                equal_contribution: equal,
                 ..Author::default()
             })
             .collect(),
@@ -995,6 +1028,33 @@ fn strip_textsuperscript(s: &str) -> String {
     }
     // Strip simple `${}^X$` markers too.
     out = regex_replace(&out, r"\$\{?\}?\^\{?[^}$]*\}?\$", "");
+    out.trim().to_string()
+}
+
+/// Remove `\footnotemark[n]` / `\footnotemark` and `\footnote{…}` from an author name
+/// (ACL marks corresponding authors with these; they must not leak into the rendered name).
+fn strip_footnote_marks(s: &str) -> String {
+    let mut out = s.to_string();
+    // `\footnote{...}` — drop the whole braced body.
+    while let Some(i) = out.find("\\footnote{") {
+        let after = i + "\\footnote".len();
+        if let Some(end) = matched_close_brace(&out, after) {
+            out.replace_range(i..=end, "");
+        } else {
+            break;
+        }
+    }
+    // `\footnotemark[n]` (with optional bracket arg) and bare `\footnotemark`. Done by hand —
+    // the regex shim doesn't support negated classes like `[^]]`.
+    while let Some(i) = out.find("\\footnotemark") {
+        let mut end = i + "\\footnotemark".len();
+        if out[end..].starts_with('[') {
+            if let Some(close) = out[end..].find(']') {
+                end += close + 1;
+            }
+        }
+        out.replace_range(i..end, "");
+    }
     out.trim().to_string()
 }
 
