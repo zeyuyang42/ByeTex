@@ -30,7 +30,10 @@ done
 
 # Produce a fresh index.json. visual_test.py needs numpy/Pillow for SSIM; if
 # they aren't importable, run this via `uv run --with numpy --with pillow -- ...`.
-python3 "$REPO_ROOT/scripts/visual_test.py" --out "$OUT" "${VT_ARGS[@]}"
+# `${VT_ARGS[@]+…}` (not `"${VT_ARGS[@]}"`): under `set -u`, macOS's bash 3.2 treats an
+# empty-array expansion as an unbound variable and aborts. This idiom expands to the
+# elements when set, and to NOTHING when empty (no stray empty arg).
+python3 "$REPO_ROOT/scripts/visual_test.py" --out "$OUT" ${VT_ARGS[@]+"${VT_ARGS[@]}"}
 INDEX="$OUT/index.json"
 
 if [[ ! -f "$INDEX" ]]; then
