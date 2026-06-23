@@ -80,7 +80,10 @@ use typography::{is_operatorname_only_function, should_split_math_word};
 const MATH_WORD_BOUNDARY: char = '\u{17}';
 
 /// Beamer's default theme "structure" color — `rgb(0.2, 0.2, 0.7)` ≈ `#3333b3`.
-/// Used for frame titles so slides match beamer's blue title style.
+/// Detected/stored by `harvest_beamer_color`; in Phase 3a touying owns the frame-title
+/// (header-bar) color, so this is not applied yet. Kept as groundwork for the Phase 3b
+/// theme-color → `config-colors` mapping.
+#[allow(dead_code)]
 pub(in crate::emit) const BEAMER_TITLE_BLUE: &str = "#3333b3";
 
 /// Make a plain-text run safe inside a Typst `"…"` string literal: convert the common
@@ -746,9 +749,17 @@ impl<'a> Emitter<'a> {
             // class options; apply now that the class, packages and user geometry
             // are all resolved.
             self.layout.apply_venue_style(&self.detected_class);
-            self.out
-                .push_str(&build_neutral_preamble(&self.layout, &self.detected_class));
-            self.out.push_str("#set heading(numbering: \"1.\")\n");
+            let is_beamer = matches!(self.detected_class, crate::class_map::DocClass::Beamer);
+            if is_beamer {
+                // touying owns the page, chrome, and slide numbering. Emit the
+                // import + theme + config-info; skip the neutral preamble and the
+                // `#set heading(numbering)` line (touying numbers slides itself).
+                self.out.push_str(&self.build_beamer_touying_preamble());
+            } else {
+                self.out
+                    .push_str(&build_neutral_preamble(&self.layout, &self.detected_class));
+                self.out.push_str("#set heading(numbering: \"1.\")\n");
+            }
             if self.used_text_label_anchor {
                 self.out
                     .push_str("#show figure.where(kind: \"anchor\"): it => none\n");
@@ -3166,7 +3177,7 @@ impl<'a> Emitter<'a> {
             // sections/subsections, so cap the depth at 2.
             Some("\\tableofcontents") if self.detected_class == DocClass::Beamer => {
                 self.ensure_paragraph_break();
-                self.out.push_str("#outline(title: none, depth: 2)\n");
+                self.out.push_str("#outline(title: none, indent: 1em)\n");
                 node.end_byte()
             }
             // Book/report/thesis `\tableofcontents` → a titled `#outline` of the
@@ -3308,17 +3319,14 @@ impl<'a> Emitter<'a> {
                 node.end_byte()
             }
             // `\frametitle{X}` (beamer): the slide title, when not given as the
-            // `\begin{frame}{X}` argument. Render it as a bold heading line.
+            // `\begin{frame}{X}` argument. touying: a level-2 heading IS the slide
+            // (the metropolis header bar is drawn from it).
             Some("\\frametitle") if self.detected_class == DocClass::Beamer => {
                 if let Some(arg) = first_curly_group(node) {
                     let title = self.render_curly_group_content(arg).trim().to_string();
                     if !title.is_empty() {
                         self.ensure_paragraph_break();
-                        let fill = self.beamer_title_fill();
-                        let _ = write!(
-                            self.out,
-                            "#text(size: 1.2em, weight: \"bold\", fill: {fill})[{title}]\n\n"
-                        );
+                        let _ = write!(self.out, "== {title}\n\n");
                     }
                 }
                 node.end_byte()
@@ -3326,15 +3334,16 @@ impl<'a> Emitter<'a> {
             // `\titlepage` (beamer): the title block is auto-emitted at the document
             // head (like `\maketitle`), so this is a no-op — it just must not leak.
             Some("\\titlepage") if self.detected_class == DocClass::Beamer => node.end_byte(),
-            // `\frame{X}` (beamer): the COMMAND form of a slide. Render X as a slide
-            // with a leading weak pagebreak. `\frame{\titlepage}` renders to nothing
-            // (titlepage is a no-op + the title is at the top), so emit no blank slide.
+            // `\frame{X}` (beamer): the COMMAND form of a slide. touying: an
+            // untitled slide is `#slide[…]`. `\frame{\titlepage}` renders to
+            // nothing (titlepage emits `#title-slide()` via the title block, so
+            // its inner content here is empty), so emit no extra slide.
             Some("\\frame") if self.detected_class == DocClass::Beamer => {
                 if let Some(arg) = first_curly_group(node) {
                     let content = self.render_curly_group_content(arg);
                     if !content.trim().is_empty() {
                         self.ensure_paragraph_break();
-                        let _ = write!(self.out, "#pagebreak(weak: true)\n\n{}\n", content.trim());
+                        let _ = write!(self.out, "#slide[\n{}\n]\n", content.trim());
                     }
                 }
                 node.end_byte()
@@ -4296,7 +4305,9 @@ impl<'a> Emitter<'a> {
     /// The Typst color expression for beamer frame titles, resolved from the deck's
     /// theme: an explicit `\setbeamercolor{frametitle}{fg=…}` wins, else the structure
     /// color (`\setbeamercolor{structure}` / `\usecolortheme`), else beamer's default
-    /// structure blue.
+    /// structure blue. Phase 3a: touying's metropolis theme owns the header-bar color,
+    /// so this resolver is dormant — retained for the Phase 3b theme-color mapping.
+    #[allow(dead_code)]
     fn beamer_title_fill(&self) -> String {
         self.beamer_frametitle_color
             .clone()

@@ -16,6 +16,17 @@ impl<'a> Emitter<'a> {
         if self.metadata.is_title_block_empty() {
             return;
         }
+
+        // Beamer → touying: the title slide is built by touying from the
+        // `config-info(…)` block (emitted in the preamble). `\titlepage` /
+        // `\maketitle` just triggers `#title-slide()`. No hand-rolled centered
+        // title/author block.
+        if matches!(self.detected_class, crate::class_map::DocClass::Beamer) {
+            self.ensure_paragraph_break();
+            self.out.push_str("#title-slide()\n\n");
+            return;
+        }
+
         self.ensure_paragraph_break();
 
         let profile = crate::style_profile::StyleProfile::for_class(&self.detected_class);
@@ -270,6 +281,72 @@ impl<'a> Emitter<'a> {
                  #v(0.5em)\n"
             ),
         }
+    }
+
+    /// Build the touying (metropolis-theme) preamble for a beamer deck:
+    /// the `@preview/touying` import, the theme import, and the
+    /// `#show: metropolis-theme.with(aspect-ratio:, config-info(…))` line
+    /// populated from `self.metadata`. touying owns the page geometry,
+    /// header/footer chrome, and slide numbering — so this REPLACES the
+    /// plain `#set page(paper: "presentation-…")` neutral preamble and the
+    /// `#set heading(numbering)` line for beamer.
+    ///
+    /// Must run after `materialize_authors()` so author names are populated.
+    pub(in crate::emit) fn build_beamer_touying_preamble(&self) -> String {
+        // `layout.paper` is "presentation-16-9" (16:9/16:10/14:9 ratios) or
+        // "presentation-4-3" (everything else / default). Map to touying's
+        // aspect-ratio string. Default to 4-3 (beamer's default).
+        let aspect = match self.layout.paper {
+            Some(p) if p.starts_with("presentation-16") => "16-9",
+            _ => "4-3",
+        };
+
+        let mut info = String::new();
+        if let Some(title) = &self.metadata.title {
+            let _ = writeln!(info, "    title: [{}],", title.as_content());
+        }
+        if let Some(subtitle) = &self.metadata.subtitle {
+            let _ = writeln!(info, "    subtitle: [{}],", subtitle.as_content());
+        }
+        if !self.metadata.authors.is_empty() {
+            // touying renders the author field as a single content block; join
+            // multiple authors with a spacer (beamer's `\and` puts them side by
+            // side on the title slide).
+            let names: Vec<String> = self
+                .metadata
+                .authors
+                .iter()
+                .map(|a| escape_text_for_typst_content(a.name.as_content()))
+                .collect();
+            let _ = writeln!(info, "    author: [{}],", names.join(" #h(1em) "));
+        }
+        // `\institute{…}` is appended onto the last author's raw buffer at parse
+        // time (so it lands in that author's affiliation). Surface the first
+        // non-empty affiliation as touying's `institution`.
+        if let Some(inst) = self
+            .metadata
+            .authors
+            .iter()
+            .find_map(|a| aff_display_text(&a.affiliation))
+        {
+            let _ = writeln!(
+                info,
+                "    institution: [{}],",
+                escape_text_for_typst_content(&inst)
+            );
+        }
+        if let Some(date) = &self.metadata.date {
+            let _ = writeln!(info, "    date: [{date}],");
+        }
+
+        format!(
+            "#import \"@preview/touying:0.7.3\": *\n\
+             #import themes.metropolis: *\n\n\
+             #show: metropolis-theme.with(\n\
+             \x20 aspect-ratio: \"{aspect}\",\n\
+             \x20 config-info(\n{info}  ),\n\
+             )\n\n"
+        )
     }
 
     /// Convert the raw `\author{...}` strings collected during the AST

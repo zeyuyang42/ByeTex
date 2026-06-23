@@ -221,14 +221,32 @@ impl<'a> Emitter<'a> {
         // anywhere (so the reference resolves), else the first label.
         let chosen_label = self.pick_label_to_attach(&labels);
 
-        // Beamer: a `\section`/`\subsection` between frames is a section page, not an
-        // inline heading on the previous slide. Start a new slide with a weak pagebreak
-        // (the following `\begin{frame}` supplies the break after, so the heading sits on
-        // its own slide). Keeps the heading a real Typst heading so `#outline` (the
-        // `\tableofcontents` slide) still lists it.
-        if self.detected_class == crate::class_map::DocClass::Beamer && level <= 2 {
+        // Beamer → touying: a `\section` is a section-divider slide. touying makes
+        // a level-1 heading (`= X`) a section divider automatically (and the `==`
+        // frame headings under it become the section's slides). A `\subsection`
+        // (level 2) collides with frame slides (also level 2), so demote it to a
+        // level-3 heading inside the current slide rather than a phantom frame.
+        if self.detected_class == crate::class_map::DocClass::Beamer && level >= 2 {
             self.ensure_paragraph_break();
-            self.out.push_str("#pagebreak(weak: true)\n\n");
+            self.out.push_str("=== ");
+            let _ = write!(self.out, "{title}");
+            if let Some(l) = &chosen_label {
+                if self.label_first_use(l) {
+                    let _ = write!(self.out, " <{}>", l);
+                }
+            }
+            self.out.push_str("\n\n");
+            let body = &children[body_start_idx..];
+            if !body.is_empty() {
+                let mut last = body[0].start_byte();
+                for child in body {
+                    let cs = child.start_byte();
+                    self.safe_copy(last, cs);
+                    last = self.emit_node(*child);
+                }
+                self.safe_copy(last, node.end_byte());
+            }
+            return node.end_byte();
         }
 
         // A heading's `==` markers are only recognised by Typst at the start of

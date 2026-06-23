@@ -35,11 +35,14 @@ fn titlepage_does_not_leak_and_title_renders() {
 
 #[test]
 fn titlepage_frame_makes_no_blank_slide() {
-    // `\frame{\titlepage}` renders to nothing extra (title is at the top), so it must
-    // not emit a stray pagebreak with empty content. Exactly the content frames break.
+    // touying: `\frame{\titlepage}` emits exactly one `#title-slide()` (no stray empty
+    // slide). The titled frame is a `== First` slide; the short `\frame{…}` form is a
+    // `#slide[…]`. No manual `#pagebreak`s anywhere.
     let t = typ(DECK);
-    // Two real slides after the title: "First" and the short-form slide.
-    assert_eq!(t.matches("#pagebreak").count(), 2, "one pagebreak per content slide; got:\n{t}");
+    assert_eq!(t.matches("#title-slide()").count(), 1, "exactly one title slide; got:\n{t}");
+    assert!(t.contains("== First"), "titled frame is a `==` slide; got:\n{t}");
+    assert!(t.contains("#slide["), "short \\frame{{…}} form → #slide[…]; got:\n{t}");
+    assert!(!t.contains("#pagebreak"), "touying slides use `==`/#slide, not pagebreaks; got:\n{t}");
 }
 
 #[test]

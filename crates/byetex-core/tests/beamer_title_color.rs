@@ -1,7 +1,10 @@
-//! Beamer frame-title color is DETECTED from the deck's theme, not hard-coded:
-//! `\setbeamercolor{frametitle|structure}{fg=…}` and `\definecolor` are honored
-//! exactly; `\usecolortheme{name}` maps to the theme's structure color; a stock deck
-//! (no theme) falls back to beamer's default structure blue.
+//! Beamer frame-title color. Phase 3a (touying): the metropolis theme owns the dark
+//! header-bar color of every frame, so the converter no longer paints frame titles with
+//! a detected `#text(fill: …)` color — the title is a plain `== heading` and touying
+//! styles it. The theme-color → touying `config-colors` mapping (honoring
+//! `\setbeamercolor` / `\usecolortheme`) is Phase 3b. These tests pin the 3a contract:
+//! detection commands are still consumed (no `unsupported` warning, no leak), and the
+//! frame title is a heading with no hand-rolled color.
 
 use byetex_core::{convert, ConvertOptions};
 
@@ -15,39 +18,37 @@ fn deck(preamble: &str) -> String {
     ))
 }
 
-// beamer default structure color rgb(0.2,0.2,0.7) ≈ #3333b3.
-const DEFAULT_BLUE: &str = "#3333b3";
-
 #[test]
-fn default_theme_is_structure_blue() {
+fn frame_title_is_a_heading_not_a_colored_text() {
     let t = deck("");
-    assert!(t.contains(DEFAULT_BLUE), "stock deck → default blue; got:\n{t}");
+    assert!(t.contains("== Method"), "frame title is a touying `==` slide; got:\n{t}");
+    // 3a: no hand-rolled colored frame-title text (touying owns the header color).
+    assert!(
+        !t.contains("#text(size: 1.2em, weight: \"bold\", fill:"),
+        "no converter-painted frame-title color in 3a; got:\n{t}"
+    );
 }
 
 #[test]
-fn explicit_frametitle_color_is_honored() {
+fn setbeamercolor_is_consumed_no_leak() {
+    // `\setbeamercolor{frametitle}{fg=green}` is still parsed/consumed (it must not leak
+    // as body text), even though its color is not applied in 3a.
     let t = deck("\\setbeamercolor{frametitle}{fg=green}");
-    assert!(t.contains("Method"), "title rendered");
-    assert!(!t.contains(DEFAULT_BLUE), "explicit color overrides the default blue; got:\n{t}");
+    assert!(t.contains("== Method"), "title rendered; got:\n{t}");
+    assert!(!t.contains("setbeamercolor"), "command must not leak; got:\n{t}");
+    assert!(!t.contains("fg=green"), "raw spec must not leak; got:\n{t}");
 }
 
 #[test]
-fn definecolor_frametitle_is_resolved() {
-    let t = deck("\\definecolor{brand}{RGB}{200,0,0}\\setbeamercolor{frametitle}{fg=brand}");
-    // The custom red is used, not the default blue.
-    assert!(!t.contains(DEFAULT_BLUE), "\\definecolor brand used; got:\n{t}");
-    assert!(t.contains("200") || t.contains("c80000") || t.contains("C80000"),
-        "brand RGB(200,0,0) resolved; got:\n{t}");
-}
-
-#[test]
-fn colortheme_beaver_is_not_blue() {
-    let t = deck("\\usecolortheme{beaver}");
-    assert!(!t.contains(DEFAULT_BLUE), "beaver is red, not the default blue; got:\n{t}");
+fn definecolor_and_usecolortheme_do_not_leak() {
+    let t = deck("\\definecolor{brand}{RGB}{200,0,0}\\setbeamercolor{frametitle}{fg=brand}\\usecolortheme{beaver}");
+    assert!(t.contains("== Method"), "title rendered; got:\n{t}");
+    assert!(!t.contains("definecolor"), "\\definecolor must not leak; got:\n{t}");
+    assert!(!t.contains("usecolortheme"), "\\usecolortheme must not leak; got:\n{t}");
 }
 
 #[test]
 fn non_beamer_unaffected() {
     let t = typ("\\documentclass{article}\\begin{document}\\section{Intro}x\\end{document}");
-    assert!(!t.contains(DEFAULT_BLUE), "non-beamer headings are not slide-blue; got:\n{t}");
+    assert!(!t.contains("metropolis-theme"), "non-beamer is not a slide deck; got:\n{t}");
 }

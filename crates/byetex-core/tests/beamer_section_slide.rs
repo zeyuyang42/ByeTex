@@ -1,5 +1,6 @@
-//! Beamer `\section` between frames (round-4 B6): a section starts its own slide (a
-//! section page) rather than its heading bleeding onto the previous frame's slide.
+//! Beamer `\section` between frames: a section is its own section-divider slide. With
+//! the touying emitter (Phase 3a) a `\section` becomes a level-1 heading (`= X`), which
+//! metropolis renders as an automatic section divider slide (no manual `#pagebreak`).
 
 use byetex_core::{convert, ConvertOptions};
 
@@ -10,20 +11,22 @@ fn typ(src: &str) -> String {
 const DECK: &str = "\\documentclass{beamer}\\begin{document}\\begin{frame}{F0}intro\\end{frame}\\section{Motivation}\\begin{frame}{F1}x\\end{frame}\\end{document}";
 
 #[test]
-fn beamer_section_starts_a_new_slide() {
+fn beamer_section_is_a_level1_divider() {
     let t = typ(DECK);
-    assert!(t.contains("Motivation"), "section heading rendered");
-    // Between the previous frame's body ("intro") and the section heading there must be
-    // a pagebreak, so the section lands on its own slide rather than gluing onto F0.
-    let between = t
-        .split("intro")
-        .nth(1)
-        .and_then(|s| s.split("Motivation").next())
-        .unwrap_or("");
-    assert!(
-        between.contains("pagebreak"),
-        "a pagebreak must separate the previous frame from the section; got:\n{between}"
-    );
+    // A `\section` → `= X`, which touying renders as a section-divider slide.
+    assert!(t.contains("= Motivation"), "section → `= X` divider; got:\n{t}");
+    // The frame title under it is a level-2 (`==`) slide, distinct from the divider.
+    assert!(t.contains("== F1"), "frame under the section is a `==` slide; got:\n{t}");
+    assert!(!t.contains("pagebreak"), "touying owns slide breaks, not #pagebreak; got:\n{t}");
+}
+
+#[test]
+fn beamer_subsection_is_demoted_below_frame_level() {
+    // A `\subsection` (level 2) would collide with frame slides (also `==`); it is
+    // demoted to a level-3 heading so it stays inside the current slide.
+    let t = typ("\\documentclass{beamer}\\begin{document}\\section{Sec}\\begin{frame}{F}\\subsection{Sub}\nbody\\end{frame}\\end{document}");
+    assert!(t.contains("= Sec"), "section is `= X`; got:\n{t}");
+    assert!(t.contains("=== Sub"), "subsection demoted to `=== X`; got:\n{t}");
 }
 
 #[test]

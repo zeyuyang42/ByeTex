@@ -3,6 +3,24 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.0] — unreleased
+
+### Added
+- **Beamer decks now emit native Typst `touying` slides** (Phase 3a). A `beamer`
+  document is converted to a `touying` presentation with the `metropolis` theme — a real
+  slide framework with a dark header bar carrying the frame title, a footer with the slide
+  number, and the accent progress line — instead of the old hand-rolled
+  `#set page(paper: "presentation-…")` plain-Typst slides. Mapping:
+  `\documentclass[aspectratio=…]{beamer}` + `\title`/`\subtitle`/`\author`/`\institute`/`\date`
+  → `#show: metropolis-theme.with(aspect-ratio:, config-info(…))`; `\frame{\titlepage}` →
+  `#title-slide()`; `\begin{frame}{T}` / `\frametitle{T}` → a `== T` slide; `\section{X}` →
+  a `= X` section-divider slide; `\subsection` → a `=== ` in-slide heading;
+  `\tableofcontents` → `#outline(title: none, indent: 1em)`; a bare `\frame{…}` →
+  `#slide[…]`. Columns/blocks/`\alert` are unchanged (they already produce valid Typst that
+  works inside touying slides). Overlays remain collapsed to their final state (no
+  `#pause`/`#only` is emitted); real overlays and theme-color mapping are deferred to later
+  phases. The compile gate resolves `@preview/touying:0.7.3` from the package cache.
+
 ## [0.5.23] — unreleased
 
 ### Fixed
