@@ -107,6 +107,10 @@ impl StyleProfile {
             // Conservative profile — exact title size/weight + ACL bib style
             // deferred to a visual re-grade.
             DocClass::Acl => Self {
+                // acl.sty:152 — `{\Large\bfseries \@title}` on its 10pt body → 1.44em bold
+                // (NOT the neutral 1.5em; the inherited value rendered the title visibly too
+                // large vs the truth). Headings: \large/\normalsize → 1.2/1.0/1.0 (acl.sty:234+).
+                title_size: "1.44em",
                 abstract_style: AbstractStyle::ConferenceHeading { smallcaps: false },
                 abstract_in_columns: true,
                 cite_default: CiteMode::AuthorYear,
