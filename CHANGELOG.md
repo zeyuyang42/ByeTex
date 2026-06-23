@@ -3,6 +3,14 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.5.23] — unreleased
+
+### Fixed
+- ACL author blocks: route through the NeurIPS-style author parser (same `\textbf{Name
+  \textsuperscript{n}}` + `\textsuperscript{n} Institution` legend). Real institutions are now
+  kept and keyed per author, a `\thanks{Correspondence…}` note is no longer mis-used as the
+  affiliation, and `\thanks`/`\footnotemark` no longer leak into names (Phase 2).
+
 ## [0.5.22] — unreleased
 
 ### Fixed
