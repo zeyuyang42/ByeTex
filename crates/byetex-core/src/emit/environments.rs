@@ -232,10 +232,6 @@ impl<'a> Emitter<'a> {
     /// handled by its own command arm.
     pub(in crate::emit) fn emit_beamer_frame(&mut self, env: Node<'_>) -> usize {
         self.ensure_paragraph_break();
-        // A weak pagebreak before EVERY frame: Typst suppresses the leading one, so
-        // the first slide gets no blank page. Stateless (no emitter flag), so frames
-        // expanded inside a macro/sub-emitter still page correctly.
-        self.out.push_str("#pagebreak(weak: true)\n\n");
 
         let mut cursor = env.walk();
         let all: Vec<Node<'_>> = env.children(&mut cursor).collect();
@@ -255,7 +251,8 @@ impl<'a> Emitter<'a> {
         // a frame whose body opens with `{...}` (or uses `\frametitle`) keeps it.
         let mut body_start = 0;
         let mut prev_end = begin_end;
-        for (i, weight) in ["bold", "regular"].iter().enumerate() {
+        // i==0 → frame title, i==1 → optional frame subtitle.
+        for i in 0..2 {
             let Some(child) = children.get(i) else { break };
             if !matches!(
                 child.kind(),
@@ -273,12 +270,14 @@ impl<'a> Emitter<'a> {
             }
             let text = self.render_curly_group_content(*child).trim().to_string();
             if !text.is_empty() {
-                let size = if i == 0 { "1.2em" } else { "1.0em" };
-                let fill = self.beamer_title_fill();
-                let _ = write!(
-                    self.out,
-                    "#text(size: {size}, weight: \"{weight}\", fill: {fill})[{text}]\n\n"
-                );
+                // touying: a level-2 heading IS a slide (metropolis renders the
+                // dark header bar from it). The optional second group is a frame
+                // subtitle — a small line just under the title heading.
+                if i == 0 {
+                    let _ = write!(self.out, "== {text}\n\n");
+                } else {
+                    let _ = write!(self.out, "#text(size: 0.9em)[{text}]\n\n");
+                }
             }
             body_start = i + 1;
             prev_end = child.end_byte();

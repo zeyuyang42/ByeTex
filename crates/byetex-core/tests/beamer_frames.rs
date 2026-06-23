@@ -40,10 +40,13 @@ fn frame_titles_render() {
 }
 
 #[test]
-fn frames_are_separate_pages() {
-    // Each frame is its own slide → a pagebreak between them.
+fn frames_are_separate_slides() {
+    // touying: each frame title is a level-2 heading (`== Title`); metropolis starts
+    // a fresh slide per `==`, so no manual `#pagebreak` is emitted.
     let t = typ(DECK);
-    assert!(t.contains("pagebreak"), "frames separated by a pagebreak; got:\n{t}");
+    assert!(t.contains("== First Slide"), "first frame is a `==` slide; got:\n{t}");
+    assert!(t.contains("== Second Slide"), "second frame (\\frametitle) is a `==` slide; got:\n{t}");
+    assert!(!t.contains("pagebreak"), "touying slides use `==`, not pagebreaks; got:\n{t}");
 }
 
 #[test]
