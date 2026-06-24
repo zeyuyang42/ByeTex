@@ -41,15 +41,14 @@ Resolved.
 > gap to the truth's 2-col submission format vs the preprint's 1-col — confirming
 > H2 is NOT a converter bug. New item K1 below.
 
-### K1. `\operatorname*{X}` (starred) drops its argument — sev 3 — ROUTE: Loop A (NEXT PICK)
+### K1. `\operatorname*{X}` (starred) drops its argument — sev 3 — ✅ RESOLVED (PR #385 starred + #386 inner-unwrap)
 - **Symptom (validated on fresh main):** `\operatorname{argmin}` → `op("argmin")` ✓, but the
   STARRED `\operatorname*{argmin}` → the bare string `operatorname*` with the `{argmin}`
-  argument DROPPED. Compiles, renders wrong (invisible to the compile gate). The starred
-  variant (limits-above form) isn't handled where the plain one is.
-- **Fix sketch:** wherever `\operatorname` maps to `op("…")`, accept the `*` and emit
-  `op("…", limits: #true)` (the `*` form puts sub/superscripts above/below). Also a `byetex-math`
-  skill line for the starred variant (minor). NOTE: `\DeclareMathOperator*` is already handled
-  (style_profile/extract path) — this is the inline `\operatorname*` call form.
+  argument DROPPED. Compiles, renders wrong (invisible to the compile gate).
+- **Fix:** PR #385 dispatches `\operatorname*` → `op("…", limits: #true)`. Follow-up PR #386:
+  `\operatorname{\mathrm{X}}` was emitting `op("\mathrm{argmin}")` (rendered the literal
+  `\mathrm{argmin}` — `op()` quotes its arg verbatim); now a redundant `\mathrm`/`\text`/`\mbox`
+  wrapper is unwrapped to `op("argmin")` (`unwrap_upright_wrapper`). 5 corpus papers; both verified.
 - **NOT a bug (validated, do not chase):** the agent also reported `\bpe`
   (`\newcommand{\bpe}{\texttt{BPE}\xspace}`) leaking — does NOT reproduce on fresh main
   (`\bpe` → `#raw("BPE")` correctly). False finding.

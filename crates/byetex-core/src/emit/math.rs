@@ -667,11 +667,17 @@ impl<'a> Emitter<'a> {
     /// places the subscript *under* the operator) emits `op("X", limits: #true)`.
     pub(in crate::emit) fn emit_math_operatorname(&mut self, node: Node<'_>, starred: bool) -> usize {
         if let Some(arg) = first_curly_group(node) {
-            let inner = self
+            let raw = self
                 .src
                 .get(arg.start_byte() + 1..arg.end_byte() - 1)
                 .unwrap_or("")
                 .trim();
+            // `op(...)` already renders its argument upright, so a redundant
+            // `\mathrm{…}` / `\text{…}` wrapper would otherwise be quoted
+            // verbatim and render as the literal text `\mathrm{argmin}`. Unwrap
+            // it to its content (`\DeclareMathOperator*{\argmin}{\mathrm{argmin}}`
+            // expands to exactly this shape).
+            let inner = unwrap_upright_wrapper(raw);
             self.ensure_math_letter_boundary("op(");
             if starred {
                 let _ = write!(self.out, "op(\"{}\", limits: #true)", inner);
@@ -683,6 +689,8 @@ impl<'a> Emitter<'a> {
         }
         node.end_byte()
     }
+
+    // helper below is a free fn so it can be unit-reasoned without `self`.
 
     /// Render an extensible arrow command (`\xrightarrow{above}`,
     /// `\xleftarrow[below]{above}`, etc.). Maps the command name to
@@ -1510,5 +1518,52 @@ impl<'a> Emitter<'a> {
             .collect();
         let _ = write!(self.out, "cases({})", rows.join(", "));
         node.end_byte()
+    }
+}
+
+/// Unwrap a redundant upright-text wrapper around an `\operatorname` argument.
+/// `\mathrm{argmin}` / `\text{argmin}` / `\mbox{argmin}` → `argmin`. `op(...)`
+/// already renders upright, so the wrapper is redundant and, quoted verbatim,
+/// would render as the literal `\mathrm{argmin}`. Only unwraps when the *entire*
+/// argument is one wrapper (so `\mathrm{a}+b` is left untouched); loops to peel a
+/// nested wrapper (`\mathrm{\text{x}}`). Anything else is returned unchanged.
+fn unwrap_upright_wrapper(mut s: &str) -> &str {
+    const WRAPPERS: &[&str] = &[
+        "\\mathrm{",
+        "\\text{",
+        "\\mbox{",
+        "\\textrm{",
+        "\\textnormal{",
+        "\\mathnormal{",
+    ];
+    'outer: loop {
+        for w in WRAPPERS {
+            if let Some(rest) = s.strip_prefix(w) {
+                let bytes = rest.as_bytes();
+                let mut depth = 1usize;
+                let mut i = 0;
+                while i < bytes.len() {
+                    match bytes[i] {
+                        b'\\' => i += 1, // skip the escaped byte
+                        b'{' => depth += 1,
+                        b'}' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                    i += 1;
+                }
+                // The wrapper covers the whole argument iff its closing brace is
+                // the final character.
+                if depth == 0 && i == bytes.len() - 1 {
+                    s = rest[..i].trim();
+                    continue 'outer;
+                }
+            }
+        }
+        return s;
     }
 }
