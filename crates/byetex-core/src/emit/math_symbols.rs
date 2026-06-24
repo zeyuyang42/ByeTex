@@ -104,12 +104,14 @@ pub(crate) fn lookup_math_symbol(name: &str) -> Option<&'static str> {
         "\\bullet" => "bullet",
         "\\star" => "star.op",
         "\\ast" => "ast.op",
-        // Circled / boxed operators
-        "\\otimes" => "times.circle",
-        "\\oplus" => "plus.circle",
-        "\\ominus" => "minus.circle",
-        "\\odot" => "dot.circle",
-        "\\oslash" => "slash.circle",
+        // Circled / boxed operators. Typst 0.14 deprecated the `.circle`
+        // modifier in favour of `.o` (and `slash.circle` is not a valid
+        // modifier at all); the big operators below already use `.o.big`.
+        "\\otimes" => "times.o",
+        "\\oplus" => "plus.o",
+        "\\ominus" => "minus.o",
+        "\\odot" => "dot.o",
+        "\\oslash" => "slash.o",
         "\\boxtimes" => "times.square",
         "\\boxplus" => "plus.square",
         // Geometric / order
