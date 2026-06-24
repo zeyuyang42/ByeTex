@@ -34,7 +34,27 @@ Resolved.
 > J1 below; verdict still NEEDS_FIX (the two-column attempt — a REPEAT misdiagnosis,
 > NeurIPS is single-column — plus an EPS figure dropped fidelity 0.78→0.776).
 
-### J1. `byetex-tables-layout` skill teaches a STALE two-column recipe — sev 5 (blocker) — ROUTE: Loop B (NEXT PICK)
+> **Round 9 (2026-06-24, v0.6.12)** — re-dogfood of `2605.22821` to verify J1.
+> **J1 VERIFIED LANDED**: the agent read the rewritten skill, made NO two-column
+> attempt, and correctly concluded NeurIPS is single-column ("no layout change
+> needed"; was a `gave_up` blocker in round-8). It also attributed the 34-vs-26pp
+> gap to the truth's 2-col submission format vs the preprint's 1-col — confirming
+> H2 is NOT a converter bug. New item K1 below.
+
+### K1. `\operatorname*{X}` (starred) drops its argument — sev 3 — ROUTE: Loop A (NEXT PICK)
+- **Symptom (validated on fresh main):** `\operatorname{argmin}` → `op("argmin")` ✓, but the
+  STARRED `\operatorname*{argmin}` → the bare string `operatorname*` with the `{argmin}`
+  argument DROPPED. Compiles, renders wrong (invisible to the compile gate). The starred
+  variant (limits-above form) isn't handled where the plain one is.
+- **Fix sketch:** wherever `\operatorname` maps to `op("…")`, accept the `*` and emit
+  `op("…", limits: #true)` (the `*` form puts sub/superscripts above/below). Also a `byetex-math`
+  skill line for the starred variant (minor). NOTE: `\DeclareMathOperator*` is already handled
+  (style_profile/extract path) — this is the inline `\operatorname*` call form.
+- **NOT a bug (validated, do not chase):** the agent also reported `\bpe`
+  (`\newcommand{\bpe}{\texttt{BPE}\xspace}`) leaking — does NOT reproduce on fresh main
+  (`\bpe` → `#raw("BPE")` correctly). False finding.
+
+### J1. `byetex-tables-layout` skill teaches a STALE two-column recipe — sev 5 (blocker) — ✅ RESOLVED (PR #383, verified round-9)
 - **Symptom:** the skill (line 43) says "Two-column classes render the body wrapped in
   `#columns(2)[...]`" + "wrap a wide figure/table in `#place(...)`" with NO spanning syntax.
   The round-8 agent tried to manually two-column a NeurIPS paper, all 15 wide tables
