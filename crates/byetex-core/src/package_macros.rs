@@ -225,7 +225,7 @@ static BRAKET: &[(&str, MacroSeed)] = &[
 
 static STMARYRD: &[(&str, MacroSeed)] = &[
     // `\llbracket` / `\rrbracket` are now built into the math symbol
-    // table (mapping to `bracket.l.double` / `bracket.r.double`).
+    // table (mapping to `bracket.l.stroked` / `bracket.r.stroked`).
     // Built-in lookup precedes package seeds so the entries here were
     // redundant; removed to keep the no-collision invariant.
     (
