@@ -3,6 +3,16 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.8] — unreleased
+
+### Fixed
+- `\llbracket`/`\rrbracket` (stmaryrd double square brackets ⟦ ⟧) now emit Typst's modern
+  `bracket.l.stroked`/`bracket.r.stroked` instead of the deprecated `bracket.l.double`/
+  `bracket.r.double` (Typst 0.14 deprecated the `.double` bracket modifier in favour of
+  `.stroked`). Completes the Typst-0.14 math-symbol deprecation sweep started in 0.6.7 — an
+  audit of all 366 emitted math symbols against the Typst 0.14.2 compiler now shows zero
+  deprecations.
+
 ## [0.6.7] — unreleased
 
 ### Fixed

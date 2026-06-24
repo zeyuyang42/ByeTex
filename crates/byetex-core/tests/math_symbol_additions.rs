@@ -66,9 +66,16 @@ fn llbracket_rrbracket_emit_double_brackets() {
         ambiguous_for(&out, "llbracket") + ambiguous_for(&out, "rrbracket"),
         0
     );
+    // Typst 0.14 deprecated the `.double` bracket modifier in favour of
+    // `.stroked` (`bracket.double` → `bracket.stroked`). Emit the modern form.
     assert!(
-        out.typst.contains("bracket.l.double") && out.typst.contains("bracket.r.double"),
-        "expected `bracket.l.double` and `bracket.r.double`; got:\n{}",
+        out.typst.contains("bracket.l.stroked") && out.typst.contains("bracket.r.stroked"),
+        "expected `bracket.l.stroked` and `bracket.r.stroked`; got:\n{}",
+        out.typst
+    );
+    assert!(
+        !out.typst.contains("bracket.l.double") && !out.typst.contains("bracket.r.double"),
+        "deprecated `.double` bracket form should not survive; got:\n{}",
         out.typst
     );
 }

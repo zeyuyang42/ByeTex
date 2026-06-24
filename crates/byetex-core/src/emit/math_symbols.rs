@@ -82,9 +82,10 @@ pub(crate) fn lookup_math_symbol(name: &str) -> Option<&'static str> {
         "\\rbrace" => "\\}",
         // `\llbracket` / `\rrbracket` (stmaryrd, mathbb-related):
         // Iverson-style double square brackets. Typst has dedicated
-        // glyphs.
-        "\\llbracket" => "bracket.l.double",
-        "\\rrbracket" => "bracket.r.double",
+        // glyphs; the `.double` modifier was deprecated in Typst 0.14 in
+        // favour of `.stroked`.
+        "\\llbracket" => "bracket.l.stroked",
+        "\\rrbracket" => "bracket.r.stroked",
         "\\bowtie" => "join",
         "\\to" | "\\rightarrow" => "arrow.r",
         "\\leftarrow" => "arrow.l",
