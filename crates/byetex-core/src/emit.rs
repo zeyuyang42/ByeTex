@@ -47,7 +47,8 @@ pub(in crate::emit) use figures::parse_graphicspath_dirs;
 pub(in crate::emit) use macros::{
     extract_declare_math_operator_from_newcmd, extract_def_and_record, extract_environment_def,
     extract_let, extract_newcommand, extract_newcommandx, extract_newcommandx_and_end,
-    extract_theorem_def, find_explsyntaxoff_end, find_makeatother_end, let_alias_def,
+    extract_paired_delimiter, extract_theorem_def, find_explsyntaxoff_end, find_makeatother_end,
+    let_alias_def,
     new_command_token_kind, newcommand_body_true_end, read_newif_flag,
 };
 pub(crate) use macros::{
@@ -1922,6 +1923,22 @@ impl<'a> Emitter<'a> {
             let end = node.end_byte().max(true_end);
             self.skip_until = self.skip_until.max(end);
             return end;
+        }
+        // `\DeclarePairedDelimiter{\name}{L}{R}` (mathtools, own node kind).
+        // Register `\name` as a delimiter-wrapping macro (the prepass already
+        // seeded it, but an `\input`ed declaration relies on emit-time
+        // harvesting) and drop the declaration itself.
+        if node.kind() == "paired_delimiter_definition" {
+            if let Some((name, def, decl_end)) = extract_paired_delimiter(node, self.src) {
+                self.macros.entry(name).or_insert(def);
+                // The unbraced form `\DeclarePairedDelimiter\name{L}{R}` is split:
+                // the `{L}{R}` lands in a sibling `generic_command` past this
+                // node's end. Skip to the scanned end so it doesn't leak.
+                let end = node.end_byte().max(decl_end);
+                self.skip_until = self.skip_until.max(end);
+                return end;
+            }
+            return node.end_byte();
         }
         // `\def\name<params>{body}` is `old_command_definition`. The
         // tree-sitter grammar packages just `\def\name` as the node;
