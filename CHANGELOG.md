@@ -3,6 +3,16 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.12] — unreleased
+
+### Changed
+- `byetex-tables-layout` skill: rewrote the stale two-column guidance. It told agents the
+  body is wrapped in `#columns(2)[...]`, but the converter actually auto-emits *page-level*
+  `#set page(columns: 2)` for two-column classes (ACL/IEEEtran). The skill now says not to
+  add `#columns(2)` by hand, gives the `#place(scope: "parent", float: true)` spanning-float
+  syntax, and notes that NeurIPS/ICML/ICLR are single-column (so a single-column render is
+  correct) — fixing a repeated agent misdiagnosis.
+
 ## [0.6.11] — unreleased
 
 ### Fixed

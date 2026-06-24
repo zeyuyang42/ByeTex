@@ -40,9 +40,30 @@ Booktabs rules (`\toprule`/`\midrule`/`\bottomrule`) map to `table.hline` with
 
 ## Page layout
 
-- **Two-column** classes render the body wrapped in `#columns(2)[...]`; the title
-  block stays full-width. If a wide figure/table overflows a column, wrap it in
-  `#place(...)` or move it out of the columns.
+- **Two-column is automatic — do NOT add it by hand.** ByeTex detects genuinely
+  two-column classes (ACL, IEEEtran's `\documentclass{IEEEtran}` / `\twocolumn`) and emits
+  *page-level* `#set page(columns: 2)` near the top of the `.typ` — NOT a `#columns(2)[...]`
+  wrapper around the body. Do **not** wrap the body in `#columns(2)[...]`: it reflows every
+  float per-column and has blown a figure-heavy paper up to 80+ pages. If a paper that should
+  be two-column renders single-column, that's a converter detection gap (file it), not
+  something to patch in the `.typ`.
+- **Spanning floats.** Under `#set page(columns: 2)`, a float that spans *both* columns
+  (LaTeX `figure*` / `table*`) is emitted as:
+
+  ```typ
+  #place(top, scope: "parent", float: true)[
+    #figure(...) <label>
+  ]
+  ```
+
+  If a wide table overflows one column and belongs across both, give it that same
+  `#place(top, scope: "parent", float: true)[ … ]` wrapper (the `<label>` stays inside so
+  `@ref` still resolves).
+- **NeurIPS / ICML / ICLR are SINGLE-column.** `\usepackage{neurips_20XX}` (and `icml*` /
+  `iclr*`) use one wide ~5.5in text column, not two — a single-column render is correct, so
+  do not add columns. Their wide multi-column tables are wide in the original LaTeX too;
+  shrink with `#text(size: ...)` / `table(..., inset: ...)` or rotate, rather than forcing
+  two columns.
 - **Density** — ByeTex emits a 10pt default with indent-only paragraph spacing to
   match LaTeX's compactness. If your page count diverges a lot, check `#set par(...)`
   / `#set text(size: ...)` near the top of the `.typ`.
