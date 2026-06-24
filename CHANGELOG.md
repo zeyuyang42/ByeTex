@@ -3,6 +3,14 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.16] — unreleased
+
+### Added
+- `\DeclarePairedDelimiter{\name}{L}{R}` (mathtools) is now supported: `\name` is registered
+  as a delimiter-wrapping macro so `\abs{x}`/`\ceil{x}`/`\norm{x}` etc. render as `L x R`
+  instead of leaking the bare name and dropping the argument. Handles both the braced
+  (`{\name}`) and unbraced (`\name`) declaration forms (3 corpus papers).
+
 ## [0.6.15] — unreleased
 
 ### Fixed

@@ -641,6 +641,75 @@ pub(crate) struct MacroDef {
     pub optional_defaults: HashMap<usize, String>,
 }
 
+/// Extract a `\DeclarePairedDelimiter{\name}{L}{R}` (mathtools) declaration —
+/// also the unbraced-name form `\DeclarePairedDelimiter\name{L}{R}`. Registers
+/// `\name` as a 1-arg macro whose body wraps the argument in the delimiters
+/// (`\name{x}` → `L x R`), matching the non-starred fixed-size expansion (the
+/// `*` auto-sizing form is uncommon and would just leak the bare `*`).
+pub(in crate::emit) fn extract_paired_delimiter(
+    node: Node<'_>,
+    src: &str,
+) -> Option<(String, MacroDef, usize)> {
+    // Byte-scan from the `\DeclarePairedDelimiter` token: the unbraced form
+    // `\DeclarePairedDelimiter\name{L}{R}` is split by tree-sitter into the
+    // `paired_delimiter_definition` node (just the token) plus a sibling
+    // `generic_command` for `\name{L}{R}`, so an AST walk can't see the args.
+    let bytes = src.as_bytes();
+    let mut i = node.start_byte();
+    // Skip the leading `\DeclarePairedDelimiter[X]` control word.
+    if bytes.get(i) != Some(&b'\\') {
+        return None;
+    }
+    i += 1;
+    while i < bytes.len() && (bytes[i].is_ascii_alphabetic()) {
+        i += 1;
+    }
+    let skip_ws = |i: &mut usize| {
+        while *i < bytes.len() && bytes[*i].is_ascii_whitespace() {
+            *i += 1;
+        }
+    };
+    // Read the macro name: `{\name}` or `\name`.
+    skip_ws(&mut i);
+    let name = if bytes.get(i) == Some(&b'{') {
+        let end = brace_balanced_end(bytes, i)?;
+        let inner = src.get(i + 1..end - 1)?.trim();
+        i = end;
+        inner.to_string()
+    } else if bytes.get(i) == Some(&b'\\') {
+        let start = i;
+        i += 1;
+        while i < bytes.len() && bytes[i].is_ascii_alphabetic() {
+            i += 1;
+        }
+        src.get(start..i)?.to_string()
+    } else {
+        return None;
+    };
+    if !name.starts_with('\\') || name.len() < 2 {
+        return None;
+    }
+    // Read the two delimiter groups `{L}{R}`.
+    skip_ws(&mut i);
+    let l_end = brace_balanced_end(bytes, i)?;
+    let l = src.get(i + 1..l_end - 1)?.trim().to_string();
+    i = l_end;
+    skip_ws(&mut i);
+    let r_end = brace_balanced_end(bytes, i)?;
+    let r = src.get(i + 1..r_end - 1)?.trim().to_string();
+
+    let body = format!("{l}#1{r}");
+    Some((
+        name,
+        MacroDef {
+            params: 1,
+            body,
+            ..Default::default()
+        },
+        r_end,
+    ))
+}
+
 /// True if `source` uses `\chapter` anywhere (parsed `chapter` node). Used by the
 /// project-mode pre-scan so a chapter that lives in an `\input`'d file still marks the
 /// whole document chapter-bearing (health-check P1) — the entry file's prepass alone never
@@ -754,6 +823,13 @@ pub(crate) fn harvest_macros_from_source(source: &str) -> HashMap<String, MacroD
                 let mut cursor = n.walk();
                 for c in n.children(&mut cursor) {
                     stack.push(c);
+                }
+            }
+            // `\DeclarePairedDelimiter{\name}{L}{R}` (mathtools) has its own
+            // tree-sitter node kind. Register `\name` as a delimiter-wrapping macro.
+            "paired_delimiter_definition" => {
+                if let Some((name, def, _end)) = extract_paired_delimiter(n, source) {
+                    out.insert(name, def);
                 }
             }
             _ => {
