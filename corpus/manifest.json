@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "generated_at": "2026-06-15T00:44:40Z",
+  "generated_at": "2026-06-24T21:40:22Z",
   "papers": [
     {
       "id": "2605.22821",
@@ -1289,6 +1289,25 @@
       "needs_manual_download": false,
       "license_url": "",
       "fetched_at": "2026-06-15T00:44:40Z"
+    },
+    {
+      "id": "gh-klb2-beamer",
+      "pinned": false,
+      "source": "github",
+      "doc_class": "beamer",
+      "doc_type": "beamer",
+      "title": "klb2 beamer presentation template",
+      "repo_url": "https://github.com/klb2/beamer-presentation-template",
+      "repo_ref": "1ffe25c589500a653a14a3cf5d53f57830d2a07b",
+      "homepage": "",
+      "download_url": "",
+      "archive_filename": "",
+      "archive_sha256": "",
+      "archive_bytes": 0,
+      "needs_manual_download": false,
+      "license_url": "",
+      "fetched_at": "2026-06-24T21:40:22Z",
+      "truth_render_status": "ok"
     }
   ]
 }
