@@ -27,6 +27,51 @@ Resolved.
 
 ## Open — P0 (frequent × blocking)
 
+> **Round 7 (2026-06-24, v0.6.8)** — first dogfood after PR #376 unblocked
+> `select` (it had been returning only un-scoreable `truth_render_failed` books).
+> Re-dogfooded the now-measurable hardest paper `2605.22821` (NeurIPS,
+> word_recall 0.746). Verdict NEEDS_FIX, fidelity 0.78→0.78 (the page-density gap
+> dominates and the agent couldn't fix it). Findings below, validated on a fresh
+> `main` conversion.
+
+### H1. Custom macro expanding to `\langle#1` concatenates into garbage (`langledo`) — sev 4 (major) — ROUTE: Loop A
+- **Symptom:** `\newcommand{\tokenstring}[1]{...\langle#1\rangle}` used as
+  `\tokenstring{do,g}` renders as the math identifier `langledo` (and `langleab`,
+  `langlebc`, … — confirmed on fresh main: `grep -o 'langle[a-z]*'` → 8 variants).
+  The macro-expansion buffer glues `\langle` to the following argument text with no
+  token boundary, so the math symbol lookup never fires. Also the ROOT CAUSE of the
+  garbled `ambiguous_math` snippets seen while investigating M1 (tick-52).
+- **Fix sketch:** when expanding a macro body, a control word (`\langle`) followed by
+  a parameter substitution must keep a token boundary (the LaTeX tokenizer ends
+  `\langle` at the non-letter `#`/arg). Likely in the macro-expansion path
+  (package_macros / expand) — ensure `\<letters>` tokens terminate before substituted
+  arg text. **Highest-value next pick** — clean, generalizable, reproduces trivially.
+
+### H2. NeurIPS page geometry not applied → generic us-letter/1in margins, page inflation — sev 4 — ROUTE: Loop A (extend `apply_venue_style`)
+- **Symptom:** `2605.22821` (NeurIPS, `neurips_2026.sty`) emits
+  `#set page(paper: "us-letter", margin: (x: 1in, y: 1in))` — the generic default, NOT
+  NeurIPS density (5.5in text block, tighter margins, 10pt). Truth 20pp vs byetex 34pp.
+  The agent MISDIAGNOSED this as "2-column not detected" — NeurIPS is SINGLE-column;
+  the real cause is density. Connects to tick-3's `apply_venue_style` (ACL a4/2.5cm/10pt
+  done; NeurIPS/ICML/ICLR geometry was explicitly deferred — never shipped). DocClass::
+  Neurips exists + a StyleProfile, but no venue PAGE geometry. **Verify byetex even
+  detects `neurips_2026.sty` as Neurips before fixing.**
+
+### H3. expl3 / LaTeX3 preamble residue leaks into body — sev 3 — ROUTE: Loop A (extends F5)
+- **Symptom:** `\clist_map_inline:nn` / `\seq_*` (expl3 WITHOUT an `\ExplSyntaxOn…Off`
+  wrapper — so #282's region-skip doesn't catch it) + `\definecolor` expansion residue
+  (`black#2`, `blind_orange#2`) leaked as body text (fresh main: 2 residual instances).
+  Same family as F5 but a new trigger. Drop bare `\<expl3-name>:<sig>` control words.
+
+### H4. `byetex-using-warnings-json` doesn't distinguish preamble-only vs body drops — sev 3 (major skill note) — ROUTE: Loop B
+- **Symptom:** when expl3 preamble code (`\clist`/`\seq`) is dropped AND leaks into the
+  body, the warning routes to `byetex-using-warnings-json` which only explains the schema
+  — "no guidance when preamble code leaks into body output." Pairs with H3 (the converter
+  fix) — once H3 drops the residue, this is moot; if not, add a preamble-leak note.
+- **NOTE (false alarm):** the round-7 agent also wished for "diagnose --incremental" and
+  said getting-started "says not to run byetex diagnose at all" — VERIFIED a MISREAD;
+  both getting-started and repair-loop cleanly say `byetex diagnose paper.typ`. F6 holds.
+
 > **Round 3 (2026-06-19)** — re-dogfood of the lowest-recall arxiv papers
 > (`2606.12397`, `2605.22765`, `2605.22786`) after round-2 cleared. **F6 VERIFIED
 > LANDED** (all 3 agents now use `byetex diagnose paper.typ`). New theme below.
@@ -178,9 +223,12 @@ Resolved.
 - `\E` (defined via `\@ifstar`) renders as `"@ifstar" "@@E" "@E"` strings in math
   (2605.31510). `@`-named macro call sites lose their structure.
 
-### F11. More deprecated Typst symbols in math — minor
-- `times.circle` → `times.o` (2605.22728); `angle.l/.r` → `chevron.l/.r` already added
-  to byetex-math (#280). Consider a deprecated-symbol cheatsheet in the skill.
+### F11. More deprecated Typst symbols in math — minor — ✅ RESOLVED (PR #374 + #375)
+- Swept ALL Typst-0.14 math-symbol deprecations: `\otimes`/`\oplus`/`\ominus`/`\odot`/
+  `\oslash` → `times.o`/`plus.o`/`minus.o`/`dot.o`/`slash.o` (#374; `slash.circle` was an
+  invalid modifier), and `\llbracket`/`\rrbracket` → `bracket.l.stroked`/`bracket.r.stroked`
+  (#375). An audit of all 366 emitted symbols vs the typst 0.14.2 compiler now reports
+  ZERO deprecations. `angle.l/.r` → `chevron.l/.r` was already done (#280).
 
 ### F12. `leaked_to_body` vs `dropped_silently` warning category — Loop B (taxonomy)
 - Agents can't tell from `warnings.json` whether an `unsupported_command` was dropped
