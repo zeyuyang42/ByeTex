@@ -3,6 +3,18 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.11] — unreleased
+
+### Fixed
+- A "wrapper" `\newcommand` that defines another `\newcommand`
+  (`\newcommand{\mytok}[2]{\newcommand{#1}{{\color{\colourtok}#2}}}`) no longer leaks its
+  inner definition body into the output. tree-sitter parses the nested `\newcommand{#1}` as
+  an `ERROR` node, truncating the outer definition so the rest of the body
+  (`{{\color{…}#2}}`) re-parsed as top-level sibling groups and leaked as text (e.g.
+  `black#2`, `ForestGreen#2`). The `new_command_definition` handler now skips to the
+  brace-matched true end of the body (dogfood backlog H3 colour residue, 2605.22821: 8
+  leaked lines → 0).
+
 ## [0.6.10] — unreleased
 
 ### Fixed
