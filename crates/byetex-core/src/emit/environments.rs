@@ -6,8 +6,8 @@ use std::fmt::Write;
 use tree_sitter::Node;
 
 use super::{
-    command_name_text, environment_name, extract_def_and_record, extract_environment_def,
-    extract_label_name_and_end, extract_let, extract_newcommand,
+    brace_balanced_end, command_name_text, environment_name, extract_def_and_record,
+    extract_environment_def, extract_label_name_and_end, extract_let, extract_newcommand,
     extract_newcommandx, extract_theorem_def, let_alias_def, range_of, read_newif_flag,
     sanitize_label_key, strip_trailing_typst_label, Emitter, MacroDef,
 };
@@ -180,6 +180,11 @@ impl<'a> Emitter<'a> {
             .filter(|c| environment_name(*c, self.src).as_deref() == Some("column"))
             .collect();
         if columns.is_empty() {
+            // No nested `column` *environments* — try the `\column{width}`
+            // COMMAND form (`\begin{columns} \column{w} … \column{w} … \end`).
+            if let Some(out) = self.emit_beamer_columns_command_form(env) {
+                return out;
+            }
             return self.emit_environment_body(env);
         }
 
@@ -230,6 +235,79 @@ impl<'a> Emitter<'a> {
         }
         self.out.push_str(")\n");
         env.end_byte()
+    }
+
+    /// The `\column{width}` COMMAND form inside a beamer `columns` environment
+    /// (as opposed to nested `column` environments). The `\column` markers are
+    /// scattered across tree-sitter `text` nodes, so byte-scan the environment
+    /// body: each `\column{width}` starts a new cell whose content runs to the
+    /// next `\column` (or the `\end`). Returns `None` if there are no `\column`
+    /// commands so the caller can fall back.
+    fn emit_beamer_columns_command_form(&mut self, env: Node<'_>) -> Option<usize> {
+        let mut cursor = env.walk();
+        let mut body_start = env.start_byte();
+        let mut body_end = env.end_byte();
+        for c in env.children(&mut cursor) {
+            match c.kind() {
+                "begin" => body_start = c.end_byte(),
+                "end" => body_end = c.start_byte(),
+                _ => {}
+            }
+        }
+        let bytes = self.src.as_bytes();
+        // Locate each `\column` control word in the body.
+        let mut marks: Vec<usize> = Vec::new();
+        let mut i = body_start;
+        while i + 7 <= body_end {
+            if &self.src[i..i + 7] == "\\column"
+                && self
+                    .src
+                    .get(i + 7..i + 8)
+                    .is_none_or(|c| !c.starts_with(|ch: char| ch.is_ascii_alphabetic()))
+            {
+                marks.push(i);
+                i += 7;
+            } else {
+                i += 1;
+            }
+        }
+        if marks.is_empty() {
+            return None;
+        }
+
+        let mut specs: Vec<String> = Vec::new();
+        let mut cells: Vec<String> = Vec::new();
+        for (idx, &m) in marks.iter().enumerate() {
+            // Read the `{width}` group right after `\column`.
+            let mut w = m + 7;
+            while w < body_end && bytes[w].is_ascii_whitespace() {
+                w += 1;
+            }
+            let (spec, content_start) = if bytes.get(w) == Some(&b'{') {
+                match brace_balanced_end(bytes, w) {
+                    Some(end) => (
+                        column_width_to_typst(self.src[w + 1..end - 1].trim()),
+                        end,
+                    ),
+                    None => ("1fr".to_string(), w),
+                }
+            } else {
+                ("1fr".to_string(), w)
+            };
+            let content_end = marks.get(idx + 1).copied().unwrap_or(body_end);
+            let content = self.src[content_start..content_end].trim().to_string();
+            let cell = self.render_in_sub_emitter(&content, false, false);
+            specs.push(spec);
+            cells.push(cell.trim().to_string());
+        }
+
+        self.ensure_paragraph_break();
+        let _ = write!(self.out, "#grid(columns: ({}), gutter: 1em,\n", specs.join(", "));
+        for cell in &cells {
+            let _ = write!(self.out, "  [{cell}],\n");
+        }
+        self.out.push_str(")\n");
+        Some(env.end_byte())
     }
 
     /// Emit a beamer `frame` as a slide: a `#pagebreak()` before all but the

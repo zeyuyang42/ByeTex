@@ -3,6 +3,15 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.17] — unreleased
+
+### Fixed
+- Beamer `columns` using the `\column{width}` **command** form (vs nested `column`
+  environments) — `\begin{columns} \column{w} … \column{w} … \end{columns}` — now split
+  into a `#grid` instead of leaking the `\column` commands and dropping the cells. The
+  `\column` markers are scattered across tree-sitter `text` nodes, so the environment body
+  is byte-scanned (corpus gh-klb2-beamer: 5 leaked `\column` → 0, 2 column grids).
+
 ## [0.6.16] — unreleased
 
 ### Added
