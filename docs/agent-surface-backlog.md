@@ -47,21 +47,31 @@ Resolved.
   (package_macros / expand) — ensure `\<letters>` tokens terminate before substituted
   arg text. **Highest-value next pick** — clean, generalizable, reproduces trivially.
 
-### H2. NeurIPS page geometry not applied → generic us-letter/1in margins, page inflation — sev 4 — ROUTE: Loop A (extend `apply_venue_style`)
-- **Symptom:** `2605.22821` (NeurIPS, `neurips_2026.sty`) emits
-  `#set page(paper: "us-letter", margin: (x: 1in, y: 1in))` — the generic default, NOT
-  NeurIPS density (5.5in text block, tighter margins, 10pt). Truth 20pp vs byetex 34pp.
-  The agent MISDIAGNOSED this as "2-column not detected" — NeurIPS is SINGLE-column;
-  the real cause is density. Connects to tick-3's `apply_venue_style` (ACL a4/2.5cm/10pt
-  done; NeurIPS/ICML/ICLR geometry was explicitly deferred — never shipped). DocClass::
-  Neurips exists + a StyleProfile, but no venue PAGE geometry. **Verify byetex even
-  detects `neurips_2026.sty` as Neurips before fixing.**
+### H2. NeurIPS page geometry not applied — sev 4 — ⚠️ DEFERRED (agent MISDIAGNOSIS; geometry real but fixing it alone REGRESSES the metric)
+- **Symptom (as filed):** `2605.22821` emits `#set page(margin: (x: 1in, y: 1in))` not
+  NeurIPS density (textwidth 5.5in → 1.5in side margins; textheight 9in/top 1in → 1in
+  top/bottom; 10pt). DocClass::Neurips IS detected (`\usepackage[preprint]{neurips_2026}`)
+  and already emits us-letter + 10pt; only the MARGINS are generic.
+- **Tick-54 investigation (why deferred):** the agent's "2-column not detected → page
+  inflation" is DOUBLY wrong — NeurIPS is SINGLE-column, and the page inflation is NOT
+  geometry. Measured: byetex **34pp vs truth 26pp** (agent's "20" was also wrong) DESPITE
+  a *wider* 6.5in text block. Narrowing to the correct 5.5in NeurIPS margins would *add*
+  lines → MORE byetex pages → page_ratio WORSE. The real driver is leaked/over-rendered
+  CONTENT (expl3 H3, colour residue, figure placeholders). **Correct order: fix the content
+  leaks first; only then is the NeurIPS margin fix a net win.** Margin geometry is real but
+  low-value until the content over-pagination is resolved.
 
-### H3. expl3 / LaTeX3 preamble residue leaks into body — sev 3 — ROUTE: Loop A (extends F5)
-- **Symptom:** `\clist_map_inline:nn` / `\seq_*` (expl3 WITHOUT an `\ExplSyntaxOn…Off`
-  wrapper — so #282's region-skip doesn't catch it) + `\definecolor` expansion residue
-  (`black#2`, `blind_orange#2`) leaked as body text (fresh main: 2 residual instances).
-  Same family as F5 but a new trigger. Drop bare `\<expl3-name>:<sig>` control words.
+### H3. expl3 helper macro leaks its body into the document — sev 3 — ✅ RESOLVED (PR #379, expl3 part)
+- **Symptom:** `\NewDocumentCommand{\AppendToList}{m}{ \clist_map_inline:nn … }` defined
+  inside `\ExplSyntaxOn…Off` is harvested by the prepass (the region is skipped only for
+  emission), so *calling* it after `\ExplSyntaxOff` spliced its pure-expl3 body
+  (`\seq_gput_right:Nx`, `\tl_to_str:n`, + the arg) into the body as garbage (2605.22821).
+- **Fix (#379):** `expand_user_macro` now detects an expl3 body via the `\name:argspec`
+  signature (`body_is_expl3`) and DROPS the whole call + args with a warning (expl3 produces
+  no document output). 2605.22821 expl3 leaks → 0. 2 TDD tests.
+- **Residual (separate issue, follow-up):** colour META-macro residue `ForestGreen#2` /
+  `purple#2` from nested `\newcommand{\m}[2]{\newcommand{#1}{{\color{…}#2}}}` (a
+  `\newcommand` that defines a `\newcommand` with `#2`) still leaks — different root cause.
 
 ### H4. `byetex-using-warnings-json` doesn't distinguish preamble-only vs body drops — sev 3 (major skill note) — ROUTE: Loop B
 - **Symptom:** when expl3 preamble code (`\clist`/`\seq`) is dropped AND leaks into the
