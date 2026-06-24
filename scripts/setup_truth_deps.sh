@@ -101,4 +101,31 @@ else
   note "fonts: Carlito installed"
 fi
 
+# 3c) Fira Sans / Fira Mono (OTF) — the beamer `metropolis` theme's fonts. The
+#     theme requests them both by family ("Fira Sans Light") AND by exact
+#     filename ("FiraMono-Regular.otf"), so install the upstream OTFs (not the
+#     Google-Fonts TTFs) so both lookups resolve. Needed for metropolis decks to
+#     truth-render instead of failing on a missing font.
+FIRA_OTF="FiraSans-Light FiraSans-LightItalic FiraSans-Regular FiraSans-Italic \
+          FiraSans-Bold FiraSans-BoldItalic FiraSans-Book FiraSans-BookItalic \
+          FiraMono-Regular FiraMono-Medium FiraMono-Bold"
+fira_complete=1
+for f in $FIRA_OTF; do
+  [ -f "$OSFONTS/$f.otf" ] || fira_complete=0
+done
+if [ "$fira_complete" = 1 ]; then
+  note "fonts: Fira Sans/Mono OTF (cached)"
+else
+  note "fetching Fira Sans/Mono OTF …"
+  for f in $FIRA_OTF; do
+    # Temp-then-move so an interrupted fetch never leaves a partial set that a
+    # re-run would treat as complete (all are re-checked above).
+    curl -fsSL "https://github.com/mozilla/Fira/raw/master/otf/$f.otf" \
+      -o "$FONTS/$f.otf.part"
+    mv "$FONTS/$f.otf.part" "$FONTS/$f.otf"
+    cp "$FONTS/$f.otf" "$OSFONTS/$f.otf"
+  done
+  note "fonts: Fira Sans/Mono OTF installed"
+fi
+
 echo "OK: truth deps ready in $DEPS (biber on PATH via render_reference_tectonic; fonts in $OSFONTS)"
