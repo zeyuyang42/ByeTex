@@ -3,6 +3,16 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.10] — unreleased
+
+### Fixed
+- expl3 helper macros no longer leak their internals into the body. A command
+  defined inside `\ExplSyntaxOn…\ExplSyntaxOff` (e.g. `\NewDocumentCommand{\AppendToList}…`
+  whose body is pure expl3 code like `\clist_map_inline:nn`/`\seq_gput_right:Nx`) was still
+  harvested by the macro prepass, so *calling* it after `\ExplSyntaxOff` spliced the expl3
+  internals into the document as garbage text. Such a macro produces no document output, so
+  the call (and its arguments) is now dropped with a warning (dogfood backlog H3, 2605.22821).
+
 ## [0.6.9] — unreleased
 
 ### Fixed

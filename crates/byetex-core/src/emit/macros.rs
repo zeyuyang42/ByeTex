@@ -256,6 +256,28 @@ impl<'a> Emitter<'a> {
         if consumed_end > node.end_byte() {
             self.skip_until = self.skip_until.max(consumed_end);
         }
+        // An expl3 helper — a command defined inside `\ExplSyntaxOn…Off` (via
+        // `\NewDocumentCommand`/`\cs_new:Nn`) whose body is pure expl3 code
+        // (`\clist_map_inline:nn`, `\seq_gput_right:Nx`, …). The region is
+        // skipped, but the macro is still harvested by the prepass, so
+        // expanding the call here would splice its expl3 internals into the
+        // document as garbage. expl3 functions produce no document output, so
+        // drop the whole call (arguments included).
+        if body_is_expl3(&macro_def.body) {
+            self.warnings.push(Warning {
+                range: range_of(node),
+                category: Category::CustomMacro {
+                    name: name.to_string(),
+                },
+                severity: Severity::Warning,
+                message: format!(
+                    "expl3 helper macro `{name}` has no document output; call dropped"
+                ),
+                snippet: self.src[node.start_byte()..node.end_byte()].to_string(),
+                suggested_skill: None,
+            });
+            return consumed_end.max(node.end_byte());
+        }
         // Substitute `#1`..`#N` in the body. We can't naively call
         // `str::replace("#1", arg)` — that would also rewrite `#10`,
         // `#11`, ... as `<arg>0`, `<arg>1` for any macro with ≥10
@@ -1480,6 +1502,39 @@ pub(in crate::emit) fn extract_def_and_record(
         j += 1;
     }
     None
+}
+
+/// True when a macro body contains an expl3 function call — a control sequence
+/// of the form `\name:argspec`, where the name runs of ASCII letters and `_`
+/// and the argspec is one or more expl3 signature letters. Ordinary LaTeX
+/// control words are letters-only and never carry a `:argspec`, so this is a
+/// reliable marker that the macro is an expl3 helper with no document output.
+fn body_is_expl3(body: &str) -> bool {
+    const ARGSPEC: &[u8] = b"NncpVvxefoTFwD";
+    let b = body.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'\\' {
+            let mut j = i + 1;
+            while j < b.len() && (b[j].is_ascii_alphabetic() || b[j] == b'_') {
+                j += 1;
+            }
+            // `\name:` immediately followed by ≥1 argspec letter.
+            if j > i + 1 && j < b.len() && b[j] == b':' {
+                let mut k = j + 1;
+                while k < b.len() && ARGSPEC.contains(&b[k]) {
+                    k += 1;
+                }
+                if k > j + 1 {
+                    return true;
+                }
+            }
+            i = j.max(i + 1);
+        } else {
+            i += 1;
+        }
+    }
+    false
 }
 
 /// Byte offset just past the first `\makeatother` *control word* at or after
