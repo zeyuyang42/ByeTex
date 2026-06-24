@@ -663,7 +663,9 @@ impl<'a> Emitter<'a> {
     }
 
     /// `\operatorname{X}` → `op("X")` — render the literal name as upright text.
-    pub(in crate::emit) fn emit_math_operatorname(&mut self, node: Node<'_>) -> usize {
+    /// The starred `\operatorname*{X}` (limits form: `\operatorname*{argmin}_x`
+    /// places the subscript *under* the operator) emits `op("X", limits: #true)`.
+    pub(in crate::emit) fn emit_math_operatorname(&mut self, node: Node<'_>, starred: bool) -> usize {
         if let Some(arg) = first_curly_group(node) {
             let inner = self
                 .src
@@ -671,7 +673,11 @@ impl<'a> Emitter<'a> {
                 .unwrap_or("")
                 .trim();
             self.ensure_math_letter_boundary("op(");
-            let _ = write!(self.out, "op(\"{}\")", inner);
+            if starred {
+                let _ = write!(self.out, "op(\"{}\", limits: #true)", inner);
+            } else {
+                let _ = write!(self.out, "op(\"{}\")", inner);
+            }
         } else {
             self.warn_ambiguous_math(node, "\\operatorname (missing arg)");
         }
