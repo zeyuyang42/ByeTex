@@ -3,6 +3,16 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.15] — unreleased
+
+### Fixed
+- Beamer decks that split their `frame`s across `\input`ed files (the common multi-file deck
+  layout) now convert those frames to slides. The `\input` sub-emitter inherited the parent's
+  macros / chapter layout / citation mode but not its detected document class, so an included
+  file defaulted to `article` and every `\begin{frame}` was flagged `unsupported_environment`
+  and dropped. The sub-emitter now inherits `detected_class` (gh-klb2-beamer: 12 dropped
+  frames → 0; 10 → 26 rendered pages).
+
 ## [0.6.14] — unreleased
 
 ### Fixed

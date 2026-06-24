@@ -552,6 +552,13 @@ impl<'a> Emitter<'a> {
         // renders at the right heading level. The sub-emitter never sees `\documentclass`,
         // so without this it would default to article (flat) levels (health-check P1).
         sub.chapter_based = self.chapter_based;
+        // Inherit the detected document class so an `\input`ed file's
+        // class-gated constructs are recognised — most importantly a beamer
+        // deck that splits its `frame`s across `\input`ed files (the common
+        // multi-file layout): without this the sub-emitter defaults to article
+        // and every `\begin{frame}` is flagged `unsupported_environment` and
+        // dropped, instead of becoming a touying slide.
+        sub.detected_class = self.detected_class.clone();
         sub.emit_root(tree.root_node());
         // Merge the child's body and state back into the parent.
         if !self.out.ends_with('\n') && !self.out.is_empty() {
