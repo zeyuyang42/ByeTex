@@ -48,7 +48,7 @@ pub(in crate::emit) use macros::{
     extract_declare_math_operator_from_newcmd, extract_def_and_record, extract_environment_def,
     extract_let, extract_newcommand, extract_newcommandx, extract_newcommandx_and_end,
     extract_theorem_def, find_explsyntaxoff_end, find_makeatother_end, let_alias_def,
-    new_command_token_kind, read_newif_flag,
+    new_command_token_kind, newcommand_body_true_end, read_newif_flag,
 };
 pub(crate) use macros::{
     harvest_macros_from_source, harvest_referenced_labels_from_source,
@@ -1908,7 +1908,20 @@ impl<'a> Emitter<'a> {
                     }
                 }
             }
-            return node.end_byte();
+            // A *wrapper* definition like
+            // `\newcommand{\mytok}[2]{\newcommand{#1}{…#2}}` confuses
+            // tree-sitter: the inner `\newcommand{#1}` becomes an ERROR node, so
+            // the `new_command_definition` ends early and the rest of the body
+            // (`{{\color{…}#2}}`) is re-parsed as top-level SIBLING groups that
+            // leak into the output. Skip to the brace-matched end of the real
+            // body group. (For a normally-parsed definition this equals
+            // `node.end_byte()`, so it's a no-op.) `skip_until` — not just the
+            // return value — must be bumped so the leaked SIBLING groups (which
+            // are not children of this node) are suppressed.
+            let true_end = newcommand_body_true_end(node, self.src).unwrap_or(0);
+            let end = node.end_byte().max(true_end);
+            self.skip_until = self.skip_until.max(end);
+            return end;
         }
         // `\def\name<params>{body}` is `old_command_definition`. The
         // tree-sitter grammar packages just `\def\name` as the node;

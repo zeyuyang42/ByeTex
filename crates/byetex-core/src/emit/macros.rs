@@ -1366,6 +1366,22 @@ pub(in crate::emit) fn new_command_token_kind(node: Node<'_>) -> Option<String> 
     result
 }
 
+/// The byte offset just past the `}` that closes the *body* group of a
+/// `new_command_definition`, found by brace-matching the first `curly_group`
+/// child's `{` in the source. This recovers the true end when tree-sitter
+/// truncates the node — e.g. a wrapper `\newcommand{\m}[2]{\newcommand{#1}{…}}`
+/// where the nested `\newcommand{#1}` parses as an `ERROR` and the node ends
+/// early. Returns `None` if there is no `curly_group` child (brace-less form).
+pub(in crate::emit) fn newcommand_body_true_end(node: Node<'_>, src: &str) -> Option<usize> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "curly_group" {
+            return brace_balanced_end(src.as_bytes(), child.start_byte());
+        }
+    }
+    None
+}
+
 /// Extract the macro name and body from a `\DeclareMathOperator` node that
 /// tree-sitter has classified as `new_command_definition`.
 ///
