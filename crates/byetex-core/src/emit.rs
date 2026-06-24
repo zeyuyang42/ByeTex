@@ -4379,7 +4379,10 @@ impl<'a> Emitter<'a> {
             "\\emph" => self.emit_math_wrap(node, "italic(", ")"),
             "\\mathop" => self.emit_math_wrap(node, "op(", ")"),
             // `\operatorname{name}` → `op("name")` — upright math text.
-            "\\operatorname" => self.emit_math_operatorname(node),
+            // The starred `\operatorname*{name}` (limits-above form) keeps the
+            // `*` in the command name in tree-sitter, so match it explicitly.
+            "\\operatorname" => self.emit_math_operatorname(node, false),
+            "\\operatorname*" => self.emit_math_operatorname(node, true),
             // Math-mode spacing primitives. `\hspace` emits a thin space so
             // that content wrapping it (e.g. `\underbrace{\hspace{4cm}}`) does
             // not produce an empty body that Typst rejects. `\vspace` and the

@@ -3,6 +3,15 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.13] — unreleased
+
+### Fixed
+- The starred `\operatorname*{X}` (limits-above form, e.g. `\operatorname*{argmin}_x`) now
+  renders `op("X", limits: #true)` instead of dropping its argument and leaking the bare
+  string `operatorname*`. tree-sitter keeps the `*` in the command name, so the
+  `\operatorname` dispatch missed it; the plain `\operatorname{X}` → `op("X")` was already
+  correct (dogfood backlog K1; 5 corpus papers affected).
+
 ## [0.6.12] — unreleased
 
 ### Changed
