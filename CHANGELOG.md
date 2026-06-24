@@ -3,13 +3,32 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
-## [0.6.6] — unreleased
+## [0.6.6] — 2026-06-24
+
+A fidelity-driven release (everything since v0.5.20), grounded against a reproducible
+**truth render** of each source. Highlights:
+
+- **Beamer decks now convert to real Typst `touying` presentations** (metropolis theme):
+  the dark header bar + footer/slide-number chrome, `\section` dividers gated on
+  `\AtBeginSection`, detected theme colors, and incremental overlay builds
+  (`\pause`/`\item<n->`/`\only<n>`). The demo deck went from a flat 8-page dump to a
+  faithful build with proper slide chrome.
+- **Thesis/report fidelity** — a generic cover page for `\coverimage`/`\makecover`, and
+  chapter-per-page density (each `\chapter` starts a fresh page); the tudelft thesis went
+  from ~6 pages to 10 (of the truth's 12).
+- **Paper fidelity** — ACL title size (`\Large` per `acl.sty`) and a reworked ACL author
+  block (real institutions kept + keyed, `\thanks`/`\footnotemark` no longer leaking).
+- **Math** — a comma in `\overset`/`\stackrel` over-text no longer breaks Typst `attach`
+  (closed an acceptance blind spot — 2605.31063 now compiles).
+- **Truth-render pipeline** — `scripts/setup_truth_deps.sh` provisions a version-matched
+  biber + fonts so every corpus paper has a reference render, and corpus ingestion now
+  gates on a successful truth render.
 
 ### Fixed
 - Book/report `\tableofcontents` outline depth now follows `\setcounter{tocdepth}{N}` (harvested
   in the prepass) instead of a hard-coded depth 3; unchanged when no tocdepth is set (health-check P4).
 
-## [0.6.5] — unreleased
+## [0.6.5] — 2026-06-24
 
 ### Fixed
 - **Comma in `\overset`/`\stackrel`/`\underset`/`\accentset` over-text broke `attach`.**
@@ -22,7 +41,7 @@ Notable changes to ByeTex. Format loosely follows
   NO visible delimiters and renders the over-text as proper inline math. Comma-free
   scripts keep the bare form, so the common `\overset{x}{=}` case is byte-identical.
 
-## [0.6.4] — unreleased
+## [0.6.4] — 2026-06-24
 
 ### Added
 - **Chapter-per-page density for book/report/thesis classes.** In a chapter-bearing class
@@ -94,7 +113,7 @@ Notable changes to ByeTex. Format loosely follows
   `#pause`/`#only` is emitted); real overlays and theme-color mapping are deferred to later
   phases. The compile gate resolves `@preview/touying:0.7.3` from the package cache.
 
-## [0.5.23] — unreleased
+## [0.5.23] — 2026-06-24
 
 ### Fixed
 - ACL author blocks: route through the NeurIPS-style author parser (same `\textbf{Name
@@ -102,13 +121,13 @@ Notable changes to ByeTex. Format loosely follows
   kept and keyed per author, a `\thanks{Correspondence…}` note is no longer mis-used as the
   affiliation, and `\thanks`/`\footnotemark` no longer leak into names (Phase 2).
 
-## [0.5.22] — unreleased
+## [0.5.22] — 2026-06-24
 
 ### Fixed
 - ACL papers: the title now renders at `\Large` (1.44em) per `acl.sty`, matching the truth,
   instead of the oversized neutral 1.5em it inherited (the title was visibly too large).
 
-## [0.5.21] — unreleased
+## [0.5.21] — 2026-06-24
 
 ### Fixed
 - Chapter-bearing layout (`\section` level under `\chapter`, `\tableofcontents`→`#outline`,
