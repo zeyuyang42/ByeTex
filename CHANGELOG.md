@@ -3,6 +3,14 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.14] — unreleased
+
+### Fixed
+- `\operatorname{\mathrm{argmin}}` (and `\text{…}`/`\mbox{…}` wrappers) no longer render the
+  literal `\mathrm{argmin}`. `op(...)` already renders upright, so the redundant wrapper —
+  previously quoted verbatim — is now unwrapped to `op("argmin")`. Common via
+  `\DeclareMathOperator*{\argmin}{\mathrm{argmin}}` (5 corpus papers; K1 follow-up).
+
 ## [0.6.13] — unreleased
 
 ### Fixed
