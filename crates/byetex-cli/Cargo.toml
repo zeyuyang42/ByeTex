@@ -16,8 +16,8 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
-byetex-core = { path = "../byetex-core", version = "0.6.9" }
-byetex-mcp = { path = "../byetex-mcp", version = "0.6.9", optional = true }
+byetex-core = { path = "../byetex-core", version = "0.6.10" }
+byetex-mcp = { path = "../byetex-mcp", version = "0.6.10", optional = true }
 clap.workspace = true
 serde_json.workspace = true
 tokio = { version = "1", features = ["macros", "rt-multi-thread"], optional = true }
