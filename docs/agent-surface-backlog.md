@@ -27,6 +27,29 @@ Resolved.
 
 ## Open — P0 (frequent × blocking)
 
+> **Round 8 (2026-06-24, v0.6.11)** — verification re-dogfood of `2605.22821`
+> after the H1/H3 fixes. **H1 (#378), H3-expl3 (#379), H3-colour (#381) ALL
+> VERIFIED LANDED**: the agent made ZERO mention of `langledo` / expl3 internals /
+> `black#2`/`ForestGreen#2` this round (all were round-7 stuck points). New blocker
+> J1 below; verdict still NEEDS_FIX (the two-column attempt — a REPEAT misdiagnosis,
+> NeurIPS is single-column — plus an EPS figure dropped fidelity 0.78→0.776).
+
+### J1. `byetex-tables-layout` skill teaches a STALE two-column recipe — sev 5 (blocker) — ROUTE: Loop B (NEXT PICK)
+- **Symptom:** the skill (line 43) says "Two-column classes render the body wrapped in
+  `#columns(2)[...]`" + "wrap a wide figure/table in `#place(...)`" with NO spanning syntax.
+  The round-8 agent tried to manually two-column a NeurIPS paper, all 15 wide tables
+  overflowed, gave up (blocker). **This is the loop's ORIGINAL never-done Loop-B item** (the
+  first dry-run finding, pre-tick-1).
+- **Why stale:** PR #247 ([[project-two-column-layout]]) replaced `#columns(2)[body]` (which
+  blew a figure-heavy paper to 81pp) with page-level `#set page(columns: 2)` +
+  `#place(scope: "parent", float: true)` spanning floats, AUTO-detected per DocClass
+  (ACL/IEEEtran). The skill never caught up.
+- **Fix:** rewrite the skill's Page-layout section — (a) the converter AUTO-emits page-level
+  `#set page(columns: 2)`; agents must NOT manually wrap in `#columns(2)`; (b) starred floats
+  span via `#place(scope: "parent", float: true)` (give the syntax); (c) **NeurIPS/ICML are
+  SINGLE-column** — do not add columns (agent misdiagnosed twice; see H2). Skill-only → verify
+  by re-dogfood.
+
 > **Round 7 (2026-06-24, v0.6.8)** — first dogfood after PR #376 unblocked
 > `select` (it had been returning only un-scoreable `truth_render_failed` books).
 > Re-dogfooded the now-measurable hardest paper `2605.22821` (NeurIPS,
@@ -34,7 +57,7 @@ Resolved.
 > dominates and the agent couldn't fix it). Findings below, validated on a fresh
 > `main` conversion.
 
-### H1. Custom macro expanding to `\langle#1` concatenates into garbage (`langledo`) — sev 4 (major) — ROUTE: Loop A
+### H1. Custom macro expanding to `\langle#1` concatenates into garbage (`langledo`) — sev 4 (major) — ✅ RESOLVED (PR #378, verified round-8)
 - **Symptom:** `\newcommand{\tokenstring}[1]{...\langle#1\rangle}` used as
   `\tokenstring{do,g}` renders as the math identifier `langledo` (and `langleab`,
   `langlebc`, … — confirmed on fresh main: `grep -o 'langle[a-z]*'` → 8 variants).
@@ -61,7 +84,7 @@ Resolved.
   leaks first; only then is the NeurIPS margin fix a net win.** Margin geometry is real but
   low-value until the content over-pagination is resolved.
 
-### H3. expl3 helper macro leaks its body into the document — sev 3 — ✅ RESOLVED (PR #379, expl3 part)
+### H3. expl3 helper macro + colour wrapper-newcommand leak — sev 3 — ✅ RESOLVED (PR #379 expl3 + #381 colour, verified round-8)
 - **Symptom:** `\NewDocumentCommand{\AppendToList}{m}{ \clist_map_inline:nn … }` defined
   inside `\ExplSyntaxOn…Off` is harvested by the prepass (the region is skipped only for
   emission), so *calling* it after `\ExplSyntaxOff` spliced its pure-expl3 body
