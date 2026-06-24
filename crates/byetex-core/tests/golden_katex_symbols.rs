@@ -209,3 +209,22 @@ fn katex_phase1a_additional_relations() {
     assert!(out.typst.contains("union.double"), "got: {}", out.typst);
     assert!(out.typst.contains("in.rev"), "got: {}", out.typst);
 }
+
+#[test]
+fn katex_circled_operators_use_modern_o_modifier() {
+    // Typst 0.14 deprecated `times.circle`/`plus.circle`/`minus.circle`/
+    // `dot.circle` (→ the `.o` forms), and `slash.circle` is not even a valid
+    // modifier (`\oslash` was emitting an uncompilable symbol). Assert the
+    // modern, deprecation-free `.o` forms — consistent with the already-correct
+    // big operators (`\bigoplus` → `plus.o.big`).
+    let src = r"$\otimes \oplus \ominus \odot \oslash$";
+    let out = convert(src);
+    assert!(out.warnings.is_empty(), "warnings: {:?}", out.warnings);
+    assert!(out.typst.contains("times.o"), "got: {}", out.typst);
+    assert!(out.typst.contains("plus.o"), "got: {}", out.typst);
+    assert!(out.typst.contains("minus.o"), "got: {}", out.typst);
+    assert!(out.typst.contains("dot.o"), "got: {}", out.typst);
+    assert!(out.typst.contains("slash.o"), "got: {}", out.typst);
+    // No deprecated `.circle` form should survive.
+    assert!(!out.typst.contains(".circle"), "deprecated .circle in: {}", out.typst);
+}

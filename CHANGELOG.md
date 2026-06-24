@@ -3,6 +3,15 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.7] — unreleased
+
+### Fixed
+- Math circled operators now emit Typst's modern `.o` modifier instead of the deprecated
+  `.circle` form: `\otimes`/`\oplus`/`\ominus`/`\odot` → `times.o`/`plus.o`/`minus.o`/`dot.o`
+  (no more Typst 0.14 deprecation warnings), and `\oslash` → `slash.o` (the old
+  `slash.circle` was not a valid Typst modifier at all). Consistent with the big operators
+  (`\bigoplus` → `plus.o.big`), which already used `.o`.
+
 ## [0.6.6] — 2026-06-24
 
 A fidelity-driven release (everything since v0.5.20), grounded against a reproducible
