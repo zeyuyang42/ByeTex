@@ -3,6 +3,17 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.9] — unreleased
+
+### Fixed
+- A `\newcommand` body where a control word is immediately followed by a parameter
+  (`\newcommand{\tok}[1]{\langle#1\rangle}`) no longer glues them on expansion:
+  `\tok{do}` produced `\langledo` (an unknown control word that leaked as the literal
+  math string `"langledo"`) instead of `\langle do` (→ `chevron.l do chevron.r`). The
+  macro-arg substitution now inserts the terminating space TeX would have consumed when a
+  control word precedes a letter-starting argument. (2605.22821: 8 garbage `langle*`
+  tokens → 0; also the root cause of the garbled `ambiguous_math` snippets.)
+
 ## [0.6.8] — unreleased
 
 ### Fixed

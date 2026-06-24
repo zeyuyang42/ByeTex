@@ -246,7 +246,20 @@ pub(in crate::emit) fn substitute_macro_args(body: &str, args: &[String]) -> Str
             } else if let Ok(idx) = digits.parse::<usize>() {
                 // `\newcommand` parameters are 1-indexed.
                 if idx >= 1 && idx <= args.len() {
-                    out.push_str(&args[idx - 1]);
+                    let arg = &args[idx - 1];
+                    // A control word immediately before a parameter (`\langle#1`)
+                    // is, in TeX, terminated by the non-letter `#`; the argument
+                    // is a separate token. A raw splice would glue them
+                    // (`\langle` + `do` → `\langledo`, an unknown control word),
+                    // so when the body so far ends in a control word and the
+                    // argument starts with a letter (which would extend it),
+                    // insert the terminating space TeX would have consumed.
+                    if ends_with_control_word(&out)
+                        && arg.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+                    {
+                        out.push(' ');
+                    }
+                    out.push_str(arg);
                 } else {
                     // No matching arg — keep the placeholder verbatim.
                     out.push('#');
@@ -261,4 +274,28 @@ pub(in crate::emit) fn substitute_macro_args(body: &str, args: &[String]) -> Str
         }
     }
     out
+}
+
+/// True when `s` ends in a TeX control word — a backslash followed by one or
+/// more ASCII letters (an *odd* run of trailing backslashes, so an escaped
+/// `\\` followed by letters is ordinary text, not a control word). Used to
+/// decide whether a substituted argument needs a separating space so it does
+/// not extend the preceding control word.
+fn ends_with_control_word(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    let mut i = bytes.len();
+    let mut letters = 0;
+    while i > 0 && bytes[i - 1].is_ascii_alphabetic() {
+        i -= 1;
+        letters += 1;
+    }
+    if letters == 0 {
+        return false;
+    }
+    let mut backslashes = 0;
+    while i > 0 && bytes[i - 1] == b'\\' {
+        i -= 1;
+        backslashes += 1;
+    }
+    backslashes % 2 == 1
 }
