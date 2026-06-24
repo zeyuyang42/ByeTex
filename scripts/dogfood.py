@@ -167,35 +167,56 @@ def _corpus_ids() -> list[str]:
     )
 
 
-def cmd_select(args) -> int:
-    """Rank candidate papers hardest-first: BYETEX_FAIL papers, then lowest
-    word_recall. Deterministic so re-runs target the same set."""
-    fid = json.loads(FIDELITY_BASELINE.read_text()).get("papers", {}) \
-        if FIDELITY_BASELINE.exists() else {}
-    acc = json.loads(ACCEPTANCE_BASELINE.read_text()) if ACCEPTANCE_BASELINE.exists() else {}
-    known_fail = set(acc.get("known_fail", []))
+def rank_candidates(fid: dict, known_fail: set, corpus_ids: list) -> list:
+    """Rank papers hardest-first for dogfooding, returning ``[{id, reason,
+    word_recall}, …]``.
 
+    A dogfood run is only meaningful on a *scoreable* paper — one where the
+    agent can either repair a BYETEX compile failure or improve a measurable
+    fidelity. Papers whose **truth** render failed (``status ==
+    'truth_render_failed'``, ``word_recall is None``) are NOT scoreable —
+    ``dogfood.py score`` has no truth to compute ``fidelity_after`` against — so
+    they are excluded here (unless BYETEX also fails to compile them, in which
+    case the agent can still repair the compile and they are kept).
+
+    Ranking: tier 0 = failing (known_fail or measured structure failure), then
+    ascending ``word_recall`` (unmeasured treated as 0.5). Deterministic so
+    re-runs target the same set.
+    """
     ranked = []
-    for pid in _corpus_ids():
+    for pid in corpus_ids:
         rec = fid.get(pid, {})
-        failing = pid in known_fail or rec.get("structure_ok") is False \
-            or (rec.get("status") not in (None, "ok"))
         wr = rec.get("word_recall")
         measured = wr is not None
-        # tier 0 = failing; then ascending word_recall; unmeasured treated as 0.5.
+        is_known_fail = pid in known_fail
+        # Skip un-scoreable papers: the truth render failed (no reference to
+        # measure against) and BYETEX itself compiles fine, so neither a
+        # compile-repair nor a fidelity gain can be demonstrated.
+        if rec.get("status") == "truth_render_failed" and not is_known_fail:
+            continue
+        failing = is_known_fail or rec.get("structure_ok") is False
         key = (0 if failing else 1, wr if measured else 0.5)
         reason = ("BYETEX_FAIL/structure-fail" if failing
                   else f"word_recall={wr}" if measured else "unmeasured")
         ranked.append((key, pid, reason, wr))
     ranked.sort(key=lambda t: t[0])
-    picked = ranked[: args.n]
+    return [{"id": p, "reason": r, "word_recall": w} for _, p, r, w in ranked]
+
+
+def cmd_select(args) -> int:
+    """Rank candidate papers hardest-first (see ``rank_candidates``)."""
+    fid = json.loads(FIDELITY_BASELINE.read_text()).get("papers", {}) \
+        if FIDELITY_BASELINE.exists() else {}
+    acc = json.loads(ACCEPTANCE_BASELINE.read_text()) if ACCEPTANCE_BASELINE.exists() else {}
+    known_fail = set(acc.get("known_fail", []))
+
+    picked = rank_candidates(fid, known_fail, _corpus_ids())[: args.n]
 
     if args.json:
-        print(json.dumps([{"id": p, "reason": r, "word_recall": w}
-                          for _, p, r, w in picked]))
+        print(json.dumps(picked))
     else:
-        for _, pid, reason, _w in picked:
-            print(f"{pid}\t{reason}")
+        for rec in picked:
+            print(f"{rec['id']}\t{rec['reason']}")
     return 0
 
 
