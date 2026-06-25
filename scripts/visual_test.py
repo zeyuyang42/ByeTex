@@ -229,9 +229,17 @@ def run_byetex(
     proj_dir = source_dir.parent.parent / "_out" / source_dir.parent.name
     proj_dir.parent.mkdir(parents=True, exist_ok=True)
     shutil.rmtree(proj_dir, ignore_errors=True)
+    # Pass the toplevel RELATIVE to source_dir, not just its basename — a deck
+    # whose entry point lives in a subdir (e.g. `demo/demo.tex`) would otherwise
+    # be looked up at the source root and fail ("planning project from
+    # demo.tex: No such file or directory").
+    try:
+        rel_toplevel = str(toplevel.relative_to(source_dir))
+    except ValueError:
+        rel_toplevel = toplevel.name
     result = subprocess.run(
         [
-            str(byetex_bin), "convert", "--project", toplevel.name,
+            str(byetex_bin), "convert", "--project", rel_toplevel,
             "--project-out", str(proj_dir), "--force", "--no-brief",
         ],
         cwd=source_dir,
