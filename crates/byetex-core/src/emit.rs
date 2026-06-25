@@ -3959,8 +3959,15 @@ impl<'a> Emitter<'a> {
             // section/chapter counter so the first appendix is A (not a continuation of
             // the body count — round-6 dogfood: appendices showed D/E after 3 chapters).
             Some("\\appendix") => {
-                self.out
-                    .push_str("\n#set heading(numbering: \"A.1\")\n#counter(heading).update(0)\n");
+                // In beamer, `\appendix` marks backup slides (appendixnumberbeamer
+                // changes the *frame* number, not heading numbers) — frame titles
+                // stay unnumbered. Emitting "A.1" numbering would number the frame
+                // title (a level-2 heading) with a 0-valued level-1 counter →
+                // a degenerate "-.1" prefix. Skip it for beamer.
+                if !matches!(self.detected_class, crate::class_map::DocClass::Beamer) {
+                    self.out
+                        .push_str("\n#set heading(numbering: \"A.1\")\n#counter(heading).update(0)\n");
+                }
                 node.end_byte()
             }
             // `\label{X}` outside any section/equation context — keep the
