@@ -3,6 +3,15 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.25] — unreleased
+
+### Fixed
+- Beamer `\appendix` no longer prefixes the backup-slide frame title with a degenerate `-.1`.
+  ByeTex emitted article-style `#set heading(numbering: "A.1")`, which numbered the appendix frame
+  title (a level-2 heading) against a 0-valued level-1 counter. In beamer, `\appendix` marks backup
+  slides (appendixnumberbeamer changes the slide number, not heading numbers) — frame titles stay
+  unnumbered, so the numbering reset is now skipped for beamer. Visual grader, gh-klb2-beamer.
+
 ## [0.6.24] — unreleased
 
 ### Fixed
