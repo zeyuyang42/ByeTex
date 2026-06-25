@@ -413,6 +413,21 @@ impl<'a> Emitter<'a> {
         self.render_bibliography_from_paths(paths, node)
     }
 
+    /// Discover `.bib` files anywhere under `base_dir` (recursively), returning
+    /// their paths relative to `base_dir` (with the `.bib` extension). Fallback
+    /// for `\printbibliography` when no `\addbibresource` path was collected —
+    /// biblatex resources are commonly declared in a class/config file the
+    /// prepass never sees. Sorted + capped for determinism.
+    pub(in crate::emit) fn discover_bib_files(&self) -> Vec<String> {
+        let Some(base) = self.base_dir.as_ref() else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        collect_bib_files(base, base, 0, &mut out);
+        out.sort();
+        out
+    }
+
     /// Render a `#bibliography(...)` from explicit `.bib` paths (shared by the
     /// bibtex `\bibliography{}` and the biblatex `\printbibliography` paths).
     pub(in crate::emit) fn render_bibliography_from_paths(
@@ -873,6 +888,32 @@ pub(in crate::emit) fn probe_any_bbl(base: &Path) -> Option<String> {
     // multiple `.bbl` files they're usually variants of the same
     // bibliography, so picking one consistently is acceptable.
     std::fs::read_to_string(&found[0]).ok()
+}
+
+/// Recursively collect `.bib` file paths (relative to `base`, `/`-separated)
+/// under `dir`. Bounded by depth and count so a pathological tree can't stall
+/// the converter. Used by [`Emitter::discover_bib_files`].
+fn collect_bib_files(dir: &Path, base: &Path, depth: usize, out: &mut Vec<String>) {
+    if depth > 6 || out.len() >= 16 {
+        return;
+    }
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_bib_files(&path, base, depth + 1, out);
+        } else if path
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| e.eq_ignore_ascii_case("bib"))
+        {
+            if let Ok(rel) = path.strip_prefix(base) {
+                out.push(rel.to_string_lossy().replace('\\', "/"));
+            }
+        }
+    }
 }
 
 pub(in crate::emit) fn probe_bib_on_disk(base: &Path, path: &str) -> Option<PathBuf> {

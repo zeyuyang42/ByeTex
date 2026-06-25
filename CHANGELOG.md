@@ -3,6 +3,16 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.31] — unreleased
+
+### Fixed
+- biblatex `\printbibliography` now renders even when `\addbibresource` is declared in a class or
+  config file the prepass never sees (e.g. `internshipreport.cls`). Previously the resource-path list
+  was empty, the `#bibliography` was dropped, and every `\cite` dangled — hard-failing the whole
+  Typst compile. When no resource path is known, ByeTex now discovers `.bib` files in the project
+  tree (incl. subdirectories) and renders from those. Flips `gh-sikatikenmogne-report` to a clean
+  compile (22 pages). Found via the cross-doc-type render gallery.
+
 ## [0.6.30] — unreleased
 
 ### Fixed
