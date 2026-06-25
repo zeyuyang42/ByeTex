@@ -3,6 +3,16 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.26] — unreleased
+
+### Fixed
+- Metropolis beamer decks now render a section-divider slide at each `\section` (the theme
+  installs a section page internally). ByeTex tagged level-1 sections `<touying:hidden>` unless the
+  deck *explicitly* had `\AtBeginSection` / `\setbeamertemplate{section page}`, so metropolis decks
+  lost their dividers. Detect `\usetheme{metropolis}` (incl. the `[opts]{name}` form) and propagate
+  the flag through `\input`. Lifted fidelity across the metropolis decks (page_ratio 0.80→0.87 /
+  0.85→0.97 / 0.81→0.96; recall up). Visual grader, gh-klb2-beamer.
+
 ## [0.6.25] — unreleased
 
 ### Fixed
