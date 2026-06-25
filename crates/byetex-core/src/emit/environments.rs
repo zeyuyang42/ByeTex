@@ -401,6 +401,22 @@ impl<'a> Emitter<'a> {
         if body.is_empty() {
             return env.end_byte();
         }
+        // A frame with no title argument (`body_start == 0`) and no `\frametitle`
+        // in its body emits no `==` heading — so without a boundary its content
+        // would merge onto the previous slide (the "Frame without a title" case).
+        // Force a slide boundary. `weak: true` collapses against an adjacent break
+        // (the title slide / a section divider) so no blank page is introduced.
+        if body_start == 0 {
+            let bstart = body[0].start_byte();
+            let bend = body.last().unwrap().end_byte();
+            let has_frametitle = self
+                .src
+                .get(bstart..bend)
+                .is_some_and(|s| s.contains("\\frametitle"));
+            if !has_frametitle {
+                self.out.push_str("#pagebreak(weak: true)\n\n");
+            }
+        }
         let mut last = body[0].start_byte();
         for child in body {
             let cs = child.start_byte();

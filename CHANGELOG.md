@@ -3,6 +3,15 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.28] — unreleased
+
+### Fixed
+- A beamer `\begin{frame}` with NO title (no `{title}` argument and no `\frametitle`) is now its
+  own slide. It emitted no `==` heading, so its body merged onto the previous slide (the
+  "Frame without a title" case dropped gh-klb2 from 15→14 slides). A titleless frame now forces a
+  `#pagebreak(weak: true)` boundary — deck slide count now matches truth exactly (15). Visual grader
+  (V9), gh-klb2-beamer.
+
 ## [0.6.27] — unreleased
 
 ### Fixed
