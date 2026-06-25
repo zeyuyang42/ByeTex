@@ -3,6 +3,14 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.27] — unreleased
+
+### Fixed
+- `\begin{frame}[standout]` (metropolis focus slide) now renders as touying's `#focus-slide[…]`
+  — a full dark-background slide with large centered text — instead of leaking the body onto a
+  neighbouring frame as ordinary text. The `[standout]` option (a `brack_group` child of the
+  `begin` node) is detected and the body wrapped accordingly. Visual grader, gh-klb2-beamer.
+
 ## [0.6.26] — unreleased
 
 ### Fixed
