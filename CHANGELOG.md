@@ -3,6 +3,15 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.24] — unreleased
+
+### Fixed
+- `\texttt{\textit{X}}` / `\texttt{\textbf{X}}` no longer render the nested font switch as a
+  literal `#raw("\textit{X}")` string. `\texttt` emits its argument verbatim, so a whole-argument
+  `\textit`/`\emph`/`\textbf` wrapper leaked as text. The wrappers are now peeled and the style is
+  applied: `#text(style/weight)[#raw("X")]` (monospace italic/bold). Plain `\texttt{X}` is
+  unchanged. Visual grader, gh-klb2-beamer font-feature slide.
+
 ## [0.6.23] — unreleased
 
 ### Fixed

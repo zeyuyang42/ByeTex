@@ -203,11 +203,30 @@ impl<'a> Emitter<'a> {
                 .get(arg.start_byte() + 1..arg.end_byte() - 1)
                 .unwrap_or("")
                 .trim();
+            // `\texttt{\textit{X}}` / `\texttt{\textbf{X}}`: a nested font switch
+            // wrapping the WHOLE argument would otherwise be emitted as a literal
+            // `\textit{X}` string. Peel the wrappers, render monospace, and apply
+            // the style via `#text(...)`.
+            let (plain, italic, bold) = peel_mono_font_styles(content);
             // Escape only the characters Typst's string literal must
             // escape; everything else (including `_`, `*`, `#`) stays
             // literal because `#raw(...)` doesn't reparse the content.
-            let escaped = content.replace('\\', "\\\\").replace('"', "\\\"");
-            let _ = write!(self.out, "#raw(\"{}\")", escaped);
+            let escaped = plain.replace('\\', "\\\\").replace('"', "\\\"");
+            if italic || bold {
+                let mut style = String::new();
+                if bold {
+                    style.push_str("weight: \"bold\"");
+                }
+                if italic {
+                    if !style.is_empty() {
+                        style.push_str(", ");
+                    }
+                    style.push_str("style: \"italic\"");
+                }
+                let _ = write!(self.out, "#text({})[#raw(\"{}\")]", style, escaped);
+            } else {
+                let _ = write!(self.out, "#raw(\"{}\")", escaped);
+            }
         }
         node.end_byte()
     }
@@ -467,4 +486,61 @@ impl<'a> Emitter<'a> {
         }
         node.end_byte()
     }
+}
+
+/// Peel whole-argument `\textit{…}` / `\emph{…}` / `\textbf{…}` wrappers off a
+/// `\texttt` argument, accumulating italic/bold. Returns the innermost plain
+/// text plus the accumulated styles. Only peels when a wrapper spans the ENTIRE
+/// (trimmed) argument — a partial `a\textit{b}c` is left untouched.
+fn peel_mono_font_styles(s: &str) -> (&str, bool, bool) {
+    let mut cur = s.trim();
+    let (mut italic, mut bold) = (false, false);
+    loop {
+        let mut peeled = false;
+        for (cmd, is_italic) in [("\\textit{", true), ("\\emph{", true), ("\\textbf{", false)] {
+            if let Some(rest) = cur.strip_prefix(cmd) {
+                if let Some(inner) = rest.strip_suffix('}') {
+                    if braces_balanced(inner) {
+                        cur = inner.trim();
+                        if is_italic {
+                            italic = true;
+                        } else {
+                            bold = true;
+                        }
+                        peeled = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if !peeled {
+            return (cur, italic, bold);
+        }
+    }
+}
+
+/// True if every `{` in `s` has a matching `}` (escaped `\{`/`\}` ignored) — used
+/// to confirm a leading `\cmd{` wrapper's closing brace is the final char.
+fn braces_balanced(s: &str) -> bool {
+    let mut depth = 0i32;
+    let b = s.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        match b[i] {
+            b'\\' => i += 2, // skip an escaped char (`\{`, `\}`, `\\`)
+            b'{' => {
+                depth += 1;
+                i += 1;
+            }
+            b'}' => {
+                depth -= 1;
+                if depth < 0 {
+                    return false;
+                }
+                i += 1;
+            }
+            _ => i += 1,
+        }
+    }
+    depth == 0
 }
