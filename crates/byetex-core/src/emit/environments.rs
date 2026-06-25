@@ -320,14 +320,44 @@ impl<'a> Emitter<'a> {
         let mut cursor = env.walk();
         let all: Vec<Node<'_>> = env.children(&mut cursor).collect();
         // End of `\begin{frame}` — the title argument (if any) starts right after it.
-        let begin_end = all
-            .iter()
-            .find(|c| c.kind() == "begin")
-            .map_or_else(|| env.start_byte(), |c| c.end_byte());
+        let begin_node = all.iter().find(|c| c.kind() == "begin").copied();
+        let begin_end = begin_node.map_or_else(|| env.start_byte(), |c| c.end_byte());
+        // `\begin{frame}[opts]` — tree-sitter parses the `[opts]` as a `brack_group`
+        // CHILD of the `begin` node (so it's already inside `begin_end`). Pull its
+        // text out to detect frame options like `standout`.
+        let frame_opts = begin_node
+            .and_then(|b| {
+                let mut bc = b.walk();
+                let kids: Vec<Node<'_>> = b.children(&mut bc).collect();
+                kids.iter()
+                    .find(|c| c.kind() == "brack_group")
+                    .map(|g| (g.start_byte(), g.end_byte()))
+            })
+            .and_then(|(s, e)| self.src.get(s + 1..e.saturating_sub(1)))
+            .unwrap_or("")
+            .to_string();
         let children: Vec<Node<'_>> = all
             .into_iter()
             .filter(|c| !matches!(c.kind(), "begin" | "end"))
             .collect();
+
+        // `\begin{frame}[standout]…` — a metropolis "focus" slide: full
+        // dark-background slide, large centered text, no header/footer. Map it to
+        // touying-metropolis's `#focus-slide[…]`.
+        if frame_opts.split(',').any(|o| o.trim() == "standout") {
+            self.out.push_str("#focus-slide[\n");
+            // Standout frames carry no title bar — the whole body is centered.
+            if let (Some(first), Some(last)) = (children.first(), children.last()) {
+                let mut at = first.start_byte();
+                for child in &children {
+                    self.safe_copy(at, child.start_byte());
+                    at = self.emit_node(*child);
+                }
+                self.safe_copy(at, last.end_byte());
+            }
+            self.out.push_str("\n]\n\n");
+            return env.end_byte();
+        }
 
         // `\begin{frame}{Title}{Subtitle}` — the title (and optional subtitle) are the
         // leading curly group(s) on the SAME LINE as `\begin{frame}` (only `[opts]` /
