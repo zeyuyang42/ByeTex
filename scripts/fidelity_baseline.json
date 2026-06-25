@@ -474,6 +474,14 @@
       "structure_ok": true,
       "word_recall": 0.875
     },
+    "beamer-demo": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.79,
+      "page_ratio": 1.125,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.929
+    },
     "ctan-memoir": {
       "heading_recall": null,
       "mean_ssim": null,
