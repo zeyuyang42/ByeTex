@@ -3484,7 +3484,15 @@ impl<'a> Emitter<'a> {
             // trailing optional `[title={...}]` so it doesn't leak (the bracket
             // group is a tree-sitter sibling of the command).
             Some("\\printbibliography") => {
-                let paths = self.addbibresource_paths.clone();
+                let mut paths = self.addbibresource_paths.clone();
+                if paths.is_empty() {
+                    // `\addbibresource` is commonly declared in a class/config
+                    // file the prepass never sees (e.g. `internshipreport.cls`),
+                    // leaving the path list empty. Discover `.bib` files in the
+                    // project tree so the bibliography still renders — otherwise
+                    // every `\cite` dangles and hard-fails the whole compile.
+                    paths = self.discover_bib_files();
+                }
                 let end = if paths.is_empty() {
                     self.warn_silently_dropped(node);
                     node.end_byte()
