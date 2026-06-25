@@ -3,6 +3,15 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.23] — unreleased
+
+### Fixed
+- Beamer `\inst{N}` affiliation markers no longer leak literal `{`/`}` braces into the title
+  author/institution block. Two causes: `latex_text_to_typst` didn't know `\inst` (now normalised
+  to `\textsuperscript` and stripped), and the author parser split on the first `\\` even when it
+  was nested inside the captured `\institute{… \\ …}` — splitting mid-braces orphaned the
+  brace. The `\\` split is now brace-aware (top-level only). Visual grader re-grade, gh-klb2-beamer.
+
 ## [0.6.22] — unreleased
 
 ### Fixed
