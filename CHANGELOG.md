@@ -3,6 +3,15 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.19] — unreleased
+
+### Fixed
+- Beamer theme commands with options — `\usetheme[progressbar=frametitle]{metropolis}` and
+  friends (`\usecolortheme`/`\setbeamertemplate`/…) — no longer leak the `[options]{name}`
+  as slide body text. tree-sitter parses the command as a bare `generic_command` (no children),
+  so the `[opts]`/`{name}` landed as following siblings the drop did not cover; now consumed.
+  Found by the visual grader on gh-klb2-beamer.
+
 ## [0.6.18] — unreleased
 
 ### Changed

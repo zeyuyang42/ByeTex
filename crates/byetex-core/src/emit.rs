@@ -3066,7 +3066,14 @@ impl<'a> Emitter<'a> {
             | Some("\\AtBeginSection")
             | Some("\\AtBeginSubsection")
             | Some("\\titlegraphic") => {
-                node.end_byte()
+                // Consume any trailing `[opts]{name}` argument groups. For
+                // `\usetheme[progressbar=frametitle]{metropolis}` tree-sitter
+                // parses the command as a bare `generic_command` with no
+                // children — the `[opts]`/`{name}` land as following siblings,
+                // so `node.end_byte()` alone leaks them as slide body text.
+                let end = consume_trailing_arg_groups(self.src, node.end_byte(), true);
+                self.skip_until = self.skip_until.max(end);
+                end
             }
             // `\subtitle{…}`: rendered under the title on a beamer title slide. Papers
             // have no subtitle slot, so for them it stays dropped.
