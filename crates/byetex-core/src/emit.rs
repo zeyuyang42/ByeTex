@@ -33,7 +33,7 @@ mod preamble;
 mod sections;
 mod tables;
 mod typography;
-pub(in crate::emit) use bibliography::harvest_bib_keys_from_dir;
+pub(in crate::emit) use bibliography::{extract_bbl_bibitem_keys, harvest_bib_keys_from_dir};
 pub(crate) use braceless::{consume_braceless_arg, try_consume_math_arg, BracelessArg};
 pub(in crate::emit) use braceless::{
     consume_trailing_arg_groups, consume_trailing_brace_groups, substitute_macro_args,
@@ -651,6 +651,15 @@ impl<'a> Emitter<'a> {
         // A .bib resolved on disk iff the harvest added any keys (no `\bibitem`
         // keys are present yet — those are inserted during emit).
         self.had_bib_file = !self.bibliography_keys.is_empty();
+        // Also harvest inline `\bibitem{key}` (a `\begin{thebibliography}` written
+        // in the source, with no `.bib`/`.bbl` on disk) — otherwise the key set is
+        // empty when the *preceding* `\cite{}` calls are emitted, validation
+        // short-circuits, and a single `\cite{undefined}` emits a dangling `@key`
+        // that hard-fails the whole Typst compile (`label <key> does not exist`).
+        // Done after `had_bib_file` so inline entries don't masquerade as a `.bib`.
+        for key in extract_bbl_bibitem_keys(self.src) {
+            self.bibliography_keys.insert(sanitize_label_key(&key));
+        }
         let mut stack: Vec<Node<'_>> = vec![root];
         while let Some(n) = stack.pop() {
             // `\setcounter{tocdepth}{N}` (usually preamble) → the `#outline` depth. Harvested
