@@ -357,6 +357,7 @@ impl<'a> Emitter<'a> {
             .beamer_frametitle_color
             .clone()
             .or_else(|| self.beamer_structure_color.clone())
+            .or_else(|| self.beamer_alert_color.clone())
             .map(|c| format!("  config-colors(primary: {c}),\n"))
             .unwrap_or_default();
 

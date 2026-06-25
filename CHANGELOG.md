@@ -3,6 +3,18 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.29] — unreleased
+
+### Fixed
+- Beamer decks that set the accent via `\setbeamercolor{alerted text}{fg=…}` (the metropolis idiom)
+  now drive touying's accent (`config-colors(primary)`) — the progress bar, section-divider rule and
+  `\alert` use the deck's colour instead of touying's default orange. Three underlying gaps were
+  fixed so this works through an `\input`ed `setup-colors.tex`: (1) the `alerted text` element is
+  harvested; (2) a `{%` comment opening the option group no longer breaks the `fg=` parse; (3)
+  `\definecolor` is now registered at emit time (not only in the main-file prescan) so a colour
+  defined and used in the same included file resolves; and the captured colours flow back across the
+  `\input` boundary. Visual grader, gh-klb2-beamer (teal accent rendered orange).
+
 ## [0.6.28] — unreleased
 
 ### Fixed

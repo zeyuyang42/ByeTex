@@ -403,6 +403,10 @@ pub(crate) struct Emitter<'a> {
     /// `\usecolortheme{name}` — used for the frame title when no explicit
     /// `frametitle` color is set. Both `None` → beamer's default structure blue.
     beamer_structure_color: Option<String>,
+    /// Beamer accent color from `\setbeamercolor{alerted text}{fg=…}` — the
+    /// metropolis idiom for the accent (progress bar / section rule / `\alert`).
+    /// Lowest-priority source for touying `config-colors(primary)`.
+    beamer_alert_color: Option<String>,
     /// True when the beamer preamble installs a section-title slide, i.e. it has
     /// `\AtBeginSection` or `\setbeamertemplate{section page}`. Real beamer only
     /// shows a section-divider slide when one of these is present; otherwise a
@@ -579,6 +583,7 @@ impl<'a> Emitter<'a> {
             colors: HashMap::new(),
             beamer_frametitle_color: None,
             beamer_structure_color: None,
+            beamer_alert_color: None,
             beamer_has_section_slide: false,
             base_dir,
             visited_includes: visited,
@@ -1573,6 +1578,15 @@ impl<'a> Emitter<'a> {
         // block of `\definecolor{...}{HTML}{...}` next to the abstract). byetex
         // doesn't apply xcolor colours, so the definition is inert — drop it whole.
         if matches!(node.kind(), "color_definition" | "color_set_definition") {
+            // The prescan harvests `\definecolor` into the colour table, but it
+            // only walks the main file — colours defined in an `\input`ed file are
+            // first seen here, at emit time. Harvest them too so a later
+            // `\textcolor`/`\setbeamercolor{…}{fg=name}` in the same file resolves.
+            if node.kind() == "color_definition" {
+                if let Some((name, typst)) = parse_definecolor(node, self.src) {
+                    self.colors.entry(name).or_insert(typst);
+                }
+            }
             return node.end_byte();
         }
 
@@ -4656,7 +4670,10 @@ impl<'a> Emitter<'a> {
                 let element = first_curly_group(node)
                     .map(|g| self.curly_group_inner_trimmed(g).trim().to_string())
                     .unwrap_or_default();
-                if !matches!(element.as_str(), "frametitle" | "titlelike" | "structure") {
+                if !matches!(
+                    element.as_str(),
+                    "frametitle" | "titlelike" | "structure" | "alerted text"
+                ) {
                     return;
                 }
                 let Some(opts) = nth_curly_group(node, 1)
@@ -4664,15 +4681,27 @@ impl<'a> Emitter<'a> {
                 else {
                     return;
                 };
+                // Strip LaTeX line comments — decks commonly open the option group
+                // with `{%` and list the keys on following lines, so the raw inner
+                // is e.g. `%\n\tfg=accent,`; without stripping, the `fg` key parse
+                // would see `%\n\tfg`.
+                let opts: String = opts
+                    .lines()
+                    .map(|l| l.split('%').next().unwrap_or(l))
+                    .collect::<Vec<_>>()
+                    .join(" ");
                 let fg = opts.split(',').find_map(|kv| {
                     let (k, v) = kv.split_once('=')?;
                     (k.trim() == "fg").then(|| v.trim().to_string())
                 });
                 if let Some(color) = fg.and_then(|c| self.resolve_color_arg(None, &c)) {
-                    if element == "structure" {
-                        self.beamer_structure_color = Some(color);
-                    } else {
-                        self.beamer_frametitle_color = Some(color);
+                    match element.as_str() {
+                        "structure" => self.beamer_structure_color = Some(color),
+                        // `\setbeamercolor{alerted text}{fg=…}` is metropolis's idiom
+                        // for the accent (progress bar / section rule / `\alert` =
+                        // touying `primary`).
+                        "alerted text" => self.beamer_alert_color = Some(color),
+                        _ => self.beamer_frametitle_color = Some(color),
                     }
                 }
             }
