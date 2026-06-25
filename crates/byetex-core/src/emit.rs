@@ -1577,6 +1577,12 @@ impl<'a> Emitter<'a> {
             return self.emit_listing_environment(node);
         }
 
+        // `\begin{verbatim}…\end{verbatim}` is its own node kind; its body lives
+        // in a `comment` child. Render it as a `#raw(block: true)` block.
+        if node.kind() == "verbatim_environment" {
+            return self.emit_verbatim_environment(node);
+        }
+
         // Inside math, `\label{...}` is silently lifted out and attached to
         // the enclosing math container as a Typst `<label>`.
         if self.in_math && node.kind() == "label_definition" {
