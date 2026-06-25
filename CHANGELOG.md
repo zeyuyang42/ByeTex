@@ -3,6 +3,17 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.30] — unreleased
+
+### Fixed
+- A `\cite{key}` whose key is not in the bibliography no longer hard-fails the whole Typst
+  compile (`label <key> does not exist`, where pdflatex would render `[?]`). ByeTex already
+  degrades an undefined cite to a `[cite: missing key …]` placeholder, but only when the
+  bibliography-key set is non-empty — and the prepass only harvested `.bib`/`.bbl` files, not
+  an inline `\begin{thebibliography}`. So with an inline bibliography and no `.bib`, every cite
+  was emitted as `@key` and a single dangling one sank the compile. The prepass now also
+  harvests inline `\bibitem{key}` keys. Found via the cross-doc-type render gallery.
+
 ## [0.6.29] — 2026-06-25
 
 A **beamer-fidelity release** (everything since v0.6.6), driven by a vision-based
