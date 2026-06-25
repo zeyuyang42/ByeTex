@@ -161,6 +161,34 @@ fn match_brace_from(bytes: &[u8], open: usize) -> Option<usize> {
     None
 }
 
+/// True if `\usetheme`'s argument (starting at `start`, just past the command)
+/// names `want`. Handles the optional `[opts]` form — `\usetheme[…]{name}` parses
+/// `[opts]`/`{name}` as siblings — by byte-scanning past an optional `[…]` to the
+/// `{name}` group. Case-insensitive.
+fn usetheme_name_is(src: &str, start: usize, want: &str) -> bool {
+    let bytes = src.as_bytes();
+    let mut i = start;
+    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    if bytes.get(i) == Some(&b'[') {
+        match src.get(i..).and_then(|s| s.find(']')) {
+            Some(off) => i += off + 1,
+            None => return false,
+        }
+    }
+    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    if bytes.get(i) != Some(&b'{') {
+        return false;
+    }
+    src.get(i + 1..)
+        .and_then(|s| s.find('}').map(|e| s[..e].trim()))
+        .map(|name| name.eq_ignore_ascii_case(want))
+        .unwrap_or(false)
+}
+
 /// Read a beamer `<overlay-spec>` starting at (or after whitespace from) `start`.
 /// Returns `(inner, end)` where `inner` is the text between `<` and `>` and `end`
 /// is the byte just past `>`; `None` if no spec is present. Only bare specs of
@@ -777,6 +805,21 @@ impl<'a> Emitter<'a> {
                         {
                             self.beamer_has_section_slide = true;
                         }
+                        // The metropolis theme installs a section-page template
+                        // internally, so `\usetheme{metropolis}` decks show a
+                        // section-divider slide at each `\section` — keep it (byetex
+                        // also renders beamer with touying's metropolis theme).
+                        // `\usetheme[opts]{name}` parses `[opts]`/`{name}` as
+                        // siblings, so byte-scan past an optional `[…]` to `{name}`.
+                        Some("\\usetheme")
+                            if first_curly_group(n)
+                                .map(|g| self.curly_group_inner_trimmed(g).trim().to_string())
+                                .map(|s| s.eq_ignore_ascii_case("metropolis"))
+                                .unwrap_or(false)
+                                || usetheme_name_is(self.src, n.end_byte(), "metropolis") =>
+                        {
+                            self.beamer_has_section_slide = true;
+                        }
                         _ => {}
                     }
                     let mut cursor = n.walk();
@@ -1157,6 +1200,7 @@ impl<'a> Emitter<'a> {
         // `\documentclass`, so without this it would default to `Unknown` and a
         // nested `\only<3>{…}` inside an overlay would leak its `<3>` spec as text.
         sub.detected_class = self.detected_class.clone();
+        sub.beamer_has_section_slide = self.beamer_has_section_slide;
         // Content sub-emitted from inside a touying reveal (or a columns/block body)
         // is itself in an overlay context, so a further nested reveal must collapse
         // (it would otherwise emit a wrapper that touying can't nest).

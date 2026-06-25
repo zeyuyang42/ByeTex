@@ -559,6 +559,10 @@ impl<'a> Emitter<'a> {
         // and every `\begin{frame}` is flagged `unsupported_environment` and
         // dropped, instead of becoming a touying slide.
         sub.detected_class = self.detected_class.clone();
+        // Propagate the beamer section-slide flag so `\section`s in an `\input`-ed
+        // body (set from the parent's `\usetheme{metropolis}` / `\AtBeginSection`)
+        // render their divider slide instead of being tagged `<touying:hidden>`.
+        sub.beamer_has_section_slide = self.beamer_has_section_slide;
         sub.emit_root(tree.root_node());
         // Merge the child's body and state back into the parent.
         if !self.out.ends_with('\n') && !self.out.is_empty() {
