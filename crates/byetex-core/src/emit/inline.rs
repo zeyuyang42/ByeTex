@@ -374,6 +374,18 @@ impl<'a> Emitter<'a> {
     /// table, then a built-in xcolor name, then an inline `[model]{spec}`; an
     /// unresolvable colour falls back to plain content (never breaks compile).
     pub(in crate::emit) fn emit_textcolor(&mut self, node: Node<'_>) -> usize {
+        // `\color{name}` is the *switch* form (vs `\textcolor{name}{content}`):
+        // it has only the colour group and no content — the affected text is a
+        // sibling. ByeTex doesn't track the stateful colour change, so drop the
+        // switch; otherwise the lone `{name}` group below is mistaken for the
+        // content and the colour name (e.g. an unresolvable `bgcolorAlt!90!fgcolor`
+        // blend) leaks as body text.
+        let head = self.src.get(node.start_byte()..node.end_byte()).unwrap_or("");
+        if head.trim_start().starts_with("\\color")
+            && !head.trim_start().starts_with("\\colorbox")
+        {
+            return node.end_byte();
+        }
         // Content is the LAST `{…}` group; render via the AST for nested markup.
         let mut cursor = node.walk();
         let content_node = node
