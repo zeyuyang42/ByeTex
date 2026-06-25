@@ -3,6 +3,14 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.20] — unreleased
+
+### Fixed
+- `\begin{verbatim}…\end{verbatim}` is no longer dropped — its content rendered as a Typst
+  `#raw(block: true)` code block (indentation preserved), like `lstlisting`. tree-sitter parses
+  verbatim as its own node kind with the body in a `comment` child, which ByeTex did not handle,
+  so the body was lost and the delimiters leaked (visual grader, gh-klb2-beamer).
+
 ## [0.6.19] — unreleased
 
 ### Fixed

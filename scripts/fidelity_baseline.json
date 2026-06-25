@@ -500,11 +500,11 @@
     },
     "gh-bard-metropolis": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.826,
-      "page_ratio": 0.846,
+      "mean_ssim": 0.819,
+      "page_ratio": 0.808,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.863
+      "word_recall": 0.887
     },
     "gh-calpolycsc-thesis": {
       "heading_recall": null,
@@ -532,11 +532,11 @@
     },
     "gh-klb2-beamer": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.794,
+      "mean_ssim": 0.791,
       "page_ratio": 0.8,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.964
+      "word_recall": 0.971
     },
     "gh-maurovm-thesis-template": {
       "heading_recall": null,
@@ -552,7 +552,7 @@
       "page_ratio": 0.848,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.901
+      "word_recall": 0.923
     },
     "gh-pelegs-maths-book": {
       "heading_recall": null,

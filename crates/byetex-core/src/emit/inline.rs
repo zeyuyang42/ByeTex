@@ -262,6 +262,34 @@ impl<'a> Emitter<'a> {
         node.end_byte()
     }
 
+    /// Emit a `\begin{verbatim}…\end{verbatim}` environment as a `#raw` block.
+    /// tree-sitter-latex parses verbatim content as a `comment` child between the
+    /// `begin` and `end` nodes — extract the source between them verbatim
+    /// (preserving indentation; only the surrounding line breaks are trimmed).
+    pub(in crate::emit) fn emit_verbatim_environment(&mut self, node: Node<'_>) -> usize {
+        let mut cursor = node.walk();
+        let mut start = node.start_byte();
+        let mut end_pos = node.end_byte();
+        for c in node.children(&mut cursor) {
+            match c.kind() {
+                "begin" => start = c.end_byte(),
+                "end" => end_pos = c.start_byte(),
+                _ => {}
+            }
+        }
+        let code = self
+            .src
+            .get(start..end_pos)
+            .unwrap_or("")
+            .trim_matches('\n');
+        let escaped = code
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n");
+        let _ = write!(self.out, "\n#raw(\"{}\", block: true)\n", escaped);
+        node.end_byte()
+    }
+
     /// Emit just the body of `\textrm{X}` etc. — strips the command, keeps `X`.
     pub(in crate::emit) fn emit_inline_unwrap(&mut self, node: Node<'_>) -> usize {
         if let Some(arg) = first_curly_group(node) {
