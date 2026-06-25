@@ -1346,6 +1346,15 @@
       "license_url": "",
       "fetched_at": "2026-06-25T00:05:04Z",
       "truth_render_status": "ok"
+    },
+    {
+      "id": "beamer-demo",
+      "pinned": false,
+      "source": "local",
+      "doc_class": "beamer",
+      "doc_type": "beamer",
+      "title": "Hand-crafted beamer Madrid demo deck",
+      "truth_render_status": "ok"
     }
   ]
 }
