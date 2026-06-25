@@ -3,6 +3,16 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.32] — unreleased
+
+### Fixed
+- `\includegraphics[…]{` with the path on the FOLLOWING line (common when the options make the
+  line long) no longer drops the image. tree-sitter glues the newline between `{` and the filename
+  onto the path node (`path "\nimg/…"`), and ByeTex fed that untrimmed to the asset resolver, so
+  `base_dir.join("\nimg/…")` never matched and the existing figure was emitted as a `(missing)`
+  placeholder (2605.22507's appendix lost several MNIST grids). The extracted path is now trimmed.
+  Found by the visual grader on 2605.22507.
+
 ## [0.6.31] — unreleased
 
 ### Fixed

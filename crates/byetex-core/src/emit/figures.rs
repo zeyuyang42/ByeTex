@@ -1119,7 +1119,16 @@ fn extract_graphics_path(node: Node<'_>, src: &str) -> Option<String> {
             let mut sub = child.walk();
             for grandchild in child.children(&mut sub) {
                 if grandchild.kind() == "path" {
-                    return Some(src[grandchild.start_byte()..grandchild.end_byte()].to_string());
+                    // The `path` node glues on any whitespace/newline between `{`
+                    // and the filename when `\includegraphics[…]{` puts the path
+                    // on the next line — trim it, else the asset resolver looks
+                    // for a file named "\n img/…" and drops a real figure
+                    // (2605.22507 appendix lost several MNIST grids).
+                    return Some(
+                        src[grandchild.start_byte()..grandchild.end_byte()]
+                            .trim()
+                            .to_string(),
+                    );
                 }
             }
         }
