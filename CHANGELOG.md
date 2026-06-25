@@ -3,7 +3,28 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
-## [0.6.29] — unreleased
+## [0.6.29] — 2026-06-25
+
+A **beamer-fidelity release** (everything since v0.6.6), driven by a vision-based
+visual grader scoring each converted deck against its LaTeX **truth render**. The
+metropolis demo deck went from 11 pages with raw-LaTeX leaks and an orange theme to
+**15 pages — matching the truth exactly** — with the deck's real teal accent.
+Highlights:
+
+- **Beamer slide structure** — metropolis `\section`s now render their section-divider
+  slides, `\begin{frame}[standout]` becomes a touying `#focus-slide` (dark focus slide),
+  and a titleless `\begin{frame}` is its own slide instead of merging onto the previous one.
+- **Beamer theme colour** — a deck's accent set via `\setbeamercolor{alerted text}` (or
+  `structure`) now drives touying's `primary` (progress bar / section rule / `\alert`),
+  resolved even through an `\input`ed colour file.
+- **Raw-LaTeX leaks fixed** — `\usetheme[opts]{name}`, `\institute[short]{…}` + `\inst{N}`
+  markers, the `\color{name}` switch form, and nested `\texttt{\textit{…}}` no longer leak
+  source text onto slides; `\begin{verbatim}` renders as a `#raw` block instead of being
+  dropped; the beamer `\appendix` heading no longer shows a degenerate `-.1`.
+- **Corpus** — four presentation decks added (three metropolis + one Madrid/default theme),
+  each truth-rendered, measured, and gated in the fidelity baseline.
+
+
 
 ### Fixed
 - Beamer decks that set the accent via `\setbeamercolor{alerted text}{fg=…}` (the metropolis idiom)
@@ -15,7 +36,7 @@ Notable changes to ByeTex. Format loosely follows
   defined and used in the same included file resolves; and the captured colours flow back across the
   `\input` boundary. Visual grader, gh-klb2-beamer (teal accent rendered orange).
 
-## [0.6.28] — unreleased
+## [0.6.28] — 2026-06-25
 
 ### Fixed
 - A beamer `\begin{frame}` with NO title (no `{title}` argument and no `\frametitle`) is now its
@@ -24,7 +45,7 @@ Notable changes to ByeTex. Format loosely follows
   `#pagebreak(weak: true)` boundary — deck slide count now matches truth exactly (15). Visual grader
   (V9), gh-klb2-beamer.
 
-## [0.6.27] — unreleased
+## [0.6.27] — 2026-06-25
 
 ### Fixed
 - `\begin{frame}[standout]` (metropolis focus slide) now renders as touying's `#focus-slide[…]`
@@ -32,7 +53,7 @@ Notable changes to ByeTex. Format loosely follows
   neighbouring frame as ordinary text. The `[standout]` option (a `brack_group` child of the
   `begin` node) is detected and the body wrapped accordingly. Visual grader, gh-klb2-beamer.
 
-## [0.6.26] — unreleased
+## [0.6.26] — 2026-06-25
 
 ### Fixed
 - Metropolis beamer decks now render a section-divider slide at each `\section` (the theme
@@ -42,7 +63,7 @@ Notable changes to ByeTex. Format loosely follows
   the flag through `\input`. Lifted fidelity across the metropolis decks (page_ratio 0.80→0.87 /
   0.85→0.97 / 0.81→0.96; recall up). Visual grader, gh-klb2-beamer.
 
-## [0.6.25] — unreleased
+## [0.6.25] — 2026-06-25
 
 ### Fixed
 - Beamer `\appendix` no longer prefixes the backup-slide frame title with a degenerate `-.1`.
@@ -51,7 +72,7 @@ Notable changes to ByeTex. Format loosely follows
   slides (appendixnumberbeamer changes the slide number, not heading numbers) — frame titles stay
   unnumbered, so the numbering reset is now skipped for beamer. Visual grader, gh-klb2-beamer.
 
-## [0.6.24] — unreleased
+## [0.6.24] — 2026-06-25
 
 ### Fixed
 - `\texttt{\textit{X}}` / `\texttt{\textbf{X}}` no longer render the nested font switch as a
@@ -60,7 +81,7 @@ Notable changes to ByeTex. Format loosely follows
   applied: `#text(style/weight)[#raw("X")]` (monospace italic/bold). Plain `\texttt{X}` is
   unchanged. Visual grader, gh-klb2-beamer font-feature slide.
 
-## [0.6.23] — unreleased
+## [0.6.23] — 2026-06-25
 
 ### Fixed
 - Beamer `\inst{N}` affiliation markers no longer leak literal `{`/`}` braces into the title
@@ -69,7 +90,7 @@ Notable changes to ByeTex. Format loosely follows
   was nested inside the captured `\institute{… \\ …}` — splitting mid-braces orphaned the
   brace. The `\\` split is now brace-aware (top-level only). Visual grader re-grade, gh-klb2-beamer.
 
-## [0.6.22] — unreleased
+## [0.6.22] — 2026-06-25
 
 ### Fixed
 - `\institute[short]{content}` (beamer title slide, with the optional `[short]`) no longer leaks
@@ -78,7 +99,7 @@ Notable changes to ByeTex. Format loosely follows
   now byte-scanned past the optional arg, captured into the title block, and consumed. Visual grader,
   gh-klb2-beamer.
 
-## [0.6.21] — unreleased
+## [0.6.21] — 2026-06-25
 
 ### Fixed
 - The `\color{name}` *switch* form (vs `\textcolor{name}{content}`) no longer leaks the colour
@@ -87,7 +108,7 @@ Notable changes to ByeTex. Format loosely follows
   as text. The switch is now dropped (the affected text, a sibling, still renders). Visual grader,
   gh-klb2-beamer `\seprule`.
 
-## [0.6.20] — unreleased
+## [0.6.20] — 2026-06-25
 
 ### Fixed
 - `\begin{verbatim}…\end{verbatim}` is no longer dropped — its content rendered as a Typst
@@ -95,7 +116,7 @@ Notable changes to ByeTex. Format loosely follows
   verbatim as its own node kind with the body in a `comment` child, which ByeTex did not handle,
   so the body was lost and the delimiters leaked (visual grader, gh-klb2-beamer).
 
-## [0.6.19] — unreleased
+## [0.6.19] — 2026-06-25
 
 ### Fixed
 - Beamer theme commands with options — `\usetheme[progressbar=frametitle]{metropolis}` and
@@ -104,14 +125,14 @@ Notable changes to ByeTex. Format loosely follows
   so the `[opts]`/`{name}` landed as following siblings the drop did not cover; now consumed.
   Found by the visual grader on gh-klb2-beamer.
 
-## [0.6.18] — unreleased
+## [0.6.18] — 2026-06-25
 
 ### Changed
 - `\metroset{...}` (the beamer `metropolis` theme config command) is now dropped silently
   instead of warning `unsupported_command` — it is presentation-only styling with no
   document output. (Also adds two more metropolis decks to the test corpus.)
 
-## [0.6.17] — unreleased
+## [0.6.17] — 2026-06-25
 
 ### Fixed
 - Beamer `columns` using the `\column{width}` **command** form (vs nested `column`
@@ -120,7 +141,7 @@ Notable changes to ByeTex. Format loosely follows
   `\column` markers are scattered across tree-sitter `text` nodes, so the environment body
   is byte-scanned (corpus gh-klb2-beamer: 5 leaked `\column` → 0, 2 column grids).
 
-## [0.6.16] — unreleased
+## [0.6.16] — 2026-06-25
 
 ### Added
 - `\DeclarePairedDelimiter{\name}{L}{R}` (mathtools) is now supported: `\name` is registered
@@ -128,7 +149,7 @@ Notable changes to ByeTex. Format loosely follows
   instead of leaking the bare name and dropping the argument. Handles both the braced
   (`{\name}`) and unbraced (`\name`) declaration forms (3 corpus papers).
 
-## [0.6.15] — unreleased
+## [0.6.15] — 2026-06-25
 
 ### Fixed
 - Beamer decks that split their `frame`s across `\input`ed files (the common multi-file deck
@@ -138,7 +159,7 @@ Notable changes to ByeTex. Format loosely follows
   and dropped. The sub-emitter now inherits `detected_class` (gh-klb2-beamer: 12 dropped
   frames → 0; 10 → 26 rendered pages).
 
-## [0.6.14] — unreleased
+## [0.6.14] — 2026-06-25
 
 ### Fixed
 - `\operatorname{\mathrm{argmin}}` (and `\text{…}`/`\mbox{…}` wrappers) no longer render the
@@ -146,7 +167,7 @@ Notable changes to ByeTex. Format loosely follows
   previously quoted verbatim — is now unwrapped to `op("argmin")`. Common via
   `\DeclareMathOperator*{\argmin}{\mathrm{argmin}}` (5 corpus papers; K1 follow-up).
 
-## [0.6.13] — unreleased
+## [0.6.13] — 2026-06-25
 
 ### Fixed
 - The starred `\operatorname*{X}` (limits-above form, e.g. `\operatorname*{argmin}_x`) now
@@ -155,7 +176,7 @@ Notable changes to ByeTex. Format loosely follows
   `\operatorname` dispatch missed it; the plain `\operatorname{X}` → `op("X")` was already
   correct (dogfood backlog K1; 5 corpus papers affected).
 
-## [0.6.12] — unreleased
+## [0.6.12] — 2026-06-25
 
 ### Changed
 - `byetex-tables-layout` skill: rewrote the stale two-column guidance. It told agents the
@@ -165,7 +186,7 @@ Notable changes to ByeTex. Format loosely follows
   syntax, and notes that NeurIPS/ICML/ICLR are single-column (so a single-column render is
   correct) — fixing a repeated agent misdiagnosis.
 
-## [0.6.11] — unreleased
+## [0.6.11] — 2026-06-25
 
 ### Fixed
 - A "wrapper" `\newcommand` that defines another `\newcommand`
@@ -177,7 +198,7 @@ Notable changes to ByeTex. Format loosely follows
   brace-matched true end of the body (dogfood backlog H3 colour residue, 2605.22821: 8
   leaked lines → 0).
 
-## [0.6.10] — unreleased
+## [0.6.10] — 2026-06-25
 
 ### Fixed
 - expl3 helper macros no longer leak their internals into the body. A command
@@ -187,7 +208,7 @@ Notable changes to ByeTex. Format loosely follows
   internals into the document as garbage text. Such a macro produces no document output, so
   the call (and its arguments) is now dropped with a warning (dogfood backlog H3, 2605.22821).
 
-## [0.6.9] — unreleased
+## [0.6.9] — 2026-06-25
 
 ### Fixed
 - A `\newcommand` body where a control word is immediately followed by a parameter
@@ -198,7 +219,7 @@ Notable changes to ByeTex. Format loosely follows
   control word precedes a letter-starting argument. (2605.22821: 8 garbage `langle*`
   tokens → 0; also the root cause of the garbled `ambiguous_math` snippets.)
 
-## [0.6.8] — unreleased
+## [0.6.8] — 2026-06-25
 
 ### Fixed
 - `\llbracket`/`\rrbracket` (stmaryrd double square brackets ⟦ ⟧) now emit Typst's modern
@@ -208,7 +229,7 @@ Notable changes to ByeTex. Format loosely follows
   audit of all 366 emitted math symbols against the Typst 0.14.2 compiler now shows zero
   deprecations.
 
-## [0.6.7] — unreleased
+## [0.6.7] — 2026-06-25
 
 ### Fixed
 - Math circled operators now emit Typst's modern `.o` modifier instead of the deprecated
