@@ -3,6 +3,15 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.21] — unreleased
+
+### Fixed
+- The `\color{name}` *switch* form (vs `\textcolor{name}{content}`) no longer leaks the colour
+  name as body text. It has only the colour group and no content, but `emit_textcolor` took the lone
+  `{name}` as the content — emitting `red`, or an unresolvable xcolor blend like `bgcolorAlt!90!fgcolor`,
+  as text. The switch is now dropped (the affected text, a sibling, still renders). Visual grader,
+  gh-klb2-beamer `\seprule`.
+
 ## [0.6.20] — unreleased
 
 ### Fixed
