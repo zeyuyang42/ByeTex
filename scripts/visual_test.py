@@ -1324,17 +1324,24 @@ def process_paper(
         print(f"  [error] {e}", file=sys.stderr)
         return summary
 
+    # Whether a truth PDF is available to compare against. Set False when the
+    # tectonic render fails (common for books/theses/reports whose class
+    # packages tectonic can't fetch) — we then still render the byetex side and
+    # build a byetex-only composite so the conversion stays inspectable.
+    truth_available = True
     if truth_source == "tectonic":
         print(f"  rendering truth PDF with tectonic ...", flush=True)
         if not render_reference_tectonic(toplevel, truth_dest):
             summary["status"] = "truth_render_failed"
             summary["truth_render_error"] = truth_render.LAST_TRUTH_RENDER_ERROR
             print(f"  [warn] tectonic render failed: {truth_render.LAST_TRUTH_RENDER_ERROR}\n"
-                  "         (run scripts/setup_truth_deps.sh to provision biber + fonts)",
+                  "         (run scripts/setup_truth_deps.sh to provision biber + fonts)\n"
+                  "         → rendering byetex-only composite for inspection",
                   file=sys.stderr)
-            return summary
-        summary["truth_source"] = "tectonic"
-        print(f"  truth PDF: rendered locally ({truth_dest.stat().st_size // 1024} KB)", flush=True)
+            truth_available = False
+        else:
+            summary["truth_source"] = "tectonic"
+            print(f"  truth PDF: rendered locally ({truth_dest.stat().st_size // 1024} KB)", flush=True)
     elif truth_dest.exists() and truth_dest.stat().st_size > 10_000:
         # Already downloaded in a previous run — reuse.
         summary["truth_source"] = "cached"
@@ -1378,9 +1385,13 @@ def process_paper(
         return summary
     summary["typst_ok"] = True
 
-    # 5. Rasterize both PDFs
+    # 5. Rasterize both PDFs (truth only when it rendered)
     print(f"  rasterizing ...", flush=True)
-    truth_pages = rasterize_pdf(truth_dest, pages_dir / "truth", args.rasterize_dpi)
+    truth_pages = (
+        rasterize_pdf(truth_dest, pages_dir / "truth", args.rasterize_dpi)
+        if truth_available
+        else []
+    )
     typst_pages = rasterize_pdf(typst_pdf, pages_dir / "typst", args.rasterize_dpi)
     summary["truth_pages"] = len(truth_pages)
     summary["typst_pages"] = len(typst_pages)
@@ -1391,7 +1402,7 @@ def process_paper(
     # whether the truth and typst PDFs actually share their main
     # content. A passing typst compile + similar page count is no
     # longer enough; we need the body text to overlap with the truth.
-    if not args.no_structure_check:
+    if not args.no_structure_check and truth_available:
         structure = pdf_structure_compare(
             truth_dest,
             typst_pdf,
@@ -1473,8 +1484,11 @@ def process_paper(
     # pointing at every piece of evidence with the metrics inlined. A crop
     # failure must not abort the paper — the full page rasters remain.
     fm: dict = {}
+    sides = [("typst", typst_pdf)]
+    if truth_available:
+        sides.insert(0, ("truth", truth_dest))
     try:
-        for side, pdf in (("truth", truth_dest), ("typst", typst_pdf)):
+        for side, pdf in sides:
             p1 = rasterize_page1_highres(
                 pdf, pages_dir / f"{side}-fm", args.front_matter_dpi
             )
