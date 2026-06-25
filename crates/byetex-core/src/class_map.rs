@@ -451,8 +451,11 @@ fn parse_generic_block(s: &str) -> Vec<Author> {
             .collect();
     }
 
-    // Pattern 2: comma-separated names followed by shared `\\` lines.
-    if let Some((head, tail)) = normalised.split_once("\\\\") {
+    // Pattern 2: comma-separated names followed by shared `\\` lines. Split on
+    // the first *top-level* `\\` only — a `\\` nested inside `{...}` (e.g. a
+    // multi-line `\institute{… \\ …}` appended to the author buffer) is not a
+    // name/affiliation separator, and splitting there orphans the brace.
+    if let Some((head, tail)) = split_once_top_level_dbslash(&normalised) {
         let (shared_affil, shared_email) = parse_shared_lines(tail);
         let names = split_top_level_commas_owned(head.trim());
         let attach = |mut a: Author| -> Author {
@@ -487,6 +490,36 @@ fn parse_generic_block(s: &str) -> Vec<Author> {
 
     // Single author.
     vec![parse_one_author(normalised.trim())]
+}
+
+/// Split once on the first top-level `\\` (LaTeX line break) — a `\\` nested
+/// inside `{...}` is skipped, so `\institute{a \\ b}` is not split mid-braces.
+/// Other escapes (`\{`, `\&`) are stepped over so they don't perturb the depth.
+fn split_once_top_level_dbslash(s: &str) -> Option<(&str, &str)> {
+    let b = s.as_bytes();
+    let mut depth = 0i32;
+    let mut i = 0;
+    while i < b.len() {
+        match b[i] {
+            b'{' => {
+                depth += 1;
+                i += 1;
+            }
+            b'}' => {
+                depth -= 1;
+                i += 1;
+            }
+            b'\\' if b.get(i + 1) == Some(&b'\\') => {
+                if depth <= 0 {
+                    return Some((&s[..i], &s[i + 2..]));
+                }
+                i += 2; // line break nested inside braces — not a separator
+            }
+            b'\\' => i += 2, // other escape (`\{`, `\&`, …) — step over both bytes
+            _ => i += 1,
+        }
+    }
+    None
 }
 
 /// Split on top-level commas — commas inside `{...}` are NOT separators.
@@ -1147,8 +1180,13 @@ fn strip_unknown_author_cmds(s: &str) -> String {
 /// - Display wrappers stripped: `\textbf{X}` → `X` (via strip_textit).
 /// - Affiliation ref markers stripped: `\textsuperscript{N}` (via strip_textsuperscript).
 fn latex_text_to_typst(s: &str) -> String {
+    // beamer's `\inst{N}` affiliation marker behaves like `\textsuperscript{N}`
+    // (a ref number). Normalize it so the strip below removes it rather than
+    // leaking the literal `{N}` braces into the author/affiliation text.
+    // (`\inst{` can't match `\institute{` — that has `itute` before the brace.)
+    let s = s.replace("\\inst{", "\\textsuperscript{");
     // Strip display-only wrappers first.
-    let s = strip_textsuperscript(&strip_textit(s));
+    let s = strip_textsuperscript(&strip_textit(&s));
     raw_latex_accents_to_unicode(&s)
 }
 
