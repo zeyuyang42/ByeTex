@@ -3062,6 +3062,7 @@ impl<'a> Emitter<'a> {
             | Some("\\setbeamerfont")
             | Some("\\setbeamercolor")
             | Some("\\setbeamercovered")
+            | Some("\\metroset")
             | Some("\\AtBeginSection")
             | Some("\\AtBeginSubsection")
             | Some("\\titlegraphic") => {

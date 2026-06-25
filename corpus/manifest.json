@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "generated_at": "2026-06-24T21:40:22Z",
+  "generated_at": "2026-06-25T00:05:04Z",
   "papers": [
     {
       "id": "2605.22821",
@@ -1306,7 +1306,45 @@
       "archive_bytes": 0,
       "needs_manual_download": false,
       "license_url": "",
-      "fetched_at": "2026-06-24T21:40:22Z",
+      "fetched_at": "2026-06-24T22:08:55Z",
+      "truth_render_status": "ok"
+    },
+    {
+      "id": "gh-mtheme-demo",
+      "pinned": false,
+      "source": "github",
+      "doc_class": "beamer",
+      "doc_type": "beamer",
+      "title": "mtheme metropolis demo",
+      "repo_url": "https://github.com/matze/mtheme",
+      "repo_ref": "2fa6084b9d34fec9d2d5470eb9a17d0bf712b6c8",
+      "homepage": "",
+      "download_url": "",
+      "archive_filename": "",
+      "archive_sha256": "",
+      "archive_bytes": 0,
+      "needs_manual_download": false,
+      "license_url": "",
+      "fetched_at": "2026-06-25T00:04:47Z",
+      "truth_render_status": "ok"
+    },
+    {
+      "id": "gh-bard-metropolis",
+      "pinned": false,
+      "source": "github",
+      "doc_class": "beamer",
+      "doc_type": "beamer",
+      "title": "bardsoftware metropolis template",
+      "repo_url": "https://github.com/bardsoftware/template-beamer-metropolis",
+      "repo_ref": "ce8c3d122a0613b88d5973eae9a2f0544ad9083c",
+      "homepage": "",
+      "download_url": "",
+      "archive_filename": "",
+      "archive_sha256": "",
+      "archive_bytes": 0,
+      "needs_manual_download": false,
+      "license_url": "",
+      "fetched_at": "2026-06-25T00:05:04Z",
       "truth_render_status": "ok"
     }
   ]

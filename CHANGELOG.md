@@ -3,6 +3,13 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.18] — unreleased
+
+### Changed
+- `\metroset{...}` (the beamer `metropolis` theme config command) is now dropped silently
+  instead of warning `unsupported_command` — it is presentation-only styling with no
+  document output. (Also adds two more metropolis decks to the test corpus.)
+
 ## [0.6.17] — unreleased
 
 ### Fixed
