@@ -3,6 +3,15 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.22] — unreleased
+
+### Fixed
+- `\institute[short]{content}` (beamer title slide, with the optional `[short]`) no longer leaks
+  the affiliation into the body. The optional `[…]` makes tree-sitter parse `\institute` as a bare
+  command with the `[short]`/`{content}` as siblings, so the child lookup missed the content; it is
+  now byte-scanned past the optional arg, captured into the title block, and consumed. Visual grader,
+  gh-klb2-beamer.
+
 ## [0.6.21] — unreleased
 
 ### Fixed

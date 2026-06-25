@@ -3260,6 +3260,63 @@ impl<'a> Emitter<'a> {
                 node.end_byte()
             }
             // Per-author sibling-scope attribution (elsearticle / authblk pattern).
+            // `\institute[short]{content}` — beamer's optional `[short]` makes
+            // tree-sitter parse `\institute` as a bare command, with the
+            // `[short]` and `{content}` as following SIBLINGS, so a child lookup
+            // (`first_curly_like`) misses the content and it leaks into the body.
+            // Byte-scan past the optional `[…]` to the `{content}` group, capture
+            // it (like the plain `\institute{…}` form), and consume it.
+            Some("\\institute") => {
+                let (inner, end) = match first_curly_like(node) {
+                    Some(arg) => (
+                        self.src
+                            .get(arg.start_byte() + 1..arg.end_byte().saturating_sub(1))
+                            .unwrap_or("")
+                            .to_string(),
+                        node.end_byte(),
+                    ),
+                    None => {
+                        let bytes = self.src.as_bytes();
+                        let mut i = node.end_byte();
+                        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                            i += 1;
+                        }
+                        if bytes.get(i) == Some(&b'[') {
+                            if let Some(off) = self.src.get(i..).and_then(|s| s.find(']')) {
+                                i += off + 1;
+                            }
+                        }
+                        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                            i += 1;
+                        }
+                        if bytes.get(i) == Some(&b'{') {
+                            match brace_balanced_end(bytes, i) {
+                                Some(e) => (
+                                    self.src.get(i + 1..e - 1).unwrap_or("").to_string(),
+                                    e,
+                                ),
+                                None => (String::new(), node.end_byte()),
+                            }
+                        } else {
+                            (String::new(), node.end_byte())
+                        }
+                    }
+                };
+                if !inner.is_empty() {
+                    if let Some(last) = self.raw_authors.last_mut() {
+                        last.push_str(" \\institute{");
+                        last.push_str(&inner);
+                        last.push('}');
+                    } else {
+                        self.metadata
+                            .class_metadata
+                            .entry("institute".to_string())
+                            .or_insert_with(|| inner.clone());
+                    }
+                }
+                self.skip_until = self.skip_until.max(end);
+                return end;
+            }
             // Commands like `\author{Alice}\email{a@x} \author{Bob}\email{b@y}`
             // place per-author fields as siblings of `\author{}` rather than
             // nested inside it. Append them as raw LaTeX to the most recently
@@ -3272,8 +3329,7 @@ impl<'a> Emitter<'a> {
             | Some("\\affiliation")
             | Some("\\affil")
             | Some("\\address")
-            | Some("\\institution")
-            | Some("\\institute") => {
+            | Some("\\institution") => {
                 if !self.raw_authors.is_empty() {
                     if let Some(arg) = first_curly_like(node) {
                         let cmd = command_name_text(node, self.src).unwrap_or_default();
