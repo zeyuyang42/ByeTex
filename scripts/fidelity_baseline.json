@@ -532,8 +532,8 @@
     },
     "gh-klb2-beamer": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.803,
-      "page_ratio": 0.867,
+      "mean_ssim": 0.784,
+      "page_ratio": 1.0,
       "status": "ok",
       "structure_ok": true,
       "word_recall": 0.986
@@ -548,8 +548,8 @@
     },
     "gh-mtheme-demo": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.791,
-      "page_ratio": 0.97,
+      "mean_ssim": 0.779,
+      "page_ratio": 1.0,
       "status": "ok",
       "structure_ok": true,
       "word_recall": 0.93

@@ -599,6 +599,22 @@ impl<'a> Emitter<'a> {
         // `\bibliography` (at document end) picks the right style. Parent wins
         // if it already set a mode.
         self.natbib_mode = self.natbib_mode.or(sub.natbib_mode);
+        // Beamer theme colors are often set in an `\input`ed preamble file
+        // (e.g. `\input{setup-colors}` → `\setbeamercolor{alerted text}{fg=…}`),
+        // but the parent builds the touying preamble — flow them back so the
+        // accent/structure colour reaches `config-colors`. Parent wins.
+        self.beamer_frametitle_color = self
+            .beamer_frametitle_color
+            .take()
+            .or_else(|| sub.beamer_frametitle_color.take());
+        self.beamer_structure_color = self
+            .beamer_structure_color
+            .take()
+            .or_else(|| sub.beamer_structure_color.take());
+        self.beamer_alert_color = self
+            .beamer_alert_color
+            .take()
+            .or_else(|| sub.beamer_alert_color.take());
         // Take the (possibly extended) visited set back so siblings see
         // the chain. Drop the canonical insert that belonged to *this*
         // include so a sibling `\input{x}` after the current one is still
