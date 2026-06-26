@@ -185,6 +185,16 @@ impl<'a> Emitter<'a> {
         self.cover_emitted = true;
     }
 
+    /// `#` for a standalone image (so Typst runs the `image()` call), or `""`
+    /// inside a float body where the enclosing `#figure(...)` supplies the sigil.
+    fn graphics_sigil(&self) -> &'static str {
+        if self.emitting_float_body {
+            ""
+        } else {
+            "#"
+        }
+    }
+
     pub(in crate::emit) fn emit_graphics_include(&mut self, node: Node<'_>) -> usize {
         let path = extract_graphics_path(node, self.src).unwrap_or_default();
         // Typst supports PNG/JPG/GIF/SVG and PDF (>=0.10), but NOT EPS or
@@ -213,7 +223,8 @@ impl<'a> Emitter<'a> {
             });
             let _ = write!(
                 self.out,
-                "rect(width: 60%, height: 4em, stroke: 0.5pt, fill: luma(240))[#align(center + horizon)[`{}`]]",
+                "{}rect(width: 60%, height: 4em, stroke: 0.5pt, fill: luma(240))[#align(center + horizon)[`{}`]]",
+                self.graphics_sigil(),
                 path
             );
             return node.end_byte();
@@ -332,7 +343,7 @@ impl<'a> Emitter<'a> {
                 }
             }
         }
-        let _ = write!(self.out, "image({})", args);
+        let _ = write!(self.out, "{}image({})", self.graphics_sigil(), args);
         node.end_byte()
     }
 
@@ -400,7 +411,10 @@ impl<'a> Emitter<'a> {
                 .iter()
                 .map(|g| {
                     self.with_sub_buffer(|e| {
+                        let sfb = e.emitting_float_body;
+                        e.emitting_float_body = true;
                         e.emit_graphics_include(*g);
+                        e.emitting_float_body = sfb;
                     })
                     .trim()
                     .to_string()
@@ -790,7 +804,10 @@ impl<'a> Emitter<'a> {
             panel
         } else if let Some(g) = graphics {
             self.with_sub_buffer(|emitter| {
+                let sfb = emitter.emitting_float_body;
+                emitter.emitting_float_body = true;
                 emitter.emit_graphics_include(g);
+                emitter.emitting_float_body = sfb;
             })
         } else if let Some(t) = nested_tabular {
             // `\begin{table}` wrapping a `tabular` (common IEEE pattern).
@@ -1110,7 +1127,10 @@ impl<'a> Emitter<'a> {
         let (body, is_table) = if let Some(g) = graphics {
             (
                 self.with_sub_buffer(|e| {
+                    let sfb = e.emitting_float_body;
+                    e.emitting_float_body = true;
                     e.emit_graphics_include(g);
+                    e.emitting_float_body = sfb;
                 }),
                 false,
             )

@@ -467,6 +467,10 @@ pub(crate) struct Emitter<'a> {
     /// `enumerate` indents its markers by two spaces per level so Typst keeps the
     /// hierarchy instead of flattening it.
     list_depth: usize,
+    /// True while rendering a float's body (the `#figure(...)` wrapper supplies
+    /// the `#`). A standalone `\includegraphics` (in body text or a `center`
+    /// block) otherwise emits a bare `image(...)` that Typst drops as a string.
+    emitting_float_body: bool,
     /// True while emitting the CONTENT of a touying reveal (`\only`/`\uncover`/…).
     /// A reveal nested inside another reveal panics ("Unsupported mark
     /// `touying-fn-wrapper`"), so an inner beamer `\only<…>`/`\uncover<…>` is
@@ -734,6 +738,7 @@ impl<'a> Emitter<'a> {
             in_minipage: false,
             in_table_cell: false,
             list_depth: 0,
+            emitting_float_body: false,
             in_overlay_context: false,
             used_text_label_anchor: false,
             used_subpar: false,
