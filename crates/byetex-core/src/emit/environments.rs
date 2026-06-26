@@ -770,7 +770,9 @@ impl<'a> Emitter<'a> {
         env.end_byte()
     }
 
-    /// `\begin{proof}...\end{proof}` → `*Proof.* body` as a paragraph block.
+    /// `\begin{proof}...\end{proof}` → `*Proof.* body □` as a paragraph block,
+    /// with a flush-right QED tombstone (amsthm ends every proof with `□`). An
+    /// optional `\begin{proof}[Proof of Theorem 1]` replaces the "Proof" label.
     pub(in crate::emit) fn emit_proof_env(&mut self, env: Node<'_>) -> usize {
         let mut cursor = env.walk();
         let body: Vec<Node<'_>> = env
@@ -791,8 +793,17 @@ impl<'a> Emitter<'a> {
                 emitter.safe_copy(last, end);
             })
         };
+        // Optional `[name]` overrides the "Proof" label (amsthm's `\proofname`
+        // mechanism — e.g. "Proof of Theorem 1."). Reuse the theorem note
+        // extractor, which reads the bracket span from source and renders it.
+        let title = theorem_note(env, self.src)
+            .map(|n| self.render_in_sub_emitter(&n, false, true).trim().to_string())
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| "Proof".to_string());
         self.ensure_paragraph_break();
-        let _ = write!(self.out, "*Proof.* {}", inner.trim());
+        // `#h(1fr)` pushes the open-square tombstone to the right margin of the
+        // final proof line.
+        let _ = write!(self.out, "*{}.* {} #h(1fr) $square$", title, inner.trim());
         env.end_byte()
     }
 

@@ -3,6 +3,14 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.35] — unreleased
+
+### Fixed
+- `\begin{proof}` now ends with a flush-right QED tombstone (`□`) like amsthm, and honors an
+  optional `\begin{proof}[Proof of Theorem 1]` argument as the proof title instead of dropping it
+  (was always `*Proof.*` with no tombstone). Found by the visual grader on 2605.22159 (15+ proofs,
+  every one missing the `□`).
+
 ## [0.6.34] — unreleased
 
 ### Fixed
