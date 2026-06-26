@@ -3,7 +3,7 @@
 //! LaTeX two-column documents (the `twocolumn` class option, or conference
 //! classes like IEEEtran / acmart sigconf / ICML / ACL) render a full-width
 //! title over a two-column body. We mirror that with a PAGE-level
-//! `#set page(..., columns: 2)` and a full-width spanning title float
+//! `#set page(..., columns: 2,` and a full-width spanning title float
 //! (`#place(top + center, scope: "parent", float: true)[...]`). This replaced
 //! the old `#columns(2)[body]` content-block wrap, which blew up on figure-heavy
 //! docs (corpus 2605.31586: 81 pages). Single-column documents are unchanged.
@@ -18,7 +18,7 @@ fn pos(hay: &str, needle: &str) -> usize {
     hay.find(needle).unwrap_or(usize::MAX)
 }
 
-const PAGE_2COL: &str = ", columns: 2)";
+const PAGE_2COL: &str = ", columns: 2,";
 const SPAN_TITLE: &str = "#place(top + center, scope: \"parent\", float: true)[";
 
 #[test]

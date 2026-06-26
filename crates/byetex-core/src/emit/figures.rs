@@ -161,7 +161,8 @@ impl<'a> Emitter<'a> {
         // present it fills the page; the banner sits in a dark block placed
         // near the top via a `#place`. Without the image the banner alone
         // renders on the page.
-        self.out.push_str("#page(margin: 0pt)[\n");
+        // `numbering: none` — a cover page carries no page number.
+        self.out.push_str("#page(margin: 0pt, numbering: none)[\n");
         if let Some(path) = &image_path {
             let _ = write!(
                 self.out,

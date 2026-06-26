@@ -116,7 +116,7 @@ fn m2_misc_full_article() {
     // `\usepackage{inputenc}` is silently dropped (known-noop allowlist).
     insta::assert_snapshot!(run("m2_misc/full_article.tex"), @r#"
     ==== TYPST ====
-    #set page(paper: "us-letter", margin: (x: 1in, y: 1in))
+    #set page(paper: "us-letter", margin: (x: 1in, y: 1in), numbering: "1")
     #set text(font: "New Computer Modern", size: 10pt)
     #set par(justify: true, leading: 0.65em, spacing: 0.65em, first-line-indent: 1.2em)
     #show heading.where(level: 1): set text(size: 1.44em, weight: "bold")

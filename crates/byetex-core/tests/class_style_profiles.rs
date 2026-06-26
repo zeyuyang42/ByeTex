@@ -219,7 +219,7 @@ fn article_abstract_is_small_wrapped_centered_bold() {
 fn neurips_abstract_is_fullwidth_large_bold() {
     let t = typ(include_str!("../../../tests/fixtures/classes/neurips.tex"));
     assert!(
-        !t.contains(", columns: 2)"),
+        !t.contains(", columns: 2,"),
         "neurips is single-column — no page columns; got:\n{t}"
     );
     assert!(
@@ -241,7 +241,7 @@ fn iclr_abstract_is_large_smallcaps() {
 fn icml_abstract_is_inside_columns() {
     let t = typ(include_str!("../../../tests/fixtures/classes/icml.tex"));
     assert!(
-        t.contains(", columns: 2)"),
+        t.contains(", columns: 2,"),
         "icml is two-column (page columns); got:\n{t}"
     );
     let span = pos(&t, "#place(top + center, scope: \"parent\", float: true)[");
@@ -258,7 +258,7 @@ fn ieee_abstract_run_in_inside_columns_and_deferred_keywords() {
         "../../../tests/fixtures/classes/ieee_conference.tex"
     ));
     assert!(
-        t.contains(", columns: 2)"),
+        t.contains(", columns: 2,"),
         "IEEE is two-column (page columns); got:\n{t}"
     );
     let span = pos(&t, "#place(top + center, scope: \"parent\", float: true)[");
@@ -283,7 +283,7 @@ fn acmart_abstract_is_inside_columns() {
         "../../../tests/fixtures/classes/acmart_sigconf.tex"
     ));
     assert!(
-        t.contains(", columns: 2)"),
+        t.contains(", columns: 2,"),
         "acmart sigconf is two-column (page columns); got:\n{t}"
     );
     let span = pos(&t, "#place(top + center, scope: \"parent\", float: true)[");
@@ -298,7 +298,7 @@ fn acmart_abstract_is_inside_columns() {
 fn llncs_abstract_is_fullwidth_run_in_bold() {
     let t = typ(include_str!("../../../tests/fixtures/classes/llncs.tex"));
     assert!(
-        !t.contains(", columns: 2)"),
+        !t.contains(", columns: 2,"),
         "llncs is single-column; got:\n{t}"
     );
     assert!(
