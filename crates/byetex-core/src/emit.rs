@@ -553,6 +553,92 @@ pub(in crate::emit) fn sanitize_theorem_kind(name: &str) -> String {
     }
 }
 
+/// Render a siunitx unit argument (e.g. `\meter\per\second`) to a symbol string
+/// (`m/s`). Each `\macro` maps to its unit/prefix symbol; `\per` → `/`,
+/// `\squared`/`\cubed` → superscripts. Unknown macros fall back to their raw
+/// name so content is never silently lost.
+fn render_si_unit(src: &str) -> String {
+    let mut out = String::new();
+    for tok in src.split('\\') {
+        let name: String = tok.trim().chars().take_while(|c| c.is_ascii_alphabetic()).collect();
+        match name.as_str() {
+            "" => {}
+            "per" => out.push('/'),
+            "squared" => out.push('²'),
+            "cubed" => out.push('³'),
+            other => match si_unit_symbol(other) {
+                Some(sym) => out.push_str(sym),
+                None => out.push_str(other),
+            },
+        }
+    }
+    out
+}
+
+/// Map a siunitx unit or prefix macro name (no backslash) to its symbol.
+fn si_unit_symbol(name: &str) -> Option<&'static str> {
+    Some(match name {
+        // Base & derived units
+        "meter" | "metre" => "m",
+        "second" => "s",
+        "gram" => "g",
+        "kilogram" | "kg" => "kg",
+        "mole" => "mol",
+        "ampere" => "A",
+        "kelvin" => "K",
+        "candela" => "cd",
+        "ohm" => "Ω",
+        "volt" => "V",
+        "watt" => "W",
+        "joule" => "J",
+        "newton" => "N",
+        "pascal" => "Pa",
+        "hertz" => "Hz",
+        "tesla" => "T",
+        "weber" => "Wb",
+        "henry" => "H",
+        "farad" => "F",
+        "coulomb" => "C",
+        "siemens" => "S",
+        "radian" => "rad",
+        "steradian" => "sr",
+        "lumen" => "lm",
+        "lux" => "lx",
+        "becquerel" => "Bq",
+        "gray" => "Gy",
+        "sievert" => "Sv",
+        "liter" | "litre" => "L",
+        "bar" => "bar",
+        "electronvolt" => "eV",
+        "byte" => "B",
+        "bit" => "bit",
+        "celsius" | "degreeCelsius" => "°C",
+        "percent" => "%",
+        "degree" => "°",
+        "minute" => "min",
+        "hour" => "h",
+        "day" => "d",
+        "angstrom" => "Å",
+        // SI prefixes
+        "kilo" => "k",
+        "milli" => "m",
+        "micro" => "µ",
+        "nano" => "n",
+        "pico" => "p",
+        "femto" => "f",
+        "atto" => "a",
+        "mega" => "M",
+        "giga" => "G",
+        "tera" => "T",
+        "peta" => "P",
+        "centi" => "c",
+        "deci" => "d",
+        "deca" => "da",
+        "hecto" => "h",
+        _ => return None,
+    })
+}
+
 impl<'a> Emitter<'a> {
     // ─── Construction & lifecycle ──────────────────────────────────────────────
 
@@ -2565,6 +2651,52 @@ impl<'a> Emitter<'a> {
             Some("\\underline") => self.emit_inline_wrap(node, "#underline[", "]"),
             // Small caps
             Some("\\textsc") => self.emit_inline_wrap(node, "#smallcaps[", "]"),
+            // siunitx physical quantities — without this the value AND unit were
+            // dropped entirely. `\si` renders the unit, `\SI`/`\qty` prepend the
+            // value, `\ang` appends a degree sign.
+            Some("\\si") => {
+                if let Some(u) = nth_curly_group(node, 0) {
+                    let src = self
+                        .src
+                        .get(u.start_byte() + 1..u.end_byte().saturating_sub(1))
+                        .unwrap_or("");
+                    self.out.push_str(&render_si_unit(src));
+                }
+                node.end_byte()
+            }
+            Some("\\SI") | Some("\\qty") => {
+                let value = nth_curly_group(node, 0)
+                    .and_then(|g| {
+                        self.src
+                            .get(g.start_byte() + 1..g.end_byte().saturating_sub(1))
+                    })
+                    .map(|s| s.trim())
+                    .unwrap_or("");
+                let unit = nth_curly_group(node, 1)
+                    .and_then(|g| {
+                        self.src
+                            .get(g.start_byte() + 1..g.end_byte().saturating_sub(1))
+                    })
+                    .map(render_si_unit)
+                    .unwrap_or_default();
+                self.out.push_str(value);
+                if !value.is_empty() && !unit.is_empty() {
+                    self.out.push(' ');
+                }
+                self.out.push_str(&unit);
+                node.end_byte()
+            }
+            Some("\\ang") => {
+                if let Some(g) = nth_curly_group(node, 0) {
+                    let v = self
+                        .src
+                        .get(g.start_byte() + 1..g.end_byte().saturating_sub(1))
+                        .unwrap_or("")
+                        .trim();
+                    let _ = write!(self.out, "{v}°");
+                }
+                node.end_byte()
+            }
             // Roman / default — no formatting, just render the body
             Some("\\textrm") | Some("\\textnormal") | Some("\\textmd") | Some("\\textup") => {
                 self.emit_inline_unwrap(node)
