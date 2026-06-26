@@ -3,6 +3,15 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.45] — unreleased
+
+### Fixed
+- A `\includegraphics` NOT inside a `\begin{figure}` float (standalone in body text, or in a
+  `center` block — common for teaser figures) is no longer DROPPED. It emitted a bare `image(...)` with
+  no `#`, which Typst treats as a string literal and ignores. Standalone images now get the `#` sigil;
+  float-body images stay bare (the `#figure(...)` wrapper supplies it). Found by the visual grader on
+  2605.31597 (LNCS teaser figure absent).
+
 ## [0.6.44] — unreleased
 
 ### Fixed
