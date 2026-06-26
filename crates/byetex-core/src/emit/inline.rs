@@ -141,7 +141,9 @@ impl<'a> Emitter<'a> {
                 // INSIDE the content.
                 let ref_absorbs = right == "_" && ends_with_open_ref(mid);
                 match emph_fn {
-                    Some(name) if lead_glue || trail_glue || ref_absorbs => {
+                    // In a table cell the per-cell escape pass would turn `*…*`
+                    // into literal `\*…\*`; the function form survives it.
+                    Some(name) if lead_glue || trail_glue || ref_absorbs || self.in_table_cell => {
                         let _ = write!(self.out, "#{name}[{mid}]");
                     }
                     _ => {

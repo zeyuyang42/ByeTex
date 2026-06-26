@@ -3,6 +3,15 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.38] — unreleased
+
+### Fixed
+- Bold/italic in table cells (`\textbf{}`/`\emph{}`) now render as the function form `#strong[…]`/
+  `#emph[…]` instead of `*…*`/`_…_` shorthand. The per-cell escape pass was escaping the markers to
+  literal `\*…\*`, so bold table headers showed VISIBLE ASTERISKS (`*Topology*`) instead of bold.
+  Body-text emphasis is unchanged. Found by the visual grader on 2605.22786 (every result table's bold
+  headers leaked asterisks; 237 cells fixed in that paper alone).
+
 ## [0.6.37] — unreleased
 
 ### Fixed

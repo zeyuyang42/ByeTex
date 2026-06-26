@@ -458,11 +458,12 @@ fn m4_tabular_row_split_preserves_escape_sequences() {
             ..Default::default()
         },
     );
-    // The multicolumn cell body must contain the escaped dollar as
-    // one unit, not get fragmented.
+    // The multicolumn cell body must contain the escaped dollar as one unit,
+    // not get fragmented. Bold in a table cell uses the function form
+    // `#strong[…]` (escape-safe) rather than `*…*` shorthand.
     assert!(
-        out.typst.contains("table.cell(colspan: 2)[*\\$10.23*]"),
-        "expected `table.cell(colspan: 2)[*\\$10.23*]` intact; got:\n{}",
+        out.typst.contains("table.cell(colspan: 2)[#strong[\\$10.23]]"),
+        "expected `table.cell(colspan: 2)[#strong[\\$10.23]]` intact; got:\n{}",
         out.typst
     );
 }
