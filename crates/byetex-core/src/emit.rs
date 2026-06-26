@@ -463,6 +463,10 @@ pub(crate) struct Emitter<'a> {
     /// the per-cell `escape_text_cell` pass would otherwise escape the markers to
     /// literal `\*`/`\_` (visible asterisks in bold headers).
     in_table_cell: bool,
+    /// Current list nesting depth (0 = not in a list). A nested `itemize`/
+    /// `enumerate` indents its markers by two spaces per level so Typst keeps the
+    /// hierarchy instead of flattening it.
+    list_depth: usize,
     /// True while emitting the CONTENT of a touying reveal (`\only`/`\uncover`/…).
     /// A reveal nested inside another reveal panics ("Unsupported mark
     /// `touying-fn-wrapper`"), so an inner beamer `\only<…>`/`\uncover<…>` is
@@ -729,6 +733,7 @@ impl<'a> Emitter<'a> {
             macro_depth: 0,
             in_minipage: false,
             in_table_cell: false,
+            list_depth: 0,
             in_overlay_context: false,
             used_text_label_anchor: false,
             used_subpar: false,

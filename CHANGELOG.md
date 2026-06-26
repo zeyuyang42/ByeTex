@@ -3,6 +3,14 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.42] — unreleased
+
+### Fixed
+- Nested `itemize`/`enumerate`/`description` lists now preserve their hierarchy. A sub-list's markers
+  were emitted at column 0 (same level as the parent) and glued to the parent item (`+ A+ A1`), so
+  Typst flattened the nesting. Markers are now indented two spaces per level and the sub-list starts on
+  its own line. Found by direct validation (~19 corpus papers use nested lists).
+
 ## [0.6.41] — unreleased
 
 ### Fixed
