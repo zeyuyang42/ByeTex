@@ -3,6 +3,15 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.33] — unreleased
+
+### Fixed
+- A `subfigure`/`subcaption` panel that stacks SEVERAL `\includegraphics` (multiple image rows in
+  one panel) now emits ALL of them, not just the first. `render_subfigure_panel` captured the image
+  with an `is_none()` guard, silently dropping the remaining panels (2605.22507's MNIST grids lost
+  ~3 images). Multiple images are wrapped in a vertical `stack(dir: ttb, …)` (a single valid Typst
+  expr in the figure slot). Found by the visual grader on 2605.22507.
+
 ## [0.6.32] — unreleased
 
 ### Fixed
