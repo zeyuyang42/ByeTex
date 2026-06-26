@@ -423,6 +423,12 @@ pub(crate) struct Emitter<'a> {
     /// Theorem `kind:` strings actually emitted, so `finish()` can add one head
     /// show rule per kind (`#show figure.where(kind: …): "Theorem N (Note). body"`).
     used_theorem_kinds: std::collections::HashSet<String>,
+    /// Per-kind amsthm style flag: `kind:` → is the body a `plain`-style (italic)
+    /// theorem? Built from `\theoremstyle` tracking in `prepass_collect`.
+    theorem_styles: HashMap<String, bool>,
+    /// amsthm loaded? Only then does `plain` style italicize the body (base-LaTeX
+    /// `\newtheorem` is upright).
+    amsthm_loaded: bool,
     /// Declared mandatory-argument count for custom `\newenvironment`s, keyed by
     /// env name. At a use site `\begin{name}{a}{b}` the args are leading
     /// `curly_group` children; `emit_environment_body` drops this many so they
@@ -518,6 +524,30 @@ pub(crate) struct FinishOutput {
     pub source_map: Vec<crate::source_map::NodeOutput>,
 }
 
+/// Sanitize a theorem display name to its Typst `kind:` identifier (lowercase
+/// ASCII alphanumeric + hyphens). Must match the `kind` computed in
+/// `emit_theorem_env` so `\theoremstyle` tracking keys line up with the show
+/// rules.
+pub(in crate::emit) fn sanitize_theorem_kind(name: &str) -> String {
+    let kind: String = name
+        .chars()
+        .filter_map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' {
+                Some(c.to_ascii_lowercase())
+            } else if c == ' ' || c == '_' {
+                Some('-')
+            } else {
+                None
+            }
+        })
+        .collect();
+    if kind.is_empty() {
+        "theorem".to_string()
+    } else {
+        kind
+    }
+}
+
 impl<'a> Emitter<'a> {
     // ─── Construction & lifecycle ──────────────────────────────────────────────
 
@@ -600,6 +630,8 @@ impl<'a> Emitter<'a> {
             in_document_body: false,
             theorem_kinds: HashMap::new(),
             used_theorem_kinds: std::collections::HashSet::new(),
+            theorem_styles: HashMap::new(),
+            amsthm_loaded: false,
             env_arg_counts: HashMap::new(),
             bibliography_keys: std::collections::HashSet::new(),
             asset_refs: Vec::new(),
@@ -660,6 +692,14 @@ impl<'a> Emitter<'a> {
         for key in extract_bbl_bibitem_keys(self.src) {
             self.bibliography_keys.insert(sanitize_label_key(&key));
         }
+        // amsthm theorem-body styling: tag each `\newtheorem` kind by the active
+        // `\theoremstyle` (plain → italic body) in document order. A separate
+        // in-order pass since the stack walk below is not ordered.
+        if self.src.contains("amsthm") {
+            self.amsthm_loaded = true;
+        }
+        let mut thm_style = String::from("plain");
+        self.collect_theorem_styles(root, &mut thm_style);
         let mut stack: Vec<Node<'_>> = vec![root];
         while let Some(n) = stack.pop() {
             // `\setcounter{tocdepth}{N}` (usually preamble) → the `#outline` depth. Harvested
@@ -888,12 +928,81 @@ impl<'a> Emitter<'a> {
         kinds.sort();
         let mut s = String::new();
         for k in kinds {
+            // amsthm `plain`-style theorems (Theorem/Lemma/…) set the body in
+            // italic; `definition`/`remark` styles keep it upright. Only italicize
+            // when amsthm is loaded (base-LaTeX `\newtheorem` is upright).
+            let body = if self.amsthm_loaded && self.theorem_kind_is_plain(k) {
+                "#emph[#it.body]"
+            } else {
+                "#it.body"
+            };
             let _ = writeln!(
                 s,
-                "#show figure.where(kind: \"{k}\"): it => block(width: 100%, above: 1.1em, below: 1.1em)[#strong[#it.supplement #context it.counter.display(it.numbering)#if it.caption != none [ (#it.caption.body)].] #it.body]"
+                "#show figure.where(kind: \"{k}\"): it => block(width: 100%, above: 1.1em, below: 1.1em)[#strong[#it.supplement #context it.counter.display(it.numbering)#if it.caption != none [ (#it.caption.body)].] {body}]"
             );
         }
         s
+    }
+
+    /// Is `kind` an amsthm `plain`-style theorem (italic body)? Uses the
+    /// `\theoremstyle` tracking when available; otherwise falls back to the
+    /// conventional names (amsthm's default is `plain`, so only the standard
+    /// `definition`/`remark`-style names are upright).
+    fn theorem_kind_is_plain(&self, kind: &str) -> bool {
+        if let Some(&plain) = self.theorem_styles.get(kind) {
+            return plain;
+        }
+        !matches!(
+            kind,
+            "definition"
+                | "defn"
+                | "example"
+                | "remark"
+                | "note"
+                | "notation"
+                | "assumption"
+                | "problem"
+                | "exercise"
+                | "case"
+                | "convention"
+        )
+    }
+
+    /// Walk the tree in document order, tracking the active `\theoremstyle` so
+    /// each `\newtheorem`'s emitted `kind:` is tagged plain (italic body) or not.
+    /// `prepass_collect`'s own walk is stack-based (not in-order), so this is a
+    /// separate ordered pass. Also flags amsthm as loaded.
+    fn collect_theorem_styles(&mut self, node: Node<'_>, current: &mut String) {
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            match child.kind() {
+                "generic_command"
+                    if command_name_text(child, self.src).as_deref() == Some("\\theoremstyle") =>
+                {
+                    self.amsthm_loaded = true;
+                    if let Some(g) = first_curly_group(child) {
+                        let style = self
+                            .src
+                            .get(g.start_byte() + 1..g.end_byte().saturating_sub(1))
+                            .unwrap_or("")
+                            .trim()
+                            .to_string();
+                        if !style.is_empty() {
+                            *current = style;
+                        }
+                    }
+                }
+                "theorem_definition" => {
+                    if let Some((_name, display)) = extract_theorem_def(child, self.src) {
+                        let kind = sanitize_theorem_kind(&display);
+                        let is_plain = current == "plain";
+                        self.theorem_styles.entry(kind).or_insert(is_plain);
+                    }
+                }
+                _ => {}
+            }
+            self.collect_theorem_styles(child, current);
+        }
     }
 
     pub(crate) fn finish(mut self) -> FinishOutput {
