@@ -506,6 +506,14 @@ impl<'a> Emitter<'a> {
             }
         }
         let is_beamer = self.detected_class == crate::class_map::DocClass::Beamer;
+        // Nesting: indent markers two spaces per level so Typst keeps the
+        // hierarchy. A nested list also starts on its own line (else it glues to
+        // the parent item's text — `+ A+ A1`).
+        self.list_depth += 1;
+        let indent = "  ".repeat(self.list_depth.saturating_sub(1));
+        if self.list_depth > 1 && !self.out.ends_with('\n') {
+            self.out.push('\n');
+        }
         let mut cursor = env.walk();
         let mut first = true;
         // Count of spec-bearing items already emitted — a beamer `\item<n->` reveals
@@ -520,6 +528,7 @@ impl<'a> Emitter<'a> {
             if !first {
                 self.out.push('\n');
             }
+            self.out.push_str(&indent);
             if is_beamer && item_has_overlay_spec(child, self.src) {
                 if overlay_items_seen > 0 {
                     self.out.push_str("#pause\n");
@@ -543,6 +552,7 @@ impl<'a> Emitter<'a> {
             }
             first = false;
         }
+        self.list_depth -= 1;
         env.end_byte()
     }
 
@@ -565,6 +575,11 @@ impl<'a> Emitter<'a> {
     }
 
     pub(in crate::emit) fn emit_description(&mut self, env: Node<'_>) -> usize {
+        self.list_depth += 1;
+        let indent = "  ".repeat(self.list_depth.saturating_sub(1));
+        if self.list_depth > 1 && !self.out.ends_with('\n') {
+            self.out.push('\n');
+        }
         let mut cursor = env.walk();
         let mut first = true;
         for child in env.children(&mut cursor) {
@@ -574,11 +589,13 @@ impl<'a> Emitter<'a> {
             if !first {
                 self.out.push('\n');
             }
+            self.out.push_str(&indent);
             let term = self.render_enum_item_term(child).unwrap_or_default();
             let body = self.render_enum_item_body(child, /* description: */ true);
             let _ = write!(self.out, "/ {}: {}", term.trim(), body.trim());
             first = false;
         }
+        self.list_depth -= 1;
         env.end_byte()
     }
 
