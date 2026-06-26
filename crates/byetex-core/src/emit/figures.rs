@@ -350,7 +350,7 @@ impl<'a> Emitter<'a> {
         &mut self,
         node: Node<'_>,
     ) -> Option<(String, Option<String>, Option<f32>)> {
-        let mut graphics: Option<Node<'_>> = None;
+        let mut graphics: Vec<Node<'_>> = Vec::new();
         let mut caption: Option<Node<'_>> = None;
         let mut nested_tabular: Option<Node<'_>> = None;
         let mut labels: Vec<String> = Vec::new();
@@ -359,7 +359,10 @@ impl<'a> Emitter<'a> {
             let mut cursor = n.walk();
             for child in n.children(&mut cursor) {
                 match child.kind() {
-                    "graphics_include" if graphics.is_none() => graphics = Some(child),
+                    // A subfigure can stack SEVERAL `\includegraphics` (the paper
+                    // puts multiple image rows in one panel) — collect them all,
+                    // not just the first, else real panels are silently dropped.
+                    "graphics_include" => graphics.push(child),
                     "caption" if caption.is_none() => caption = Some(child),
                     "label_definition" => {
                         if let Some(k) = extract_label_name(child, self.src) {
@@ -387,14 +390,31 @@ impl<'a> Emitter<'a> {
                 }
             }
         }
-        // Body: image wins, else nested tabular, else nothing → drop the panel.
-        let (body, is_table) = if let Some(g) = graphics {
-            (
-                self.with_sub_buffer(|e| {
-                    e.emit_graphics_include(g);
-                }),
-                false,
-            )
+        // Body: image(s) win, else nested tabular, else nothing → drop the panel.
+        let (body, is_table) = if !graphics.is_empty() {
+            // The DFS above collects children in reverse — restore document order
+            // so stacked panels read top-to-bottom as written.
+            graphics.sort_by_key(|g| g.start_byte());
+            let imgs: Vec<String> = graphics
+                .iter()
+                .map(|g| {
+                    self.with_sub_buffer(|e| {
+                        e.emit_graphics_include(*g);
+                    })
+                    .trim()
+                    .to_string()
+                })
+                .filter(|s| !s.is_empty())
+                .collect();
+            // One image stays a bare `image(...)`; several stack vertically (a
+            // single Typst expr — bare `image(a) image(b)` is a parse error in a
+            // `figure(...)` positional slot).
+            let body = if imgs.len() == 1 {
+                imgs.into_iter().next().unwrap()
+            } else {
+                format!("stack(dir: ttb, spacing: 0.5em, {})", imgs.join(", "))
+            };
+            (body, false)
         } else if let Some(t) = nested_tabular {
             let s = self
                 .with_sub_buffer(|e| {
