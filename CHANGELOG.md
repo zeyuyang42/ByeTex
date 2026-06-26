@@ -3,6 +3,15 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.36] — unreleased
+
+### Fixed
+- amsthm `plain`-style theorems (Theorem/Lemma/Proposition/Corollary/…) now render their BODY in
+  italic, matching LaTeX; `\theoremstyle{definition}`/`{remark}` kinds stay upright. ByeTex set every
+  theorem body upright. The active `\theoremstyle` is tracked in document order per `\newtheorem`, and
+  italics apply only when amsthm is loaded (base-LaTeX `\newtheorem` is upright). Found by the visual
+  grader on 2605.22159; affects 34 amsthm papers in the corpus (16 of which use `\theoremstyle{definition}`).
+
 ## [0.6.35] — unreleased
 
 ### Fixed
