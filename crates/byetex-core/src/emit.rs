@@ -1615,6 +1615,37 @@ impl<'a> Emitter<'a> {
                     .skip_until
                     .max(consume_trailing_arg_groups(self.src, args_start, false));
             }
+            // A `\newenvironment`/`\newcommand` whose definition body contains a
+            // `\begin{...}` makes tree-sitter wrap the whole definition in an ERROR
+            // node (the inner begin has no end inside the brace group), so the raw
+            // definition leaked into the body. Skip the command + its balanced
+            // `{…}`/`[…]` arg groups (the braces ARE balanced at the source level).
+            "ERROR"
+                if {
+                    let trimmed = self.src[node.start_byte()..node.end_byte()].trim_start();
+                    [
+                        "\\newenvironment",
+                        "\\renewenvironment",
+                        "\\newcommand",
+                        "\\renewcommand",
+                        "\\providecommand",
+                    ]
+                    .iter()
+                    .any(|c| trimmed.starts_with(c))
+                } =>
+            {
+                let after_ws = node.start_byte()
+                    + (self.src[node.start_byte()..].len()
+                        - self.src[node.start_byte()..].trim_start().len());
+                let args_start = after_ws
+                    + 1
+                    + self.src[after_ws + 1..]
+                        .find(|c: char| !c.is_ascii_alphabetic())
+                        .unwrap_or(0);
+                self.skip_until = self
+                    .skip_until
+                    .max(consume_trailing_arg_groups(self.src, args_start, true));
+            }
             // `\left( ... \right)` in math: tree-sitter packages the whole
             // span as a single `math_delimiter` with `left_command`,
             // `left_delimiter`, body, `right_command`, `right_delimiter`

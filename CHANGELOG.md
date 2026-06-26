@@ -3,6 +3,16 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.46] — unreleased
+
+### Fixed
+- A `\newenvironment`/`\newcommand` whose definition body contains a `\begin{...}` no longer leaks its
+  raw source into the document. The inner `\begin` (no matching `\end` inside the brace) made tree-sitter
+  wrap the whole definition in an ERROR node, so it was emitted as literal text
+  (`\newenvironment{smallbmatrix}{\left[\begin{smallmatrix}…`). Such ERROR-wrapped definitions are now
+  skipped (their `{…}`/`[…]` arg groups are balanced at the source level). Found by the visual grader on
+  2605.22485 (amsart); affects 6 corpus papers.
+
 ## [0.6.45] — unreleased
 
 ### Fixed
