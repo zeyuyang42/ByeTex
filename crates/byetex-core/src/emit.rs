@@ -2654,6 +2654,13 @@ impl<'a> Emitter<'a> {
             Some("\\texttt") => self.emit_inline_raw(node),
             // Underline
             Some("\\underline") => self.emit_inline_wrap(node, "#underline[", "]"),
+            // ulem / soul text decorations — keep the text, which was dropped.
+            Some("\\sout") | Some("\\xout") | Some("\\st") => {
+                self.emit_inline_wrap(node, "#strike[", "]")
+            }
+            Some("\\uline") | Some("\\uuline") | Some("\\uwave") => {
+                self.emit_inline_wrap(node, "#underline[", "]")
+            }
             // Small caps
             Some("\\textsc") => self.emit_inline_wrap(node, "#smallcaps[", "]"),
             // siunitx physical quantities — without this the value AND unit were
