@@ -3,6 +3,13 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.40] — unreleased
+
+### Fixed
+- Documents now carry page numbers (`#set page(numbering: "1")`) to match the source PDF; ByeTex
+  emitted none. Cover pages (thesis/report `\coverimage`) suppress the number. Found by the visual
+  grader on 2605.22281 (SIAM).
+
 ## [0.6.39] — unreleased
 
 ### Fixed

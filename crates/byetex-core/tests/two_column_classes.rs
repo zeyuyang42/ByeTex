@@ -5,7 +5,7 @@
 //!   exact `IEEEtran` name → single-column.
 //!
 //! Both are two-column. Document-level two-column now uses a PAGE-level
-//! `#set page(..., columns: 2)` with a full-width spanning title float
+//! `#set page(..., columns: 2,` with a full-width spanning title float
 //! (`#place(..., scope: "parent", float: true)`), not a `#columns(2)[body]` wrap
 //! (which blew up on figure-heavy docs — corpus 2605.31586: 81 pages).
 
@@ -15,7 +15,7 @@ fn typ(src: &str) -> String {
     convert(src, &ConvertOptions::default()).typst
 }
 
-const PAGE_2COL: &str = ", columns: 2)";
+const PAGE_2COL: &str = ", columns: 2,";
 const SPAN_TITLE: &str = "#place(top + center, scope: \"parent\", float: true)[";
 
 #[test]

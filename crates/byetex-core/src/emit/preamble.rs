@@ -462,7 +462,7 @@ pub(in crate::emit) fn build_neutral_preamble(
         ""
     };
     format!(
-        "#set page(paper: \"{paper}\", margin: {margin}{columns})\n\
+        "#set page(paper: \"{paper}\", margin: {margin}{columns}, numbering: \"1\")\n\
          #set text(font: \"{body_font}\", size: {font_size})\n\
          #set par(justify: true, leading: 0.65em, spacing: 0.65em, first-line-indent: 1.2em)\n\
          #show heading.where(level: 1): set text(size: {h1}, weight: \"bold\")\n\
