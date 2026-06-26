@@ -3,6 +3,13 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.43] — unreleased
+
+### Fixed
+- ulem/soul text decorations now keep their text: `\sout`/`\xout`/`\st` → `#strike[…]`,
+  `\uline`/`\uuline`/`\uwave` → `#underline[…]`. They were dropped, taking the wrapped text with
+  them (`\sout{struck}` rendered empty). Found by direct validation.
+
 ## [0.6.42] — unreleased
 
 ### Fixed
