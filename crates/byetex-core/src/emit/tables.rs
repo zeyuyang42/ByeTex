@@ -184,7 +184,11 @@ impl<'a> Emitter<'a> {
         // nested inside a minipage (otherwise the inner rows would collapse into
         // `#linebreak()`s and cells would be dropped).
         let saved_in_minipage = self.in_minipage;
+        let saved_in_table_cell = self.in_table_cell;
         self.in_minipage = false;
+        // Cell content is escaped per-cell afterwards; emit `\textbf`/`\emph` in
+        // function form so the markers survive (see `in_table_cell`).
+        self.in_table_cell = true;
         let body_str = if body.is_empty() {
             String::new()
         } else {
@@ -200,6 +204,7 @@ impl<'a> Emitter<'a> {
             })
         };
         self.in_minipage = saved_in_minipage;
+        self.in_table_cell = saved_in_table_cell;
 
         // Strip \hline (already emitted as raw text by the default emitter).
         let cleaned = body_str.replace("\\hline", "");

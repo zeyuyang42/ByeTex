@@ -458,6 +458,11 @@ pub(crate) struct Emitter<'a> {
     /// row-splitter (`split_math_rows`) keys on — otherwise a minipage used as
     /// a table cell mis-splits across rows.
     in_minipage: bool,
+    /// True while rendering a table cell's content. `\textbf`/`\emph` then emit
+    /// the function form `#strong[…]`/`#emph[…]` instead of `*…*`/`_…_`, because
+    /// the per-cell `escape_text_cell` pass would otherwise escape the markers to
+    /// literal `\*`/`\_` (visible asterisks in bold headers).
+    in_table_cell: bool,
     /// True while emitting the CONTENT of a touying reveal (`\only`/`\uncover`/…).
     /// A reveal nested inside another reveal panics ("Unsupported mark
     /// `touying-fn-wrapper`"), so an inner beamer `\only<…>`/`\uncover<…>` is
@@ -637,6 +642,7 @@ impl<'a> Emitter<'a> {
             asset_refs: Vec::new(),
             macro_depth: 0,
             in_minipage: false,
+            in_table_cell: false,
             in_overlay_context: false,
             used_text_label_anchor: false,
             used_subpar: false,
