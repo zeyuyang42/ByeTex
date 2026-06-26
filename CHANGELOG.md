@@ -3,6 +3,16 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.44] — unreleased
+
+### Fixed
+- REVTeX/apsrev `.bbl` bibliographies no longer leak macro tokens. APS `.bbl` files wrap every reference
+  field in custom macros (`\bibinfo{field}{value}`, `\bibnamefont`, `\bibfield`, `\BibitemShut{NoStop}`,
+  …); ByeTex dropped the wrapped values (authors/journals/volumes vanished) and leaked the structural
+  markers as literal text ("bibitemNoStop"). The value macros are now unwrapped and the markers dropped,
+  so the whole reference list renders. Found by the visual grader on 2605.31203; affects every APS physics
+  paper.
+
 ## [0.6.43] — unreleased
 
 ### Fixed

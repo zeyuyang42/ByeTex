@@ -2709,6 +2709,22 @@ impl<'a> Emitter<'a> {
                 }
                 node.end_byte()
             }
+            // REVTeX/apsrev `.bbl` bibitem macros. The value macros wrap each
+            // reference field; unwrap them (else authors/journals/volumes vanish).
+            // `\bibinfo{field}{value}` / `\bibfield{field}{value}` keep the VALUE
+            // (2nd arg); the rest keep their only arg.
+            Some("\\bibinfo") | Some("\\bibfield") => {
+                if let Some(g) = nth_curly_group(node, 1) {
+                    let s = self.render_curly_group_content(g);
+                    self.out.push_str(&s);
+                }
+                node.end_byte()
+            }
+            Some("\\bibnamefont") | Some("\\citenamefont") | Some("\\natexlab")
+            | Some("\\Eprint") | Some("\\bibstring") => self.emit_inline_unwrap(node),
+            // Structural markers — drop entirely (they leaked as "bibitemNoStop").
+            Some("\\BibitemOpen") | Some("\\BibitemShut") | Some("\\bibitemStop")
+            | Some("\\EprintPrefix") => node.end_byte(),
             // Roman / default — no formatting, just render the body
             Some("\\textrm") | Some("\\textnormal") | Some("\\textmd") | Some("\\textup") => {
                 self.emit_inline_unwrap(node)
