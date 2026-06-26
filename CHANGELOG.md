@@ -3,6 +3,15 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.41] — unreleased
+
+### Fixed
+- siunitx quantity macros now render instead of being DROPPED: `\SI{3}{\meter\per\second}` →
+  `3 m/s`, `\qty{5}{\kilo\gram}` → `5 kg`, `\si{\ohm\meter\squared}` → `Ωm²`, `\ang{45}` → `45°`.
+  Unit macros map to symbols (with `\per`→`/`, `\squared`/`\cubed` superscripts and SI prefixes);
+  unknown units fall back to their name. Previously the value AND unit vanished. Found on 2605.31009
+  (iopjournal, 31 siunitx uses); affects physics/engineering papers broadly.
+
 ## [0.6.40] — unreleased
 
 ### Fixed
