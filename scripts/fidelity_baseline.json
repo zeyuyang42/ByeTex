@@ -44,11 +44,11 @@
     },
     "2605.22507": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.559,
-      "page_ratio": 1.0,
+      "mean_ssim": 0.551,
+      "page_ratio": 1.034,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.893
+      "word_recall": 0.841
     },
     "2605.22549": {
       "heading_recall": 0.952,
@@ -76,11 +76,11 @@
     },
     "2605.22584": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.552,
+      "mean_ssim": 0.553,
       "page_ratio": 1.0,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.961
+      "word_recall": 0.884
     },
     "2605.22724": {
       "heading_recall": 1.0,
