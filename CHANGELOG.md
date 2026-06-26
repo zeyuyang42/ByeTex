@@ -3,6 +3,16 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.37] — unreleased
+
+### Fixed
+- `algorithm` floats now render their `algorithmic`/algpseudocode pseudocode as STRUCTURED lines —
+  one numbered statement per line, bold control keywords (for/while/if/else/end…, Require:/Ensure:/
+  return), `do`/`then` suffixes, indentation by nesting depth, and top/bottom rules — instead of
+  collapsing every `\State`/`\For`/… into one prose run with the keywords dropped. The float carries
+  kind `algorithm` so its caption reads "Algorithm N". Handles both algpseudocode (`\State`) and the
+  older algorithmic (`\STATE`). Found by the visual grader on 2605.22549; affects 8+ corpus papers.
+
 ## [0.6.36] — unreleased
 
 ### Fixed

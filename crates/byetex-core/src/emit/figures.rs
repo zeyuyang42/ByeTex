@@ -453,13 +453,124 @@ impl<'a> Emitter<'a> {
         s.push_str("figure(\n  ");
         s.push_str(body_str);
         if let Some(k) = kind {
-            let _ = write!(s, ",\n  kind: {}", k);
+            if k == "algorithm" {
+                // A custom kind needs an explicit supplement; this also gives the
+                // float its own "Algorithm N" counter.
+                s.push_str(",\n  kind: \"algorithm\", supplement: [Algorithm]");
+            } else {
+                let _ = write!(s, ",\n  kind: {}", k);
+            }
         }
         if let Some(text) = caption_text {
             let _ = write!(s, ",\n  caption: [{}]", text);
         }
         s.push_str(",\n)");
         s
+    }
+
+    /// Render an `algorithmic`/`algorithmicx`/`algpseudocode` body as structured
+    /// pseudocode: one numbered line per statement, control keywords bold, nesting
+    /// shown by indentation, framed by top/bottom rules. Replaces the old behavior
+    /// that collapsed every `\State`/`\For`/… into one `align(left)[…]` prose run
+    /// with the keywords dropped.
+    fn render_algorithmic_body(&mut self, env: Node<'_>) -> String {
+        struct LineSpec<'n> {
+            depth: i32,
+            display: &'static str,
+            suffix: &'static str,
+            nodes: Vec<Node<'n>>,
+        }
+        // Pass 1 — parse into line specs (no rendering, so no &mut self borrow).
+        let mut specs: Vec<LineSpec<'_>> = Vec::new();
+        let mut depth: i32 = 0;
+        let mut cur: Option<LineSpec<'_>> = None;
+        let mut seen_opt = false;
+        let mut cursor = env.walk();
+        for child in env.children(&mut cursor) {
+            match child.kind() {
+                "begin" | "end" => continue,
+                // The `[1]` line-numbering option directly after `\begin`.
+                "brack_group" if !seen_opt && cur.is_none() => {
+                    seen_opt = true;
+                    continue;
+                }
+                "generic_command" => {
+                    let name = command_name_text(child, self.src).unwrap_or_default();
+                    let key = name.trim_start_matches('\\').to_ascii_lowercase();
+                    if let Some(kw) = classify_algo_keyword(&key) {
+                        if let Some(c) = cur.take() {
+                            specs.push(c);
+                        }
+                        let line_depth = (depth + kw.line_delta).max(0);
+                        depth = (depth + kw.next_delta).max(0);
+                        let mut nodes = Vec::new();
+                        // `\For{cond}` / `\If{cond}` carry the condition as a curly
+                        // group child; its inner content is the line content.
+                        if let Some(cg) = first_curly_group(child) {
+                            let mut cc = cg.walk();
+                            for gc in cg.children(&mut cc) {
+                                if !matches!(gc.kind(), "{" | "}") {
+                                    nodes.push(gc);
+                                }
+                            }
+                        }
+                        cur = Some(LineSpec {
+                            depth: line_depth,
+                            display: kw.display,
+                            suffix: kw.suffix,
+                            nodes,
+                        });
+                        continue;
+                    }
+                    if let Some(c) = cur.as_mut() {
+                        c.nodes.push(child);
+                    }
+                }
+                _ => {
+                    if let Some(c) = cur.as_mut() {
+                        c.nodes.push(child);
+                    }
+                }
+            }
+        }
+        if let Some(c) = cur.take() {
+            specs.push(c);
+        }
+
+        // Pass 2 — render each line.
+        let mut body = String::new();
+        for (i, spec) in specs.iter().enumerate() {
+            let content = self
+                .with_sub_buffer(|e| {
+                    if let Some(first) = spec.nodes.first() {
+                        let mut last = first.start_byte();
+                        for n in &spec.nodes {
+                            e.safe_copy(last, n.start_byte());
+                            last = e.emit_node(*n);
+                        }
+                    }
+                })
+                .trim()
+                .to_string();
+            if i > 0 {
+                body.push_str(" \\\n  ");
+            }
+            let _ = write!(body, "#box(width: 1.7em)[#text(size: 0.85em)[{}.]]", i + 1);
+            for _ in 0..spec.depth {
+                body.push_str("#h(1.2em)");
+            }
+            if !spec.display.is_empty() {
+                let _ = write!(body, "#strong[{}] ", spec.display);
+            }
+            body.push_str(&content);
+            if !spec.suffix.is_empty() {
+                let _ = write!(body, " #strong[{}]", spec.suffix);
+            }
+        }
+        // Frame with top/bottom rules (the booktabs-style algorithm box).
+        format!(
+            "block(width: 100%, stroke: (top: 0.8pt, bottom: 0.8pt), inset: (y: 4pt))[#align(left)[{body}]]"
+        )
     }
 
     pub(in crate::emit) fn emit_figure(&mut self, node: Node<'_>) -> usize {
@@ -673,6 +784,7 @@ impl<'a> Emitter<'a> {
             .next();
 
         let mut body_is_table = false;
+        let mut body_is_algorithm = false;
         let body_str = if let Some(panel) = lone_panel {
             panel
         } else if let Some(g) = graphics {
@@ -700,23 +812,18 @@ impl<'a> Emitter<'a> {
             body_is_table = true;
             tbl
         } else if !algorithmic_bodies.is_empty() {
-            // An `algorithm` float's body is its `algorithmic` pseudocode. Render
-            // every block's steps (left-aligned) as the figure body instead of an
-            // empty placeholder; `\State`/`\For`/… degrade to text (dogfood F7).
+            // An `algorithm` float's body is its `algorithmic` pseudocode —
+            // structured numbered lines with bold control keywords and nesting.
+            body_is_algorithm = true;
             let mut steps = String::new();
             for alg in &algorithmic_bodies {
-                let block = self
-                    .with_sub_buffer(|emitter| {
-                        emitter.emit_environment_body(*alg);
-                    })
-                    .trim()
-                    .to_string();
+                let block = self.render_algorithmic_body(*alg);
                 if !steps.is_empty() {
-                    steps.push_str("\n\n");
+                    steps.push('\n');
                 }
                 steps.push_str(&block);
             }
-            format!("align(left)[{steps}]")
+            steps
         } else {
             // Neither graphics nor a tabular body — warn and placeholder.
             self.warnings.push(Warning {
@@ -756,6 +863,9 @@ impl<'a> Emitter<'a> {
         }
         if kind.is_none() && body_is_table {
             kind = Some("table");
+        }
+        if kind.is_none() && body_is_algorithm {
+            kind = Some("algorithm");
         }
         // Resolve caption text: `\caption{cap}` → 1st group; `\captionof{t}{cap}` → 2nd.
         let caption_node = caption.or(captionof);
@@ -1130,6 +1240,58 @@ pub(in crate::emit) fn parse_graphicspath_dirs(inner: &str) -> Vec<String> {
         }
     }
     out
+}
+
+/// A classified algorithmic keyword: its bold display text, an optional trailing
+/// keyword (`do`/`then`, rendered after the condition), and how it shifts the
+/// indentation of its own line (`line_delta`) and of the lines that follow
+/// (`next_delta`).
+struct AlgoKw {
+    display: &'static str,
+    suffix: &'static str,
+    line_delta: i32,
+    next_delta: i32,
+}
+
+/// Classify an algorithmic command (lowercased, no backslash) for both
+/// algpseudocode (`\State`, `\For`) and the older algorithmic (`\STATE`, `\FOR`)
+/// packages. Returns `None` for non-control commands (rendered as line content).
+fn classify_algo_keyword(key: &str) -> Option<AlgoKw> {
+    let kw = |display, suffix, line_delta, next_delta| {
+        Some(AlgoKw {
+            display,
+            suffix,
+            line_delta,
+            next_delta,
+        })
+    };
+    match key {
+        "state" | "statex" => kw("", "", 0, 0),
+        "require" => kw("Require:", "", 0, 0),
+        "ensure" => kw("Ensure:", "", 0, 0),
+        "input" => kw("Input:", "", 0, 0),
+        "output" => kw("Output:", "", 0, 0),
+        "return" => kw("return", "", 0, 0),
+        "print" => kw("print", "", 0, 0),
+        "for" | "forall" => kw("for", "do", 0, 1),
+        "endfor" => kw("end for", "", -1, -1),
+        "while" => kw("while", "do", 0, 1),
+        "endwhile" => kw("end while", "", -1, -1),
+        "if" => kw("if", "then", 0, 1),
+        "elsif" | "elseif" => kw("else if", "then", -1, 0),
+        "else" => kw("else", "", -1, 0),
+        "endif" => kw("end if", "", -1, -1),
+        "loop" => kw("loop", "", 0, 1),
+        "endloop" => kw("end loop", "", -1, -1),
+        "repeat" => kw("repeat", "", 0, 1),
+        "until" => kw("until", "", -1, -1),
+        "procedure" => kw("procedure", "", 0, 1),
+        "endprocedure" => kw("end procedure", "", -1, -1),
+        "function" => kw("function", "", 0, 1),
+        "endfunction" => kw("end function", "", -1, -1),
+        "comment" => kw("▷", "", 0, 0),
+        _ => None,
+    }
 }
 
 fn extract_graphics_path(node: Node<'_>, src: &str) -> Option<String> {
