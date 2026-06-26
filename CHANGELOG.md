@@ -3,6 +3,13 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.39] — unreleased
+
+### Fixed
+- Table captions now sit ABOVE the table (LaTeX convention) via a document-level
+  `#show figure.where(kind: table): set figure.caption(position: top)`. Typst's `#figure` defaults table
+  captions below; figures keep their caption below. Found by the visual grader on 2605.22786.
+
 ## [0.6.38] — unreleased
 
 ### Fixed
