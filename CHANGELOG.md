@@ -3,6 +3,14 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.34] — unreleased
+
+### Fixed
+- IEEE (IEEEtran) papers now use the IEEE caption conventions: figures are labelled `Fig. N`
+  (abbreviated) and tables `TABLE N` (all-caps, roman-numbered) instead of Typst's default
+  `Figure N` / `Table N`. Set via per-kind `#set figure(supplement)` in the IEEEtran preamble;
+  other classes keep the defaults. Found by the visual grader on 2605.22779.
+
 ## [0.6.33] — unreleased
 
 ### Fixed

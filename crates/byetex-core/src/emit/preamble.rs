@@ -452,6 +452,15 @@ pub(in crate::emit) fn build_neutral_preamble(
     } else {
         ""
     };
+    // IEEE captions abbreviate the figure label ("Fig. 1") and use an all-caps,
+    // roman-numbered table label ("TABLE I"). Other classes keep Typst's defaults
+    // ("Figure 1" / "Table 1").
+    let figure_supplement = if matches!(class, crate::class_map::DocClass::IeeeTran { .. }) {
+        "#set figure(supplement: [Fig.])\n\
+         #show figure.where(kind: table): set figure(supplement: [TABLE], numbering: \"I\")\n"
+    } else {
+        ""
+    };
     format!(
         "#set page(paper: \"{paper}\", margin: {margin}{columns})\n\
          #set text(font: \"{body_font}\", size: {font_size})\n\
@@ -459,7 +468,8 @@ pub(in crate::emit) fn build_neutral_preamble(
          #show heading.where(level: 1): set text(size: {h1}, weight: \"bold\")\n\
          #show heading.where(level: 2): set text(size: {h2}, weight: \"bold\")\n\
          #show heading.where(level: 3): set text(size: {h3}, weight: \"bold\")\n\
-         #show heading: it => block(above: if it.level == 1 {{ 1.5em }} else {{ 1.4em }}, below: if it.level == 1 {{ 1.0em }} else {{ 0.65em }}, it)\n\n"
+         #show heading: it => block(above: if it.level == 1 {{ 1.5em }} else {{ 1.4em }}, below: if it.level == 1 {{ 1.0em }} else {{ 0.65em }}, it)\n\
+         {figure_supplement}\n"
     )
 }
 
