@@ -21,3 +21,15 @@ fn article_headings_stay_arabic_left() {
     assert!(t.contains("numbering: \"1.\"") && !t.contains("numbering(\"I.\""),
         "article should keep plain arabic numbering; got:\n{t}");
 }
+
+#[test]
+fn revtex_deep_headings_not_misnumbered() {
+    // The numbering closure must not blindly reuse p.at(2) for depth >= 4
+    // (that mis-numbered \paragraph). RevTeX's secnumdepth is 3, so deeper
+    // levels are unnumbered (none).
+    let t = typ(r"\documentclass[aps]{revtex4-1}\begin{document}\section{S}\subsection{Sub}\subsubsection{SubSub}\paragraph{Para}x\end{document}");
+    assert!(
+        t.contains("p.len() == 3"),
+        "deep heading levels should be handled explicitly, not via a catch-all p.at(2); got:\n{t}"
+    );
+}

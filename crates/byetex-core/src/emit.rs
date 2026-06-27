@@ -1031,7 +1031,10 @@ impl<'a> Emitter<'a> {
     fn heading_numbering_decl(&self) -> String {
         match self.detected_class {
             DocClass::RevTeX => {
-                "#set heading(numbering: (..n) => { let p = n.pos(); if p.len() == 1 { numbering(\"I.\", p.at(0)) } else if p.len() == 2 { numbering(\"A.\", p.at(1)) } else { numbering(\"1.\", p.at(2)) } })\n".to_string()
+                // RevTeX: I. / A. / 1. for section / subsection / sub-subsection.
+                // secnumdepth is 3, so deeper levels (\paragraph) are unnumbered —
+                // return `none` rather than reusing p.at(2), which mis-numbered them.
+                "#set heading(numbering: (..n) => { let p = n.pos(); if p.len() == 1 { numbering(\"I.\", p.at(0)) } else if p.len() == 2 { numbering(\"A.\", p.at(1)) } else if p.len() == 3 { numbering(\"1.\", p.at(2)) } else { none } })\n".to_string()
             }
             // Springer LNCS headings have no trailing period ("1", "1.1").
             DocClass::Lncs => "#set heading(numbering: \"1.1\")\n".to_string(),
