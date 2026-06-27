@@ -793,13 +793,17 @@ pub(in crate::emit) fn aff_display_text(
         .filter(|s| !s.is_empty())
 }
 
-/// Strip `\texttt{…}`/`\textbf{…}`/… font wrappers from author/affiliation text,
-/// keeping the inner content. The affiliation is captured as raw LaTeX, so an
-/// email like `\texttt{a@b}` would otherwise leak its macro name ("texttt{a@b").
+/// Strip `\texttt{…}`/`\textbf{…}`/… font wrappers from affiliation / `\email{}`
+/// text, keeping the inner content. These fields are captured as raw LaTeX, so a
+/// `\textsc{Dept}` would otherwise leak its macro name. Emails reaching here are
+/// already unwrapped at capture (see `extract_email_token`); this only handles
+/// the proper backslash form that survives in affiliations and `\email{\…{}}`.
 fn strip_latex_font_wrappers(s: &str) -> String {
-    // Both the proper `\cmd{` and the mangled `cmd{` form (author/email capture
-    // strips the leading backslash, so `\texttt{a@b}` arrives as `texttt{a@b`).
-    const CMDS: [&str; 16] = [
+    // Fast path: no group, nothing to unwrap (the common case for clean text).
+    if !s.contains('{') {
+        return s.to_string();
+    }
+    const CMDS: [&str; 8] = [
         "\\texttt{",
         "\\textbf{",
         "\\textit{",
@@ -808,14 +812,6 @@ fn strip_latex_font_wrappers(s: &str) -> String {
         "\\textsc{",
         "\\textnormal{",
         "\\mbox{",
-        "texttt{",
-        "textbf{",
-        "textit{",
-        "emph{",
-        "textrm{",
-        "textsc{",
-        "textnormal{",
-        "mbox{",
     ];
     let mut out = s.to_string();
     loop {
@@ -838,14 +834,10 @@ fn strip_latex_font_wrappers(s: &str) -> String {
             }
             i += 1;
         }
-        // Balanced: drop the wrapper + its closing brace. Unbalanced (the capture
-        // ate the `}`): just drop the `cmd{` prefix, keeping the inner text.
-        let (inner, tail) = if depth == 0 {
-            (out[inner_start..i - 1].to_string(), out[i..].to_string())
-        } else {
-            (out[inner_start..].to_string(), String::new())
-        };
-        out = format!("{}{}{}", &out[..pos], inner, tail);
+        if depth != 0 {
+            break; // unbalanced — leave the rest as-is rather than corrupt
+        }
+        out = format!("{}{}{}", &out[..pos], &out[inner_start..i - 1], &out[i..]);
     }
     out
 }
