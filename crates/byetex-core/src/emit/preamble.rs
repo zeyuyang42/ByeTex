@@ -184,7 +184,7 @@ impl<'a> Emitter<'a> {
                 let _ = writeln!(
                     self.out,
                     "  #v(0.3em)\n  #text(size: 0.85em, style: \"italic\")[{}]",
-                    escape_text_for_typst_content(&emails.join(", "))
+                    escape_text_for_typst_content(&strip_latex_font_wrappers(&emails.join(", ")))
                 );
             }
         }
@@ -767,12 +767,69 @@ pub(in crate::emit) fn aff_display_text(
         }
     }
     if !parts.is_empty() {
-        return Some(parts.join(", "));
+        return Some(strip_latex_font_wrappers(&parts.join(", ")));
     }
     // Fall back to the raw unstructured blob (e.g. from \IEEEauthorblockA or
     // a plain \affiliation{...} without per-field markers).
     aff.raw
         .as_ref()
-        .map(|r| r.as_content().to_string())
+        .map(|r| strip_latex_font_wrappers(r.as_content()))
         .filter(|s| !s.is_empty())
+}
+
+/// Strip `\texttt{…}`/`\textbf{…}`/… font wrappers from author/affiliation text,
+/// keeping the inner content. The affiliation is captured as raw LaTeX, so an
+/// email like `\texttt{a@b}` would otherwise leak its macro name ("texttt{a@b").
+fn strip_latex_font_wrappers(s: &str) -> String {
+    // Both the proper `\cmd{` and the mangled `cmd{` form (author/email capture
+    // strips the leading backslash, so `\texttt{a@b}` arrives as `texttt{a@b`).
+    const CMDS: [&str; 16] = [
+        "\\texttt{",
+        "\\textbf{",
+        "\\textit{",
+        "\\emph{",
+        "\\textrm{",
+        "\\textsc{",
+        "\\textnormal{",
+        "\\mbox{",
+        "texttt{",
+        "textbf{",
+        "textit{",
+        "emph{",
+        "textrm{",
+        "textsc{",
+        "textnormal{",
+        "mbox{",
+    ];
+    let mut out = s.to_string();
+    loop {
+        let Some((pos, cmd_len)) = CMDS
+            .iter()
+            .filter_map(|c| out.find(c).map(|p| (p, c.len())))
+            .min_by_key(|(p, _)| *p)
+        else {
+            break;
+        };
+        let inner_start = pos + cmd_len;
+        let bytes = out.as_bytes();
+        let mut depth = 1i32;
+        let mut i = inner_start;
+        while i < bytes.len() && depth > 0 {
+            match bytes[i] {
+                b'{' => depth += 1,
+                b'}' => depth -= 1,
+                _ => {}
+            }
+            i += 1;
+        }
+        // Balanced: drop the wrapper + its closing brace. Unbalanced (the capture
+        // ate the `}`): just drop the `cmd{` prefix, keeping the inner text.
+        let (inner, tail) = if depth == 0 {
+            (out[inner_start..i - 1].to_string(), out[i..].to_string())
+        } else {
+            (out[inner_start..].to_string(), String::new())
+        };
+        out = format!("{}{}{}", &out[..pos], inner, tail);
+    }
+    out
 }
