@@ -3,6 +3,12 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.52] — unreleased
+
+### Fixed
+- Springer LNCS section headings no longer have a trailing period ("1 Introduction", "1.1 Setup" — was
+  "1."/"1.1."). Uses Typst numbering "1.1". Found by the visual grader on 2605.31597.
+
 ## [0.6.51] — unreleased
 
 ### Fixed
