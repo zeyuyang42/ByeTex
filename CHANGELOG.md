@@ -3,6 +3,14 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.49] — unreleased
+
+### Fixed
+- Font commands in the author/affiliation/email block (`\texttt{email}` etc.) no longer leak their macro
+  name as literal text (e.g. `texttt{jane@x.edu`). The affiliation/email is captured as raw LaTeX (with the
+  backslash stripped); `\texttt`/`\textbf`/`\emph`/… wrappers are now removed, keeping the inner text.
+  Found by the visual grader on 2605.31603 (a fairmeta paper repeated the leaked email 12×).
+
 ## [0.6.48] — unreleased
 
 ### Fixed
