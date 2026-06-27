@@ -195,6 +195,63 @@ impl<'a> Emitter<'a> {
         }
     }
 
+    /// Render one `\includegraphics` as a bare float-body expression (no leading
+    /// `#`), saving/restoring `emitting_float_body`. Centralizes the save/set/
+    /// restore dance that was copy-pasted across every float emitter.
+    fn emit_graphics_float_body(&mut self, node: Node<'_>) -> String {
+        self.with_sub_buffer(|e| {
+            let prev = std::mem::replace(&mut e.emitting_float_body, true);
+            e.emit_graphics_include(node);
+            e.emitting_float_body = prev;
+        })
+        .trim()
+        .to_string()
+    }
+
+    /// The width of an `\includegraphics` as a fraction of the text width, when
+    /// expressed that way (`width=\textwidth` → 1.0, `width=0.5\linewidth` → 0.5).
+    /// Returns `None` for absolute lengths (`3cm`), `scale=`, or no width — i.e.
+    /// "unknown, assume it's small enough to sit in a row".
+    fn graphic_width_frac(&self, node: Node<'_>) -> Option<f32> {
+        let opts = extract_graphics_options(node, self.src);
+        let (_, w) = opts.iter().find(|(k, _)| k == "width")?;
+        normalize_graphics_length(w)
+            .strip_suffix('%')
+            .and_then(|p| p.trim().parse::<f32>().ok())
+            .map(|p| p / 100.0)
+    }
+
+    /// Collect several `\includegraphics` into one Typst expression. One image
+    /// stays a bare `image(...)`; multiple are wrapped in a `stack` so they form
+    /// a single positional expression. `horizontal` requests a side-by-side row,
+    /// but it is honored only when the known width fractions fit within one row —
+    /// full-width panels (sum > ~1) would overflow off-page, so they stack
+    /// vertically like LaTeX does. Returns `None` when there is nothing to emit.
+    fn emit_image_group(&mut self, graphics: &[Node<'_>], horizontal: bool) -> Option<String> {
+        // The DFS walk collects children in reverse — restore document order so
+        // panels read as written.
+        let mut ordered: Vec<Node<'_>> = graphics.to_vec();
+        ordered.sort_by_key(|g| g.start_byte());
+        let imgs: Vec<String> = ordered
+            .iter()
+            .map(|g| self.emit_graphics_float_body(*g))
+            .filter(|s| !s.is_empty())
+            .collect();
+        match imgs.len() {
+            0 => None,
+            1 => Some(imgs.into_iter().next().unwrap()),
+            _ => {
+                let known_sum: f32 = ordered.iter().filter_map(|g| self.graphic_width_frac(*g)).sum();
+                let dir = if horizontal && known_sum <= 1.05 {
+                    "ltr"
+                } else {
+                    "ttb"
+                };
+                Some(format!("stack(dir: {}, spacing: 0.5em, {})", dir, imgs.join(", ")))
+            }
+        }
+    }
+
     pub(in crate::emit) fn emit_graphics_include(&mut self, node: Node<'_>) -> usize {
         let path = extract_graphics_path(node, self.src).unwrap_or_default();
         // Typst supports PNG/JPG/GIF/SVG and PDF (>=0.10), but NOT EPS or
@@ -336,7 +393,8 @@ impl<'a> Emitter<'a> {
                     });
                     let _ = write!(
                         self.out,
-                        "rect(width: 60%, height: 4em, stroke: 0.5pt, fill: luma(240))[#align(center + horizon)[`{}` (missing)]]",
+                        "{}rect(width: 60%, height: 4em, stroke: 0.5pt, fill: luma(240))[#align(center + horizon)[`{}` (missing)]]",
+                        self.graphics_sigil(),
                         path
                     );
                     return node.end_byte();
@@ -403,32 +461,8 @@ impl<'a> Emitter<'a> {
             }
         }
         // Body: image(s) win, else nested tabular, else nothing → drop the panel.
-        let (body, is_table) = if !graphics.is_empty() {
-            // The DFS above collects children in reverse — restore document order
-            // so stacked panels read top-to-bottom as written.
-            graphics.sort_by_key(|g| g.start_byte());
-            let imgs: Vec<String> = graphics
-                .iter()
-                .map(|g| {
-                    self.with_sub_buffer(|e| {
-                        let sfb = e.emitting_float_body;
-                        e.emitting_float_body = true;
-                        e.emit_graphics_include(*g);
-                        e.emitting_float_body = sfb;
-                    })
-                    .trim()
-                    .to_string()
-                })
-                .filter(|s| !s.is_empty())
-                .collect();
-            // One image stays a bare `image(...)`; several stack vertically (a
-            // single Typst expr — bare `image(a) image(b)` is a parse error in a
-            // `figure(...)` positional slot).
-            let body = if imgs.len() == 1 {
-                imgs.into_iter().next().unwrap()
-            } else {
-                format!("stack(dir: ttb, spacing: 0.5em, {})", imgs.join(", "))
-            };
+        // Within a single panel images stack vertically (horizontal: false).
+        let (body, is_table) = if let Some(body) = self.emit_image_group(&graphics, false) {
             (body, false)
         } else if let Some(t) = nested_tabular {
             let s = self
@@ -803,31 +837,19 @@ impl<'a> Emitter<'a> {
 
         let mut body_is_table = false;
         let mut body_is_algorithm = false;
+        // Direct `\includegraphics` siblings sit side-by-side when they fit
+        // (horizontal: true); emit_image_group falls back to vertical for
+        // full-width panels that would overflow.
+        let direct_images = self.emit_image_group(&graphics, true);
         let body_str = if let Some(panel) = lone_panel {
-            panel
-        } else if !graphics.is_empty() {
-            // The DFS walk above collects in reverse — restore document order.
-            graphics.sort_by_key(|g| g.start_byte());
-            let imgs: Vec<String> = graphics
-                .iter()
-                .map(|g| {
-                    self.with_sub_buffer(|e| {
-                        let sfb = e.emitting_float_body;
-                        e.emitting_float_body = true;
-                        e.emit_graphics_include(*g);
-                        e.emitting_float_body = sfb;
-                    })
-                    .trim()
-                    .to_string()
-                })
-                .filter(|s| !s.is_empty())
-                .collect();
-            // One image stays bare; several panels sit side-by-side in a stack.
-            if imgs.len() == 1 {
-                imgs.into_iter().next().unwrap()
-            } else {
-                format!("stack(dir: ltr, spacing: 0.5em, {})", imgs.join(", "))
+            // A lone subfigure panel AND sibling direct images → keep both
+            // (stacked), rather than letting the panel silently drop the images.
+            match direct_images {
+                Some(imgs) => format!("stack(dir: ttb, spacing: 0.5em, {}, {})", panel, imgs),
+                None => panel,
             }
+        } else if let Some(body) = direct_images {
+            body
         } else if let Some(t) = nested_tabular {
             // `\begin{table}` wrapping a `tabular` (common IEEE pattern).
             // emit_tabular writes `#table(...)`; strip the leading `#` since
@@ -1098,7 +1120,7 @@ impl<'a> Emitter<'a> {
     /// Render a minipage (or any captioned container) as one CaptionBlock: its body
     /// (image or tabular), its own caption + label, and its width fraction.
     fn render_caption_block(&mut self, node: Node<'_>) -> Option<CaptionBlock> {
-        let mut graphics: Option<Node<'_>> = None;
+        let mut graphics: Vec<Node<'_>> = Vec::new();
         let mut caption: Option<Node<'_>> = None;
         let mut captionof: Option<Node<'_>> = None;
         let mut nested_tabular: Option<Node<'_>> = None;
@@ -1108,7 +1130,7 @@ impl<'a> Emitter<'a> {
             let mut cursor = n.walk();
             for child in n.children(&mut cursor) {
                 match child.kind() {
-                    "graphics_include" if graphics.is_none() => graphics = Some(child),
+                    "graphics_include" => graphics.push(child),
                     "caption" if caption.is_none() => caption = Some(child),
                     "generic_command"
                         if captionof.is_none()
@@ -1143,16 +1165,8 @@ impl<'a> Emitter<'a> {
                 }
             }
         }
-        let (body, is_table) = if let Some(g) = graphics {
-            (
-                self.with_sub_buffer(|e| {
-                    let sfb = e.emitting_float_body;
-                    e.emitting_float_body = true;
-                    e.emit_graphics_include(g);
-                    e.emitting_float_body = sfb;
-                }),
-                false,
-            )
+        let (body, is_table) = if let Some(body) = self.emit_image_group(&graphics, false) {
+            (body, false)
         } else if let Some(t) = nested_tabular {
             let s = self
                 .with_sub_buffer(|e| {

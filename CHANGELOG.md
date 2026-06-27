@@ -3,6 +3,17 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.53] — unreleased
+
+### Fixed
+- Figure image emission hardened (code-review findings): multi-image figures now choose stack direction by
+  width — full-width panels stack VERTICALLY (horizontal overflowed off-page) while small/scaled panels stay
+  side-by-side; the missing-asset placeholder `rect` now carries its `#` sigil (it was silently dropped for a
+  standalone include in project mode); `render_caption_block` emits ALL images in a caption segment (was
+  first-only); and a figure holding both a subfigure panel and a direct `\includegraphics` keeps both. The
+  three figure paths now share one `emit_image_group` helper (removes the copy-pasted float-body dance that
+  caused these parallel-path bugs).
+
 ## [0.6.52] — unreleased
 
 ### Fixed
