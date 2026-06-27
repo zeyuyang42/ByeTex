@@ -3,6 +3,14 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.48] — unreleased
+
+### Fixed
+- A `figure` with several `\includegraphics` placed DIRECTLY in it (multi-panel figures that don't use
+  subfigure) now renders ALL of them — `emit_figure` captured only the first. One image stays bare; several
+  sit side-by-side in a `stack`. Mirrors the subfigure multi-image fix. Found by the visual grader on
+  2605.22312 (a 3-panel figure showed only 1 image).
+
 ## [0.6.47] — unreleased
 
 ### Fixed

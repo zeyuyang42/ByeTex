@@ -589,7 +589,10 @@ impl<'a> Emitter<'a> {
     }
 
     pub(in crate::emit) fn emit_figure(&mut self, node: Node<'_>) -> usize {
-        let mut graphics: Option<Node<'_>> = None;
+        // A figure can hold several `\includegraphics` directly (multi-panel
+        // figures that don't use subfigure) — collect them ALL, not just the
+        // first, else the other panels are dropped.
+        let mut graphics: Vec<Node<'_>> = Vec::new();
         let mut caption: Option<Node<'_>> = None;
         // `\captionof{type}{cap}` fallback, used only when no real `\caption`
         // is present (a real \caption always wins regardless of walk order).
@@ -620,7 +623,7 @@ impl<'a> Emitter<'a> {
             let mut cursor = n.walk();
             for child in n.children(&mut cursor) {
                 match child.kind() {
-                    "graphics_include" if graphics.is_none() => graphics = Some(child),
+                    "graphics_include" => graphics.push(child),
                     "latex_include" => includes.push(child),
                     "caption" if caption.is_none() => caption = Some(child),
                     // `\captionof{type}{cap}` (caption package) — a caption
@@ -802,13 +805,29 @@ impl<'a> Emitter<'a> {
         let mut body_is_algorithm = false;
         let body_str = if let Some(panel) = lone_panel {
             panel
-        } else if let Some(g) = graphics {
-            self.with_sub_buffer(|emitter| {
-                let sfb = emitter.emitting_float_body;
-                emitter.emitting_float_body = true;
-                emitter.emit_graphics_include(g);
-                emitter.emitting_float_body = sfb;
-            })
+        } else if !graphics.is_empty() {
+            // The DFS walk above collects in reverse — restore document order.
+            graphics.sort_by_key(|g| g.start_byte());
+            let imgs: Vec<String> = graphics
+                .iter()
+                .map(|g| {
+                    self.with_sub_buffer(|e| {
+                        let sfb = e.emitting_float_body;
+                        e.emitting_float_body = true;
+                        e.emit_graphics_include(*g);
+                        e.emitting_float_body = sfb;
+                    })
+                    .trim()
+                    .to_string()
+                })
+                .filter(|s| !s.is_empty())
+                .collect();
+            // One image stays bare; several panels sit side-by-side in a stack.
+            if imgs.len() == 1 {
+                imgs.into_iter().next().unwrap()
+            } else {
+                format!("stack(dir: ltr, spacing: 0.5em, {})", imgs.join(", "))
+            }
         } else if let Some(t) = nested_tabular {
             // `\begin{table}` wrapping a `tabular` (common IEEE pattern).
             // emit_tabular writes `#table(...)`; strip the leading `#` since
