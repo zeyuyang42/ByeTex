@@ -3,6 +3,15 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.55] — unreleased
+
+### Fixed
+- Author email capture now unwraps font/link wrappers at the source: `extract_email_token` runs the `@`-token
+  through `strip_unknown_author_cmds`, so `\texttt{a@b}`/`\textsf{a@b}`/etc. yield a clean address instead of
+  a mangled `texttt{a@b` that a downstream stripper had to special-case. The downstream font-wrapper stripper
+  is simplified accordingly (proper `\cmd{}` forms only, with a fast path) — handles more wrappers, no fixed
+  list to maintain.
+
 ## [0.6.54] — unreleased
 
 ### Fixed

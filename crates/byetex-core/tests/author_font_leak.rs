@@ -15,3 +15,13 @@ fn texttt_email_in_author_not_leaked() {
     assert!(!t.contains("texttt"), "texttt leaked; got:\n{t}");
     assert!(t.contains("jane") && t.contains("x.edu"), "email content lost; got:\n{t}");
 }
+
+#[test]
+fn textsf_wrapped_email_not_leaked() {
+    // The email capture now unwraps ANY \cmd{...} wrapper at the source
+    // (extract_email_token via strip_unknown_author_cmds), so wrappers beyond the
+    // old downstream fixed list (e.g. \textsf) no longer leak their macro name.
+    let t = typ(r"\title{T}\author{Jane Doe\\ \textsf{jane@x.edu}}\begin{document}\maketitle Body.\end{document}");
+    assert!(!t.contains("textsf"), "textsf leaked into email; got:\n{t}");
+    assert!(t.contains("jane") && t.contains("x.edu"), "email content lost; got:\n{t}");
+}

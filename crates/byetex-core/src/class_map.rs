@@ -591,10 +591,15 @@ fn extract_email_token(line: &str) -> Option<String> {
         }
     }
     line.split_whitespace().find(|t| t.contains('@')).map(|t| {
-        t.trim_matches(|c: char| {
-            !c.is_alphanumeric() && c != '@' && c != '.' && c != '_' && c != '-'
-        })
-        .to_string()
+        // The `@`-token may be wrapped in a font/link command
+        // (`\texttt{a@b}`, `\url{a@b}`, …). Unwrap it BEFORE trimming so the
+        // captured email is clean rather than a mangled `texttt{a@b` that a
+        // downstream stripper has to special-case.
+        strip_unknown_author_cmds(t)
+            .trim_matches(|c: char| {
+                !c.is_alphanumeric() && c != '@' && c != '.' && c != '_' && c != '-'
+            })
+            .to_string()
     })
 }
 
