@@ -1029,10 +1029,13 @@ impl<'a> Emitter<'a> {
     /// roman ("I."), subsections per-section letter ("A."), sub-subsections
     /// arabic ("1."); everyone else uses plain "1.".
     fn heading_numbering_decl(&self) -> String {
-        if matches!(self.detected_class, DocClass::RevTeX) {
-            "#set heading(numbering: (..n) => { let p = n.pos(); if p.len() == 1 { numbering(\"I.\", p.at(0)) } else if p.len() == 2 { numbering(\"A.\", p.at(1)) } else { numbering(\"1.\", p.at(2)) } })\n".to_string()
-        } else {
-            "#set heading(numbering: \"1.\")\n".to_string()
+        match self.detected_class {
+            DocClass::RevTeX => {
+                "#set heading(numbering: (..n) => { let p = n.pos(); if p.len() == 1 { numbering(\"I.\", p.at(0)) } else if p.len() == 2 { numbering(\"A.\", p.at(1)) } else { numbering(\"1.\", p.at(2)) } })\n".to_string()
+            }
+            // Springer LNCS headings have no trailing period ("1", "1.1").
+            DocClass::Lncs => "#set heading(numbering: \"1.1\")\n".to_string(),
+            _ => "#set heading(numbering: \"1.\")\n".to_string(),
         }
     }
 
