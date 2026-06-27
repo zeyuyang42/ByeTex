@@ -3402,8 +3402,9 @@ impl<'a> Emitter<'a> {
             | Some("\\pdfcompresslevel")
             | Some("\\pdfobjcompresslevel")
             | Some("\\string")
-            // Springer/LNCS running-head variants (content appears in full \title / \author)
-            | Some("\\title*")
+            // Springer running-head variant. (`\title*` is NOT here — in svmult it
+            // is the MAIN chapter title; the running head is `\titlerunning`. It is
+            // harvested with `\title` below.)
             | Some("\\author*")
             // Springer abstract variant
             | Some("\\abstract*")
@@ -3970,7 +3971,8 @@ impl<'a> Emitter<'a> {
             // Title-block accumulators. `\title`, `\author`, `\date` capture
             // their argument; `\maketitle` emits the assembled block. If
             // \maketitle is never called the block is flushed in `finish()`.
-            Some("\\title") => {
+            // `\title*` (svmult/Springer book chapters) is the main title too.
+            Some("\\title") | Some("\\title*") => {
                 if let Some(arg) = first_curly_group(node) {
                     self.metadata.title =
                         Some(Content::Typst(self.render_curly_group_content(arg)));
