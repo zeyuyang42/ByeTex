@@ -3,6 +3,13 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.51] — unreleased
+
+### Fixed
+- REVTeX/APS section headings now render in the class style: roman section numbers ("I."), per-section
+  letter subsections ("A."), arabic sub-subsections ("1."), uppercase and centered. ByeTex used arabic
+  "1." left-aligned headings. Found by the visual grader on 2605.31203; benefits all APS papers.
+
 ## [0.6.50] — unreleased
 
 ### Fixed
