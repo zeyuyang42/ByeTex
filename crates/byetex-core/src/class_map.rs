@@ -52,6 +52,9 @@ pub(crate) enum DocClass {
     /// `\documentclass{beamer}` — LaTeX presentation class. Rendered as slides:
     /// each `frame` becomes its own page with a slide title.
     Beamer,
+    /// `\documentclass{amsart}` — AMS math-journal class: uppercase centered
+    /// title and centered section headings.
+    Amsart,
     /// Unrecognized class with no template binding — emits the hand-rolled
     /// title block fallback.
     Unknown,
@@ -113,6 +116,7 @@ impl DocClass {
             // `refine_from_package` may upgrade this to Neurips / Icml /
             // Iclr if a conference style package is later loaded.
             "article" | "report" | "book" => Self::ArxivArticle,
+            "amsart" | "amsproc" | "amsbook" => Self::Amsart,
             _ => Self::Unknown,
         }
     }

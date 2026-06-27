@@ -157,7 +157,10 @@ impl StyleProfile {
             // Beamer: the slide page-size/title-slide styling is applied in the
             // emitter; the title-block knobs stay neutral for now.
             DocClass::Beamer => Self::neutral(),
-            DocClass::RevTeX | DocClass::Unknown => Self::neutral(),
+            // amsart uses the neutral base; its uppercase title + centered
+            // section headings are applied at emit time (build_neutral_preamble /
+            // flush_title_block) keyed on `DocClass::Amsart`.
+            DocClass::RevTeX | DocClass::Unknown | DocClass::Amsart => Self::neutral(),
         }
     }
 
