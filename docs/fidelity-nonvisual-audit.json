@@ -7,8 +7,8 @@
     {
       "kind": "needs_manual_review",
       "name": "",
-      "papers": 35,
-      "occurrences": 126
+      "papers": 27,
+      "occurrences": 101
     },
     {
       "kind": "drop_only",
@@ -19,8 +19,8 @@
     {
       "kind": "ambiguous_math",
       "name": "",
-      "papers": 24,
-      "occurrences": 1631
+      "papers": 20,
+      "occurrences": 1441
     },
     {
       "kind": "drop_only",
@@ -38,7 +38,7 @@
       "kind": "unsupported_command",
       "name": "\\",
       "papers": 8,
-      "occurrences": 323
+      "occurrences": 61
     },
     {
       "kind": "drop_only",
@@ -78,13 +78,19 @@
     },
     {
       "kind": "unsupported_command",
-      "name": "\\endgroup",
+      "name": "\\STATE",
       "papers": 4,
-      "occurrences": 26
+      "occurrences": 28
     },
     {
       "kind": "unsupported_command",
       "name": "\\begingroup",
+      "papers": 4,
+      "occurrences": 25
+    },
+    {
+      "kind": "unsupported_command",
+      "name": "\\endgroup",
       "papers": 4,
       "occurrences": 25
     },
@@ -113,6 +119,12 @@
       "occurrences": 6
     },
     {
+      "kind": "unsupported_command",
+      "name": "\\FOR",
+      "papers": 4,
+      "occurrences": 5
+    },
+    {
       "kind": "drop_only",
       "name": "\\centering",
       "papers": 4,
@@ -135,6 +147,12 @@
       "name": "\\penalty",
       "papers": 3,
       "occurrences": 69
+    },
+    {
+      "kind": "unsupported_command",
+      "name": "\\State",
+      "papers": 3,
+      "occurrences": 19
     },
     {
       "kind": "unsupported_command",
@@ -180,6 +198,12 @@
     },
     {
       "kind": "unsupported_command",
+      "name": "\\pdfoutput",
+      "papers": 3,
+      "occurrences": 3
+    },
+    {
+      "kind": "unsupported_command",
       "name": "usepackage:upgreek",
       "papers": 3,
       "occurrences": 3
@@ -199,12 +223,6 @@
     {
       "kind": "unsupported_command",
       "name": "usepackage:orcidlink",
-      "papers": 3,
-      "occurrences": 3
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\abstract",
       "papers": 3,
       "occurrences": 3
     },
@@ -233,6 +251,12 @@
       "occurrences": 27
     },
     {
+      "kind": "unsupported_command",
+      "name": "\\looseness",
+      "papers": 2,
+      "occurrences": 15
+    },
+    {
       "kind": "drop_only",
       "name": "\\pagebreak",
       "papers": 2,
@@ -249,6 +273,12 @@
       "name": "\\arraybackslash",
       "papers": 2,
       "occurrences": 4
+    },
+    {
+      "kind": "unsupported_command",
+      "name": "\\ENDFOR",
+      "papers": 2,
+      "occurrences": 3
     },
     {
       "kind": "unsupported_command",
@@ -354,12 +384,6 @@
     },
     {
       "kind": "unsupported_command",
-      "name": "\\rvert",
-      "papers": 2,
-      "occurrences": 2
-    },
-    {
-      "kind": "unsupported_command",
       "name": "\\useunder",
       "papers": 2,
       "occurrences": 2
@@ -459,12 +483,6 @@
       "name": "\\makebox",
       "papers": 1,
       "occurrences": 16
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\seq",
-      "papers": 1,
-      "occurrences": 15
     },
     {
       "kind": "unsupported_command",
@@ -582,18 +600,6 @@
     },
     {
       "kind": "unsupported_command",
-      "name": "\\cs",
-      "papers": 1,
-      "occurrences": 5
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\tl",
-      "papers": 1,
-      "occurrences": 5
-    },
-    {
-      "kind": "unsupported_command",
       "name": "\\hyperref",
       "papers": 1,
       "occurrences": 5
@@ -672,13 +678,19 @@
     },
     {
       "kind": "unsupported_command",
-      "name": "\\g",
+      "name": "\\algnewcommand",
       "papers": 1,
       "occurrences": 3
     },
     {
       "kind": "unsupported_command",
-      "name": "\\algnewcommand",
+      "name": "\\Repeat",
+      "papers": 1,
+      "occurrences": 3
+    },
+    {
+      "kind": "unsupported_command",
+      "name": "\\Until",
       "papers": 1,
       "occurrences": 3
     },
@@ -693,6 +705,30 @@
       "name": "\\unskip",
       "papers": 1,
       "occurrences": 3
+    },
+    {
+      "kind": "unsupported_command",
+      "name": "\\IF",
+      "papers": 1,
+      "occurrences": 2
+    },
+    {
+      "kind": "unsupported_command",
+      "name": "\\ELSE",
+      "papers": 1,
+      "occurrences": 2
+    },
+    {
+      "kind": "unsupported_command",
+      "name": "\\ENDIF",
+      "papers": 1,
+      "occurrences": 2
+    },
+    {
+      "kind": "unsupported_command",
+      "name": "\\COMMENT",
+      "papers": 1,
+      "occurrences": 2
     },
     {
       "kind": "unsupported_command",
@@ -757,6 +793,12 @@
     {
       "kind": "unsupported_command",
       "name": "\\setcounterref",
+      "papers": 1,
+      "occurrences": 2
+    },
+    {
+      "kind": "unsupported_command",
+      "name": "\\EndFor",
       "papers": 1,
       "occurrences": 2
     },
@@ -846,6 +888,12 @@
     },
     {
       "kind": "unsupported_command",
+      "name": "\\Comment",
+      "papers": 1,
+      "occurrences": 2
+    },
+    {
+      "kind": "unsupported_command",
       "name": "\\o",
       "papers": 1,
       "occurrences": 2
@@ -919,12 +967,6 @@
     {
       "kind": "unsupported_command",
       "name": "\\hoffset",
-      "papers": 1,
-      "occurrences": 1
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\roman*",
       "papers": 1,
       "occurrences": 1
     },
@@ -1115,38 +1157,14 @@
       "occurrences": 1
     },
     {
-      "kind": "unsupported_command",
-      "name": "\\ExplSyntaxOn",
-      "papers": 1,
-      "occurrences": 1
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\sys",
-      "papers": 1,
-      "occurrences": 1
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\ExplSyntaxOff",
-      "papers": 1,
-      "occurrences": 1
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\clist",
+      "kind": "custom_macro",
+      "name": "\\AppendToList",
       "papers": 1,
       "occurrences": 1
     },
     {
       "kind": "unsupported_command",
       "name": "\\textsf",
-      "papers": 1,
-      "occurrences": 1
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\setminted",
       "papers": 1,
       "occurrences": 1
     },
@@ -1164,43 +1182,7 @@
     },
     {
       "kind": "unsupported_command",
-      "name": "\\rceil",
-      "papers": 1,
-      "occurrences": 1
-    },
-    {
-      "kind": "unsupported_command",
       "name": "\\floor",
-      "papers": 1,
-      "occurrences": 1
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\lvert",
-      "papers": 1,
-      "occurrences": 1
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\lVert",
-      "papers": 1,
-      "occurrences": 1
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\rVert",
-      "papers": 1,
-      "occurrences": 1
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\langle",
-      "papers": 1,
-      "occurrences": 1
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\rangle",
       "papers": 1,
       "occurrences": 1
     },
@@ -1277,8 +1259,20 @@
       "occurrences": 1
     },
     {
-      "kind": "unsupported_environment",
-      "name": "longtable",
+      "kind": "unsupported_command",
+      "name": "\\endfirsthead",
+      "papers": 1,
+      "occurrences": 1
+    },
+    {
+      "kind": "unsupported_command",
+      "name": "\\endhead",
+      "papers": 1,
+      "occurrences": 1
+    },
+    {
+      "kind": "unsupported_command",
+      "name": "\\endfoot",
       "papers": 1,
       "occurrences": 1
     },
@@ -1356,6 +1350,12 @@
     },
     {
       "kind": "unsupported_command",
+      "name": "\\abstract",
+      "papers": 1,
+      "occurrences": 1
+    },
+    {
+      "kind": "unsupported_command",
       "name": "\\euro",
       "papers": 1,
       "occurrences": 1
@@ -1423,6 +1423,12 @@
     {
       "kind": "unsupported_command",
       "name": "\\etocdepthtag",
+      "papers": 1,
+      "occurrences": 1
+    },
+    {
+      "kind": "unsupported_command",
+      "name": "\\RETURN",
       "papers": 1,
       "occurrences": 1
     },
@@ -1524,12 +1530,6 @@
     },
     {
       "kind": "unsupported_command",
-      "name": "\\phantomsection",
-      "papers": 1,
-      "occurrences": 1
-    },
-    {
-      "kind": "unsupported_command",
       "name": "\\appendices",
       "papers": 1,
       "occurrences": 1
@@ -1537,6 +1537,12 @@
     {
       "kind": "unsupported_command",
       "name": "\\baselineskip",
+      "papers": 1,
+      "occurrences": 1
+    },
+    {
+      "kind": "unsupported_command",
+      "name": "\\Ensure",
       "papers": 1,
       "occurrences": 1
     },
@@ -1597,6 +1603,12 @@
     {
       "kind": "unsupported_command",
       "name": "usepackage:wasysym",
+      "papers": 1,
+      "occurrences": 1
+    },
+    {
+      "kind": "unsupported_command",
+      "name": "\\WHILE",
       "papers": 1,
       "occurrences": 1
     },
@@ -1729,6 +1741,12 @@
     {
       "kind": "unsupported_command",
       "name": "usepackage:bbding",
+      "papers": 1,
+      "occurrences": 1
+    },
+    {
+      "kind": "unsupported_command",
+      "name": "\\For",
       "papers": 1,
       "occurrences": 1
     },
