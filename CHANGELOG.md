@@ -3,6 +3,14 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.56] — unreleased
+
+### Changed
+- Class-faithful title/heading casing is now declarative: `StyleProfile` carries `title_uppercase`,
+  `heading_centered`, and `heading_uppercase` fields (set per DocClass) instead of scattered
+  `matches!(class, …)` conditionals at the title and heading-rule emit points. amsart/REVTeX behavior
+  unchanged; adding an amsart-like class is now a profile row, not edits across two files.
+
 ## [0.6.55] — unreleased
 
 ### Fixed

@@ -59,8 +59,8 @@ impl<'a> Emitter<'a> {
             } else {
                 content.to_string()
             };
-            // amsart applies \MakeUppercase to the title.
-            let body = if matches!(self.detected_class, crate::class_map::DocClass::Amsart) {
+            // Class-faithful title casing (amsart's \MakeUppercase).
+            let body = if profile.title_uppercase {
                 format!("#upper[{body}]")
             } else {
                 body
@@ -467,15 +467,13 @@ pub(in crate::emit) fn build_neutral_preamble(
     } else {
         ""
     };
-    // amsart centers its section (level-1) headings; REVTeX also uppercases them.
-    let heading_align = match class {
-        crate::class_map::DocClass::Amsart => {
-            "#show heading.where(level: 1): it => align(center, it)\n"
-        }
-        crate::class_map::DocClass::RevTeX => {
-            "#show heading.where(level: 1): it => align(center, upper(it))\n"
-        }
-        _ => "",
+    // Class-faithful level-1 heading alignment/casing (amsart centers; REVTeX
+    // centers + uppercases) — driven by the StyleProfile, not per-class matches.
+    let heading_align = match (profile.heading_centered, profile.heading_uppercase) {
+        (true, true) => "#show heading.where(level: 1): it => align(center, upper(it))\n",
+        (true, false) => "#show heading.where(level: 1): it => align(center, it)\n",
+        (false, true) => "#show heading.where(level: 1): it => upper(it)\n",
+        (false, false) => "",
     };
     format!(
         "#set page(paper: \"{paper}\", margin: {margin}{columns}, numbering: \"1\")\n\
