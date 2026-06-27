@@ -3,6 +3,13 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.54] — unreleased
+
+### Fixed
+- REVTeX heading numbering no longer mis-numbers levels deeper than sub-subsection. The numbering closure's
+  catch-all reused the sub-subsection counter (p.at(2)) for \paragraph (depth 4); now depth 1-3 number as
+  I./A./1. and deeper levels are unnumbered, matching RevTeX's secnumdepth=3.
+
 ## [0.6.53] — unreleased
 
 ### Fixed
