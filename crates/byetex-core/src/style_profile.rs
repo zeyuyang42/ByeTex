@@ -50,6 +50,12 @@ pub(crate) struct StyleProfile {
     /// conference classes section with \large\bf / \normalsize\bf at a 10pt
     /// body, i.e. 1.2/1.0/1.0.
     pub heading_sizes: [&'static str; 3],
+    /// Uppercase the title (amsart's `\MakeUppercase`).
+    pub title_uppercase: bool,
+    /// Center level-1 (section) headings (amsart, REVTeX).
+    pub heading_centered: bool,
+    /// Uppercase level-1 (section) headings (REVTeX).
+    pub heading_uppercase: bool,
 }
 
 impl StyleProfile {
@@ -157,10 +163,20 @@ impl StyleProfile {
             // Beamer: the slide page-size/title-slide styling is applied in the
             // emitter; the title-block knobs stay neutral for now.
             DocClass::Beamer => Self::neutral(),
-            // amsart uses the neutral base; its uppercase title + centered
-            // section headings are applied at emit time (build_neutral_preamble /
-            // flush_title_block) keyed on `DocClass::Amsart`.
-            DocClass::RevTeX | DocClass::Unknown | DocClass::Amsart => Self::neutral(),
+            // amsart: \MakeUppercase title + centered section headings.
+            DocClass::Amsart => Self {
+                title_uppercase: true,
+                heading_centered: true,
+                ..Self::neutral()
+            },
+            // REVTeX/APS: centered + uppercase section headings (numbering is
+            // class-specific too — see `heading_numbering_decl`).
+            DocClass::RevTeX => Self {
+                heading_centered: true,
+                heading_uppercase: true,
+                ..Self::neutral()
+            },
+            DocClass::Unknown => Self::neutral(),
         }
     }
 
@@ -182,6 +198,9 @@ impl StyleProfile {
             // historical global default for every class (level-3 kept as the
             // exact historical `1em` literal for byte-identical neutral output).
             heading_sizes: ["1.44em", "1.2em", "1em"],
+            title_uppercase: false,
+            heading_centered: false,
+            heading_uppercase: false,
         }
     }
 }
