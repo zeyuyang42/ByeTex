@@ -1025,6 +1025,17 @@ impl<'a> Emitter<'a> {
     /// One head show rule per emitted theorem kind: renders the figure as
     /// `*Supplement N (Note).* body` (LaTeX shows a theorem head + number; a
     /// bare `#figure` shows neither). Kinds are sorted for deterministic output.
+    /// The `#set heading(numbering: …)` line. REVTeX/APS numbers sections in
+    /// roman ("I."), subsections per-section letter ("A."), sub-subsections
+    /// arabic ("1."); everyone else uses plain "1.".
+    fn heading_numbering_decl(&self) -> String {
+        if matches!(self.detected_class, DocClass::RevTeX) {
+            "#set heading(numbering: (..n) => { let p = n.pos(); if p.len() == 1 { numbering(\"I.\", p.at(0)) } else if p.len() == 2 { numbering(\"A.\", p.at(1)) } else { numbering(\"1.\", p.at(2)) } })\n".to_string()
+        } else {
+            "#set heading(numbering: \"1.\")\n".to_string()
+        }
+    }
+
     fn theorem_show_rules(&self) -> String {
         let mut kinds: Vec<&String> = self.used_theorem_kinds.iter().collect();
         kinds.sort();
@@ -1141,7 +1152,7 @@ impl<'a> Emitter<'a> {
             } else {
                 self.out
                     .push_str(&build_neutral_preamble(&self.layout, &self.detected_class));
-                self.out.push_str("#set heading(numbering: \"1.\")\n");
+                self.out.push_str(&self.heading_numbering_decl());
             }
             if self.used_text_label_anchor {
                 self.out
@@ -1217,7 +1228,8 @@ impl<'a> Emitter<'a> {
             preamble.push_str(&self.theorem_show_rules());
         }
         if self.needs_heading_numbering {
-            preamble.push_str("#set heading(numbering: \"1.\")\n");
+            let decl = self.heading_numbering_decl();
+            preamble.push_str(&decl);
         }
         if self.needs_equation_numbering {
             preamble.push_str("#set math.equation(numbering: \"(1)\")\n");
