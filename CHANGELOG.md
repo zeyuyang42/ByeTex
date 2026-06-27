@@ -3,6 +3,13 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.47] — unreleased
+
+### Fixed
+- `\title*{...}` (svmult / Springer book chapters) is now rendered. It was treated as a running-head
+  variant and DROPPED, losing the chapter title entirely — but `\title*` is the MAIN title (the running
+  head is `\titlerunning`). Now harvested like `\title`. Found by the visual grader on 2605.22312.
+
 ## [0.6.46] — unreleased
 
 ### Fixed
