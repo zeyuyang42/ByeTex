@@ -59,6 +59,12 @@ impl<'a> Emitter<'a> {
             } else {
                 content.to_string()
             };
+            // amsart applies \MakeUppercase to the title.
+            let body = if matches!(self.detected_class, crate::class_map::DocClass::Amsart) {
+                format!("#upper[{body}]")
+            } else {
+                body
+            };
             if profile.title_bold {
                 let _ = writeln!(
                     self.out,
@@ -461,6 +467,12 @@ pub(in crate::emit) fn build_neutral_preamble(
     } else {
         ""
     };
+    // amsart centers its section (level-1) headings.
+    let heading_align = if matches!(class, crate::class_map::DocClass::Amsart) {
+        "#show heading.where(level: 1): it => align(center, it)\n"
+    } else {
+        ""
+    };
     format!(
         "#set page(paper: \"{paper}\", margin: {margin}{columns}, numbering: \"1\")\n\
          #set text(font: \"{body_font}\", size: {font_size})\n\
@@ -470,7 +482,7 @@ pub(in crate::emit) fn build_neutral_preamble(
          #show heading.where(level: 3): set text(size: {h3}, weight: \"bold\")\n\
          #show heading: it => block(above: if it.level == 1 {{ 1.5em }} else {{ 1.4em }}, below: if it.level == 1 {{ 1.0em }} else {{ 0.65em }}, it)\n\
          #show figure.where(kind: table): set figure.caption(position: top)\n\
-         {figure_supplement}\n"
+         {figure_supplement}{heading_align}\n"
     )
 }
 

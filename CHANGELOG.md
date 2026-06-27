@@ -3,6 +3,13 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.50] — unreleased
+
+### Fixed
+- amsart (AMS math-journal class) now renders its title in UPPERCASE and CENTERS section headings, matching
+  the class (`\MakeUppercase` title + centered `\section`). Added a `DocClass::Amsart` (mapped from
+  amsart/amsproc/amsbook). Found by the visual grader on 2605.22485; affects 4 corpus papers.
+
 ## [0.6.49] — unreleased
 
 ### Fixed
