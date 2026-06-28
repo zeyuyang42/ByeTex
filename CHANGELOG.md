@@ -3,6 +3,15 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.64] — unreleased
+
+### Fixed
+- Starred math spacing/tag primitives `\hspace*`, `\vspace*`, and `\tag*` now behave like their
+  non-starred forms instead of leaking the bare command name as an `ambiguous_math` string. In math
+  mode they previously fell through to the unknown-command path and rendered as the literal text
+  `"hspace*"` / `"vspace*"` / `"tag*"` (corpus 2605.22159, 2605.22728). `\hspace*`→thin space,
+  `\vspace*`→dropped, `\tag*`→dropped-with-warning, matching `\hspace`/`\vspace`/`\tag`.
+
 ## [0.6.63] — unreleased
 
 ### Fixed
