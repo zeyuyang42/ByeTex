@@ -2,7 +2,7 @@
 
 use std::fmt::Write;
 
-use tree_sitter::Node;
+use crate::ir::Node;
 
 use super::{
     color_command_parts, color_from_model_spec, consume_trailing_inline_space, first_curly_group,

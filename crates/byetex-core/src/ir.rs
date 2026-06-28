@@ -21,9 +21,11 @@
 //! already relies on (and actually *removes* the `Tree`-must-outlive-`Node`
 //! lifetime juggling, since the arena is a single owned value).
 
-// Phase A is intentionally additive: the IR is built and unit-tested here but is
-// not wired into the emitter until Phase B, so in non-test builds nothing yet
-// consumes `lower`/`Node`. The allow keeps the build warning-free until then.
+// `ir::Node` is a deliberately complete mirror of the subset of the
+// `tree_sitter::Node` API the emitter relies on. A few accessors (`parent`,
+// `is_named`) are part of that mirror but not yet exercised by the migrated emit
+// path; they're kept for API parity and the later quirk-normalization phase, so
+// the module allows dead code rather than dropping pieces of the surface.
 #![allow(dead_code)]
 
 use tree_sitter::Tree as TsTree;
@@ -261,6 +263,15 @@ pub fn lower(ts_tree: &TsTree, _src: &str) -> Tree {
     }
 
     Tree { nodes }
+}
+
+/// Parse `src` with the tree-sitter grammar and immediately lower it to the owned
+/// IR. This is the single entry point the emitter uses instead of
+/// `parser::parse` — the returned [`Tree`] owns its arena (it does not borrow the
+/// transient tree-sitter tree), so `tree.root_node()` walks exactly as before.
+pub fn parse_and_lower(src: &str) -> Tree {
+    let ts_tree = crate::parser::parse(src);
+    lower(&ts_tree, src)
 }
 
 #[cfg(test)]

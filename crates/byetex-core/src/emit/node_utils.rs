@@ -1,6 +1,6 @@
 //! AST/node classification, curly-group access, label extraction & misc string helpers, extracted from emit.rs (pure code motion).
 
-use tree_sitter::Node;
+use crate::ir::Node;
 
 use super::sanitize_label_key;
 use crate::warnings::Range;

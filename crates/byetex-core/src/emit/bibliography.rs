@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
-use tree_sitter::Node;
+use crate::ir::Node;
 
 use super::{
     extract_label_ref_keys_and_end, is_typst_label_char, range_of, sanitize_label_key, Emitter,

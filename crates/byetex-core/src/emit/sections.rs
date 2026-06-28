@@ -2,7 +2,7 @@
 
 use std::fmt::Write;
 
-use tree_sitter::Node;
+use crate::ir::Node;
 
 use super::{
     collapse_inline_whitespace, extract_label_name_and_end, sanitize_label_key, section_level,

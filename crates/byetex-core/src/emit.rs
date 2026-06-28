@@ -12,7 +12,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::path::PathBuf;
 
-use tree_sitter::Node;
+use crate::ir::Node;
 
 use crate::class_map::DocClass;
 use crate::document::{Content, DocumentMetadata};
@@ -1432,7 +1432,7 @@ impl<'a> Emitter<'a> {
         // fine-grained provenance entries — such error lines resolve only to the
         // coarse enclosing node's span. Threading capture through here is the
         // deferred "fine-grained sub-buffer mapping" follow-up.
-        let tree = crate::parser::parse(src);
+        let tree = crate::ir::parse_and_lower(src);
         let visited = std::mem::take(&mut self.visited_includes);
         let macros = self.macros.clone();
         let mut sub = Emitter::with_includes(src, self.source_name, self.base_dir.clone(), visited);

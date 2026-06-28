@@ -3,7 +3,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use tree_sitter::Node;
+use crate::ir::Node;
 
 use super::{
     brace_balanced_end, consume_braceless_arg, extract_label_ref_keys_and_end,
@@ -375,7 +375,7 @@ impl<'a> Emitter<'a> {
         // Walk the file's AST looking for `new_command_definition`,
         // `old_command_definition`, and `theorem_definition` nodes;
         // harvest each one into a fresh map, then merge.
-        let tree = crate::parser::parse(&source);
+        let tree = crate::ir::parse_and_lower(&source);
         let mut harvested: HashMap<String, MacroDef> = HashMap::new();
         let mut harvested_theorems: HashMap<String, String> = HashMap::new();
         let mut harvested_env_argc: HashMap<String, usize> = HashMap::new();
@@ -507,7 +507,7 @@ impl<'a> Emitter<'a> {
         // its chain.
         let mut visited = std::mem::take(&mut self.visited_includes);
         visited.insert(canonical);
-        let tree = crate::parser::parse(&source);
+        let tree = crate::ir::parse_and_lower(&source);
         // Inherit the parent's macro table so `\input`ed files can use
         // macros defined in the parent (or pre-scanned by the project
         // layer). Without this, an arXiv paper with `\newcommand\src`
@@ -735,7 +735,7 @@ pub(in crate::emit) fn extract_paired_delimiter(
 /// whole document chapter-bearing (health-check P1) — the entry file's prepass alone never
 /// sees it.
 pub(crate) fn harvest_uses_chapter_from_source(source: &str) -> bool {
-    let tree = crate::parser::parse(source);
+    let tree = crate::ir::parse_and_lower(source);
     let mut stack: Vec<Node<'_>> = vec![tree.root_node()];
     while let Some(n) = stack.pop() {
         if n.kind() == "chapter" {
@@ -754,7 +754,7 @@ pub(crate) fn harvest_uses_chapter_from_source(source: &str) -> bool {
 /// nodes), sanitized. Used by the project-mode pre-scan so a `\ref` in one
 /// file is known when the labelled section in another file is emitted.
 pub(crate) fn harvest_referenced_labels_from_source(source: &str) -> HashSet<String> {
-    let tree = crate::parser::parse(source);
+    let tree = crate::ir::parse_and_lower(source);
     let mut out: HashSet<String> = HashSet::new();
     let mut stack: Vec<Node<'_>> = vec![tree.root_node()];
     while let Some(n) = stack.pop() {
@@ -782,7 +782,7 @@ pub(crate) fn harvest_referenced_labels_from_source(source: &str) -> HashSet<Str
 /// `.cls`/`.sty` files or in sibling `.tex` files unreached by `\input`
 /// are still available when the entry file is converted.
 pub(crate) fn harvest_macros_from_source(source: &str) -> HashMap<String, MacroDef> {
-    let tree = crate::parser::parse(source);
+    let tree = crate::ir::parse_and_lower(source);
     let mut out: HashMap<String, MacroDef> = HashMap::new();
     // `\let\new\old` pairs, resolved after the main pass so `\old` can refer
     // to a macro harvested later in the (DFS, unordered) walk.
@@ -903,7 +903,7 @@ pub(in crate::emit) fn harvest_wrapper_newcommands(
                     if args.len() >= macro_def.params && macro_def.params > 0 {
                         let expanded =
                             substitute_macro_args(&macro_def.body, &args[..macro_def.params]);
-                        let sub_tree = crate::parser::parse(&expanded);
+                        let sub_tree = crate::ir::parse_and_lower(&expanded);
                         let mut sub_stack = vec![sub_tree.root_node()];
                         while let Some(sn) = sub_stack.pop() {
                             if sn.kind() == "new_command_definition" {

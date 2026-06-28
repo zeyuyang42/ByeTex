@@ -3,7 +3,7 @@
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
-use tree_sitter::Node;
+use crate::ir::Node;
 
 use super::{escape_text_for_typst_content, Emitter};
 
