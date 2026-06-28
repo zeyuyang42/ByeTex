@@ -46,7 +46,8 @@ pub(crate) use escape::{
 pub(in crate::emit) use figures::parse_graphicspath_dirs;
 pub(in crate::emit) use macros::{
     extract_declare_math_operator_from_newcmd, extract_def_and_record, extract_environment_def,
-    extract_let, extract_newcommand, extract_newcommandx, extract_newcommandx_and_end,
+    extract_algnewcommand_and_end, extract_let, extract_newcommand, extract_newcommandx,
+    extract_newcommandx_and_end,
     extract_paired_delimiter, extract_theorem_def, find_explsyntaxoff_end, find_makeatother_end,
     let_alias_def,
     new_command_token_kind, newcommand_body_true_end, read_newif_flag,
@@ -942,6 +943,18 @@ impl<'a> Emitter<'a> {
                         if let Some((name, def)) = extract_newcommandx(n, self.src) {
                             self.macros.insert(name, def);
                         }
+                    }
+                    // `\algnewcommand` / `\algrenewcommand` (algorithmicx) likewise
+                    // parse as generic_command with plain `\newcommand` syntax.
+                    match command_name_text(n, self.src).as_deref() {
+                        Some("\\algnewcommand") | Some("\\algrenewcommand") => {
+                            if let Some(((name, def), _end)) =
+                                extract_algnewcommand_and_end(n, self.src)
+                            {
+                                self.macros.insert(name, def);
+                            }
+                        }
+                        _ => {}
                     }
                     // Beamer section-divider installers. Real beamer only renders a
                     // section-title slide when the preamble has `\AtBeginSection[…]{…}`
@@ -3627,6 +3640,17 @@ impl<'a> Emitter<'a> {
                 if let Some((_n, def_end)) =
                     extract_newcommandx_and_end(node, self.src)
                 {
+                    self.skip_until = self.skip_until.max(def_end);
+                    return def_end;
+                }
+                node.end_byte()
+            }
+            // `\algnewcommand` / `\algrenewcommand` (algorithmicx) — same bare
+            // generic_command shape as `\newcommandx`. The prepass already
+            // registered the macro; here bump `skip_until` past the definition's
+            // sibling nodes so the body doesn't leak into the output.
+            Some("\\algnewcommand") | Some("\\algrenewcommand") => {
+                if let Some((_n, def_end)) = extract_algnewcommand_and_end(node, self.src) {
                     self.skip_until = self.skip_until.max(def_end);
                     return def_end;
                 }

@@ -3,6 +3,16 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.62] — unreleased
+
+### Fixed
+- `\algnewcommand` / `\algrenewcommand` (algorithmicx package) are now harvested as macro
+  definitions instead of leaking their body into the document. Both syntactic forms are handled —
+  `\algnewcommand{\name}[N]{body}` and the bare `\algnewcommand\name{body}` — at all three sites
+  (main prepass, `\input` harvest, and emit-time skip). Previously the definition body leaked as
+  raw text (dogfood 2605.31499: `\algnewcommand{\LeftComment}[1]{\Statex \(\triangleright\) #1}` →
+  `\[1\] $gt.tri$ \#1`) and the macro never expanded at its call sites.
+
 ## [0.6.61] — unreleased
 
 ### Fixed
