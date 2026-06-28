@@ -407,13 +407,21 @@ impl<'a> Emitter<'a> {
         // the IR label-normalization repaired the truncated node span, a stray
         // `_` at the old node end happened to trigger the alnum/`_` guard here;
         // now the span is correct and the `.`-glue case must be handled directly.)
+        //
+        // Decode the next CHAR (not byte) and reuse `is_typst_label_char` for the
+        // whole predicate so the rule can't drift between ASCII and non-ASCII
+        // label chars — and so `&str` slicing always lands on a char boundary
+        // (review #7).
         let end = node.end_byte();
-        let bytes = self.src.as_bytes();
-        if let Some(&b) = bytes.get(end) {
-            let glues = match b {
-                b'-' | b'_' | b':' | b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' => true,
-                b'.' => self.src[end + 1..].chars().next().is_some_and(is_typst_label_char),
-                _ => false,
+        let mut rest = self.src[end..].chars();
+        if let Some(c0) = rest.next() {
+            let glues = if c0 == '.' {
+                // A bare `@ref.` before whitespace is sentence punctuation Typst
+                // ignores; only a `.` followed by another label char glues
+                // (`@ref.ii`, e.g. `\Cref{def:shape_regular}.ii`).
+                rest.next().is_some_and(is_typst_label_char)
+            } else {
+                is_typst_label_char(c0)
             };
             if glues {
                 self.out.push(' ');

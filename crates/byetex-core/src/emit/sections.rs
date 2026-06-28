@@ -72,11 +72,11 @@ impl<'a> Emitter<'a> {
                 "label_definition" => {
                     // Collect every label alias (the chosen one is decided
                     // after the full sweep — see pick_label_to_attach).
-                    // tree-sitter truncates a label token at the first `_`, so
-                    // `\label{sec:exp1_main}` leaves the tail (`_main}`) as sibling
-                    // subscript/word/ERROR nodes that would leak as body text.
-                    // `extract_label_name_and_end` byte-scans the real brace span;
-                    // advance `skip_until` past it so the tail isn't re-emitted.
+                    // tree-sitter truncates a label token at the first `_`, but
+                    // `ir::lower`'s normalize_truncated_labels already repaired the
+                    // `curly_group_label` span and pruned the leaked tail, so
+                    // `extract_label_name_and_end` reads the key straight off the
+                    // node span. `skip_until` is advanced for belt-and-suspenders.
                     if let Some((k, end)) = extract_label_name_and_end(*child, self.src) {
                         if !labels.contains(&k) {
                             labels.push(k);

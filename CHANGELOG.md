@@ -3,6 +3,28 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.60] — unreleased
+
+### Fixed
+- Restored the stray-brace `ERROR`-drop arm in `emit_node` that Phase C1 removed. That arm
+  suppresses any lone `{`/`}` parsed as an `ERROR` node — not just the ones from
+  underscore-truncated label keys — so removing it let an unbalanced brace leak a literal `}` into
+  output (`\textbf{x} extra }` → `*x* extra }`). The IR's `normalize_truncated_labels` only prunes
+  braces *inside* truncated label keys, so the arm stays as a general safety net (code-review #1).
+
+### Changed
+- Hardened `ir::normalize_truncated_labels` against malformed/misnested label braces. The brace
+  scan is now a flat, single-line `label_brace_end` that bails on a nested `{` or a newline, so a
+  label whose own `}` is missing can no longer balance against an unrelated later `}` and have the
+  tree-mutating prune delete the intervening real content (code-review #2); the escape skip is now
+  bounds-safe for a key ending in `\` (#4). The synthesized close brace is identified via a mirrored
+  tree-sitter `is_missing()` bit rather than a zero-width-span guess (#11), and only the `label` leaf
+  actually clipped at the truncation point is extended (#5). `byte_to_point` now resolves positions
+  through a precomputed line-start table (binary search) instead of rescanning from byte 0 on every
+  call, removing a latent O(labels × file-size) cost (#6).
+- The `\ref`/`\cref` glue guard decodes the next char and reuses `is_typst_label_char` uniformly, so
+  the ASCII and non-ASCII paths can't drift and `&str` slicing is always char-boundary safe (#7).
+
 ## [0.6.59] — unreleased
 
 ### Changed

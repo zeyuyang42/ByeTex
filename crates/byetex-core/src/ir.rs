@@ -46,6 +46,11 @@ struct NodeData {
     start_position: Point,
     end_position: Point,
     named: bool,
+    /// Mirror of tree-sitter's `is_missing()` — a zero-width node the parser
+    /// synthesized during error recovery (e.g. the `}` it inserts for an
+    /// underscore-truncated label key). Kept so normalization can identify
+    /// synthesized tokens precisely rather than guessing from a zero-width span.
+    missing: bool,
     field_name: Option<Box<str>>,
     parent: Option<usize>,
     children: Vec<usize>,
@@ -236,6 +241,7 @@ pub fn lower(ts_tree: &TsTree, src: &str) -> Tree {
                 column: ep.column,
             },
             named: tsn.is_named(),
+            missing: tsn.is_missing(),
             field_name: field.map(String::into_boxed_str),
             parent,
             children: Vec::new(),
@@ -270,52 +276,56 @@ pub fn lower(ts_tree: &TsTree, src: &str) -> Tree {
     Tree { nodes }
 }
 
-/// Index one past the `}` that balances the `{` at `open`, scanning raw bytes
-/// (an escaped `\{`/`\}` doesn't change depth). `None` if `open` isn't `{` or the
-/// braces never balance.
-fn balanced_brace_end(bytes: &[u8], open: usize) -> Option<usize> {
+/// Index one past the `}` that closes the label-key brace at `open`.
+///
+/// A LaTeX label key is flat (no nested groups) and single-line, so this returns
+/// the first unescaped `}` and BAILS (`None`) the moment it meets a nested `{` or
+/// a newline. That bound is what makes promoting the recovery into a
+/// tree-mutating prune safe: without it, a label whose own `}` is missing would
+/// balance against an unrelated later `}` and the prune would delete the
+/// intervening real document content (review #2). `\X` escapes are skipped with a
+/// bounds guard so a key ending in a lone backslash can't run the index past the
+/// buffer (review #4).
+fn label_brace_end(bytes: &[u8], open: usize) -> Option<usize> {
     if bytes.get(open) != Some(&b'{') {
         return None;
     }
-    let mut depth = 0usize;
-    let mut i = open;
+    let mut i = open + 1;
     while i < bytes.len() {
         match bytes[i] {
-            b'\\' => {
-                i += 2;
-                continue;
-            }
-            b'{' => depth += 1,
-            b'}' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(i + 1);
-                }
-            }
-            _ => {}
+            b'}' => return Some(i + 1),
+            // Nested group or line break ⇒ this isn't a flat single-line key; the
+            // real close is missing, so don't risk engulfing real content.
+            b'{' | b'\n' | b'\r' => return None,
+            b'\\' => i += 2, // skip the escaped byte (bounds-safe: i may pass len)
+            _ => i += 1,
         }
-        i += 1;
     }
     None
 }
 
-/// Byte offset → `Point`, with byte-based columns to match tree-sitter's own
-/// `Point` convention.
-fn byte_to_point(src: &str, byte: usize) -> Point {
-    let mut row = 0usize;
-    let mut line_start = 0usize;
+/// Precompute the byte offset of the start of each line (index 0 is line 0 at
+/// byte 0). Lets [`byte_to_point`] resolve a position in O(log lines) instead of
+/// re-scanning the source from byte 0 on every call (review #6).
+fn line_start_offsets(src: &str) -> Vec<usize> {
+    let mut starts = vec![0usize];
     for (i, &b) in src.as_bytes().iter().enumerate() {
-        if i >= byte {
-            break;
-        }
         if b == b'\n' {
-            row += 1;
-            line_start = i + 1;
+            starts.push(i + 1);
         }
     }
+    starts
+}
+
+/// Byte offset → `Point` via a precomputed line-start table. Columns are
+/// byte-based to match tree-sitter's own `Point` convention.
+fn byte_to_point(line_starts: &[usize], byte: usize) -> Point {
+    // Row = index of the last line start ≤ byte. `partition_point` returns the
+    // count of starts ≤ byte; subtract 1 (line_starts[0] == 0 guarantees ≥ 1).
+    let row = line_starts.partition_point(|&ls| ls <= byte).saturating_sub(1);
     Point {
         row,
-        column: byte.saturating_sub(line_start),
+        column: byte.saturating_sub(line_starts[row]),
     }
 }
 
@@ -327,14 +337,20 @@ fn byte_to_point(src: &str, byte: usize) -> Point {
 /// `}` leak out as following `subscript`/`word`/`ERROR` siblings (sometimes
 /// across node levels — e.g. inside a parent `text` for `\ref`).
 ///
-/// This pass moves the recovery that previously lived scattered across the emit
-/// layer (a source byte-scan in `extract_label_name_and_end` /
-/// `extract_label_ref_keys_and_end`, a `skip_until`, and an ERROR-brace drop
-/// arm) into the single chokepoint here: it extends the label group (and its
-/// `label` leaf and any clipped ancestors) to the real closing brace, drops the
-/// `MISSING`, and prunes every node whose span falls entirely inside the leaked
-/// region. After this, the emit layer can read the label key straight off the
+/// This pass moves the *label-key* recovery that previously lived scattered
+/// across the emit layer (a source byte-scan in `extract_label_name_and_end` /
+/// `extract_label_ref_keys_and_end` and its `skip_until`) into the single
+/// chokepoint here: it extends the label group (and its truncated `label` leaf
+/// and any clipped ancestors) to the real closing brace, drops the synthesized
+/// `MISSING` brace, and prunes every node whose span falls entirely inside the
+/// leaked region. After this, the emit layer reads the label key straight off the
 /// node span with no special-casing.
+///
+/// It only fixes *flat, single-line* label keys (see [`label_brace_end`]); a
+/// malformed key whose close is missing is left untouched so the prune can never
+/// engulf real content. Stray single-brace `ERROR` nodes from sources OTHER than
+/// underscore-truncation (e.g. an unbalanced `}` in the body) are NOT this pass's
+/// concern — they're still dropped by the dedicated arm in `emit_node`.
 fn normalize_truncated_labels(nodes: &mut [NodeData], src: &str) {
     let bytes = src.as_bytes();
     let n = nodes.len();
@@ -347,7 +363,7 @@ fn normalize_truncated_labels(nodes: &mut [NodeData], src: &str) {
             _ => continue,
         }
         let open = nodes[id].start_byte;
-        let Some(real_close) = balanced_brace_end(bytes, open) else {
+        let Some(real_close) = label_brace_end(bytes, open) else {
             continue;
         };
         let old_end = nodes[id].end_byte;
@@ -358,36 +374,45 @@ fn normalize_truncated_labels(nodes: &mut [NodeData], src: &str) {
     if fixes.is_empty() {
         return;
     }
+    let line_starts = line_start_offsets(src);
 
-    // Pass 2 — extend the label group, its `label` leaf, and any ancestors that
-    // were clipped at the truncation point; drop the synthesized MISSING `}`.
+    // Pass 2 — extend the label group, its truncated `label` leaf, and any
+    // ancestors clipped at the truncation point; drop the synthesized MISSING `}`.
     for &(id, old_end, real_close) in &fixes {
         nodes[id].end_byte = real_close;
-        nodes[id].end_position = byte_to_point(src, real_close);
+        nodes[id].end_position = byte_to_point(&line_starts, real_close);
 
         let kids = nodes[id].children.clone();
         let mut kept = Vec::with_capacity(kids.len());
         for k in kids {
-            if &*nodes[k].kind == "}" && nodes[k].start_byte == nodes[k].end_byte {
-                continue; // synthesized MISSING brace
+            // Drop the parser-synthesized MISSING close brace (review #11: use the
+            // mirrored `missing` bit, not a zero-width-span guess).
+            if nodes[k].missing {
+                continue;
             }
-            if &*nodes[k].kind == "label" {
+            // Extend ONLY the `label` leaf that was clipped at the truncation
+            // point — a label_list may keep an earlier, un-truncated leaf whose
+            // span must not be stretched over the whole key (review #5).
+            if &*nodes[k].kind == "label" && nodes[k].end_byte == old_end {
                 nodes[k].end_byte = real_close - 1;
-                nodes[k].end_position = byte_to_point(src, real_close - 1);
+                nodes[k].end_position = byte_to_point(&line_starts, real_close - 1);
             }
             kept.push(k);
         }
         nodes[id].children = kept;
 
+        // Extend ancestors that were clipped at the truncation point. By tree
+        // containment an ancestor's end is always ≥ the group's end (old_end), so
+        // any ancestor ending strictly inside the leaked region [old_end,
+        // real_close) is there only because it held the leaked tail; stop at the
+        // first ancestor that already reaches the real close.
         let mut parent = nodes[id].parent;
         while let Some(pid) = parent {
             if nodes[pid].end_byte >= real_close {
                 break;
             }
-            if nodes[pid].end_byte >= old_end {
-                nodes[pid].end_byte = real_close;
-                nodes[pid].end_position = byte_to_point(src, real_close);
-            }
+            nodes[pid].end_byte = real_close;
+            nodes[pid].end_position = byte_to_point(&line_starts, real_close);
             parent = nodes[pid].parent;
         }
     }
@@ -586,6 +611,48 @@ Hello \textbf{world}.
         // A label with no underscore parses cleanly; normalization must be a no-op.
         let src = r#"\label{sec:intro} body"#;
         check_round_trip(src);
+    }
+
+    #[test]
+    fn lower_does_not_engulf_content_on_unbalanced_label() {
+        // Review #2: a truncated label whose own `}` is missing must NOT balance
+        // against a later group's `}` and prune the intervening real content.
+        // Here `\ref{fig:a_b \mbox{x}}` has the label brace effectively unclosed
+        // (a nested `{` appears first), so label_brace_end bails and the fix is
+        // abandoned — leaving `KEEPME` and `x` intact in the tree.
+        let src = r#"see \ref{fig:a_b \mbox{x}} KEEPME after"#;
+        let ir = lower(&parser::parse(src), src);
+        let mut nodes = Vec::new();
+        flatten(ir.root_node(), &mut nodes);
+        assert!(
+            nodes.iter().any(|(k, a, b)| k == "word" && &src[*a..*b] == "KEEPME"),
+            "real content after an unbalanced label must not be pruned"
+        );
+        assert!(
+            nodes.iter().any(|(_, a, b)| &src[*a..*b] == "x"),
+            "content nested after the unclosed label brace must survive"
+        );
+    }
+
+    #[test]
+    fn lower_handles_label_key_with_trailing_backslash() {
+        // Review #4: a key whose escape (`\`) is the last scanned byte must not
+        // run the index past the buffer; lowering must complete without panic.
+        for src in [r#"\ref{a_b\"#, r#"\label{x_y\}"#, r#"text \ref{a_\"#] {
+            let _ = lower(&parser::parse(src), src); // must not panic
+        }
+    }
+
+    #[test]
+    fn byte_to_point_resolves_rows_and_columns() {
+        // Review #6: byte_to_point via the precomputed line-start table.
+        let src = "ab\ncde\n\nxy";
+        let ls = line_start_offsets(src);
+        assert_eq!(byte_to_point(&ls, 0), Point { row: 0, column: 0 }); // 'a'
+        assert_eq!(byte_to_point(&ls, 1), Point { row: 0, column: 1 }); // 'b'
+        assert_eq!(byte_to_point(&ls, 3), Point { row: 1, column: 0 }); // 'c'
+        assert_eq!(byte_to_point(&ls, 5), Point { row: 1, column: 2 }); // 'e'
+        assert_eq!(byte_to_point(&ls, 8), Point { row: 3, column: 0 }); // 'x' (after blank line)
     }
 
     #[test]

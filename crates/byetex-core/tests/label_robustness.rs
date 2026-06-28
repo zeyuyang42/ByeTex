@@ -18,6 +18,39 @@ fn typst(src: &str) -> String {
 }
 
 #[test]
+fn stray_unbalanced_brace_is_dropped() {
+    // Review #1: a stray `}` (not from an underscore-truncated label) parses as a
+    // lone-brace ERROR node. The emit-side drop arm must suppress it; otherwise a
+    // literal `}` leaks into the output. (This regressed when the arm was removed
+    // on the assumption the IR label-normalization subsumed it — it does not, that
+    // pass only prunes braces inside truncated label keys.)
+    for src in [
+        "\\textbf{bold} extra } brace.",
+        "\\section{Title} } stray.",
+        "Some \\emph{text}} double close.",
+    ] {
+        let t = typst(src);
+        assert!(
+            !t.contains('}'),
+            "stray closing brace must not leak for {src:?};\noutput:\n{t}"
+        );
+    }
+}
+
+#[test]
+fn ref_followed_by_non_ascii_label_char_is_boundary_safe() {
+    // Review #7: the glue guard decodes the next CHAR (not byte) and reuses
+    // is_typst_label_char, so a multi-byte char right after a ref neither panics
+    // nor is treated inconsistently with the ASCII path.
+    let src = "\\begin{defn}\\label{def:foo_bar}\nx\n\\end{defn}\nSee \\Cref{def:foo_bar}ä end.";
+    let t = typst(src); // must not panic on the multi-byte boundary
+    assert!(
+        t.contains("@def:foo_bar ä") || t.contains("#ref(<def:foo_bar>)"),
+        "a label char (incl. non-ASCII) after a ref must be separated;\noutput:\n{t}"
+    );
+}
+
+#[test]
 fn label_with_spaces_and_angle_collapses_to_single_hyphen() {
     let src = "\\begin{align}\\label{lemma:bispectrum < A3f}\nx = 1\n\\end{align}\n\
         See \\ref{lemma:bispectrum < A3f}.";
