@@ -840,6 +840,17 @@ pub(crate) fn harvest_macros_from_source(source: &str) -> HashMap<String, MacroD
                         out.insert(name, def);
                     }
                 }
+                // `\algnewcommand` / `\algrenewcommand` (algorithmicx) also parse
+                // as generic_command — same `\newcommand` syntax. Harvest so the
+                // body doesn't leak and the macro expands at its call sites.
+                match command_name_text_static(n, source).as_deref() {
+                    Some("\\algnewcommand") | Some("\\algrenewcommand") => {
+                        if let Some(((name, def), _end)) = extract_algnewcommand_and_end(n, source) {
+                            out.insert(name, def);
+                        }
+                    }
+                    _ => {}
+                }
                 let mut cursor = n.walk();
                 for c in n.children(&mut cursor) {
                     stack.push(c);
@@ -1414,6 +1425,131 @@ pub(in crate::emit) fn extract_newcommandx_and_end(
             },
         ),
         end_after_body,
+    ))
+}
+
+/// Extract an `\algnewcommand` / `\algrenewcommand` (algorithmicx package)
+/// definition. These take exactly `\newcommand` syntax — either
+/// `\algnewcommand{\name}[N]{body}` or the bare `\algnewcommand\name{body}` —
+/// but tree-sitter-latex has no built-in keyword for them, so (like
+/// `\newcommandx`) they parse as a bare `generic_command` whose name, optional
+/// arity, and body land as *sibling* nodes. We scan the raw source forward from
+/// `node.end_byte()`. Returns the harvested macro and the byte offset just past
+/// the body's closing `}` (so the emit-time dispatcher can bump `skip_until` and
+/// keep the definition from leaking into the output).
+pub(in crate::emit) fn extract_algnewcommand_and_end(
+    node: Node<'_>,
+    src: &str,
+) -> Option<((String, MacroDef), usize)> {
+    let bytes = src.as_bytes();
+    // Start scanning right after the `\algnewcommand` token. Use the command_name
+    // child's end, not `node.end_byte()`: for the braced-name form
+    // (`\algnewcommand{\name}[N]{body}`) tree-sitter absorbs the `{\name}` curly
+    // group as a child, so `node.end_byte()` is already past the name.
+    let mut cursor = node.walk();
+    let name_end = node
+        .children(&mut cursor)
+        .find(|c| c.kind() == "command_name")
+        .map(|c| c.end_byte())
+        .unwrap_or_else(|| node.end_byte());
+    let mut i = name_end;
+
+    let skip_ws = |bytes: &[u8], mut i: usize| {
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        i
+    };
+    // Read a `\name` control word starting at `i` (expects `bytes[i] == b'\\'`).
+    let read_cmd = |bytes: &[u8], src: &str, i: usize| -> Option<(String, usize)> {
+        if i >= bytes.len() || bytes[i] != b'\\' {
+            return None;
+        }
+        let start = i;
+        let mut j = i + 1;
+        while j < bytes.len() && (bytes[j].is_ascii_alphabetic() || bytes[j] == b'@') {
+            j += 1;
+        }
+        let name = src.get(start..j)?.to_string();
+        if name.len() < 2 {
+            return None;
+        }
+        Some((name, j))
+    };
+
+    // The macro name: either `{\name}` (braced) or a bare `\name`.
+    i = skip_ws(bytes, i);
+    let name = if i < bytes.len() && bytes[i] == b'{' {
+        let (n, after) = read_cmd(bytes, src, skip_ws(bytes, i + 1))?;
+        let k = skip_ws(bytes, after);
+        if k >= bytes.len() || bytes[k] != b'}' {
+            return None;
+        }
+        i = k + 1;
+        n
+    } else {
+        let (n, after) = read_cmd(bytes, src, i)?;
+        i = after;
+        n
+    };
+
+    // Optional `[N]` arity.
+    let mut params = 0usize;
+    i = skip_ws(bytes, i);
+    if i < bytes.len() && bytes[i] == b'[' {
+        let inner_start = i + 1;
+        let mut j = inner_start;
+        while j < bytes.len() && bytes[j] != b']' {
+            j += 1;
+        }
+        if j < bytes.len() {
+            if let Ok(n) = src.get(inner_start..j)?.trim().parse::<usize>() {
+                params = n;
+                i = j + 1;
+            }
+        }
+    }
+
+    // Mandatory `{body}` (brace-aware, escape-aware).
+    i = skip_ws(bytes, i);
+    if i >= bytes.len() || bytes[i] != b'{' {
+        return None;
+    }
+    let body_start = i + 1;
+    let mut j = body_start;
+    let mut depth = 1i32;
+    while j < bytes.len() {
+        match bytes[j] {
+            b'\\' if j + 1 < bytes.len() => {
+                j += 2;
+                continue;
+            }
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    break;
+                }
+            }
+            _ => {}
+        }
+        j += 1;
+    }
+    if j >= bytes.len() {
+        return None;
+    }
+    let body = src.get(body_start..j)?.to_string();
+
+    Some((
+        (
+            name,
+            MacroDef {
+                params,
+                body,
+                optional_defaults: HashMap::new(),
+            },
+        ),
+        j + 1,
     ))
 }
 
