@@ -12,6 +12,7 @@ use std::path::PathBuf;
 pub mod bib;
 pub mod compile;
 pub mod diagnose;
+pub(crate) mod ir;
 pub mod parser;
 pub mod project;
 pub mod skills;

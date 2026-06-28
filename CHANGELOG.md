@@ -3,6 +3,18 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.57] — unreleased
+
+### Added
+- New internal lowering IR (`byetex_core::ir`) sitting between the tree-sitter parse tree and the
+  emitter — an owned, arena-backed 1:1 mirror of the parse tree whose `ir::Node` handle exposes the
+  exact subset of the `tree_sitter::Node` API the emitter uses. This is Phase A of decoupling the
+  17k-line emit layer from tree-sitter so grammar quirks can be normalized once during lowering
+  instead of worked around ad hoc throughout `emit/`. Additive and behavior-preserving: nothing
+  consumes the IR yet (the emitter is migrated onto it in a later phase). Covered by structural
+  round-trip tests asserting the lowered tree mirrors tree-sitter's kinds, spans, child order,
+  named-child filtering, and field names.
+
 ## [0.6.56] — unreleased
 
 ### Changed
