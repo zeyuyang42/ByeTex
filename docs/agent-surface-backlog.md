@@ -27,6 +27,56 @@ Resolved.
 
 ## Open — P0 (frequent × blocking)
 
+> **Round 10 (2026-06-28, v0.6.61)** — dogfood of the hardest 3 (`2605.22821`,
+> `2605.22728`, `2605.31499`) after the math-font-decl fix (PR #442). All 3
+> `NEEDS_FIX`. **L1 is a major, validated structural converter bug** (worst pick).
+
+### L1. `2605.22728` — preamble→body parse breakdown drops 11/12 section headings + leaks `\begin{document}`/affiliation/`\begin{align}` — sev 5 (blocker) — ROUTE: Loop A — VALIDATED on fresh main
+- **Symptom (validated on fresh main, v0.6.61):** source has **12** `\section`/`\subsection`/
+  `\subsubsection` commands; the `.typ` emits only **1** heading. `\begin{document}` leaks as
+  literal text (line 146), the affiliation block leaks `\[1\]…\[2\]…` (line 158), and an
+  `align` body leaks raw (`z \{\begin{aligned}`, line 210-211). `\hspace{-0.1mm}` also leaks as
+  literal `"hspace*"` / `\hspace{…}` text throughout. Compiles clean (invisible to the compile
+  gate) but renders garbage — corpus's **lowest fidelity (0.685)**; the dogfood agent recovered it
+  to **0.845 (+0.16)** by hand, proving the loss is real and recoverable.
+- **This is the long-open F5 residual** ("`\begin{document}`+affiliation leak (2605.22728), and
+  the pre-existing tree-sitter over-attachment where a `{…}`-led paragraph after a no-output
+  command is swallowed"). The dropped-headings scale (11/12) is newly quantified.
+- **Likely root cause:** the author/affiliation/`\begin{document}` region near the preamble→body
+  boundary breaks tree-sitter attachment, and a large following span (incl. most `\section`s) is
+  mis-attached/skipped. Investigate the node tree around `\begin{document}` + the custom author
+  block; the `\section` commands warn as `unsupported_command` only because they're swallowed into
+  a mis-parsed region, not because `\section` itself is unhandled (it is, elsewhere).
+- **Highest-value next pick** — single paper but the deepest fidelity hole in the corpus; a real
+  parse bug, not a missing recipe.
+
+### L2. `\algnewcommand` macro-definition body leaks into the document body — sev 4 (major) — ROUTE: Loop A — VALIDATED (2605.31499)
+- **Symptom (validated):** `\algnewcommand{\LeftComment}[1]{\Statex \(\triangleright\) #1}`
+  (algorithmicx) — the macro *definition's body* leaks into the document as
+  `\[1\] $gt.tri$ \#1`. `\algnewcommand`/`\algrenewcommand` aren't recognized as macro-definition
+  forms, so the prepass doesn't consume the `{name}[n]{body}` and the body tokens leak.
+- **Fix sketch:** treat `\algnewcommand`/`\algrenewcommand` like `\newcommand`/`\renewcommand` in
+  the macro-definition prepass (consume `{\name}[argc]{body}`; register the macro, drop the
+  definition). Clean, generalizable. Good second pick after L1.
+
+### L3. `byetex-tables-layout` lacks NeurIPS-specific density numbers — sev 3 (major skill note) — ROUTE: Loop B (2605.22821, recurring)
+- **Symptom:** the skill correctly says NeurIPS/ICML/ICLR are single-column and to check
+  `#set par()`/`#set text()` for density, but gives **no concrete values** — the agent had to read
+  `neurips_2026.sty` to derive 5.5in textwidth → 1.5in side margins and 10/11pt leading. Recurs
+  across rounds (H2). Add a NeurIPS/ICML density table (margins, text size, leading) to the skill.
+- **Out-of-scope gave-ups (record, no fix):** the same run gave up on an EPS figure (no in-sandbox
+  raster tool) and a `minted`-in-`subfigure` code block (needs tectonic) — both genuinely need
+  external tooling; revisit only if frequent.
+
+### L4. `byetex-getting-started` vs sandbox instruction conflict on `byetex diagnose` — sev 3 (major skill note) — ROUTE: Loop B (recurring, 2 papers)
+- **Symptom:** getting-started says "`byetex diagnose paper.typ` re-scans an already-edited `.typ`
+  in place (edits preserved)" but the dogfood sandbox procedure says "do NOT run `byetex diagnose`
+  at all (it wipes edits)". Agents (2605.22728, 2605.22821) couldn't tell whether the in-place
+  `.typ` form was safe. The prohibition only applies to `diagnose paper.tex` (re-convert wipes);
+  the `.typ` form is safe. Clarify the distinction prominently in both surfaces. Recurring
+  `missing_tool_wishlist`: a leaked-LaTeX fidelity scanner (`diagnose --scan-latex-leakage`)
+  overlaps F4's "`warnings --fidelity` leak scanner" — would directly catch L1/L2-class leaks.
+
 > **Round 8 (2026-06-24, v0.6.11)** — verification re-dogfood of `2605.22821`
 > after the H1/H3 fixes. **H1 (#378), H3-expl3 (#379), H3-colour (#381) ALL
 > VERIFIED LANDED**: the agent made ZERO mention of `langledo` / expl3 internals /
