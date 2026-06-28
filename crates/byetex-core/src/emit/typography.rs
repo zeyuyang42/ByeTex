@@ -97,6 +97,88 @@ pub(crate) fn apply_text_accent(accent: char, letter: char) -> String {
         ('~', 'O') => Some('Õ'),
         ('~', 'u') => Some('ũ'),
         ('~', 'U') => Some('Ũ'),
+        // Dot above (\.)
+        ('.', 'I') => Some('İ'), // Turkish dotted capital I (U+0130)
+        ('.', 'c') => Some('ċ'),
+        ('.', 'C') => Some('Ċ'),
+        ('.', 'e') => Some('ė'),
+        ('.', 'E') => Some('Ė'),
+        ('.', 'g') => Some('ġ'),
+        ('.', 'G') => Some('Ġ'),
+        ('.', 'z') => Some('ż'),
+        ('.', 'Z') => Some('Ż'),
+        // Macron (\=)
+        ('=', 'a') => Some('ā'),
+        ('=', 'A') => Some('Ā'),
+        ('=', 'e') => Some('ē'),
+        ('=', 'E') => Some('Ē'),
+        ('=', 'i') => Some('ī'),
+        ('=', 'I') => Some('Ī'),
+        ('=', 'o') => Some('ō'),
+        ('=', 'O') => Some('Ō'),
+        ('=', 'u') => Some('ū'),
+        ('=', 'U') => Some('Ū'),
+        // Caron / háček (\v)
+        ('v', 'c') => Some('č'),
+        ('v', 'C') => Some('Č'),
+        ('v', 's') => Some('š'),
+        ('v', 'S') => Some('Š'),
+        ('v', 'z') => Some('ž'),
+        ('v', 'Z') => Some('Ž'),
+        ('v', 'e') => Some('ě'),
+        ('v', 'E') => Some('Ě'),
+        ('v', 'r') => Some('ř'),
+        ('v', 'R') => Some('Ř'),
+        ('v', 'n') => Some('ň'),
+        ('v', 'N') => Some('Ň'),
+        ('v', 'd') => Some('ď'),
+        ('v', 't') => Some('ť'),
+        ('v', 'l') => Some('ľ'),
+        ('v', 'g') => Some('ǧ'),
+        ('v', 'a') => Some('ǎ'),
+        ('v', 'A') => Some('Ǎ'),
+        // Breve (\u)
+        ('u', 'a') => Some('ă'),
+        ('u', 'A') => Some('Ă'),
+        ('u', 'e') => Some('ĕ'),
+        ('u', 'E') => Some('Ĕ'),
+        ('u', 'g') => Some('ğ'),
+        ('u', 'G') => Some('Ğ'),
+        ('u', 'i') => Some('ĭ'),
+        ('u', 'o') => Some('ŏ'),
+        ('u', 'u') => Some('ŭ'),
+        ('u', 'U') => Some('Ŭ'),
+        // Double acute (\H)
+        ('H', 'o') => Some('ő'),
+        ('H', 'O') => Some('Ő'),
+        ('H', 'u') => Some('ű'),
+        ('H', 'U') => Some('Ű'),
+        // Ring above (\r)
+        ('r', 'a') => Some('å'),
+        ('r', 'A') => Some('Å'),
+        ('r', 'u') => Some('ů'),
+        ('r', 'U') => Some('Ů'),
+        // Cedilla (\c)
+        ('c', 'c') => Some('ç'),
+        ('c', 'C') => Some('Ç'),
+        ('c', 's') => Some('ş'),
+        ('c', 'S') => Some('Ş'),
+        ('c', 't') => Some('ţ'),
+        ('c', 'T') => Some('Ţ'),
+        ('c', 'g') => Some('ģ'),
+        ('c', 'k') => Some('ķ'),
+        ('c', 'l') => Some('ļ'),
+        ('c', 'n') => Some('ņ'),
+        ('c', 'r') => Some('ŗ'),
+        // Ogonek (\k)
+        ('k', 'a') => Some('ą'),
+        ('k', 'A') => Some('Ą'),
+        ('k', 'e') => Some('ę'),
+        ('k', 'E') => Some('Ę'),
+        ('k', 'i') => Some('į'),
+        ('k', 'I') => Some('Į'),
+        ('k', 'u') => Some('ų'),
+        ('k', 'U') => Some('Ų'),
         _ => None,
     };
     if let Some(c) = precomposed {
@@ -109,6 +191,14 @@ pub(crate) fn apply_text_accent(accent: char, letter: char) -> String {
         '"' => Some('\u{0308}'),
         '^' => Some('\u{0302}'),
         '~' => Some('\u{0303}'),
+        '.' => Some('\u{0307}'),  // dot above
+        '=' => Some('\u{0304}'),  // macron
+        'v' => Some('\u{030C}'),  // caron
+        'u' => Some('\u{0306}'),  // breve
+        'H' => Some('\u{030B}'),  // double acute
+        'r' => Some('\u{030A}'),  // ring above
+        'c' => Some('\u{0327}'),  // cedilla
+        'k' => Some('\u{0328}'),  // ogonek
         _ => None,
     };
     let mut s = letter.to_string();

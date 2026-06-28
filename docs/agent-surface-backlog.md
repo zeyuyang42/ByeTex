@@ -27,6 +27,32 @@ Resolved.
 
 ## Open — P0 (frequent × blocking)
 
+> **Round 11 (2026-06-29, v0.6.64→0.6.65)** — verification re-dogfood of the same hardest 3.
+> **#443 (algnewcommand), #445 (authblk affil on clean papers), #447 (starred \hspace*/\tag*)
+> ALL VERIFIED LANDED** — none reappeared. All 3 still `NEEDS_FIX` (residual hard items below).
+> Confirmed: **L1 bug-A is the dominant blocker for 2605.22728** (0.68→0.845 by hand again — the
+> `\begin{document}`/dropped-sections/`\begin{align}`-garbage symptoms are all the ERROR-node
+> raw-copy region; affil there is inside it, so #445 can't reach it, as predicted).
+
+### M1. Letter/symbol text accents (`\.` `\=` `\v` `\u` `\H` `\r` `\c` `\k`) dropped — sev 3 — ✅ RESOLVED (PR #448, v0.6.65)
+- **Symptom (validated):** only `\'`/`\"`/`\^`/`` \` ``/`\~` were handled; the letter/symbol accents
+  were dropped, so `TÜB\.{I}TAK` → `TÜBTAK` / `TÜB.ITAK` (dogfood 2605.31499, Turkish affiliation).
+- **Fix (#448):** dispatch the family in both the body emitter and the author-block sanitizer;
+  precomposed Unicode where it exists (`\.{I}`→İ, `\v{s}`→š, `\c{c}`→ç…) else a combining-mark
+  fallback. Single-letter forms guarded against user redefinition; `\v{…}` only parses as an accent
+  when brace-delimited (so `\vec` is untouched). 2605.31499 `TÜB.ITAK`→0, `TÜBİTAK`→2.
+
+### M2. IEEEtran `\IEEEauthorrefmark` multi-affiliation author block collapses — sev 4 (major) — ROUTE: Loop A — VALIDATED (2605.31499)
+- **Symptom:** `\IEEEauthorrefmark{n}` multi-affiliation author blocks collapse to a single
+  affiliation `[1]`, all emails become identical, superscripts wrong, ≥4 affiliations dropped.
+  warnings.json had NO entry. A bigger, IEEEtran-specific author-parse gap (sibling of the NeurIPS
+  `\textbf`-author and ICML parsers in class_map.rs). Next non-trivial Loop-A author-block pick.
+
+### M3. IEEEtran page density (8 vs 6 pp) + NeurIPS density — sev 2 — DEFERRED (same class as H2)
+- IEEEtran conference / NeurIPS render looser than truth; naive margin tightening REGRESSES (font
+  metrics differ) — same deferral logic as H2. Needs a real per-class StyleProfile density pass, not
+  a skill number. Low priority until the content-leak class is fully cleared.
+
 > **Round 10 (2026-06-28, v0.6.61)** — dogfood of the hardest 3 (`2605.22821`,
 > `2605.22728`, `2605.31499`) after the math-font-decl fix (PR #442). All 3
 > `NEEDS_FIX`. **L1 is a major, validated structural converter bug** (worst pick).

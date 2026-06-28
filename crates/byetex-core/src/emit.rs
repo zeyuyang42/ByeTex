@@ -4026,6 +4026,33 @@ impl<'a> Emitter<'a> {
             Some("\\^") => self.emit_text_accent(node, '^'),
             Some("\\`") => self.emit_text_accent(node, '`'),
             Some("\\~") => self.emit_text_accent(node, '~'),
+            // Letter/symbol-named accents: dot-above `\.`, macron `\=`,
+            // caron `\v`, breve `\u`, double-acute `\H`, ring `\r`,
+            // cedilla `\c`, ogonek `\k` (e.g. `\.{I}`→İ, `\v{s}`→š,
+            // `\c{c}`→ç). Without these the accent + braced letter were
+            // dropped (dogfood 2605.31499: `\.{I}` in `TÜB\.{I}TAK`→`TÜBTAK`).
+            // Guard on the macro table: these single-letter names are
+            // frequently re-purposed as user macros (`\newcommand{\c}{…}`), and
+            // a user definition must win over the accent interpretation (it
+            // would otherwise be shadowed since this arm precedes the macro
+            // fallback). When redefined, the arm is skipped and the call falls
+            // through to `expand_user_macro` below.
+            Some(cmd @ ("\\." | "\\=" | "\\v" | "\\u" | "\\H" | "\\r" | "\\c" | "\\k"))
+                if !self.macros.contains_key(cmd) =>
+            {
+                let accent = match cmd {
+                    "\\." => '.',
+                    "\\=" => '=',
+                    "\\v" => 'v',
+                    "\\u" => 'u',
+                    "\\H" => 'H',
+                    "\\r" => 'r',
+                    "\\c" => 'c',
+                    "\\k" => 'k',
+                    _ => unreachable!(),
+                };
+                self.emit_text_accent(node, accent)
+            }
             // Typographic logos — drop the styling, keep the text.
             Some("\\LaTeX") => self.emit_logo(node, "LaTeX"),
             Some("\\TeX") => self.emit_logo(node, "TeX"),

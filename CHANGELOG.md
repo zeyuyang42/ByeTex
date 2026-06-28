@@ -3,6 +3,18 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.65] — unreleased
+
+### Fixed
+- Letter/symbol-named text accents are now converted instead of being dropped: dot-above `\.`,
+  macron `\=`, caron `\v`, breve `\u`, double-acute `\H`, ring `\r`, cedilla `\c`, ogonek `\k`
+  (e.g. `\.{I}`→İ, `\v{s}`→š, `\c{c}`→ç, `\H{o}`→ő). Previously only `\'`/`\"`/`\^`/`` \` ``/`\~`
+  were handled, so `TÜB\.{I}TAK` rendered as `TÜBTAK`/`TÜB.ITAK` (dogfood 2605.31499). Covered in
+  both the body emitter and the author-block sanitizer; precomposed Unicode where it exists, else a
+  combining-mark fallback. The single-letter forms are guarded against user redefinition
+  (`\newcommand{\c}{…}` still expands), and `\v{…}` etc. only parse as accents when brace-delimited
+  so `\vec`/`\url` are unaffected.
+
 ## [0.6.64] — unreleased
 
 ### Fixed

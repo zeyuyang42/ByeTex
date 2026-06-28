@@ -1228,8 +1228,21 @@ fn raw_latex_accents_to_unicode(s: &str) -> String {
         }
         let next = bytes[i + 1] as char;
         match next {
-            // --- accent commands: \' \" \` \^ \~ ---
-            '\'' | '"' | '`' | '^' | '~' => {
+            // --- letter-named accents \v{s} \c{c} \u{g} \H{o} \r{a} \k{a} ---
+            // Only when immediately followed by `{` so `\vec`/`\url`/... (a
+            // following letter) are NOT mistaken for the caron/etc. accent.
+            'v' | 'u' | 'H' | 'r' | 'c' | 'k'
+                if bytes.get(i + 2) == Some(&b'{')
+                    && matched_close_brace(s, i + 2).is_some() =>
+            {
+                let close = matched_close_brace(s, i + 2).unwrap();
+                let inner = &s[i + 3..close];
+                let letter = inner.chars().next().unwrap_or(' ');
+                out.push_str(&crate::emit::apply_text_accent(next, letter));
+                i = close + 1;
+            }
+            // --- accent commands: \' \" \` \^ \~ \. \= ---
+            '\'' | '"' | '`' | '^' | '~' | '.' | '=' => {
                 i += 2; // skip \ + accent char
                         // Skip optional whitespace.
                 while i < bytes.len() && bytes[i] == b' ' {
