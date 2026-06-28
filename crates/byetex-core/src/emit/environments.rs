@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::fmt::Write;
 
-use tree_sitter::Node;
+use crate::ir::Node;
 
 use super::{
     brace_balanced_end, command_name_text, environment_name, extract_def_and_record,
@@ -863,7 +863,7 @@ impl<'a> Emitter<'a> {
     /// emitters run no prepass to fall back on. `source` is parsed as its own
     /// fragment, so all byte offsets stay self-consistent.
     pub(in crate::emit) fn harvest_definitions(&mut self, source: &str) {
-        let tree = crate::parser::parse(source);
+        let tree = crate::ir::parse_and_lower(source);
         let mut stack: Vec<Node<'_>> = vec![tree.root_node()];
         while let Some(n) = stack.pop() {
             match n.kind() {

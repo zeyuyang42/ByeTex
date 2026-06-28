@@ -3,6 +3,18 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.58] — unreleased
+
+### Changed
+- The emitter now walks the owned lowering IR (`byetex_core::ir`) instead of `tree_sitter::Node`
+  directly (Phase B). All 11 `emit/` modules import `crate::ir::Node`, and every parse-then-walk
+  site routes through `ir::parse_and_lower`. Because the IR is a faithful 1:1 lowering, this is a
+  pure mechanical type substitution with **byte-identical output** — proven by the full snapshot
+  suite passing unchanged (and acceptance PASS=68, no compile regression). tree-sitter is now
+  isolated behind `parser.rs` + `ir.rs`; `emit/` no longer depends on it. This sets up Phase C,
+  where grammar-quirk normalizers move into `lower()` and the scattered emit-side workarounds are
+  deleted.
+
 ## [0.6.57] — unreleased
 
 ### Added

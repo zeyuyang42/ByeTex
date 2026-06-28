@@ -133,7 +133,7 @@ pub(crate) fn convert_with_macros(
     preseeded_refs: HashSet<String>,
     record_source_map: bool,
 ) -> ConvertOutput {
-    let tree = parser::parse(source);
+    let tree = ir::parse_and_lower(source);
     let source_name = opts.source_name.as_deref().unwrap_or("<input>");
     let visited: HashSet<PathBuf> = HashSet::new();
     let mut emitter = emit::Emitter::with_includes_and_macros(

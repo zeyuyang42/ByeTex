@@ -2,7 +2,7 @@
 
 use std::fmt::Write;
 
-use tree_sitter::Node;
+use crate::ir::Node;
 
 use super::{
     apply_text_accent, boundary, consume_braceless_arg, consume_trailing_brace_groups,

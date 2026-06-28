@@ -3,7 +3,7 @@
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
-use tree_sitter::Node;
+use crate::ir::Node;
 
 use super::{
     command_name_text, environment_name, extract_label_name, first_curly_group, nth_curly_group,

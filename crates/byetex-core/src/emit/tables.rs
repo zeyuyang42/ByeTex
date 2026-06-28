@@ -2,7 +2,7 @@
 
 use std::fmt::Write;
 
-use tree_sitter::Node;
+use crate::ir::Node;
 
 use super::{
     environment_name, escape_text_cell, extract_latex_include_path, resolve_input_path,
@@ -84,7 +84,7 @@ impl<'a> Emitter<'a> {
         {
             return None;
         }
-        let tree = crate::parser::parse(&source);
+        let tree = crate::ir::parse_and_lower(&source);
         // Find the first tabular-family environment in the included file.
         let mut stack = vec![tree.root_node()];
         let mut tabular: Option<Node<'_>> = None;
