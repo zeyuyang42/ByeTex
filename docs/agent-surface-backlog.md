@@ -55,12 +55,14 @@ Resolved.
   ✓, minimal setlength+section ✓); only the full combo makes tree-sitter emit a giant ERROR node that
   the emitter raw-copies (leaking `\begin{document}`, brace-stripped `\sectionIntroduction`, etc.).
   **(B) authblk `\affil[n]{body}` leak:** reproduces minimally (`\affil[1]{\small{Dept}}` →
-  `\[1\]Dept`) — `\affil`/`\author[n]` not handled as authblk; a clean self-contained node-level
-  fix, but in THIS paper the affil sits inside bug-A's ERROR region (raw-copied), so fixing `\affil`
-  alone won't clear 2605.22728's affil leak (helps other authblk papers though). **Bug A is the
-  crux** and is an ERROR-node raw-copy recovery problem → connects to the lowering-IR / parser-swap
-  roadmap ([[project-lowering-ir]] Phase D), not a one-tick match-arm fix. Needs a dedicated effort
-  or user steer.
+  `\[1\]Dept`) — `\affil` didn't consume the optional `[n]` (tree-sitter parses the indexed form as
+  a bare generic_command with `[n]`+`{body}` as siblings). **✅ RESOLVED (PR #445, v0.6.63):** the
+  affil/email/orcid family now byte-scans the optional `[n]`+`{body}` and skips it; 2605.22724 /
+  2605.31394 / 2605.31009 affil leak → 0. NOTE: in 2605.22728 the affil sits inside bug-A's ERROR
+  region (raw-copied), so its affil leak persists until bug-A is fixed (other authblk papers fixed).
+  **Bug A is the remaining crux** and is an ERROR-node raw-copy recovery problem → connects to the
+  lowering-IR / parser-swap roadmap ([[project-lowering-ir]] Phase D), not a one-tick match-arm fix.
+  Needs a dedicated effort or user steer.
 
 ### L2. `\algnewcommand` macro-definition body leaks into the document body — sev 4 (major) — ROUTE: Loop A — ✅ RESOLVED (PR #443, v0.6.62)
 - **Symptom (validated):** `\algnewcommand{\LeftComment}[1]{\Statex \(\triangleright\) #1}`
