@@ -4938,18 +4938,21 @@ impl<'a> Emitter<'a> {
             // that content wrapping it (e.g. `\underbrace{\hspace{4cm}}`) does
             // not produce an empty body that Typst rejects. `\vspace` and the
             // zero-width commands are dropped silently.
-            "\\hspace" => {
+            // The starred forms (`\hspace*`/`\vspace*`) behave identically here;
+            // without these aliases they fall through to the unknown-command path
+            // and leak as the literal string `"hspace*"` (dogfood 2605.22728).
+            "\\hspace" | "\\hspace*" => {
                 // `thin` must not fuse with a preceding identifier letter
                 // (e.g. `v\hspace{...}` → `vthin` = unknown variable).
                 self.ensure_math_letter_boundary("thin");
                 self.out.push_str("thin ");
                 node.end_byte()
             }
-            "\\vspace" | "\\!" | "\\linebreak" | "\\nobreak" => node.end_byte(),
-            // `\tag{...}` adds LaTeX equation labels for presentation only;
-            // Typst handles equation numbering itself. Warn so the user knows
-            // their custom label text was not preserved.
-            "\\tag" => {
+            "\\vspace" | "\\vspace*" | "\\!" | "\\linebreak" | "\\nobreak" => node.end_byte(),
+            // `\tag{...}` / `\tag*{...}` add LaTeX equation labels for
+            // presentation only; Typst handles equation numbering itself. Warn so
+            // the user knows their custom label text was not preserved.
+            "\\tag" | "\\tag*" => {
                 self.warn_silently_dropped(node);
                 node.end_byte()
             }
