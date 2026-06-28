@@ -3,6 +3,17 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.63] — unreleased
+
+### Fixed
+- authblk's `\affil[n]{body}` (and `\affil{body}`) no longer leaks its optional `[n]` index or its
+  body into the document. tree-sitter parses the indexed form as a bare `generic_command` whose
+  `[n]` and `{body}` are siblings, so the old handler (which read the body via `first_curly_like`
+  but never advanced `skip_until`) leaked both as raw text — e.g. `\affil[1]{Dept…}` → `\[1\]Dept…`
+  (corpus 2605.22724, 2605.31394). The handler now byte-scans from the command name past the
+  optional `[n]` to the `{body}`, captures the affiliation, and skips the whole span. The same
+  `\email`/`\orcid`/`\affiliation`/`\address`/`\institution` family benefits.
+
 ## [0.6.62] — unreleased
 
 ### Fixed
