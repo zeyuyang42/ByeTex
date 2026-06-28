@@ -204,14 +204,15 @@ impl<'a> Iterator for Children<'a> {
     }
 }
 
-/// Build an owned [`Tree`] mirroring `ts_tree`. This Phase-A implementation is a
-/// faithful 1:1 lowering — same kinds, spans, field names, and child order, with
-/// ERROR/MISSING nodes preserved verbatim. Quirk normalization is deliberately
-/// *not* done here yet (Phase C).
+/// Build an owned [`Tree`] from `ts_tree`. The bulk is a faithful 1:1 lowering —
+/// same kinds, spans, field names, and child order — followed by targeted
+/// grammar-quirk normalization passes (Phase C) that the emitter would otherwise
+/// have to work around. Currently: [`normalize_truncated_labels`] repairs
+/// underscore-truncated label keys.
 ///
 /// Lowering is iterative (an explicit work stack) rather than recursive so a
 /// pathologically deep parse tree can't overflow the stack during this pass.
-pub fn lower(ts_tree: &TsTree, _src: &str) -> Tree {
+pub fn lower(ts_tree: &TsTree, src: &str) -> Tree {
     let mut nodes: Vec<NodeData> = Vec::new();
 
     // Work items: (tree-sitter node, parent arena id, field name on the edge).
@@ -262,7 +263,161 @@ pub fn lower(ts_tree: &TsTree, _src: &str) -> Tree {
         }
     }
 
+    // Repair tree-sitter-latex's underscore-truncated label keys before the tree
+    // is frozen (Phase C1).
+    normalize_truncated_labels(&mut nodes, src);
+
     Tree { nodes }
+}
+
+/// Index one past the `}` that balances the `{` at `open`, scanning raw bytes
+/// (an escaped `\{`/`\}` doesn't change depth). `None` if `open` isn't `{` or the
+/// braces never balance.
+fn balanced_brace_end(bytes: &[u8], open: usize) -> Option<usize> {
+    if bytes.get(open) != Some(&b'{') {
+        return None;
+    }
+    let mut depth = 0usize;
+    let mut i = open;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => {
+                i += 2;
+                continue;
+            }
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i + 1);
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Byte offset → `Point`, with byte-based columns to match tree-sitter's own
+/// `Point` convention.
+fn byte_to_point(src: &str, byte: usize) -> Point {
+    let mut row = 0usize;
+    let mut line_start = 0usize;
+    for (i, &b) in src.as_bytes().iter().enumerate() {
+        if i >= byte {
+            break;
+        }
+        if b == b'\n' {
+            row += 1;
+            line_start = i + 1;
+        }
+    }
+    Point {
+        row,
+        column: byte.saturating_sub(line_start),
+    }
+}
+
+/// Repair tree-sitter-latex's underscore-truncated label keys.
+///
+/// The grammar stops a `label`/`label_reference` key at the first `_`, so
+/// `\label{eq:edl_objective}` lowers to a `curly_group_label` ending at `edl`
+/// with a synthesized `MISSING "}"`, and the tail (`_objective`) plus an orphan
+/// `}` leak out as following `subscript`/`word`/`ERROR` siblings (sometimes
+/// across node levels — e.g. inside a parent `text` for `\ref`).
+///
+/// This pass moves the recovery that previously lived scattered across the emit
+/// layer (a source byte-scan in `extract_label_name_and_end` /
+/// `extract_label_ref_keys_and_end`, a `skip_until`, and an ERROR-brace drop
+/// arm) into the single chokepoint here: it extends the label group (and its
+/// `label` leaf and any clipped ancestors) to the real closing brace, drops the
+/// `MISSING`, and prunes every node whose span falls entirely inside the leaked
+/// region. After this, the emit layer can read the label key straight off the
+/// node span with no special-casing.
+fn normalize_truncated_labels(nodes: &mut [NodeData], src: &str) {
+    let bytes = src.as_bytes();
+    let n = nodes.len();
+
+    // Pass 1 — detect truncated label groups: (group_id, old_end, real_close).
+    let mut fixes: Vec<(usize, usize, usize)> = Vec::new();
+    for id in 0..n {
+        match &*nodes[id].kind {
+            "curly_group_label" | "curly_group_label_list" => {}
+            _ => continue,
+        }
+        let open = nodes[id].start_byte;
+        let Some(real_close) = balanced_brace_end(bytes, open) else {
+            continue;
+        };
+        let old_end = nodes[id].end_byte;
+        if real_close > old_end {
+            fixes.push((id, old_end, real_close));
+        }
+    }
+    if fixes.is_empty() {
+        return;
+    }
+
+    // Pass 2 — extend the label group, its `label` leaf, and any ancestors that
+    // were clipped at the truncation point; drop the synthesized MISSING `}`.
+    for &(id, old_end, real_close) in &fixes {
+        nodes[id].end_byte = real_close;
+        nodes[id].end_position = byte_to_point(src, real_close);
+
+        let kids = nodes[id].children.clone();
+        let mut kept = Vec::with_capacity(kids.len());
+        for k in kids {
+            if &*nodes[k].kind == "}" && nodes[k].start_byte == nodes[k].end_byte {
+                continue; // synthesized MISSING brace
+            }
+            if &*nodes[k].kind == "label" {
+                nodes[k].end_byte = real_close - 1;
+                nodes[k].end_position = byte_to_point(src, real_close - 1);
+            }
+            kept.push(k);
+        }
+        nodes[id].children = kept;
+
+        let mut parent = nodes[id].parent;
+        while let Some(pid) = parent {
+            if nodes[pid].end_byte >= real_close {
+                break;
+            }
+            if nodes[pid].end_byte >= old_end {
+                nodes[pid].end_byte = real_close;
+                nodes[pid].end_position = byte_to_point(src, real_close);
+            }
+            parent = nodes[pid].parent;
+        }
+    }
+
+    // Pass 3 — prune every node whose span is fully inside a leaked region
+    // (the tail words/subscripts and the orphan ERROR brace). The label
+    // groups/leaves extended above start before `old_end`, so they're never
+    // pruned. Nodes stay in the arena but are unlinked from their parents, so
+    // the walk no longer reaches them.
+    let mut pruned = vec![false; n];
+    for (id, flag) in pruned.iter_mut().enumerate() {
+        let (s, e) = (nodes[id].start_byte, nodes[id].end_byte);
+        if fixes
+            .iter()
+            .any(|&(_, old_end, real_close)| s >= old_end && s < real_close && e <= real_close)
+        {
+            *flag = true;
+        }
+    }
+    for id in 0..n {
+        if nodes[id].children.iter().any(|&c| pruned[c]) {
+            let kept: Vec<usize> = nodes[id]
+                .children
+                .iter()
+                .copied()
+                .filter(|&c| !pruned[c])
+                .collect();
+            nodes[id].children = kept;
+        }
+    }
 }
 
 /// Parse `src` with the tree-sitter grammar and immediately lower it to the owned
@@ -331,11 +486,106 @@ Hello \textbf{world}.
         );
     }
 
+    /// Collect `(kind, start_byte, end_byte)` for every node in the IR, pre-order.
+    fn flatten(node: Node<'_>, out: &mut Vec<(String, usize, usize)>) {
+        out.push((node.kind().to_string(), node.start_byte(), node.end_byte()));
+        let mut c = node.walk();
+        for child in node.children(&mut c) {
+            flatten(child, out);
+        }
+    }
+
     #[test]
-    fn mirrors_underscore_label_quirk() {
-        // tree-sitter-latex truncates the label key at `_`; lowering must mirror
-        // that (warts and all) in Phase A — the fix comes in Phase C.
-        check_round_trip(r#"\section{Intro}\label{sec:edl_objective} text"#);
+    fn lower_normalizes_truncated_label_definition() {
+        // tree-sitter-latex truncates the label key at the first `_`, leaking the
+        // tail (`_objective`) as `subscript`/`word` siblings plus an orphan `}` as
+        // an ERROR node. Phase C1: `lower` repairs this — the curly_group_label
+        // spans the whole `{...}`, the leaked nodes are pruned, and no
+        // MISSING/ERROR survives.
+        let src = r#"\section{Intro}\label{sec:edl_objective} text"#;
+        let ts_tree = parser::parse(src);
+        let ir = lower(&ts_tree, src);
+
+        let mut nodes = Vec::new();
+        flatten(ir.root_node(), &mut nodes);
+
+        let label_groups: Vec<_> = nodes
+            .iter()
+            .filter(|(k, _, _)| k == "curly_group_label")
+            .collect();
+        assert_eq!(label_groups.len(), 1, "exactly one curly_group_label");
+        let (_, s, e) = label_groups[0];
+        assert_eq!(
+            &src[*s..*e],
+            "{sec:edl_objective}",
+            "label group must span the full braces"
+        );
+
+        assert!(
+            nodes
+                .iter()
+                .any(|(k, a, b)| k == "label" && &src[*a..*b] == "sec:edl_objective"),
+            "the full label key is recoverable from the (label) leaf"
+        );
+        assert!(
+            !nodes.iter().any(|(k, _, _)| k == "ERROR"),
+            "no ERROR node should survive normalization"
+        );
+        assert!(
+            !nodes.iter().any(|(k, a, b)| k == "}" && a == b),
+            "no synthesized MISSING brace should survive"
+        );
+        assert!(
+            !nodes.iter().any(|(k, _, _)| k == "subscript"),
+            "the leaked `_objective` subscript must be pruned"
+        );
+        assert!(
+            nodes.iter().any(|(k, a, b)| k == "word" && &src[*a..*b] == "text"),
+            "trailing real content ('text') is preserved"
+        );
+    }
+
+    #[test]
+    fn lower_normalizes_truncated_label_reference() {
+        // Same quirk for `\ref{...}` — here the leak even crosses node levels
+        // (siblings inside a `text` node plus a top-level ERROR brace).
+        let src = r#"see \ref{thm:UAP_general_dim} now"#;
+        let ts_tree = parser::parse(src);
+        let ir = lower(&ts_tree, src);
+
+        let mut nodes = Vec::new();
+        flatten(ir.root_node(), &mut nodes);
+
+        let groups: Vec<_> = nodes
+            .iter()
+            .filter(|(k, _, _)| k == "curly_group_label_list")
+            .collect();
+        assert_eq!(groups.len(), 1, "exactly one curly_group_label_list");
+        let (_, s, e) = groups[0];
+        assert_eq!(
+            &src[*s..*e],
+            "{thm:UAP_general_dim}",
+            "ref label group must span the full braces"
+        );
+        assert!(
+            !nodes.iter().any(|(k, _, _)| k == "ERROR"),
+            "no ERROR node should survive"
+        );
+        assert!(
+            !nodes.iter().any(|(k, _, _)| k == "subscript"),
+            "leaked subscript nodes from the ref tail must be pruned"
+        );
+        assert!(
+            nodes.iter().any(|(k, a, b)| k == "word" && &src[*a..*b] == "now"),
+            "trailing real content ('now') is preserved"
+        );
+    }
+
+    #[test]
+    fn lower_leaves_well_formed_labels_untouched() {
+        // A label with no underscore parses cleanly; normalization must be a no-op.
+        let src = r#"\label{sec:intro} body"#;
+        check_round_trip(src);
     }
 
     #[test]
