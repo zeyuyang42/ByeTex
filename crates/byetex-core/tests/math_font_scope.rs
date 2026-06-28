@@ -171,6 +171,73 @@ fn nested_font_decls_nest_in_typst() {
 }
 
 #[test]
+fn cal_in_curly_group_wraps_cal() {
+    // `${\cal L}$` — the plain-TeX `\cal` declaration is calligraphic;
+    // it should map to Typst's `cal(...)`, not warn as ambiguous_math.
+    let src = r"\documentclass{article}\begin{document}${\cal L}$\end{document}";
+    let out = convert_str(src);
+    assert!(
+        ambiguous_math_messages(&out)
+            .iter()
+            .all(|m| !m.contains("\\cal")),
+        "should not warn about \\cal; got: {:?}",
+        ambiguous_math_messages(&out)
+    );
+    let stripped: String = out.typst.chars().filter(|c| !c.is_whitespace()).collect();
+    assert!(
+        stripped.contains("cal(L)"),
+        "expected `cal(L)`; got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn sf_wraps_sans() {
+    // `${\sf x}$` — `\sf` is sans-serif; Typst has a real `sans(...)`
+    // math wrapper, so it must NOT fold onto `upright(...)`.
+    let src = r"\documentclass{article}\begin{document}${\sf x}$\end{document}";
+    let out = convert_str(src);
+    let stripped: String = out.typst.chars().filter(|c| !c.is_whitespace()).collect();
+    assert!(
+        stripped.contains("sans(x)"),
+        "expected `sans(x)`; got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn sffamily_alias_wraps_sans() {
+    let src = r"\documentclass{article}\begin{document}${\sffamily x}$\end{document}";
+    let out = convert_str(src);
+    let stripped: String = out.typst.chars().filter(|c| !c.is_whitespace()).collect();
+    assert!(
+        stripped.contains("sans(x)"),
+        "expected `sans(x)` from \\sffamily; got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
+fn mit_wraps_italic() {
+    // `${\mit x}$` — plain-TeX math-italic. Map to `italic(...)`, no warning.
+    let src = r"\documentclass{article}\begin{document}${\mit x}$\end{document}";
+    let out = convert_str(src);
+    assert!(
+        ambiguous_math_messages(&out)
+            .iter()
+            .all(|m| !m.contains("\\mit")),
+        "should not warn about \\mit; got: {:?}",
+        ambiguous_math_messages(&out)
+    );
+    let stripped: String = out.typst.chars().filter(|c| !c.is_whitespace()).collect();
+    assert!(
+        stripped.contains("italic(x)"),
+        "expected `italic(x)`; got:\n{}",
+        out.typst
+    );
+}
+
+#[test]
 fn bfseries_alias_works() {
     // `\bfseries` is the LaTeX2e form of `\bf`. Same scope semantics.
     let src = r"\documentclass{article}\begin{document}${\bfseries x}$\end{document}";

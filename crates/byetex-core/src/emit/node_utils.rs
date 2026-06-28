@@ -184,9 +184,10 @@ pub(in crate::emit) fn push_flat<'a>(node: Node<'a>, out: &mut Vec<Node<'a>>) {
 /// itself. Returns `None` for any other node.
 ///
 /// We map to the math-mode wrappers that Typst's standard library
-/// provides: `bold(...)`, `italic(...)`, `upright(...)`, `mono(...)`.
-/// Slant/small-caps don't have direct math equivalents — folded onto
-/// `italic`/`upright` to keep a single round-trip output.
+/// provides: `bold(...)`, `italic(...)`, `upright(...)`, `sans(...)`,
+/// `mono(...)`, `cal(...)`, `frak(...)`. Slant/small-caps don't have
+/// direct math equivalents — folded onto `italic`/`upright` to keep a
+/// single round-trip output.
 pub(in crate::emit) fn math_font_decl_wrapper(node: Node<'_>, src: &str) -> Option<&'static str> {
     if node.kind() != "generic_command" {
         return None;
@@ -198,10 +199,15 @@ pub(in crate::emit) fn math_font_decl_wrapper(node: Node<'_>, src: &str) -> Opti
     let name = src.get(name_node.start_byte()..name_node.end_byte())?;
     match name {
         "\\bf" | "\\bfseries" | "\\boldmath" => Some("bold"),
-        "\\it" | "\\itshape" | "\\sl" | "\\slshape" => Some("italic"),
+        // `\mit` is plain-TeX math-italic; `\sl` slanted folds onto italic.
+        "\\it" | "\\itshape" | "\\sl" | "\\slshape" | "\\mit" => Some("italic"),
         "\\rm" | "\\rmfamily" | "\\sc" | "\\scshape" => Some("upright"),
-        "\\sf" | "\\sffamily" => Some("upright"),
+        // Sans-serif has a real Typst math wrapper — don't fold onto upright.
+        "\\sf" | "\\sffamily" => Some("sans"),
         "\\tt" | "\\ttfamily" => Some("mono"),
+        // Calligraphic / script (plain-TeX `\cal`, `\scr`) → Typst `cal(...)`.
+        "\\cal" | "\\scr" => Some("cal"),
+        "\\frak" => Some("frak"),
         _ => None,
     }
 }

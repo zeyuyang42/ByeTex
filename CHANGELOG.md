@@ -3,6 +3,16 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.61] — unreleased
+
+### Fixed
+- Old-style (plain-TeX) math font declarations now map to their real Typst math wrappers
+  instead of being dropped or mis-rendered: `\cal`/`\scr` → `cal(...)`, `\mit` → `italic(...)`,
+  and `\frak` → `frak(...)` (previously `\cal`/`\mit` warned `ambiguous_math` and leaked as the
+  literal text `"cal"`/`"mit"`). `\sf`/`\sffamily` now map to `sans(...)` rather than folding onto
+  `upright(...)`, so sans-serif math sets correctly. Corpus 2605.30718 (calligraphic `\cal T`
+  tensors) drops from 13 `ambiguous_math` warnings to 0 and renders proper calligraphic letters.
+
 ## [0.6.60] — unreleased
 
 ### Fixed
