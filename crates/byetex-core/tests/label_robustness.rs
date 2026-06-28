@@ -43,6 +43,38 @@ fn label_with_spaces_and_angle_collapses_to_single_hyphen() {
 }
 
 #[test]
+fn ref_followed_by_dot_label_text_does_not_glue() {
+    // `\Cref{def:shape_regular}.ii` (corpus 2605.22159): the `.ii` is literal text
+    // after the ref, but Typst's `@key` syntax greedily absorbs a `.` that is
+    // followed by more label chars — yielding `@def:shape_regular.ii`, a dangling
+    // reference to a label that doesn't exist. A separator must break the glue.
+    let src = "\\begin{defn}\\label{def:shape_regular}\nx\n\\end{defn}\n\
+        See \\Cref{def:shape_regular}.ii here.";
+    let t = typst(src);
+    assert!(
+        !t.contains("@def:shape_regular.ii"),
+        "the trailing `.ii` text must not glue onto the reference;\noutput:\n{t}"
+    );
+    assert!(
+        t.contains("@def:shape_regular .ii") || t.contains("#ref(<def:shape_regular>)"),
+        "the reference must resolve to `def:shape_regular`, with `.ii` kept separate;\noutput:\n{t}"
+    );
+}
+
+#[test]
+fn ref_followed_by_bare_period_is_unaffected() {
+    // A `.` that is NOT followed by a label char is ordinary sentence
+    // punctuation; Typst does not absorb it, so no separator must be inserted.
+    let src = "\\begin{defn}\\label{def:foo_bar}\nx\n\\end{defn}\n\
+        See \\Cref{def:foo_bar}.";
+    let t = typst(src);
+    assert!(
+        t.contains("@def:foo_bar."),
+        "a ref before a bare period must stay glued to the period (no spurious space);\noutput:\n{t}"
+    );
+}
+
+#[test]
 fn duplicate_label_is_emitted_only_once() {
     let src = "\\subsection{First}\\label{ssec:comparison}\n\
         Body one.\n\

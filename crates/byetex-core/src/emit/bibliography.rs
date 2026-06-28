@@ -399,9 +399,23 @@ impl<'a> Emitter<'a> {
         // `\ref{A}--\ref{B}` with no space between, Typst will glue the dashes
         // onto the label. Append an explicit space when the next source byte
         // would form an identifier-continuation character.
+        //
+        // A `.` is special: `@ref.ii` (a dot followed by more label chars, e.g.
+        // `\Cref{def:shape_regular}.ii`) gets absorbed into the label, but a bare
+        // `@ref.` before whitespace is just sentence punctuation Typst leaves
+        // alone — so only guard `.` when another label char follows it. (Before
+        // the IR label-normalization repaired the truncated node span, a stray
+        // `_` at the old node end happened to trigger the alnum/`_` guard here;
+        // now the span is correct and the `.`-glue case must be handled directly.)
         let end = node.end_byte();
-        if let Some(&b) = self.src.as_bytes().get(end) {
-            if matches!(b, b'-' | b'_' | b':' | b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z') {
+        let bytes = self.src.as_bytes();
+        if let Some(&b) = bytes.get(end) {
+            let glues = match b {
+                b'-' | b'_' | b':' | b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' => true,
+                b'.' => self.src[end + 1..].chars().next().is_some_and(is_typst_label_char),
+                _ => false,
+            };
+            if glues {
                 self.out.push(' ');
             }
         }

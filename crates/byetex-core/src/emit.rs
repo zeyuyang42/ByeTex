@@ -1586,23 +1586,10 @@ impl<'a> Emitter<'a> {
             "\\left" | "\\right" | "\\middle" | "\\bigl" | "\\Bigl" | "\\biggl" | "\\Biggl"
             | "\\bigr" | "\\Bigr" | "\\biggr" | "\\Biggr" | "\\bigm" | "\\Bigm" | "\\biggm"
             | "\\Biggm" | "\\big" | "\\Big" | "\\bigg" | "\\Bigg" => return node.end_byte(),
-            // tree-sitter-latex frequently mis-parses keys that
-            // contain `_` (e.g. inside `\ref{thm:UAP_general_dim}`)
-            // by truncating the curly_group, leaving an *orphan*
-            // closing brace as an `ERROR` node — which then leaks
-            // into the output as a stray `}` and either breaks the
-            // surrounding markdown (Bug #35 in 2605.22557) or
-            // produces stray label/ref attachment. Drop ERROR nodes
-            // that are just a single brace.
-            "ERROR"
-                if {
-                    let text = &self.src[node.start_byte()..node.end_byte()];
-                    let trimmed = text.trim();
-                    trimmed == "{" || trimmed == "}"
-                } =>
-            {
-                return node.end_byte()
-            }
+            // (The orphan single-brace `ERROR` left by underscore-truncated label
+            // keys — Bug #35 — is now repaired upstream in `ir::lower`
+            // (normalize_truncated_labels), which prunes the leaked brace before
+            // emit ever sees it, so no drop-arm is needed here.)
             // A counter setter with a value tree-sitter can't parse — most often a
             // NEGATIVE step, `\addtocounter{footnote}{-1}` — comes through as an ERROR
             // node that GREEDILY spans the call AND following content, which the walker

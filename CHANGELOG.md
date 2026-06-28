@@ -3,6 +3,26 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.59] — unreleased
+
+### Changed
+- Underscore-truncated label/ref keys are now repaired once in the lowering IR (Phase C1).
+  `tree-sitter-latex` stops a label key at the first `_`, so `\label{eq:edl_objective}` parsed with
+  the key truncated to `eq:edl` and the tail (`_objective`) plus an orphan `}` leaking out as
+  sibling nodes. `ir::lower`'s new `normalize_truncated_labels` rebuilds the `curly_group_label`
+  span to the real closing brace and prunes the leaked nodes, so the emit layer reads the key
+  straight off the node span. The scattered workarounds this replaces are removed: the source
+  byte-scan in `extract_label_name_and_end`/`extract_label_ref_keys_and_end` and the orphan-brace
+  `ERROR`-drop arm in `emit_node`. Behavior-preserving (snapshots byte-identical; acceptance
+  PASS=68).
+
+### Fixed
+- A reference immediately followed by `.`+text (`\Cref{def:shape_regular}.ii`, corpus 2605.22159)
+  no longer glues the trailing text onto the Typst `@key` reference (which produced a dangling
+  `@def:shape_regular.ii`). The ref boundary guard now also separates a `.` that is followed by a
+  label char, while leaving a bare sentence-ending `.` untouched. (This latent bug was previously
+  masked by an incidental space the truncated-label tail used to emit.)
+
 ## [0.6.58] — unreleased
 
 ### Changed

@@ -432,9 +432,12 @@ pub(in crate::emit) fn label_ref_splits_on_comma(node: Node<'_>) -> bool {
 }
 
 /// Extract the key(s) from a `label_reference` node (`\ref{x}`, `\cref{a,b}`)
-/// plus the byte offset just past the closing `}` so callers can `skip_until`
-/// over the part of the source tree-sitter dropped when the key contains
-/// underscores (same bug as `extract_label_name`).
+/// plus the byte offset just past the closing `}`.
+///
+/// The label group's span is authoritative: `ir::lower`'s
+/// `normalize_truncated_labels` already repaired the underscore-truncation quirk,
+/// so the `curly_group_label[_list]` node covers the full `{...}` and we can read
+/// the key straight from its span — no source byte-scan needed.
 ///
 /// Returns all comma-separated keys for a comma-list command (see
 /// [`label_ref_splits_on_comma`]); every other ref returns a one-element Vec
@@ -444,57 +447,33 @@ pub(in crate::emit) fn extract_label_ref_keys_and_end(
     src: &str,
 ) -> Option<(Vec<String>, usize)> {
     let split = label_ref_splits_on_comma(node);
-    let bytes = src.as_bytes();
     let mut cursor = node.walk();
-    let mut open: Option<usize> = None;
-    for child in node.children(&mut cursor) {
-        if matches!(child.kind(), "curly_group_label_list" | "curly_group_label") {
-            open = Some(child.start_byte());
-            break;
-        }
-    }
-    let open = open?;
-    if bytes.get(open) != Some(&b'{') {
+    let group = node
+        .children(&mut cursor)
+        .find(|c| matches!(c.kind(), "curly_group_label_list" | "curly_group_label"))?;
+    let (open, end) = (group.start_byte(), group.end_byte());
+    let bytes = src.as_bytes();
+    if bytes.get(open) != Some(&b'{') || bytes.get(end.checked_sub(1)?) != Some(&b'}') {
         return None;
     }
-    let mut depth = 1i32;
-    let mut i = open + 1;
-    let start = i;
-    while i < bytes.len() {
-        match bytes[i] {
-            b'\\' if i + 1 < bytes.len() => {
-                i += 2;
-                continue;
-            }
-            b'{' => depth += 1,
-            b'}' => {
-                depth -= 1;
-                if depth == 0 {
-                    let inner = &src[start..i];
-                    let keys: Vec<String> = if split {
-                        inner
-                            .split(',')
-                            .map(|k| normalize_label_key(k.trim()))
-                            .filter(|k| !k.is_empty())
-                            .collect()
-                    } else {
-                        // Single literal key: keep any comma (it becomes `-` via
-                        // sanitize, matching the `\label` key).
-                        let key = normalize_label_key(inner.trim());
-                        if key.is_empty() {
-                            Vec::new()
-                        } else {
-                            vec![key]
-                        }
-                    };
-                    return Some((keys, i + 1));
-                }
-            }
-            _ => {}
+    let inner = &src[open + 1..end - 1];
+    let keys: Vec<String> = if split {
+        inner
+            .split(',')
+            .map(|k| normalize_label_key(k.trim()))
+            .filter(|k| !k.is_empty())
+            .collect()
+    } else {
+        // Single literal key: keep any comma (it becomes `-` via sanitize,
+        // matching the `\label` key).
+        let key = normalize_label_key(inner.trim());
+        if key.is_empty() {
+            Vec::new()
+        } else {
+            vec![key]
         }
-        i += 1;
-    }
-    None
+    };
+    Some((keys, end))
 }
 
 // ─── Tabular, math rows & math sanitization ───────────────────────────────────
@@ -655,56 +634,29 @@ pub(in crate::emit) fn extract_label_name(node: Node<'_>, src: &str) -> Option<S
     extract_label_name_and_end(node, src).map(|(n, _)| n)
 }
 
-/// Same as `extract_label_name`, but also returns the byte offset
-/// immediately past the closing `}` of the label argument. The caller
-/// uses that offset to set `skip_until` so the leaked tail (when
-/// tree-sitter truncates the label at `_`) isn't re-emitted as
-/// stray math content.
+/// Same as `extract_label_name`, but also returns the byte offset immediately
+/// past the closing `}` of the label argument.
+///
+/// `ir::lower`'s `normalize_truncated_labels` already repaired the
+/// underscore-truncation quirk (tree-sitter-latex used to stop the `label` token
+/// at the first `_` and leak the tail as `subscript`/`word`/`ERROR` siblings), so
+/// the `curly_group_label` node now spans the full `{...}` and the key reads
+/// straight off its span. The returned end offset is still used to set
+/// `skip_until` (now a harmless no-op for labels, since nothing leaks).
 pub(in crate::emit) fn extract_label_name_and_end(
     node: Node<'_>,
     src: &str,
 ) -> Option<(String, usize)> {
-    // tree-sitter-latex stops the `label` token at the first `_`, which
-    // means `\label{eq:edl_objective}` parses with `label = "eq:edl"`
-    // plus a synthesized closing brace and the rest of the name
-    // (`_objective}`) leaks into the parent text as a subscript +
-    // word + ERROR `}`. Recovering the full name reliably means
-    // ignoring the truncated grammar token and scanning the raw
-    // source bytes for the brace span instead.
-    let bytes = src.as_bytes();
     let mut cursor = node.walk();
-    let mut open: Option<usize> = None;
-    for child in node.children(&mut cursor) {
-        if child.kind() == "curly_group_label" {
-            open = Some(child.start_byte());
-            break;
-        }
-    }
-    let open = open?;
-    if bytes.get(open) != Some(&b'{') {
+    let group = node
+        .children(&mut cursor)
+        .find(|c| c.kind() == "curly_group_label")?;
+    let (open, end) = (group.start_byte(), group.end_byte());
+    let bytes = src.as_bytes();
+    if bytes.get(open) != Some(&b'{') || bytes.get(end.checked_sub(1)?) != Some(&b'}') {
         return None;
     }
-    let mut depth = 1i32;
-    let mut i = open + 1;
-    let start = i;
-    while i < bytes.len() {
-        match bytes[i] {
-            b'\\' if i + 1 < bytes.len() => {
-                i += 2;
-                continue;
-            }
-            b'{' => depth += 1,
-            b'}' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some((normalize_label_key(&src[start..i]), i + 1));
-                }
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-    None
+    Some((normalize_label_key(&src[open + 1..end - 1]), end))
 }
 
 /// Normalise a LaTeX label key to a form Typst accepts as a `<...>`
