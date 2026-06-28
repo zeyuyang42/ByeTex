@@ -3749,32 +3749,61 @@ impl<'a> Emitter<'a> {
             | Some("\\affil")
             | Some("\\address")
             | Some("\\institution") => {
-                if !self.raw_authors.is_empty() {
-                    if let Some(arg) = first_curly_like(node) {
-                        let cmd = command_name_text(node, self.src).unwrap_or_default();
-                        let inner = self
-                            .src
-                            .get(arg.start_byte() + 1..arg.end_byte().saturating_sub(1))
-                            .unwrap_or("")
-                            .to_string();
-                        if let Some(last) = self.raw_authors.last_mut() {
-                            last.push(' ');
-                            last.push_str(&cmd);
-                            last.push('{');
-                            last.push_str(&inner);
-                            last.push('}');
-                        }
+                // authblk's `\affil[n]{body}` carries an optional `[n]` index;
+                // tree-sitter then parses the command as a *bare* generic_command
+                // whose `[n]` and `{body}` are siblings, so `first_curly_like`
+                // misses the body and both leak as raw text (2605.22724/.31394:
+                // `\affil[1]{Dept…}` → `\[1\]Dept…`). Byte-scan from the
+                // command_name token's end: skip an optional `[…]`, then read the
+                // `{body}` and advance `skip_until` past it so nothing leaks.
+                let cmd = command_name_text(node, self.src).unwrap_or_default();
+                let mut cursor = node.walk();
+                let name_end = node
+                    .children(&mut cursor)
+                    .find(|c| c.kind() == "command_name")
+                    .map(|c| c.end_byte())
+                    .unwrap_or_else(|| node.end_byte());
+                let bytes = self.src.as_bytes();
+                let mut i = name_end;
+                while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                    i += 1;
+                }
+                if i < bytes.len() && bytes[i] == b'[' {
+                    let mut j = i + 1;
+                    while j < bytes.len() && bytes[j] != b']' {
+                        j += 1;
                     }
-                } else {
-                    // No author context — fall back to class_metadata so
-                    // external callers can still inspect the value.
-                    if let Some(key) = command_name_text(node, self.src) {
-                        let field = key.trim_start_matches('\\').to_string();
-                        if let Some(arg) = first_curly_like(node) {
-                            let content = self.render_curly_group_content(arg);
+                    if j < bytes.len() {
+                        i = j + 1;
+                    }
+                }
+                while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                    i += 1;
+                }
+                if i < bytes.len() && bytes[i] == b'{' {
+                    if let Some(end) = brace_balanced_end(bytes, i) {
+                        let inner = self.src.get(i + 1..end - 1).unwrap_or("").to_string();
+                        if !self.raw_authors.is_empty() {
+                            if let Some(last) = self.raw_authors.last_mut() {
+                                last.push(' ');
+                                last.push_str(&cmd);
+                                last.push('{');
+                                last.push_str(&inner);
+                                last.push('}');
+                            }
+                        } else {
+                            // No author context — capture into class_metadata so
+                            // external callers can still inspect the value.
+                            let field = cmd.trim_start_matches('\\').to_string();
+                            let content = self.render_in_sub_emitter(&inner, false, true);
                             self.metadata.class_metadata.entry(field).or_insert(content);
+                            self.warn_unsupported_command(node);
                         }
+                        self.skip_until = self.skip_until.max(end);
+                        return node.end_byte().max(end);
                     }
+                }
+                if self.raw_authors.is_empty() {
                     self.warn_unsupported_command(node);
                 }
                 node.end_byte()
