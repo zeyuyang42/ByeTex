@@ -49,15 +49,30 @@ Resolved.
   a mis-parsed region, not because `\section` itself is unhandled (it is, elsewhere).
 - **Highest-value next pick** — single paper but the deepest fidelity hole in the corpus; a real
   parse bug, not a missing recipe.
+- **Bisect (tick-2, 2026-06-28):** TWO distinct bugs. **(A) `\begin{document}` leak + giant raw-copy
+  region:** a *fragile combination* triggers it — full preamble (1-113) + the `\setlength` block
+  right after `\begin{document}` + a following `\section`. Each piece ALONE is clean (preamble+section
+  ✓, minimal setlength+section ✓); only the full combo makes tree-sitter emit a giant ERROR node that
+  the emitter raw-copies (leaking `\begin{document}`, brace-stripped `\sectionIntroduction`, etc.).
+  **(B) authblk `\affil[n]{body}` leak:** reproduces minimally (`\affil[1]{\small{Dept}}` →
+  `\[1\]Dept`) — `\affil`/`\author[n]` not handled as authblk; a clean self-contained node-level
+  fix, but in THIS paper the affil sits inside bug-A's ERROR region (raw-copied), so fixing `\affil`
+  alone won't clear 2605.22728's affil leak (helps other authblk papers though). **Bug A is the
+  crux** and is an ERROR-node raw-copy recovery problem → connects to the lowering-IR / parser-swap
+  roadmap ([[project-lowering-ir]] Phase D), not a one-tick match-arm fix. Needs a dedicated effort
+  or user steer.
 
-### L2. `\algnewcommand` macro-definition body leaks into the document body — sev 4 (major) — ROUTE: Loop A — VALIDATED (2605.31499)
+### L2. `\algnewcommand` macro-definition body leaks into the document body — sev 4 (major) — ROUTE: Loop A — ✅ RESOLVED (PR #443, v0.6.62)
 - **Symptom (validated):** `\algnewcommand{\LeftComment}[1]{\Statex \(\triangleright\) #1}`
-  (algorithmicx) — the macro *definition's body* leaks into the document as
-  `\[1\] $gt.tri$ \#1`. `\algnewcommand`/`\algrenewcommand` aren't recognized as macro-definition
-  forms, so the prepass doesn't consume the `{name}[n]{body}` and the body tokens leak.
-- **Fix sketch:** treat `\algnewcommand`/`\algrenewcommand` like `\newcommand`/`\renewcommand` in
-  the macro-definition prepass (consume `{\name}[argc]{body}`; register the macro, drop the
-  definition). Clean, generalizable. Good second pick after L1.
+  (algorithmicx) — the macro *definition's body* leaked into the document as
+  `\[1\] $gt.tri$ \#1`. `\algnewcommand`/`\algrenewcommand` weren't recognized as
+  macro-definition forms (tree-sitter parses them as bare `generic_command`, like `\newcommandx`),
+  so the prepass didn't consume the `{name}[n]{body}` and the body tokens leaked.
+- **Fix (PR #443):** new `extract_algnewcommand_and_end` handles both `\algnewcommand{\name}[N]{body}`
+  (braced name — scan from the `command_name` token's end, since tree-sitter absorbs the `{\name}`
+  curly group) and bare `\algnewcommand\name{body}`; wired into the main prepass, the `\input`
+  harvest, and the emit-time skip. **Verified deterministically:** 2605.31499 leak fragment
+  `\[1\] $gt.tri$ \#1` → 0 occurrences; 3 TDD tests + 3 edge cases; gates green.
 
 ### L3. `byetex-tables-layout` lacks NeurIPS-specific density numbers — sev 3 (major skill note) — ROUTE: Loop B (2605.22821, recurring)
 - **Symptom:** the skill correctly says NeurIPS/ICML/ICLR are single-column and to check
