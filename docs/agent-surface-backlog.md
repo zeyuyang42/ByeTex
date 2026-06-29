@@ -104,7 +104,22 @@ Resolved.
   Candidate sub-fixes (each its own scoped tick): (a) never `safe_copy` a leaked `\begin{document}`/
   `\end{document}` marker (always-correct, removes the worst visible garbage); (b) broaden the IR
   underscore normalization beyond labels; (c) emitter ERROR-gap recovery that converts (not raw-copies)
-  recognized commands in gaps. AWAITING user steer on direction (asked tick-7).
+  recognized commands in gaps.
+- **MECHANISM PINNED (tick-7; user chose underscore-normalization):** the breaking underscores are
+  in **cross-ref/cite/label command KEYS** — `\label{eq:rof_dual}`, `\eqref{eq:rof_optimality.1}`,
+  `\cref{…}`, `\cite{…_…}`. A preprocess replacing `_`→`X` *only inside* these keys recovers headings
+  **1→8** (identical to replacing ALL `_`; replacing whole `\label`, or refs alone, does NOT).
+  tree-sitter mis-reads the key `_` as a subscript, cascading into the document-env parse failure.
+  **This happens DURING parse, so the post-parse IR `normalize_truncated_labels` (PR #440, `\label`
+  only) cannot un-break it** — confirmed: removing `\label` post-hoc doesn't recover sections.
+- **FIX PLAN (next focused tick — cross-cutting + risky → full fidelity gate + snapshot review):**
+  source-preprocess key underscores BEFORE `ir::parse_and_lower`'s tree-sitter parse, with a
+  SAME-BYTE-LENGTH substitution (`_`→1-byte sentinel) so the emitter's byte offsets stay valid;
+  restrict to the brace key of `\label|\ref|eqref|cref|Cref|autoref|cite|citep|citet|…` (NOT math
+  subscripts, NOT text). `self.src` must then be the modified source; label/ref/cite handlers restore
+  `_` on emit so `<label>`/`@ref`/bib keys stay correct (label & ref transformed identically → links
+  resolve). begin-leak is a separate residual (sub-fix (a)). Snapshot churn expected on every paper
+  with key underscores → review carefully. NOT a tail-of-session change; do it on fresh budget.
 
 ### L2. `\algnewcommand` macro-definition body leaks into the document body — sev 4 (major) — ROUTE: Loop A — ✅ RESOLVED (PR #443, v0.6.62)
 - **Symptom (validated):** `\algnewcommand{\LeftComment}[1]{\Statex \(\triangleright\) #1}`
