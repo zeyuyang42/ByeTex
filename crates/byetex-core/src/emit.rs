@@ -1879,6 +1879,21 @@ impl<'a> Emitter<'a> {
             return node.end_byte();
         }
 
+        // A LOOSE `\begin{document}` / `\end{document}` — only reachable when
+        // tree-sitter failed to form the `document` environment (ERROR recovery on
+        // a malformed/over-complex parse), leaving the delimiter as a standalone
+        // `begin`/`end` node the default walker would raw-copy into the body
+        // (corpus 2605.22728). The well-formed case consumes these inside the
+        // `document` environment, so a standalone one has no Typst meaning — drop
+        // it. A `\begin{document}` shown in a verbatim/listing is a string token,
+        // not a `begin`/`end` node, so it is unaffected.
+        if matches!(node.kind(), "begin" | "end") {
+            let t = self.src[node.start_byte()..node.end_byte()].trim();
+            if t == "\\begin{document}" || t == "\\end{document}" {
+                return node.end_byte();
+            }
+        }
+
         // Counter-manipulation commands (`\setcounter`, `\addtocounter`,
         // `\stepcounter`, `\refstepcounter`, `\newcounter`) get dedicated
         // tree-sitter node kinds, so they never reach `emit_generic_command` and

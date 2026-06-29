@@ -124,7 +124,16 @@ Resolved.
   `sanitize_label_key` so ALL key comparisons (`dangling_ref_anchors`, figures.rs label checks) run in
   `_`-space. **Impact: corpus-wide** — 2605.22728 1→8 headings; ~30 papers gained complete captions /
   resolved `\ref`s / emitted label anchors the misparse had silently corrupted. acceptance 68/0,
-  fidelity gate pending. begin-leak on 2605.22728 is the separate residual (sub-fix (a)).
+  fidelity 0.833 (no regression).
+- **✅ RESOLVED — sub-fix (a) leaked `\begin{document}`/`\end{document}` drop (PR #453, v0.6.68):**
+  a loose `begin`/`end` `document` node (only produced when the document env fails to form) is now
+  dropped instead of raw-copied; verbatim listings (string tokens, not `begin` nodes) preserved.
+  2605.22728/.22786/.31203 lose the stray marker.
+- **L1 bug-A STATUS: largely closed.** The two highest-impact pieces (underscore-key parse recovery
+  #452, begin/end-document leak #453) shipped. RESIDUAL (lower value, deferred): 2605.22728 still
+  recovers only ~8/12 sections — the remaining gap is the deeper *unisolated* cumulative parse
+  interaction (synthetic underscore/align docs don't reproduce it); fully closing it is parser-swap
+  (lowering-IR Phase D) territory, not worth a targeted tick. Revisit only if a dogfood re-flags it.
 
 ### L2. `\algnewcommand` macro-definition body leaks into the document body — sev 4 (major) — ROUTE: Loop A — ✅ RESOLVED (PR #443, v0.6.62)
 - **Symptom (validated):** `\algnewcommand{\LeftComment}[1]{\Statex \(\triangleright\) #1}`

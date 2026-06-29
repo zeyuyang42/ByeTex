@@ -3,6 +3,17 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.68] — unreleased
+
+### Fixed
+- A leaked `\begin{document}` / `\end{document}` no longer renders as literal text in the body.
+  These markers only reach the body when tree-sitter fails to form the `document` environment
+  (ERROR recovery on a malformed/over-complex parse) and leaves the delimiter as a standalone
+  `begin`/`end` node; the emitter now drops such loose document-markers (they have no Typst
+  rendering). The well-formed case is unchanged, and a `\begin{document}` shown inside a
+  verbatim/listing is a string token (not a `begin` node) so it is preserved. Closes L1 sub-fix
+  (a); corpus 2605.22728, 2605.22786, 2605.31203 lose the stray marker.
+
 ## [0.6.67] — unreleased
 
 ### Fixed
