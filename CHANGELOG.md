@@ -3,6 +3,18 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.69] — unreleased
+
+### Changed
+- `byetex-using-warnings-json` skill now points agents to the leaked-LaTeX body scan
+  (`byetex diagnose main.typ`) for *partial/garbled* translations — a `\begin{align}`/`\section`/
+  `\begin{proof}` wrapper that leaked into the body as literal text. These are NOT recorded in
+  `warnings.json` (which only lists clean drops), so an empty `warnings.json` does not prove a
+  leak-free body. The leak-scan capability already existed (the `.typ`-input diagnose does both a
+  compile and a body scan); this surfaces it from the skill agents actually consult for leaks, which
+  previously had no mention of it (recurring dogfood friction on 2605.22728 — the agent grepped
+  `main.typ` by hand because it believed diagnose "only gives compile errors").
+
 ## [0.6.68] — unreleased
 
 ### Fixed

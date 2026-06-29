@@ -27,6 +27,25 @@ Resolved.
 
 ## Open — P0 (frequent × blocking)
 
+> **Round 12 (2026-06-29, v0.6.68)** — VERIFICATION dogfood of `2605.22728` after the L1 fixes.
+> **L1 underscore-key (#452) + begin/end-document drop (#453) VERIFIED LANDED:** auto-fidelity
+> `fidelity_before` jumped **0.68 → 0.804** (+0.12), the agent's manual delta shrank 0.16→0.03
+> (most content now auto-recovered), `\begin{document}` leak GONE, page count 34→29. Still
+> NEEDS_FIX from DEFERRED residuals: deep ERROR-gap section/`align`/`proof` leaks (parser-swap
+> territory), 5 algorithm placeholders, `\mathbbold{1}` custom alphabet. **New recurring Loop-B
+> finding → N1.**
+>
+> ### N1. `warnings.json` doesn't surface garbled/partial-translation leaks — sev 3 (major, recurring) — ✅ ADDRESSED (PR #454, skill, verify next round)
+> - **Symptom:** a leaked `\begin{align}`/`\section`/`\begin{proof}` wrapper renders as body garbage
+>   but is NOT in `warnings.json` (which lists only clean drops). The agent consulted
+>   `byetex-using-warnings-json` (the skill for leaks), found no guidance, and grepped `main.typ` by
+>   hand — believing `diagnose` "only gives compile errors". **The leak-scanner ALREADY EXISTS**
+>   (`byetex diagnose main.typ` does compile + a leaked-`\command`/`\[..\]` body scan, PR #307) and
+>   getting-started documents it — but warnings-json (the skill agents reach for leaks) didn't.
+> - **Fix (#454):** added a "Leaked LaTeX in the body (NOT in warnings.json)" section to
+>   `byetex-using-warnings-json` pointing at `byetex diagnose main.typ`, plus a workflow caveat that
+>   an empty `warnings.json` doesn't prove a leak-free body. Skill-only → verify by re-dogfood.
+
 > **Round 11 (2026-06-29, v0.6.64→0.6.65)** — verification re-dogfood of the same hardest 3.
 > **#443 (algnewcommand), #445 (authblk affil on clean papers), #447 (starred \hspace*/\tag*)
 > ALL VERIFIED LANDED** — none reappeared. All 3 still `NEEDS_FIX` (residual hard items below).
