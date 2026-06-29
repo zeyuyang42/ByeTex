@@ -28,7 +28,11 @@ Each warning has this shape:
 
 ## Workflow
 
-1. Read `warnings.json`. If empty, the conversion was 100% clean — stop.
+1. Read `warnings.json`. If empty, all DROPPED constructs were handled — but that does
+   **not** prove the body is leak-free: a *partially* translated construct (a `\begin{align}`
+   / `\section` / `\begin{proof}` wrapper that leaked into the body as literal `\command`
+   text) is NOT recorded in `warnings.json`. During fidelity work, also run the leak scan
+   (see "Leaked LaTeX in the body" below).
 2. Group warnings by `category.kind`.
 3. For each group, if `suggested_skill` is non-null, read that skill with
    `byetex skills read <name>` (or open `skills/<name>.md`) BEFORE editing the `.typ`.
@@ -68,6 +72,29 @@ benign** (a dropped no-output preamble command, not lost content):
 **Rule of thumb:** if the command had no visible output in the source (spacing,
 counters, font declarations, package loads), the drop is correct — move on. Only act
 when real content or a symbol is missing/wrong in the rendered `.typ`.
+
+## Leaked LaTeX in the body (NOT in `warnings.json`)
+
+`warnings.json` records constructs ByeTex **dropped**. It does **not** record a
+*partial / garbled* translation — where a construct was converted but its wrapper
+leaked into the body as literal text. Common shapes (all render as visible garbage,
+none appear in `warnings.json`):
+
+- a heading glued to its title: `\sectionIntroduction`, `\subsectionResults`
+- an environment delimiter: `\begin{align}` / `\begin{proof}` / `\end{...}` sitting in the body
+- a stray `\command` (`\smash`, `\hspace`, `\text`) or a `\[..\]` marker in running text
+
+To find these, run the leak scan on the **`.typ`** (not the `.tex`):
+
+```
+byetex diagnose main.typ
+```
+
+Despite the "diagnose" name, on a `.typ` input this does BOTH a `typst` compile AND a
+**leaked-LaTeX body scan** — it reports each residual `\command` / `\[..\]` fragment with
+its `.typ` line. Fix each by translating or deleting the leaked fragment, then re-run it
+to confirm the body is clean. (A clean `typst compile` does NOT imply a clean body — leaked
+`\section` text compiles fine but renders wrong.)
 
 ## Rules
 
