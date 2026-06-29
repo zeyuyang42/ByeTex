@@ -68,6 +68,19 @@ pub(crate) fn sanitize_label_key(key: &str) -> String {
     // en/em-dash even inside a `<…>` token → Typst "unclosed label" (corpus
     // 2605.31579); (2) both the `<def>` and `@ref` sides call this, so they
     // stay byte-identical and keep resolving.
+    // Restore the cross-ref-key underscore sentinel to `_` BEFORE sanitizing, so
+    // every key — the `<def>`, the `@ref`, the dangling-anchor dedup scan, and the
+    // figure label checks — lives in one consistent `_`-keyspace (see
+    // `ir::neutralize_ref_key_underscores`). Doing it only as a final output pass
+    // left `referenced_labels` and the emitted `<key>` in different spaces, so a
+    // defined label looked "missing" and got a duplicate phantom anchor.
+    let restored;
+    let key = if key.as_bytes().contains(&(crate::ir::REFKEY_US_SENTINEL as u8)) {
+        restored = key.replace(crate::ir::REFKEY_US_SENTINEL, "_");
+        restored.as_str()
+    } else {
+        key
+    };
     let mut out = String::with_capacity(key.len());
     let mut prev_dash = false;
     for c in key.chars() {
