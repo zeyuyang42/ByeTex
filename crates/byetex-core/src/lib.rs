@@ -133,6 +133,13 @@ pub(crate) fn convert_with_macros(
     preseeded_refs: HashSet<String>,
     record_source_map: bool,
 ) -> ConvertOutput {
+    // Neutralize `_` inside cross-reference/label keys before parsing: tree-sitter
+    // mis-reads them as math subscripts and on complex documents that cascades into
+    // a whole-document parse failure (see `ir::neutralize_ref_key_underscores`). The
+    // substitution is the same byte length, so all of the emitter's byte offsets
+    // stay valid; the sentinel is restored to `_` in the final output below.
+    let preprocessed = ir::neutralize_ref_key_underscores(source);
+    let source = preprocessed.as_str();
     let tree = ir::parse_and_lower(source);
     let source_name = opts.source_name.as_deref().unwrap_or("<input>");
     let visited: HashSet<PathBuf> = HashSet::new();
@@ -165,6 +172,15 @@ pub(crate) fn convert_with_macros(
         class_metadata,
         source_map,
     } = emitter.finish();
+    // Restore the cross-reference-key sentinel to `_` (see
+    // `ir::neutralize_ref_key_underscores`). The sentinel only ever stands in for a
+    // `_` inside a label/ref key, so a blanket restore is unambiguous and also
+    // catches any emit path that bypassed `sanitize_label_key`.
+    let typst = if typst.as_bytes().contains(&(ir::REFKEY_US_SENTINEL as u8)) {
+        typst.replace(ir::REFKEY_US_SENTINEL, "_")
+    } else {
+        typst
+    };
     ConvertOutput {
         typst,
         warnings,

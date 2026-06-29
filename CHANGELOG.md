@@ -3,6 +3,21 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.67] — unreleased
+
+### Fixed
+- Underscores in cross-reference/label keys (`\label{a_b}`, `\eqref{a_b}`, `\cref`, `\ref`, …) no
+  longer derail tree-sitter's parse. tree-sitter-latex mis-reads the `_` as a math subscript; on
+  complex documents the accumulated mis-parses prevented the `document` environment from forming at
+  all (the parse root became one giant ERROR node), so the emitter raw-copied the unrecognized gaps
+  — leaking `\begin{document}`, dropping section headings, truncating captions, and leaking raw
+  `\ref{…` fragments. A pre-parse pass now neutralizes `_` inside those keys with a same-byte-length
+  sentinel (offsets preserved), restored to `_` in `sanitize_label_key` so the whole emit pipeline
+  shares one keyspace; `\cite` keys and math subscripts are untouched. Corpus-wide effect: 2605.22728
+  recovers 1→8 section headings, and ~30 other papers gain complete captions / resolved references /
+  emitted label anchors that the misparse had silently corrupted. (The residual `\begin{document}`
+  text-leak on 2605.22728 is tracked separately as L1 sub-fix (a).)
+
 ## [0.6.66] — unreleased
 
 ### Fixed

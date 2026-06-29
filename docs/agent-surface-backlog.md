@@ -112,14 +112,19 @@ Resolved.
   tree-sitter mis-reads the key `_` as a subscript, cascading into the document-env parse failure.
   **This happens DURING parse, so the post-parse IR `normalize_truncated_labels` (PR #440, `\label`
   only) cannot un-break it** — confirmed: removing `\label` post-hoc doesn't recover sections.
-- **FIX PLAN (next focused tick — cross-cutting + risky → full fidelity gate + snapshot review):**
-  source-preprocess key underscores BEFORE `ir::parse_and_lower`'s tree-sitter parse, with a
-  SAME-BYTE-LENGTH substitution (`_`→1-byte sentinel) so the emitter's byte offsets stay valid;
-  restrict to the brace key of `\label|\ref|eqref|cref|Cref|autoref|cite|citep|citet|…` (NOT math
-  subscripts, NOT text). `self.src` must then be the modified source; label/ref/cite handlers restore
-  `_` on emit so `<label>`/`@ref`/bib keys stay correct (label & ref transformed identically → links
-  resolve). begin-leak is a separate residual (sub-fix (a)). Snapshot churn expected on every paper
-  with key underscores → review carefully. NOT a tail-of-session change; do it on fresh budget.
+- **✅ RESOLVED — underscore-key normalization (PR #452, v0.6.67):** `ir::neutralize_ref_key_underscores`
+  pre-parse substitutes `_`→`\u{1f}` (same-byte-length sentinel) inside `\label|\ref|eqref|cref|Cref|
+  autoref|pageref|labelcref|nameref|namecref|cpageref|vref|crefrange|Crefrange` brace keys; `self.src`
+  is the modified source; `sanitize_label_key` restores `\u{1f}`→`_` (the central choke point both
+  `<def>` and `@ref` AND the dangling-anchor dedup pass share → one consistent keyspace), plus a final
+  output restore as a safety net. `\cite` keys + math subscripts untouched. **GOTCHA hit (caught by
+  acceptance):** the first cut restored ONLY in the final output → `referenced_labels` (sentinel form)
+  and emitted `<key>` (sentinel form) vs the dangling-anchor scan compared inconsistently → a defined
+  label looked "missing" → DUPLICATE phantom anchor → 18 compile regressions. Fix: restore inside
+  `sanitize_label_key` so ALL key comparisons (`dangling_ref_anchors`, figures.rs label checks) run in
+  `_`-space. **Impact: corpus-wide** — 2605.22728 1→8 headings; ~30 papers gained complete captions /
+  resolved `\ref`s / emitted label anchors the misparse had silently corrupted. acceptance 68/0,
+  fidelity gate pending. begin-leak on 2605.22728 is the separate residual (sub-fix (a)).
 
 ### L2. `\algnewcommand` macro-definition body leaks into the document body — sev 4 (major) — ROUTE: Loop A — ✅ RESOLVED (PR #443, v0.6.62)
 - **Symptom (validated):** `\algnewcommand{\LeftComment}[1]{\Statex \(\triangleright\) #1}`

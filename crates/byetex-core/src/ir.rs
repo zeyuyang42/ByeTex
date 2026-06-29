@@ -454,6 +454,115 @@ pub fn parse_and_lower(src: &str) -> Tree {
     lower(&ts_tree, src)
 }
 
+/// Sentinel byte that temporarily stands in for `_` inside cross-reference keys
+/// during parsing. It is a control byte that never appears in real LaTeX source,
+/// is treated by tree-sitter-latex as an ordinary key-word character (so it does
+/// NOT trip the math-subscript misparse), survives label sanitization unchanged
+/// (see `is_typst_label_char`), and is restored to `_` in the final Typst output.
+pub(crate) const REFKEY_US_SENTINEL: char = '\u{1f}';
+
+/// Neutralize `_` inside cross-reference / label command keys *before* the
+/// tree-sitter parse.
+///
+/// tree-sitter-latex mis-reads an `_` in a `\label{a_b}` / `\eqref{a_b}` key as a
+/// math subscript; on a complex document the accumulated mis-parses prevent the
+/// `document` environment from forming at all (the parse root becomes one giant
+/// ERROR node and the emitter then raw-copies the un-recognised gaps — leaking
+/// `\begin{document}` and dropping section headings, corpus 2605.22728:
+/// 1→8 recovered headings once these keys are neutralised). We replace each `_`
+/// with [`REFKEY_US_SENTINEL`] (a SAME-LENGTH 1-byte substitution, so every byte
+/// offset the emitter relies on is preserved) and restore it on emit.
+///
+/// Scope is deliberately narrow: only the brace key of the listed reference /
+/// label commands. Math subscripts (`x_1`) and `\cite` keys (matched against the
+/// bibliography) are left untouched.
+pub(crate) fn neutralize_ref_key_underscores(src: &str) -> String {
+    // Longer command names first so a prefix (`\label`, `\ref`, `\cref`) never
+    // shadows its extension (`\labelcref`, `\refrange`, `\crefrange`); the
+    // trailing non-alphabetic guard is the real disambiguator, this is belt-and-
+    // suspenders. `\cite*` is intentionally absent (bib keys stay verbatim).
+    const CMDS: &[&str] = &[
+        "\\labelcref",
+        "\\namecref",
+        "\\nameref",
+        "\\cpageref",
+        "\\crefrange",
+        "\\Crefrange",
+        "\\autoref",
+        "\\pageref",
+        "\\eqref",
+        "\\vref",
+        "\\cref",
+        "\\Cref",
+        "\\label",
+        "\\ref",
+    ];
+    if !src.contains('_') {
+        return src.to_string();
+    }
+    let bytes = src.as_bytes();
+    let mut out = src.as_bytes().to_vec();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] != b'\\' {
+            i += 1;
+            continue;
+        }
+        let rest = &src[i..];
+        let cmd = CMDS.iter().find(|c| {
+            rest.starts_with(**c)
+                && !rest[c.len()..].starts_with(|ch: char| ch.is_ascii_alphabetic())
+        });
+        let Some(cmd) = cmd else {
+            i += 1;
+            continue;
+        };
+        let mut j = i + cmd.len();
+        // Skip whitespace, then any optional `[...]` argument(s).
+        while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+            j += 1;
+        }
+        while j < bytes.len() && bytes[j] == b'[' {
+            let mut depth = 0i32;
+            while j < bytes.len() {
+                match bytes[j] {
+                    b'[' => depth += 1,
+                    b']' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            j += 1;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+                j += 1;
+            }
+            while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+                j += 1;
+            }
+        }
+        // The mandatory `{key}` — replace `_` (0x5f) with the sentinel byte.
+        if j < bytes.len() && bytes[j] == b'{' {
+            j += 1;
+            let mut depth = 1i32;
+            while j < bytes.len() && depth > 0 {
+                match bytes[j] {
+                    b'{' => depth += 1,
+                    b'}' => depth -= 1,
+                    b'_' => out[j] = REFKEY_US_SENTINEL as u8,
+                    _ => {}
+                }
+                j += 1;
+            }
+        }
+        i = j;
+    }
+    // SAFETY: only 0x5f ('_') bytes were replaced with 0x1f, both standalone ASCII
+    // bytes, so the buffer remains valid UTF-8.
+    String::from_utf8(out).expect("same-length ASCII byte substitution preserves UTF-8")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
