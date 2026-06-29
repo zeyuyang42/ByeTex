@@ -81,20 +81,30 @@ Resolved.
   a mis-parsed region, not because `\section` itself is unhandled (it is, elsewhere).
 - **Highest-value next pick** — single paper but the deepest fidelity hole in the corpus; a real
   parse bug, not a missing recipe.
-- **Bisect (tick-2, 2026-06-28):** TWO distinct bugs. **(A) `\begin{document}` leak + giant raw-copy
-  region:** a *fragile combination* triggers it — full preamble (1-113) + the `\setlength` block
-  right after `\begin{document}` + a following `\section`. Each piece ALONE is clean (preamble+section
-  ✓, minimal setlength+section ✓); only the full combo makes tree-sitter emit a giant ERROR node that
-  the emitter raw-copies (leaking `\begin{document}`, brace-stripped `\sectionIntroduction`, etc.).
-  **(B) authblk `\affil[n]{body}` leak:** reproduces minimally (`\affil[1]{\small{Dept}}` →
-  `\[1\]Dept`) — `\affil` didn't consume the optional `[n]` (tree-sitter parses the indexed form as
-  a bare generic_command with `[n]`+`{body}` as siblings). **✅ RESOLVED (PR #445, v0.6.63):** the
-  affil/email/orcid family now byte-scans the optional `[n]`+`{body}` and skips it; 2605.22724 /
-  2605.31394 / 2605.31009 affil leak → 0. NOTE: in 2605.22728 the affil sits inside bug-A's ERROR
-  region (raw-copied), so its affil leak persists until bug-A is fixed (other authblk papers fixed).
-  **Bug A is the remaining crux** and is an ERROR-node raw-copy recovery problem → connects to the
-  lowering-IR / parser-swap roadmap ([[project-lowering-ir]] Phase D), not a one-tick match-arm fix.
-  Needs a dedicated effort or user steer.
+- **Bug B (authblk `\affil[n]{body}` leak) — ✅ RESOLVED (PR #445, v0.6.63):** the affil/email/orcid
+  family now byte-scans the optional `[n]`+`{body}` and skips it; 2605.22724/.31394/.31009 affil
+  leak → 0. (In 2605.22728 the affil sits inside bug-A's ERROR region so its affil leak persists
+  until bug-A is fixed.)
+- **Bug A — TRUE ROOT CAUSE (tick-7 deep-dive, 2026-06-29; SUPERSEDES the tick-2 hypothesis):**
+  the tick-2 "preamble × `\setlength` × `\section`" bisect was a TEST-HARNESS ARTIFACT — `echo
+  '\end{document}'` in the reproducer mangled `\e`→ESC (byte 0x1B), producing an *unclosed* document
+  in every probe (hence every probe "leaked"). The `\setlength` block is innocent (clean
+  printf-based reproducers don't leak). **Real cause:** tree-sitter-latex fails to form a
+  `document_environment` for this complex math-heavy file → the PARSE ROOT itself becomes one big
+  ERROR node (340 nested errors). The emitter's default walk DOES recurse into the root-ERROR's
+  children (most content parses into correct `generic_environment`/`generic_command`/`theorem_definition`
+  sub-nodes), but the **gaps between recognized children are raw-copied by `safe_copy`** — that's
+  what leaks `\begin{document}` (never paired with `\end{document}`) and brace-strips section commands
+  (`\section{Introduction}`→`\sectionIntroduction`). The scattered ERRORs are single stray `}` nodes.
+  **Dominant contributor = UNDERSCORES:** replacing every `_` in the file (math subscripts, labels,
+  refs) jumps recovered headings 1→8 (removing `\label` alone or refs alone does nothing). It is
+  multi-causal though — begin-leak persists and only 8/12 headings recover even with underscores
+  gone. **This is a parser-robustness problem → lowering-IR Phase D (parser-swap) or a dedicated
+  tree-sitter underscore-normalization / emitter ERROR-gap-recovery effort, NOT a one-tick fix.**
+  Candidate sub-fixes (each its own scoped tick): (a) never `safe_copy` a leaked `\begin{document}`/
+  `\end{document}` marker (always-correct, removes the worst visible garbage); (b) broaden the IR
+  underscore normalization beyond labels; (c) emitter ERROR-gap recovery that converts (not raw-copies)
+  recognized commands in gaps. AWAITING user steer on direction (asked tick-7).
 
 ### L2. `\algnewcommand` macro-definition body leaks into the document body — sev 4 (major) — ROUTE: Loop A — ✅ RESOLVED (PR #443, v0.6.62)
 - **Symptom (validated):** `\algnewcommand{\LeftComment}[1]{\Statex \(\triangleright\) #1}`
