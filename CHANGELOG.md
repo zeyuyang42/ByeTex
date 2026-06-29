@@ -3,6 +3,18 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.66] — unreleased
+
+### Fixed
+- IEEEtran inline-`\IEEEauthorrefmark` author blocks now parse correctly. Previously every author
+  collapsed to a single affiliation marker `[1]`, `X and Y` merged into one name, and the
+  affiliation legend was dropped (dogfood 2605.31499). A new `parse_ieee_refmark_authors` splits the
+  author row on `,`/` and `, captures each name's `\IEEEauthorrefmark{n}` superscripts, parses the
+  `\IEEEauthorrefmark{n}<affiliation>` legend, and attaches each author's primary (first) mark — so
+  authors sharing an affiliation share a superscript. (The `\IEEEauthorblockN` form is unchanged.
+  Secondary-only affiliation marks aren't shown — a limitation of the single-affiliation author
+  model.)
+
 ## [0.6.65] — unreleased
 
 ### Fixed

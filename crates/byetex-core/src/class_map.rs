@@ -425,6 +425,15 @@ pub(crate) fn parse_authors(raw: &[String], class: &DocClass) -> Vec<Author> {
                 continue;
             }
         }
+        // IEEEtran inline `\IEEEauthorrefmark{n}` form (names + a refmark legend)
+        // must be parsed on the RAW string: `sanitize_author_block` mangles the
+        // refmark markers and `\\` row breaks this parser keys on.
+        if matches!(class, DocClass::IeeeTran { .. }) {
+            if let Some(authors) = parse_ieee_refmark_authors(s_raw) {
+                out.extend(authors);
+                continue;
+            }
+        }
         let s = sanitize_author_block(s_raw);
         let s = s.as_str();
         match class {
@@ -956,6 +965,109 @@ fn parse_neurips_textbf_authors(s: &str) -> Option<Vec<Author>> {
             })
             .collect(),
     )
+}
+
+/// IEEEtran inline-refmark author block — the variant where each name carries
+/// trailing `\IEEEauthorrefmark{n}` superscripts and a legend follows:
+///
+/// ```text
+/// Alice\IEEEauthorrefmark{1}\IEEEauthorrefmark{3}, … and Carol\IEEEauthorrefmark{1} \\
+/// \IEEEauthorrefmark{1}Alpha Lab, … \\
+/// \IEEEauthorrefmark{2}Beta Dept, … \\
+/// ```
+///
+/// The `\IEEEauthorblockN{…}\IEEEauthorblockA{…}` variant is handled by
+/// `parse_ieee_block`; this one is detected by the presence of
+/// `\IEEEauthorrefmark` with no `\IEEEauthorblockN`. Splits on `\\` into the
+/// author row(s) (text before a refmark) and legend rows (which start with a
+/// refmark), splits names on `,` and ` and `, and attaches each author's first
+/// refmark index to its legend affiliation. Returns `None` (fall through to the
+/// blockN/generic parser) unless ≥2 refmark-tagged names are found.
+fn parse_ieee_refmark_authors(s: &str) -> Option<Vec<Author>> {
+    const RM: &str = "\\IEEEauthorrefmark";
+    if !s.contains(RM) || s.contains("\\IEEEauthorblockN") {
+        return None;
+    }
+    let mut legend: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut author_rows: Vec<&str> = Vec::new();
+    for piece in s.split("\\\\") {
+        let t = piece.trim();
+        if t.is_empty() {
+            continue;
+        }
+        if t.starts_with(RM) {
+            // Legend row: `\IEEEauthorrefmark{n}<affiliation>` (the affiliation
+            // text may begin on the next source line, i.e. after a newline).
+            if let Some((idx, after)) = take_refmark(t) {
+                let affil = after.trim().trim_start_matches(',').trim();
+                if !affil.is_empty() {
+                    legend.entry(idx).or_insert_with(|| affil.to_string());
+                }
+            }
+        } else if t.contains(RM) {
+            // Rows with text before a refmark are author rows; rows with no
+            // refmark at all (e.g. `Emails: …`) are ignored.
+            author_rows.push(t);
+        }
+    }
+    let mut authors = Vec::new();
+    for row in &author_rows {
+        for comma_chunk in row.split(',') {
+            for name_chunk in comma_chunk.split(" and ") {
+                let chunk = name_chunk.trim();
+                let Some(rm_pos) = chunk.find(RM) else {
+                    continue;
+                };
+                let name_raw = chunk[..rm_pos].trim();
+                if name_raw.is_empty() {
+                    continue;
+                }
+                let affil = refmark_indices(chunk)
+                    .first()
+                    .and_then(|i| legend.get(i))
+                    .map(|a| {
+                        crate::document::Affiliation::from_raw(Content::Typst(latex_text_to_typst(a)))
+                    });
+                authors.push(Author {
+                    name: Content::Typst(latex_text_to_typst(name_raw).trim().to_string()),
+                    affiliation: affil,
+                    ..Author::default()
+                });
+            }
+        }
+    }
+    if authors.len() < 2 {
+        return None;
+    }
+    Some(authors)
+}
+
+/// Read the `{n}` index of the FIRST `\IEEEauthorrefmark{n}` in `s`; returns the
+/// index and the slice immediately after its closing brace.
+fn take_refmark(s: &str) -> Option<(String, &str)> {
+    const RM: &str = "\\IEEEauthorrefmark";
+    let start = s.find(RM)?;
+    let brace = start + RM.len();
+    if s.as_bytes().get(brace) != Some(&b'{') {
+        return None;
+    }
+    let close = matched_close_brace(s, brace)?;
+    let idx = s[brace + 1..close].trim().to_string();
+    if idx.is_empty() {
+        return None;
+    }
+    Some((idx, &s[close + 1..]))
+}
+
+/// All `\IEEEauthorrefmark{n}` indices in `s`, in order.
+fn refmark_indices(s: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = s;
+    while let Some((idx, after)) = take_refmark(rest) {
+        out.push(idx);
+        rest = after;
+    }
+    out
 }
 
 fn parse_neurips_block(s: &str) -> Vec<Author> {

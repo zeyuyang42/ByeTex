@@ -42,11 +42,17 @@ Resolved.
   fallback. Single-letter forms guarded against user redefinition; `\v{…}` only parses as an accent
   when brace-delimited (so `\vec` is untouched). 2605.31499 `TÜB.ITAK`→0, `TÜBİTAK`→2.
 
-### M2. IEEEtran `\IEEEauthorrefmark` multi-affiliation author block collapses — sev 4 (major) — ROUTE: Loop A — VALIDATED (2605.31499)
-- **Symptom:** `\IEEEauthorrefmark{n}` multi-affiliation author blocks collapse to a single
-  affiliation `[1]`, all emails become identical, superscripts wrong, ≥4 affiliations dropped.
-  warnings.json had NO entry. A bigger, IEEEtran-specific author-parse gap (sibling of the NeurIPS
-  `\textbf`-author and ICML parsers in class_map.rs). Next non-trivial Loop-A author-block pick.
+### M2. IEEEtran `\IEEEauthorrefmark` multi-affiliation author block collapses — sev 4 (major) — ROUTE: Loop A — ✅ RESOLVED (PR #449, v0.6.66)
+- **Symptom:** `\IEEEauthorrefmark{n}` multi-affiliation author blocks collapsed to a single
+  affiliation `[1]`, `X and Y` merged into one name, the affiliation legend dropped (2605.31499).
+- **Fix (#449):** new `parse_ieee_refmark_authors` (class_map.rs) detects the inline-refmark form
+  (`\IEEEauthorrefmark` present, no `\IEEEauthorblockN`), splits the author row on `,`/` and `,
+  captures each name's refmark superscripts, parses the `\IEEEauthorrefmark{n}<affil>` legend, and
+  attaches each author's PRIMARY (first) mark — so authors sharing an affiliation share a
+  superscript. 2605.31499: 6 authors split correctly with 3 distinct affiliations (was all `[1]`).
+- **Residual (documented limitation):** a secondary-only affiliation mark (an index that is never
+  any author's *first* mark) isn't shown — the single-affiliation `Author` model can't hold a second
+  one. Emails also not attached (dropped, not leaked). Both low-value; revisit only if re-flagged.
 
 ### M3. IEEEtran page density (8 vs 6 pp) + NeurIPS density — sev 2 — DEFERRED (same class as H2)
 - IEEEtran conference / NeurIPS render looser than truth; naive margin tightening REGRESSES (font
