@@ -3,6 +3,17 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.73] — unreleased
+
+### Changed
+- NeurIPS, ICML, ICLR and ACL papers now render their body in **Libertinus Serif**
+  instead of New Computer Modern. All four styles set their body in **Times**
+  (NeurIPS `\rmdefault{ptm}`, ICML newtx/times, ICLR `times`, ACL `\usepackage{times}`),
+  but byetex rendered them in Computer Modern — both wrong and ~10% wider, inflating the
+  page count. This extends the 0.6.72 IEEEtran fix to the Times-using conference classes
+  (~21 corpus papers), improving density and font faithfulness (e.g. ICML 2605.22579
+  30→27 pages, ACL 2605.31563 19→17). Class-scoped — non-conference output is byte-identical.
+
 ## [0.6.72] — unreleased
 
 ### Changed

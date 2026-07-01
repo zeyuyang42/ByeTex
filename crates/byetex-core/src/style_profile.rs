@@ -84,6 +84,8 @@ impl StyleProfile {
                 abstract_style: AbstractStyle::ConferenceHeading { smallcaps: false },
                 cite_default: CiteMode::AuthorYear,
                 heading_sizes: ["1.2em", "1.0em", "1.0em"],
+                // neurips_2026.sty `\renewcommand{\rmdefault}{ptm}` — Times body.
+                body_font: "Libertinus Serif",
                 ..Self::neutral()
             },
             // icml2026.sty toptitlebar/bottomtitlebar: 1pt rule + 0.25in gap
@@ -97,6 +99,8 @@ impl StyleProfile {
                 abstract_in_columns: true,
                 cite_default: CiteMode::AuthorYear,
                 heading_sizes: ["1.2em", "1.0em", "1.0em"],
+                // icml2026.sty loads newtx/times — Times body.
+                body_font: "Libertinus Serif",
                 ..Self::neutral()
             },
             // iclr_conference.sty: {\LARGE\sc \@title} — small caps, regular.
@@ -107,6 +111,8 @@ impl StyleProfile {
                 abstract_style: AbstractStyle::ConferenceHeading { smallcaps: true },
                 cite_default: CiteMode::AuthorYear,
                 heading_sizes: ["1.2em", "1.0em", "1.0em"],
+                // iclr_conference.sty loads `times` — Times body.
+                body_font: "Libertinus Serif",
                 ..Self::neutral()
             },
             // ACL (acl.sty): two-column, in-column abstract, natbib author-year.
@@ -121,6 +127,9 @@ impl StyleProfile {
                 abstract_in_columns: true,
                 cite_default: CiteMode::AuthorYear,
                 heading_sizes: ["1.2em", "1.0em", "1.0em"],
+                // acl papers `\usepackage{times}`; acl.sty tightens leading for the
+                // narrow columns — Times body.
+                body_font: "Libertinus Serif",
                 ..Self::neutral()
             },
             // IEEEtran.cls \@maketitle (non-technote): {\Huge ... \@title}.
@@ -261,6 +270,27 @@ mod tests {
             paper_type: "conference".to_string(),
         });
         assert_eq!(p.body_font, "Libertinus Serif");
+    }
+
+    #[test]
+    fn times_conference_classes_use_times_family_serif() {
+        // NeurIPS (`\rmdefault{ptm}`), ICML (newtx/times), ICLR (`times`) and ACL
+        // (`\usepackage{times}`) all set their body in Times. New Computer Modern is
+        // both wrong for them and ~10% wider, inflating the page count (icml 2605.22579
+        // 30→27pp with Libertinus, acl 2605.31563 19→17). Same Times-adjacent bundled
+        // serif as IEEEtran.
+        for class in [
+            DocClass::Neurips,
+            DocClass::Icml,
+            DocClass::Iclr,
+            DocClass::Acl,
+        ] {
+            assert_eq!(
+                StyleProfile::for_class(&class).body_font,
+                "Libertinus Serif",
+                "{class:?} should render its Times body in a Times-adjacent serif"
+            );
+        }
     }
 
     #[test]
