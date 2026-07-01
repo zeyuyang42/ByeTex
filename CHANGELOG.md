@@ -3,6 +3,20 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.71] — unreleased
+
+### Fixed
+- `byetex diagnose`'s `\[..\]` leak scanner no longer flags a *compact alphabetic* literal
+  like `\[dB\]`, `\[IU\]`, `\[mV\]` (unit/abbreviation literals byetex escaped correctly).
+  Follow-up to 0.6.70: the compact-marker branch now flags only digit/symbol markers
+  (`\[1\]`, `\[*\]` — genuine footnote/affiliation leaks) and math-signal spans
+  (`\cmd`/`^`/`_`), matching real leaks. Across the `2605.31*` sample this cut `\[..\]`
+  diagnostics a further 103 → 43 (−60, 9 papers); combined with 0.6.70 that is 141 → 43
+  (~70%). Surfaced by the autonomous-dev dogfood loop: `2605.31499` flagged `[SNR \[dB\]]`
+  in a table cell as a false positive. The leak scanner is now load-bearing for the dogfood
+  agents (a 0.6.70 run improved `2605.22728` fidelity +0.032 by fixing scanner-found leaks),
+  so its precision matters.
+
 ## [0.6.70] — unreleased
 
 ### Fixed
