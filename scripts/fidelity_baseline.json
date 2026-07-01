@@ -52,11 +52,11 @@
     },
     "2605.22549": {
       "heading_recall": 0.952,
-      "mean_ssim": 0.552,
-      "page_ratio": 1.231,
+      "mean_ssim": 0.548,
+      "page_ratio": 1.154,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.888
+      "word_recall": 0.886
     },
     "2605.22557": {
       "heading_recall": 0.938,
@@ -68,11 +68,11 @@
     },
     "2605.22579": {
       "heading_recall": 0.975,
-      "mean_ssim": 0.478,
-      "page_ratio": 1.2,
+      "mean_ssim": 0.48,
+      "page_ratio": 1.08,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.875
+      "word_recall": 0.871
     },
     "2605.22584": {
       "heading_recall": 1.0,
@@ -108,24 +108,24 @@
     },
     "2605.22738": {
       "heading_recall": 0.925,
-      "mean_ssim": 0.619,
-      "page_ratio": 1.074,
+      "mean_ssim": 0.624,
+      "page_ratio": 1.056,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.846
+      "word_recall": 0.85
     },
     "2605.22746": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.582,
-      "page_ratio": 1.111,
+      "mean_ssim": 0.591,
+      "page_ratio": 1.167,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.904
+      "word_recall": 0.902
     },
     "2605.22765": {
       "heading_recall": 0.95,
-      "mean_ssim": 0.617,
-      "page_ratio": 1.021,
+      "mean_ssim": 0.623,
+      "page_ratio": 0.979,
       "status": "ok",
       "structure_ok": true,
       "word_recall": 0.728
@@ -147,20 +147,20 @@
       "word_recall": 0.93
     },
     "2605.22786": {
-      "heading_recall": 1.0,
-      "mean_ssim": 0.562,
+      "heading_recall": 0.974,
+      "mean_ssim": 0.574,
       "page_ratio": 1.231,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.725
+      "word_recall": 0.726
     },
     "2605.22794": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.531,
-      "page_ratio": 1.0,
+      "mean_ssim": 0.507,
+      "page_ratio": 0.917,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.884
+      "word_recall": 0.882
     },
     "2605.22795": {
       "heading_recall": 1.0,
@@ -180,35 +180,35 @@
     },
     "2605.22814": {
       "heading_recall": 0.789,
-      "mean_ssim": 0.531,
-      "page_ratio": 1.188,
+      "mean_ssim": 0.521,
+      "page_ratio": 1.062,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.968
+      "word_recall": 0.966
     },
     "2605.22817": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.543,
-      "page_ratio": 1.083,
-      "status": "ok",
-      "structure_ok": true,
-      "word_recall": 0.864
-    },
-    "2605.22820": {
-      "heading_recall": 1.0,
-      "mean_ssim": 0.573,
+      "mean_ssim": 0.551,
       "page_ratio": 1.0,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.871
+      "word_recall": 0.862
+    },
+    "2605.22820": {
+      "heading_recall": 1.0,
+      "mean_ssim": 0.572,
+      "page_ratio": 0.955,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.868
     },
     "2605.22821": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.58,
-      "page_ratio": 1.308,
-      "status": "structure_failed",
-      "structure_ok": false,
-      "word_recall": 0.746
+      "mean_ssim": 0.583,
+      "page_ratio": 1.269,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.745
     },
     "2605.30609": {
       "heading_recall": 0.917,
@@ -252,11 +252,11 @@
     },
     "2605.31063": {
       "heading_recall": 0.625,
-      "mean_ssim": 0.651,
-      "page_ratio": 1.045,
+      "mean_ssim": 0.649,
+      "page_ratio": 1.075,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.952
+      "word_recall": 0.953
     },
     "2605.31072": {
       "heading_recall": 1.0,
@@ -276,11 +276,11 @@
     },
     "2605.31244": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.481,
-      "page_ratio": 0.967,
+      "mean_ssim": 0.476,
+      "page_ratio": 0.9,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.879
+      "word_recall": 0.883
     },
     "2605.31306": {
       "heading_recall": 0.952,
@@ -316,11 +316,11 @@
     },
     "2605.31443": {
       "heading_recall": 0.8,
-      "mean_ssim": 0.509,
-      "page_ratio": 0.829,
+      "mean_ssim": 0.507,
+      "page_ratio": 0.8,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.893
+      "word_recall": 0.891
     },
     "2605.31499": {
       "heading_recall": 1.0,
@@ -356,27 +356,27 @@
     },
     "2605.31561": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.578,
-      "page_ratio": 1.167,
+      "mean_ssim": 0.582,
+      "page_ratio": 1.056,
       "status": "ok",
       "structure_ok": true,
       "word_recall": 0.931
     },
     "2605.31563": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.507,
-      "page_ratio": 1.25,
+      "mean_ssim": 0.506,
+      "page_ratio": 1.062,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.868
+      "word_recall": 0.871
     },
     "2605.31564": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.49,
+      "mean_ssim": 0.5,
       "page_ratio": 1.053,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.785
+      "word_recall": 0.769
     },
     "2605.31567": {
       "heading_recall": 0.923,
@@ -396,19 +396,19 @@
     },
     "2605.31584": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.54,
-      "page_ratio": 0.762,
+      "mean_ssim": 0.565,
+      "page_ratio": 0.952,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.865
+      "word_recall": 0.847
     },
     "2605.31586": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.49,
-      "page_ratio": 1.167,
+      "mean_ssim": 0.501,
+      "page_ratio": 1.056,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.748
+      "word_recall": 0.737
     },
     "2605.31596": {
       "heading_recall": 1.0,
@@ -452,11 +452,11 @@
     },
     "2606.12397": {
       "heading_recall": 0.87,
-      "mean_ssim": 0.531,
-      "page_ratio": 1.0,
+      "mean_ssim": 0.521,
+      "page_ratio": 0.929,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.72
+      "word_recall": 0.723
     },
     "2606.12406": {
       "heading_recall": 1.0,
@@ -468,11 +468,11 @@
     },
     "2606.12411": {
       "heading_recall": 0.95,
-      "mean_ssim": 0.501,
-      "page_ratio": 1.182,
+      "mean_ssim": 0.503,
+      "page_ratio": 1.091,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.875
+      "word_recall": 0.873
     },
     "beamer-demo": {
       "heading_recall": 1.0,
