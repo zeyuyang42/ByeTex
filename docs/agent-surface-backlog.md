@@ -54,15 +54,20 @@ Resolved.
 >   first-aid" recipe section to the skill (wrap leaked `\begin{align}…\end{align}` in `$ … $`, split
 >   `\sectionTitle` → `= Title`, `\hspace{x}` → `#h(x)`). Needs user steer vs. waiting for Phase D.
 >
-> ### N4. `diagnose --project` (wipes edits) vs `diagnose file.typ` (safe scan) reads as a contradiction — sev 3 (major) — OPEN (Loop-B, L4)
+> ### N4. `diagnose --project` (wipes edits) vs `diagnose file.typ` (safe scan) reads as a contradiction — sev 3 (major) — ✅ ADDRESSED (agent-def, verify next dogfood)
 > - **Symptom (`2605.22821`):** the sandbox rule "never run `byetex diagnose` (it wipes edits)" —
 >   which is about `diagnose --project`/`.tex` re-materialization — read as contradicting
 >   `byetex-getting-started`'s "`diagnose paper.typ` preserves edits" (a pure body scan). The agent
 >   couldn't tell they're different invocations and grepped by hand instead of using the leak scanner.
 >   Note `2605.22728`'s agent DID run `diagnose main.typ` successfully, so it's inconsistent, not universal.
-> - **Fix candidate (L4):** clarify in the dogfood sandbox scaffolding / getting-started that the
->   "never run diagnose" rule targets `--project` re-conversion, and `diagnose <file>.typ` is a safe,
->   encouraged in-place leak scan.
+> - **Fix:** rewrote the `agents/byetex-dogfood-tester.md` hard rule to distinguish the two: `byetex
+>   diagnose main.typ` (`.typ` input) is SAFE + encouraged in the fidelity phase (in-place scan,
+>   preserves edits — confirmed by the CLI: a `.typ` input calls `diagnose_typ`, "compile + map errors
+>   without re-converting, so edits survive"), while the re-materializing forms (`diagnose <src>.tex` /
+>   `--project` / `--out .`) stay banned. Procedure step 3 now actively runs the leak scanner. Aligns
+>   the sandbox with what a real user following `byetex-getting-started` does → more honest test AND
+>   unblocks the proven-valuable scanner (round 13: +0.032 fidelity when an agent used it). Agent-def
+>   loads at session start; verify by re-dogfooding `2605.22821` with the new body next round.
 >
 > **Also recurring (all 3 papers): the LaTeX→Typst DENSITY gap** (8v6, 35v26, 29v20 pages) — deferred
 > (per-class `StyleProfile`/margins regress naively; = M3/H2). No agent could touch it via the surface.
