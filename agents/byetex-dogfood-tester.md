@@ -43,10 +43,16 @@ it.** It contains:
 - **Reach skills ONLY via `byetex skills read <name>`** — never read skill files off
   disk (there are none in the sandbox). `byetex skills list` shows them all. Start
   with `byetex skills read byetex-getting-started`.
-- **Do NOT run `byetex diagnose`.** Diagnostics are already in
-  `main.diagnostics.json`. Re-running `diagnose` does a clean re-materialize that
-  **wipes your edits** (and the sandbox). If you wish you could re-map errors on the
-  edited file, **log it as a `missing_tool_wishlist` item** instead of running it.
+- **`byetex diagnose main.typ` (the `.typ` file) is SAFE and encouraged** — it scans
+  the already-edited file IN PLACE (compile errors + a leaked-LaTeX body scan) and
+  **preserves your edits**; it only writes a `main.diagnostics.json` sidecar. Use it in
+  the fidelity phase to catch leaked LaTeX that compiles fine but renders as garbage
+  (a `\section`-glued heading, a leaked `\begin{align}`/`\begin{proof}`, `\hspace{..}`).
+- **Do NOT run the re-materializing forms** — `byetex diagnose <src>.tex`, `diagnose
+  --project`, or `diagnose --out .`. Those re-convert from source and **wipe your
+  edits** (and the sandbox). The rule is about *re-conversion*, not the word "diagnose":
+  `diagnose main.typ` re-converts nothing. If you wish `diagnose main.typ` also re-mapped
+  new errors back to their LaTeX fragment, **log a `missing_tool_wishlist` item**.
 - **Iterate with `typst compile main.typ`** (or `byetex compile main.typ` for
   structured errors). Inspect your own render with `byetex render main.typ --out
   my-pages/` and compare against `truth-pages/`.
@@ -59,10 +65,12 @@ it.** It contains:
 2. **Compile first.** For each diagnostic: read its `src_fragment`/`typ_region`; if
    `skill_name` is set, `byetex skills read <skill_name>`; apply the smallest edit to
    `main.typ`; `typst compile main.typ`. Repeat until it compiles.
-3. **Then fidelity.** Read `warnings.json` (group by `category.kind`), read the
-   suggested skills, render with `byetex render main.typ --out my-pages/`, and compare
-   page-by-page against `truth-pages/`. Fix the highest-impact gaps you can (author
-   block leaking raw LaTeX, dropped floats, wrong headings) with small edits.
+3. **Then fidelity.** Run `byetex diagnose main.typ` to surface leaked LaTeX in the body
+   (it's safe — see the hard rules), read `warnings.json` (group by `category.kind`),
+   read the suggested skills, render with `byetex render main.typ --out my-pages/`, and
+   compare page-by-page against `truth-pages/`. Fix the highest-impact gaps you can
+   (author block leaking raw LaTeX, dropped floats, wrong headings) with small edits.
+   Re-run `byetex diagnose main.typ` after a batch of edits to confirm the leaks are gone.
 4. **Stop** per the termination rule, then emit your report.
 
 ## Termination (do not loop forever)
