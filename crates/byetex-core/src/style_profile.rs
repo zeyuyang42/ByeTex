@@ -124,11 +124,17 @@ impl StyleProfile {
                 ..Self::neutral()
             },
             // IEEEtran.cls \@maketitle (non-technote): {\Huge ... \@title}.
+            // IEEE sets its body in Times (a narrow serif). New Computer Modern is
+            // both wrong for IEEE and ~10% wider, over-wrapping lines and inflating
+            // the page count (2605.31549 page_ratio 1.40, 2605.22779 1.33). Libertinus
+            // Serif is a bundled (reproducible) Times-adjacent serif — denser and far
+            // closer to IEEE's Times than Computer Modern.
             DocClass::IeeeTran { .. } => Self {
                 title_size: "2.4em",
                 title_bold: false,
                 abstract_style: AbstractStyle::RunInBoldItalic,
                 abstract_in_columns: true,
+                body_font: "Libertinus Serif",
                 default_bib_style: Some("ieee"),
                 ..Self::neutral()
             },
@@ -243,6 +249,18 @@ mod tests {
             StyleProfile::neutral().heading_sizes,
             ["1.44em", "1.2em", "1em"]
         );
+    }
+
+    #[test]
+    fn ieeetran_uses_times_family_serif() {
+        // IEEE sets its body in Times (a narrow serif); New Computer Modern (wide)
+        // over-wraps every line and inflates the page count (2605.31549 1.40, 2605.22779
+        // 1.33). Libertinus Serif is a bundled, reproducible Times-adjacent serif — both
+        // denser and far closer to IEEE's Times than Computer Modern.
+        let p = StyleProfile::for_class(&DocClass::IeeeTran {
+            paper_type: "conference".to_string(),
+        });
+        assert_eq!(p.body_font, "Libertinus Serif");
     }
 
     #[test]

@@ -140,11 +140,11 @@
     },
     "2605.22779": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.395,
-      "page_ratio": 1.333,
-      "status": "structure_failed",
-      "structure_ok": false,
-      "word_recall": 0.918
+      "mean_ssim": 0.398,
+      "page_ratio": 1.25,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.93
     },
     "2605.22786": {
       "heading_recall": 1.0,
@@ -332,7 +332,7 @@
     },
     "2605.31510": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.405,
+      "mean_ssim": 0.431,
       "page_ratio": 1.0,
       "status": "ok",
       "structure_ok": true,
@@ -340,19 +340,19 @@
     },
     "2605.31526": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.449,
-      "page_ratio": 1.077,
+      "mean_ssim": 0.454,
+      "page_ratio": 1.0,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.904
+      "word_recall": 0.912
     },
     "2605.31549": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.43,
-      "page_ratio": 1.4,
-      "status": "structure_failed",
-      "structure_ok": false,
-      "word_recall": 0.92
+      "mean_ssim": 0.443,
+      "page_ratio": 1.2,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.927
     },
     "2605.31561": {
       "heading_recall": 1.0,
