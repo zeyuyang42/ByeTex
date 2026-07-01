@@ -34,6 +34,27 @@ fn ignores_escaped_bracket_prose() {
 }
 
 #[test]
+fn ignores_escaped_bracket_compact_alpha() {
+    // A compact `\[..\]` with NO whitespace but an alphabetic token is a literal
+    // unit/abbreviation (`[dB]`, `[IU]`, `[mV]`), not a footnote/affiliation marker
+    // (those are numeric/symbolic). byetex escapes them correctly; not a leak.
+    // (dogfood 2605.31499: `[SNR \[dB\]]` in a table cell false-positived.)
+    for typ in ["axis \\[dB\\] label\n", "dose \\[IU\\]\n", "gain \\[mV\\]\n"] {
+        let leaks = scan_typ_leaks(typ);
+        assert!(leaks.is_empty(), "alphabetic compact literal is not a leak; got {leaks:?} for {typ:?}");
+    }
+}
+
+#[test]
+fn flags_escaped_bracket_footnote_symbol() {
+    // A footnote-symbol marker leak (`\[*\]`, `\[†\]`) is still a genuine leak.
+    for typ in ["name \\[*\\]\n", "name \\[\u{2020}\\]\n"] {
+        let leaks = scan_typ_leaks(typ);
+        assert!(!leaks.is_empty(), "footnote-symbol marker is still flagged; got {leaks:?} for {typ:?}");
+    }
+}
+
+#[test]
 fn flags_escaped_bracket_with_math_signal() {
     // A genuinely leaked display-math block copied verbatim contains math signals
     // (`^`/`_`/`\cmd`) even when it has spaces — still a leak.

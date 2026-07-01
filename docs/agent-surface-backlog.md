@@ -27,6 +27,47 @@ Resolved.
 
 ## Open — P0 (frequent × blocking)
 
+> **Round 13 (2026-07-01, v0.6.70)** — dogfood of the hardest 3 (`2605.31499` GOOD_ENOUGH,
+> `2605.22821` NEEDS_FIX, `2605.22728` NEEDS_FIX). **Headline: the leak scanner is now
+> load-bearing** — `2605.22728`'s agent ran `byetex diagnose main.typ`, found 21 real leaks
+> (3 `\sectionX`-glued headings, 2 `\begin{align}`+`aligned`/`smash`/`text`, 1 `\begin{proof}`,
+> 5 interval `\[..\)`, 4 `\hspace` in citations) and fixed them for **+0.032 fidelity**
+> (0.804→0.836). This confirms N1 (#454) and #455 landed. New/recurring findings:
+>
+> ### N2. `byetex diagnose \[..\]` scanner false-positived unit/prose literals — sev 2 — ✅ RESOLVED (#455 v0.6.70 + this PR v0.6.71)
+> - **Symptom:** `2605.31604` `[text tokens, …]` and `2605.31499` `[SNR \[dB\]]` (a table cell)
+>   were flagged as "possible leaked LaTeX `\[..\]` marker", but byetex escapes literal `[..]`
+>   as `\[..\]` and Typst renders that correctly — false positives that (per N1) now send the
+>   dogfood agent chasing ghosts, since agents are routed to this scanner for leaks.
+> - **Fix:** #455 skipped whitespace-bearing prose; this PR (v0.6.71) additionally skips compact
+>   *alphabetic* literals (`\[dB\]`/`\[IU\]`), flagging only digit/symbol markers (`\[1\]`/`\[*\]`)
+>   and math-signal spans. Corpus `2605.31*` sample: `\[..\]` diagnostics 141 → 43 (~70%).
+>
+> ### N3. leak scanner FINDS leaks; `byetex-using-warnings-json` has no REPAIR recipe — sev 3 (major, recurring, 2/3 papers) — OPEN (Loop-B, but root is deferred)
+> - **Symptom:** all 21 of `2605.22728`'s leak diagnostics point to `byetex-using-warnings-json`,
+>   which only triages warning *categories* — it gives no recipe to convert a leaked
+>   `\begin{align}`+`\begin{aligned}`+`\smash`+`\text` block, a `\begin{proof}`, a `\sectionX`-glued
+>   heading, or `\hspace{..}` in a citation to Typst. Agent had to read the LaTeX source and hand-write.
+> - **Routing note:** the *underlying* leaks are the deferred L1 bug-A mis-parse (ERROR node → raw-copy
+>   gaps; parser-swap / Phase D territory, per [[project-lowering-ir]]). A skill recipe would only
+>   band-aid; the deterministic fix is the parser swap. Candidate Loop-B interim: add a "leaked-block
+>   first-aid" recipe section to the skill (wrap leaked `\begin{align}…\end{align}` in `$ … $`, split
+>   `\sectionTitle` → `= Title`, `\hspace{x}` → `#h(x)`). Needs user steer vs. waiting for Phase D.
+>
+> ### N4. `diagnose --project` (wipes edits) vs `diagnose file.typ` (safe scan) reads as a contradiction — sev 3 (major) — OPEN (Loop-B, L4)
+> - **Symptom (`2605.22821`):** the sandbox rule "never run `byetex diagnose` (it wipes edits)" —
+>   which is about `diagnose --project`/`.tex` re-materialization — read as contradicting
+>   `byetex-getting-started`'s "`diagnose paper.typ` preserves edits" (a pure body scan). The agent
+>   couldn't tell they're different invocations and grepped by hand instead of using the leak scanner.
+>   Note `2605.22728`'s agent DID run `diagnose main.typ` successfully, so it's inconsistent, not universal.
+> - **Fix candidate (L4):** clarify in the dogfood sandbox scaffolding / getting-started that the
+>   "never run diagnose" rule targets `--project` re-conversion, and `diagnose <file>.typ` is a safe,
+>   encouraged in-place leak scan.
+>
+> **Also recurring (all 3 papers): the LaTeX→Typst DENSITY gap** (8v6, 35v26, 29v20 pages) — deferred
+> (per-class `StyleProfile`/margins regress naively; = M3/H2). No agent could touch it via the surface.
+> Plus `2605.22821`: minted code-figure dropped (no minted→Typst recipe), `\bpe;` custom-macro leak.
+
 > **Round 12 (2026-06-29, v0.6.68)** — VERIFICATION dogfood of `2605.22728` after the L1 fixes.
 > **L1 underscore-key (#452) + begin/end-document drop (#453) VERIFIED LANDED:** auto-fidelity
 > `fidelity_before` jumped **0.68 → 0.804** (+0.12), the agent's manual delta shrank 0.16→0.03

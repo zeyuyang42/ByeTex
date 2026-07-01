@@ -191,16 +191,24 @@ pub fn scan_typ_leaks(typst: &str) -> Vec<Diagnostic> {
                 // `\[..\]` — escaped-bracket marker (footnote/optional-arg leak). But
                 // byetex ALSO escapes a *literal* `[..]` written in prose as `\[..\]`,
                 // which Typst renders correctly as `[..]` — not a leak. Distinguish:
-                // flag a compact marker (`\[1\]`, no inner whitespace) or a span carrying
-                // a math/LaTeX signal (`\cmd`/`^`/`_`, e.g. leaked display math), but skip
-                // whitespace-bearing prose with no such signal. A `\[` with no matching
-                // `\]` on the line stays flagged (likely a real block leak).
+                //   - a span with a math/LaTeX signal (`\cmd`/`^`/`_`) is leaked display
+                //     math — flag (even with spaces);
+                //   - a compact *marker* (`\[1\]`, `\[*\]` — no whitespace, digits/symbols
+                //     only) is a genuine footnote/affiliation leak — flag;
+                //   - a compact *alphabetic* span (`\[dB\]`, `\[IU\]`) is a literal
+                //     unit/abbreviation, and whitespace-bearing prose (`\[see fig 1\]`) is
+                //     a literal too — skip both.
+                // A `\[` with no matching `\]` on the line stays flagged (likely a real
+                // block leak).
                 if bytes.get(j + 1) == Some(&b'[') {
                     let looks_like_leak = match find_escaped_close_bracket(line, j + 2) {
                         Some(close) => {
                             let inner = &line[j + 2..close];
-                            !inner.contains(char::is_whitespace)
-                                || inner.contains(['\\', '^', '_'])
+                            let has_math_signal = inner.contains(['\\', '^', '_']);
+                            let compact_marker = !inner.is_empty()
+                                && !inner.contains(char::is_whitespace)
+                                && !inner.chars().any(char::is_alphabetic);
+                            has_math_signal || compact_marker
                         }
                         None => true,
                     };
