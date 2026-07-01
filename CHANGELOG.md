@@ -3,6 +3,18 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.72] — unreleased
+
+### Changed
+- IEEEtran papers now render their body in **Libertinus Serif** instead of New Computer
+  Modern. IEEE sets its body in Times (a narrow serif); Computer Modern is both wrong for
+  IEEE and ~10% wider, over-wrapping every line and inflating the page count. Libertinus is
+  a bundled (reproducible) Times-adjacent serif — both denser and far closer to IEEE's Times.
+  Across the 4 corpus IEEEtran papers this improves fidelity on every axis: `2605.31549`
+  page_ratio 1.40→1.20 (7→6 pages), word_recall 0.920→0.927, SSIM 0.43→0.443; `2605.22779`
+  page_ratio 1.33→1.25, word_recall 0.918→0.930. No paper regresses; IEEEtran-subset
+  fidelity 0.816→0.834. Class-scoped — non-IEEEtran output is byte-identical.
+
 ## [0.6.71] — unreleased
 
 ### Fixed
