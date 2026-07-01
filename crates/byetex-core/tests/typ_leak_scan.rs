@@ -24,6 +24,28 @@ fn flags_escaped_bracket_marker() {
 }
 
 #[test]
+fn ignores_escaped_bracket_prose() {
+    // byetex escapes a LITERAL `[..]` in prose as `\[..\]`, which Typst renders as
+    // `[..]` — correct, NOT a leak. The whitespace-containing span with no math/LaTeX
+    // signal is the tell. (corpus 2605.31604: `[text tokens, ...]` false-positived.)
+    let typ = "structured as \\[text tokens, representation tokens, pixel patches\\].\n";
+    let leaks = scan_typ_leaks(typ);
+    assert!(leaks.is_empty(), "prose brackets are a legit escape, not a leak; got {leaks:?}");
+}
+
+#[test]
+fn flags_escaped_bracket_with_math_signal() {
+    // A genuinely leaked display-math block copied verbatim contains math signals
+    // (`^`/`_`/`\cmd`) even when it has spaces — still a leak.
+    let typ = "energy \\[E = mc^2\\] leaked.\n";
+    let leaks = scan_typ_leaks(typ);
+    assert!(
+        leaks.iter().any(|l| l.message.contains("\\[")),
+        "math-bearing \\[..\\] is still flagged; got {leaks:?}"
+    );
+}
+
+#[test]
 fn ignores_clean_typst_and_escapes() {
     // Typst linebreak `\`, single-char escapes (`\#` `\$` `\_` `\&`), and a `#raw`
     // fenced code block with backslashes must NOT be flagged.
