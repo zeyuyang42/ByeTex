@@ -54,7 +54,12 @@ Resolved.
 >   first-aid" recipe section to the skill (wrap leaked `\begin{align}…\end{align}` in `$ … $`, split
 >   `\sectionTitle` → `= Title`, `\hspace{x}` → `#h(x)`). Needs user steer vs. waiting for Phase D.
 >
-> ### N4. `diagnose --project` (wipes edits) vs `diagnose file.typ` (safe scan) reads as a contradiction — sev 3 (major) — ✅ ADDRESSED (agent-def, verify next dogfood)
+> ### N4. `diagnose --project` (wipes edits) vs `diagnose file.typ` (safe scan) reads as a contradiction — sev 3 (major) — ✅ RESOLVED (PR #457, VERIFIED)
+> - **Verification (2026-07-01, re-dogfood `2605.22821` with the new agent body):** the friction is
+>   GONE. The agent ran `byetex diagnose main.typ` cleanly (found the `\bpe` leak, fixed it, re-ran →
+>   0 diagnostics), with **no diagnose-invocation confusion and no stuck point** — vs round 13, where
+>   the old body's blanket ban made it grep by hand and log a MAJOR conflict note. Still NEEDS_FIX, but
+>   only from the DEFERRED density gap (34pp vs 26pp NeurIPS) + minted/EPS placeholders, not N4.
 > - **Symptom (`2605.22821`):** the sandbox rule "never run `byetex diagnose` (it wipes edits)" —
 >   which is about `diagnose --project`/`.tex` re-materialization — read as contradicting
 >   `byetex-getting-started`'s "`diagnose paper.typ` preserves edits" (a pure body scan). The agent
