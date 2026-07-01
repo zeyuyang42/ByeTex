@@ -188,18 +188,34 @@ pub fn scan_typ_leaks(typst: &str) -> Vec<Diagnostic> {
                     j = k;
                     continue;
                 }
-                // `\[..\]` — escaped-bracket marker (footnote/optional-arg leak).
+                // `\[..\]` — escaped-bracket marker (footnote/optional-arg leak). But
+                // byetex ALSO escapes a *literal* `[..]` written in prose as `\[..\]`,
+                // which Typst renders correctly as `[..]` — not a leak. Distinguish:
+                // flag a compact marker (`\[1\]`, no inner whitespace) or a span carrying
+                // a math/LaTeX signal (`\cmd`/`^`/`_`, e.g. leaked display math), but skip
+                // whitespace-bearing prose with no such signal. A `\[` with no matching
+                // `\]` on the line stays flagged (likely a real block leak).
                 if bytes.get(j + 1) == Some(&b'[') {
-                    let key = "\\[".to_string();
-                    if !seen.contains(&key) {
-                        seen.push(key);
-                        out.push(leak(
-                            idx + 1,
-                            j,
-                            line,
-                            "possible leaked LaTeX `\\[..\\]` marker — renders as literal brackets"
-                                .to_string(),
-                        ));
+                    let looks_like_leak = match find_escaped_close_bracket(line, j + 2) {
+                        Some(close) => {
+                            let inner = &line[j + 2..close];
+                            !inner.contains(char::is_whitespace)
+                                || inner.contains(['\\', '^', '_'])
+                        }
+                        None => true,
+                    };
+                    if looks_like_leak {
+                        let key = "\\[".to_string();
+                        if !seen.contains(&key) {
+                            seen.push(key);
+                            out.push(leak(
+                                idx + 1,
+                                j,
+                                line,
+                                "possible leaked LaTeX `\\[..\\]` marker — renders as literal brackets"
+                                    .to_string(),
+                            ));
+                        }
                     }
                     j += 2;
                     continue;
@@ -209,6 +225,21 @@ pub fn scan_typ_leaks(typst: &str) -> Vec<Diagnostic> {
         }
     }
     out
+}
+
+/// Byte offset of the `\` in the first `\]` at or after `from` on `line`, or `None`
+/// if the escaped-bracket span isn't closed on this line. Used to bound the `\[..\]`
+/// leak heuristic to a single line.
+fn find_escaped_close_bracket(line: &str, from: usize) -> Option<usize> {
+    let bytes = line.as_bytes();
+    let mut i = from;
+    while i + 1 < bytes.len() {
+        if bytes[i] == b'\\' && bytes[i + 1] == b']' {
+            return Some(i);
+        }
+        i += 1;
+    }
+    None
 }
 
 /// Write the conversion warnings as a `<stem>.warnings.json` sidecar next to `typ_path`

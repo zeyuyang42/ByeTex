@@ -3,6 +3,20 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.70] — unreleased
+
+### Fixed
+- `byetex diagnose`'s leaked-LaTeX scanner no longer false-flags a *literal* `[..]` written
+  in prose. byetex escapes such brackets as `\[..\]` in the `.typ` (Typst renders that as
+  `[..]` — correct), but the scanner reported every `\[..\]` as a "possible leaked LaTeX
+  marker". It now only flags a compact marker (`\[1\]`, no inner whitespace — a real
+  footnote/affiliation leak) or a span carrying a math/LaTeX signal (`\cmd`/`^`/`_`, e.g.
+  leaked display math), and skips whitespace-bearing prose. Across the `2605.31*` corpus
+  sample this cut `\[..\]` diagnostics 141 → 103 (−38 false positives, 5 papers), while
+  keeping genuine marker leaks flagged. Matters because the `byetex-using-warnings-json`
+  skill (updated last release) now routes agents to this scanner for leak-hunting — false
+  positives there send the dogfood agent chasing ghosts.
+
 ## [0.6.69] — unreleased
 
 ### Changed
