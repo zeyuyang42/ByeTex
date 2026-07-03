@@ -4231,6 +4231,56 @@ impl<'a> Emitter<'a> {
                 }
                 node.end_byte()
             }
+            // `\twocolumn[top-matter]` / `\onecolumn[…]`: tree-sitter leaves the
+            // optional `[…]` as DETACHED document-level siblings — a bare `[` token,
+            // the title/author commands (captured into metadata and re-emitted by
+            // `finish()` as a spanning float), an optional `\vskip`, and a bare `]`.
+            // Consume that whole span: render it into a DISCARDED sub-buffer so the
+            // title/author *state* captures still run, while the `[…]` delimiters and
+            // the `\vskip` residue don't leak into the body as `\[ … 0.3in … \]`
+            // (corpus 2605.22579 / 2606.12411). A bare `\twocolumn` (no `[`) is a
+            // no-op — the page columns come from the class layout.
+            Some("\\twocolumn") | Some("\\onecolumn") => {
+                if let Some(parent) = node.parent() {
+                    let mut cur = parent.walk();
+                    let sibs: Vec<Node<'_>> = parent.children(&mut cur).collect();
+                    if let Some(idx) =
+                        sibs.iter().position(|n| n.start_byte() == node.start_byte())
+                    {
+                        if sibs.get(idx + 1).map(|n| n.kind()) == Some("[") {
+                            let mut depth = 0i32;
+                            let mut close = None;
+                            for (j, sib) in sibs.iter().enumerate().skip(idx + 1) {
+                                match sib.kind() {
+                                    "[" => depth += 1,
+                                    "]" => {
+                                        depth -= 1;
+                                        if depth == 0 {
+                                            close = Some(j);
+                                            break;
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            if let Some(cj) = close {
+                                let span: Vec<Node<'_>> = sibs[idx + 1..=cj].to_vec();
+                                let _ = self.with_sub_buffer(|em| {
+                                    for s in &span {
+                                        em.emit_node(*s);
+                                    }
+                                });
+                                let end = sibs[cj].end_byte();
+                                // Consistent with every other skip_until site: only ever
+                                // raise it (never regress a wider outstanding skip).
+                                self.skip_until = self.skip_until.max(end);
+                                return end;
+                            }
+                        }
+                    }
+                }
+                node.end_byte()
+            }
             // `\icmlauthor{Name}{affil-keys}` — keep the name (first arg) as a
             // raw author entry (parsed by class_map for DocClass::Icml); the
             // affiliation-key list (second arg) maps onto machinery we drop.

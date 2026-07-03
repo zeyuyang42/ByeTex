@@ -3,6 +3,19 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.6.74] — unreleased
+
+### Fixed
+- `\twocolumn[top-matter]` (and `\onecolumn[…]`) no longer leak their optional-argument
+  brackets and `\vskip` residue into the body. tree-sitter parses the optional `[…]` as
+  detached document-level siblings (a bare `[` token, the title/author commands, an
+  optional `\vskip`, a bare `]`); the title block is captured and re-emitted as a spanning
+  float, but the `[…]` delimiters + `\vskip` leaked as a stray `\[ … 0.3in … \]` block
+  between the abstract and the first section (corpus 2605.22579, 2606.12411). The new
+  handler renders that span into a discarded buffer so the title/author captures still run
+  while the delimiters/residue are dropped. Targeted emit-level fix (no parser change), per
+  the byte/sibling-scan altitude the lowering-IR analysis established for detached-arg quirks.
+
 ## [0.6.73] — unreleased
 
 ### Changed

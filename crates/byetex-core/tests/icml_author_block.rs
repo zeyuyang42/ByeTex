@@ -69,3 +69,44 @@ Body text here.
         out.typst
     );
 }
+
+#[test]
+fn twocolumn_optional_arg_does_not_leak_brackets_or_vskip() {
+    // tree-sitter leaves `\twocolumn[ … ]`'s optional top-matter as detached
+    // document-level siblings (bare `[`/`]` tokens + a `\vskip 0.3in`). The title
+    // block is captured & re-emitted as a spanning float, so the bracket delimiters
+    // and the \vskip residue must NOT leak into the body as `\[ … 0.3in … \]`
+    // (corpus 2605.22579 / 2606.12411 rendered a stray `[ 0.3in ]` between the
+    // abstract and the first section).
+    let src = r"\documentclass{article}
+\usepackage{icml2026}
+\begin{document}
+\twocolumn[
+\icmltitle{A Title}
+\begin{icmlauthorlist}
+\icmlauthor{Alice Smith}{a}
+\end{icmlauthorlist}
+\icmlaffiliation{a}{MIT}
+\vskip 0.3in
+]
+Body text here.
+\end{document}";
+    let out = convert(src);
+    // The leaked `\twocolumn[` / `]` delimiters render as escaped literal brackets.
+    assert!(
+        !out.typst.contains("\\["),
+        "leaked `\\[` bracket delimiter from \\twocolumn[..]; got:\n{}",
+        out.typst
+    );
+    // The `\vskip 0.3in` residue must not leak as bare body text (a legitimate
+    // `#v(0.3in)` in the title block is fine — the bare token is the tell).
+    assert!(
+        !out.typst.contains("\n0.3in") && !out.typst.contains(" 0.3in\n"),
+        "leaked bare `0.3in` \\vskip residue into body; got:\n{}",
+        out.typst
+    );
+    // Title, author, and body all still present.
+    assert!(out.typst.contains("A Title"), "title lost:\n{}", out.typst);
+    assert!(out.typst.contains("Alice Smith"), "author lost:\n{}", out.typst);
+    assert!(out.typst.contains("Body text here"), "body lost:\n{}", out.typst);
+}
