@@ -35,7 +35,7 @@ to run, the diagnose-first repair loop, and how to read these skills. Then
 
 ## Access
 
-These skills are bundled three ways, so agents reach them without the source tree:
+These skills are bundled two ways, so agents reach them without the source tree:
 
 - **Claude Code plugin** — installed skills appear as `/byetex:<name>`.
 - **CLI** — embedded into the `byetex` binary at build time:
@@ -43,4 +43,3 @@ These skills are bundled three ways, so agents reach them without the source tre
   byetex skills list
   byetex skills read byetex-using-warnings-json
   ```
-- **MCP** — when running `byetex serve`, call the `list_skills` / `read_skill` tools.

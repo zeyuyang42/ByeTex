@@ -32,8 +32,6 @@ Key runtime dependencies and their licenses:
   serde / serde_json   MIT OR Apache-2.0
   clap                 MIT OR Apache-2.0
   anyhow               MIT OR Apache-2.0
-  tokio                MIT
-  rmcp                 MIT OR Apache-2.0
   chrono               MIT OR Apache-2.0
 
 All 150 transitive dependencies at the time of this writing are licensed under

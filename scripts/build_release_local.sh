@@ -18,9 +18,9 @@ build_one() {
   local triple="$1" tool="$2"
   echo "=== building $triple ($tool) ==="
   if [[ "$tool" == zig ]]; then
-    cargo zigbuild -p byetex --release --target "$triple" --features mcp
+    cargo zigbuild -p byetex --release --target "$triple"
   else
-    cargo build -p byetex --release --target "$triple" --features mcp
+    cargo build -p byetex --release --target "$triple"
   fi
   local name="byetex-${TAG}-${triple}"
   local stage="$DIST/$name"

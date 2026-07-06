@@ -3,7 +3,7 @@
 This is the playbook the **orchestrator** (a Claude Code main loop, Opus) follows to
 keep ByeTex improving on its own: *higher conversion fidelity, fewer corner-case
 warnings, robust tests* — while continuously proving the **agent surface** (skills /
-MCP / CLI) is good enough by dogfooding it with a fresh model.
+CLI) is good enough by dogfooding it with a fresh model.
 
 It is two interlocking loops plus a corpus-expansion gate:
 
@@ -99,7 +99,7 @@ ln -sfn "$PWD/tests/visual" "../ByeTex-<slug>/tests/visual"
 - **Loop A**: add the failing snapshot/unit test in `crates/`, watch it fail, implement
   the emitter change, watch it pass. To *reduce a warning*, either handle the construct
   or downgrade a genuinely-benign warning (e.g. `\newpage` drop) so the noise drops.
-- **Loop B**: edit `skills/<name>/SKILL.md`, add a CLI flag / MCP param, or enrich
+- **Loop B**: edit `skills/<name>/SKILL.md`, add a CLI flag, or enrich
   `diagnostics.json`. Skill-only edits can't change compile/fidelity — they're verified
   by re-dogfooding, not the gates.
 
@@ -135,13 +135,13 @@ bugs and reuse/simplification cleanups.
 ### 4.6. Version bump for a user-visible change
 If the tick's change is **user-visible** — a converter fix, an agent-surface change, a
 feature — bump the workspace version in the same PR (`[workspace.package].version` in
-`Cargo.toml` **and** the mirrored `byetex-core`/`byetex-mcp` path-dep `version =`
+`Cargo.toml` **and** the mirrored `byetex-core` path-dep `version =`
 strings in each crate's `Cargo.toml`, plus `Cargo.lock`) and add a `CHANGELOG.md` entry
 under the current `— unreleased` section.
 
 **Default to a PATCH bump.** Almost every tick (a single converter/skill fix) is a
 patch (`0.4.0 → 0.4.1 → 0.4.2 …`). Reserve a **minor** bump for a genuinely new
-*capability* (a new CLI verb / MCP tool, a new supported construct class) — and only
+*capability* (a new CLI verb, a new supported construct class) — and only
 once per such capability, not per follow-up fix. Never default to minor. Routine
 internal refactors / bookkeeping (`[skip ci]` docs) don't bump. If several patch-worthy
 fixes land before a release, each can bump its own patch, or group them under one
@@ -198,7 +198,7 @@ using the routing rubric.
 |---|---|
 | `typst compile` error, no `skill_name`, construct the converter *should* handle deterministically | **Loop A** (emitter bug; TDD + gates) |
 | Skill offered but lacked the recipe / `unclear_skill_notes` severity `blocker`\|`major` | **Loop B** (improve that skill) |
-| `missing_tool_wishlist` item recurring across ≥2 papers | **Loop B** (add MCP tool / CLI flag / diagnostic field) |
+| `missing_tool_wishlist` item recurring across ≥2 papers | **Loop B** (add CLI flag / diagnostic field) |
 | `self_report_mismatch` (agent thought it compiled, it didn't) | **Loop B** (misleading error/diagnostic message) |
 | `compiled` but low `fidelity_after`, **no** stuck point (agent never noticed) | **Loop B** (surface didn't *surface* it — strengthen `warnings.json` / grading) |
 | Genuinely out-of-scope construct, agent escaped correctly (e.g. image-fallback for TikZ) | **No fix** (record; revisit only if frequent) |

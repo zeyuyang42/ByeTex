@@ -79,4 +79,4 @@ case ":$PATH:" in
 esac
 
 "$BINDIR/byetex" --version 2>/dev/null || true
-echo "byetex install: done. Next: 'byetex convert paper.tex' or register the MCP server with 'byetex serve'."
+echo "byetex install: done. Next: 'byetex convert paper.tex' or 'byetex skills read byetex-getting-started'."

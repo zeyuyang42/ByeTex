@@ -8,7 +8,7 @@
 # Per release: bump `version` and fill each `sha256` from the release's
 # SHA256SUMS (release.yml generates it). See packaging/README.md.
 class Byetex < Formula
-  desc "LaTeX -> Typst converter for AI agents (CLI + MCP server)"
+  desc "LaTeX -> Typst converter for AI agents (CLI)"
   homepage "https://github.com/zeyuyang42/ByeTex"
   version "0.3.0"
   license any_of: ["MIT", "Apache-2.0"]

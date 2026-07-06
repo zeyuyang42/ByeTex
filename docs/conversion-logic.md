@@ -8,8 +8,8 @@ Per-function detail lives in the source.
 ## 1. The crates
 
 ```
-byetex-cli  ──── thin layer ────► byetex-core  ◄──── byetex-mcp
-   binary `byetex`                 the converter          rmcp server
+byetex-cli  ──── thin layer ────► byetex-core
+   binary `byetex`                 the converter
 ```
 
 - **`byetex-core`** is the library: parser, emitter, project planner,
@@ -19,12 +19,9 @@ byetex-cli  ──── thin layer ────► byetex-core  ◄────
   which mode to run in (flat / project; file / folder), and handles
   all filesystem I/O — including the project materializer and the
   agent-brief writer.
-- **`byetex-mcp`** is an alternative front-end exposing the same
-  conversion primitives as MCP tools (`convert`, `convert_file`,
-  `convert_project`, `list_skills`, `read_skill`).
 
-Everything below describes byetex-core's logic, then how the two
-front-ends call into it.
+Everything below describes byetex-core's logic, then how the CLI
+calls into it.
 
 ## 2. Input shapes and output shapes
 
@@ -136,7 +133,7 @@ Project mode is a two-layer design in `crates/byetex-core/src/project.rs`
                                    │
                                    ▼
                        materialize_project()
-                       (in byetex-cli or byetex-mcp)
+                       (in byetex-cli)
                        - writes main.typ
                        - copies assets through the path-
                          traversal guard
@@ -155,8 +152,8 @@ source, so `image("fig/foo.pdf")` keeps working after relocation.
 
 **Path-traversal guard.** `materialize_project` canonicalises both
 `base_dir` and each asset's source path, then refuses to copy any
-asset whose canonical source escapes `base_dir`. Hardened in both
-the CLI materializer and the MCP `materialize_project_mcp`: empty
+asset whose canonical source escapes `base_dir`. Hardened in the CLI
+materializer: empty
 parent dirs are normalised to `"."`, canonicalisation failures error
 out rather than silently dropping every asset, and `--force` cleans
 the existing output dir before writing so stale files don't survive.
@@ -318,10 +315,6 @@ crates/byetex-cli/src/
 │                    _agent_brief}, write_agent_brief + BriefInputs
 └── project.rs       materialize_project (writes the plan to disk,
                      runs the path-traversal guard, cleans on --force)
-
-crates/byetex-mcp/src/
-└── lib.rs           rmcp server + materialize_project_mcp (mirror
-                     of the CLI materializer to avoid a circular dep)
 ```
 
 For "where does X go wrong" debugging, the most productive entry

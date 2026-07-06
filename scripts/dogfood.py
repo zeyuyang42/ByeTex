@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ByeTex dogfood harness — instrument whether the AGENT SURFACE (skills/MCP/CLI) is
+ByeTex dogfood harness — instrument whether the AGENT SURFACE (skills/CLI) is
 self-sufficient for the "last mile" of a conversion.
 
 A FRESH Sonnet agent (the `byetex-dogfood-tester` subagent) repairs ONE seeded
