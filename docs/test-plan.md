@@ -62,7 +62,7 @@ You have three options. Pick **one** — you don't need all three.
 ```bash
 cd ~/Workspace/tools/ByeTex          # adjust path
 git fetch && git checkout v0.2.0     # ensure you're on the tagged commit
-cargo build --release -p byetex-cli --features mcp
+cargo build --release -p byetex-cli
 ```
 
 **Expected**: `target/release/byetex` exists, ~7 MB.
@@ -113,7 +113,7 @@ byetex --version
 ### A3. `cargo install` from the GitHub repo
 
 ```bash
-cargo install --git https://github.com/zeyuyang42/ByeTex --tag v0.2.0 byetex-cli --features mcp
+cargo install --git https://github.com/zeyuyang42/ByeTex --tag v0.2.0 byetex-cli
 which byetex
 byetex --version
 ```
@@ -372,69 +372,35 @@ either succeeds or fails with a traceable warning.
 
 ---
 
-## Scenario E — Agent loop via MCP
+## Scenario E — Agent loop via the CLI
 
 This tests the path an AI assistant would use. You need a Claude Code session
-(or any MCP-aware client). Two windows: one for ByeTex, one for the client.
+(or any coding-agent client) with the `byetex` binary on PATH.
 
-### E1. Start the MCP server
-
-In window 1:
+### E1. Sanity-check the surface
 
 ```bash
-byetex serve
+byetex --version
+byetex skills list        # 12 skills
+byetex skills read byetex-using-warnings-json
 ```
 
-**Expected**: the process blocks (no immediate output). It's now listening on
-stdin/stdout for MCP JSON-RPC messages. Don't type anything.
+**Expected**: the version prints, `skills list` shows the 12 bundled skills, and
+`skills read` prints the skill body.
 
-### E2. Quick sanity ping (without Claude)
+### E2. Wire the skills into Claude Code (optional)
 
-In window 2, send a hand-crafted initialize message:
+Install the plugin so the skills appear as `/byetex:<name>`:
 
 ```bash
-printf '%s\n%s\n%s\n' \
-  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"manual","version":"0"}}}' \
-  '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
-  '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
-  | byetex serve 2>/dev/null
+claude plugin marketplace add zeyuyang42/ByeTex
+claude plugin install byetex@byetex
 ```
 
-**Expected**: three JSON lines back (one ignored notification echo plus two
-responses). The `tools/list` response should mention `convert`, `convert_file`,
-`convert_fragment`, `list_skills`, `read_skill`.
+The agent can equally reach the skills via `byetex skills read <name>` without
+the plugin.
 
-If you can't parse the raw output easily, just confirm those tool names appear
-somewhere in the response:
-
-```bash
-printf '%s\n%s\n%s\n' \
-  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"manual","version":"0"}}}' \
-  '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
-  '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
-  | byetex serve 2>/dev/null | grep -oE '"name":"(convert|convert_file|convert_fragment|list_skills|read_skill)"' | sort -u
-```
-
-**Expected**: all 5 tool names.
-
-### E3. Wire to Claude Code
-
-Add the MCP server to Claude Code's config. The mechanism varies by Claude
-Code version; the common form is editing a JSON config file or running:
-
-```bash
-claude mcp add byetex byetex serve
-```
-
-Verify the connection from inside Claude Code:
-
-```
-/mcp
-```
-
-**Expected**: a list of connected servers including `byetex` with 5 tools.
-
-### E4. Drive a real conversion through the agent
+### E3. Drive a real conversion through the agent
 
 Pick a real paper from the harvested corpus (or your own if you skipped D):
 
@@ -445,25 +411,25 @@ echo "agent target: $TARGET"
 
 In Claude Code, ask (substitute the path you printed):
 
-> Using the byetex MCP server, convert `<TARGET path>` to Typst.
+> Using the byetex CLI, convert `<TARGET path>` to Typst.
 > Then read the warnings.json and tell me what's there. For each warning
 > category, read the relevant skill and summarize the remediation steps in 1–2
 > sentences each.
 
 **Expected behavior**:
-- Claude calls `convert_file` with the path.
+- Claude runs `byetex convert` on the path.
 - Claude reads back the resulting warnings count and groups them.
-- Claude calls `read_skill` for each `suggested_skill` referenced.
+- Claude runs `byetex skills read <name>` for each `suggested_skill` referenced.
 - Claude produces a per-category fix summary.
 
 **Pass criteria**: the agent loop completes without manual intervention. The
 remediation summary should match what's literally in the skill files (no
 hallucination).
 
-**Fail signals**: the agent can't reach the MCP server, the tool calls return
+**Fail signals**: the agent can't reach the CLI, the commands return
 errors, or the summary contradicts what's in `skills/byetex-*.md`.
 
-### E5. Have the agent apply fixes end-to-end
+### E4. Have the agent apply fixes end-to-end
 
 Ask Claude to actually apply the fixes (substitute the same `<TARGET path>`,
 or use its sibling `.typ`):
@@ -594,10 +560,6 @@ jq '[.[].category.kind] | group_by(.) | map({kind: .[0], count: length})' input.
 # Skills
 byetex skills list
 byetex skills read byetex-using-warnings-json
-
-# MCP
-byetex serve                                  # blocks; for clients
-claude mcp add byetex byetex serve           # one-time setup
 
 # Compile
 typst compile input.typ

@@ -6,8 +6,8 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 rust-version.workspace = true
-description = "LaTeX -> Typst converter for AI agents: CLI + 11-tool MCP server + repair/grading skills."
-keywords = ["latex", "typst", "converter", "cli", "mcp"]
+description = "LaTeX -> Typst converter for AI agents: CLI + repair/grading skills."
+keywords = ["latex", "typst", "converter", "cli", "academic"]
 categories = ["command-line-utilities", "text-processing"]
 
 [[bin]]
@@ -16,15 +16,9 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
-byetex-core = { path = "../byetex-core", version = "0.6.56" }
-byetex-mcp = { path = "../byetex-mcp", version = "0.6.56", optional = true }
+byetex-core = { path = "../byetex-core", version = "0.7.0" }
 clap.workspace = true
 serde_json.workspace = true
-tokio = { version = "1", features = ["macros", "rt-multi-thread"], optional = true }
-
-[features]
-default = ["mcp"]
-mcp = ["dep:byetex-mcp", "dep:tokio"]
 
 [dev-dependencies]
 serde_json.workspace = true

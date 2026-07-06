@@ -3,7 +3,7 @@
 Ranked friction the **fresh dogfood agent** (`byetex-dogfood-tester`, Sonnet, byetex
 surface only) hit while repairing seeded conversions in a sandbox. Each item names
 whether the fix is **Loop A** (deterministic converter) or **Loop B** (the agent
-surface: skill / MCP tool / CLI flag / diagnostic), with paper evidence. Ranked by
+surface: skill / CLI flag / diagnostic), with paper evidence. Ranked by
 frequency × peak severity.
 
 - **Machine source of truth:** `docs/agent-surface-backlog.jsonl` (one record per
@@ -390,8 +390,8 @@ Resolved.
   there was no way to get a skill-mapped diagnostic scan of the edited file. I had to
   manually scan main.typ." All 3 agents independently asked for this.
 - **Evidence:** `2606.12397`, `2605.31564`, `2605.31586` (all `missing_tool_wishlist`).
-- **Fix:** `byetex diagnose <file.typ>` (and the MCP `diagnose` tool with a `.typ`
-  path) now compiles an existing `.typ` IN PLACE and maps its typst errors without
+- **Fix:** `byetex diagnose <file.typ>` now compiles an existing `.typ` IN PLACE
+  and maps its typst errors without
   re-converting, so edits survive (`src_fragment`/`skill_name` null — no source map).
   The agent_brief + `byetex-repair-loop` skill now tell agents to re-scan via
   `byetex diagnose <main.typ>` instead of the old "never re-run diagnose" rule.

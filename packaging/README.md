@@ -1,7 +1,7 @@
 # Packaging & distribution
 
 ByeTex ships four ways. The `byetex` binary is the same everywhere; the Claude
-Code plugin (skills + MCP config) is a separate artifact that needs the binary
+Code plugin (bundled skills) is a separate artifact that needs the binary
 on PATH.
 
 ## 1. Install script (prebuilt binary)
@@ -17,14 +17,13 @@ Downloads the matching `byetex-<tag>-<target>.tar.gz` from GitHub Releases
 ## 2. cargo (crates.io)
 
 ```bash
-cargo install byetex            # CLI + MCP server (binary: `byetex`)
+cargo install byetex            # CLI (binary: `byetex`)
 ```
 
 Publish order (libraries before the binary that depends on them):
 
 ```bash
 cargo publish -p byetex-core
-cargo publish -p byetex-mcp
 cargo publish -p byetex
 ```
 
@@ -53,6 +52,6 @@ claude plugin marketplace add zeyuyang42/ByeTex
 claude plugin install byetex@byetex
 ```
 
-Bundles the 12 skills + the `byetex serve` MCP server. Install the binary first
+Bundles the 12 repair/grading skills. Install the binary first
 (any method above) — the plugin's `SessionStart` hook reminds you if it is
 missing.

@@ -3,6 +3,20 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.7.0] — unreleased
+
+### Removed
+- **The MCP server (`byetex serve`) and the `byetex-mcp` crate.** Every MCP tool was a
+  1:1 thin wrapper over `byetex-core` — the same functions the CLI already exposes
+  (`convert`, `diagnose`, `validate`, `compile`, `render`, `explain`, `skills`) — so it
+  added no capability, only surface area and the `rmcp` / `tokio` / `schemars`
+  dependencies. Agents (including Claude Code) drive the CLI directly; its structured
+  JSON sidecars (`warnings.json`, `diagnostics.json`, `doctor.json`) and structured
+  compile errors already make it agent-first. The Claude Code plugin now bundles the
+  repair/grading skills only (it no longer auto-registers an MCP server), and stock
+  `cargo install` / release binaries are leaner (no MCP dependency tree). No conversion
+  capability is lost.
+
 ## [0.6.74] — unreleased
 
 ### Fixed

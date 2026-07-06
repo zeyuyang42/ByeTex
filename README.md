@@ -15,7 +15,7 @@ today — where its fidelity is tuned — and the approach generalizes outward.
   *designed* to be finished by one. When the output doesn't compile, `byetex diagnose`
   maps every Typst error back to the exact LaTeX fragment that caused it and names the
   repair skill that fixes it: the agent gets a worklist, not a stack trace. It ships as
-  **7 MCP tools**, **12 bundled repair skills**, and an [`AGENTS.md`](AGENTS.md)
+  an agent-first CLI, **12 bundled repair skills**, and an [`AGENTS.md`](AGENTS.md)
   cold-start — drop it into Claude Code or Cursor with no glue.
 - **Best-in-class math.** ByeTex hand-rolls LaTeX → Typst math instead of delegating to
   an external engine — ~450 symbols/operators, coverage gated against the **entire KaTeX
@@ -133,19 +133,19 @@ Anything else produces a structured warning categorised as `unsupported_command`
 
 ## Install
 
-The `byetex` binary is the same across channels; the Claude Code plugin (skills +
-MCP server) is a separate artifact that needs the binary on PATH.
+The `byetex` binary is the same across channels; the Claude Code plugin (which bundles
+the repair skills) is a separate artifact that needs the binary on PATH.
 
 ```bash
-# Claude Code plugin — bundles the skills + auto-registers the MCP server.
+# Claude Code plugin — bundles the repair skills.
 claude plugin marketplace add zeyuyang42/ByeTex
 claude plugin install byetex@byetex
 
 # Install script — prebuilt binary → ~/.local/bin.
 curl -fsSL https://raw.githubusercontent.com/zeyuyang42/ByeTex/main/install.sh | sh
 
-# From source via cargo (needs Rust 1.84+; --features mcp adds `byetex serve`).
-cargo install --git https://github.com/zeyuyang42/ByeTex byetex --features mcp
+# From source via cargo (needs Rust 1.84+).
+cargo install --git https://github.com/zeyuyang42/ByeTex byetex
 ```
 
 Self-contained binaries are attached to each
@@ -159,8 +159,8 @@ binary and the `skills/` directory; verify against `SHA256SUMS`. See
 
 ## CLI
 
-The `byetex` binary has seven subcommands. `convert` is the workhorse; `diagnose` is the
-headline path when the goal is "make it compile".
+The `byetex` binary's subcommands are the surface. `convert` is the workhorse; `diagnose`
+is the headline path when the goal is "make it compile".
 
 ```bash
 # Convert a LaTeX project FOLDER (recommended for real papers): auto-detects the entry
@@ -186,9 +186,6 @@ byetex doctor paper.tex                       # --strict to fail hard; --full to
 # Bundled repair skills (start with byetex-getting-started):
 byetex skills list
 byetex skills read byetex-repair-loop
-
-# Run as an MCP server over stdio (requires --features mcp at build time):
-byetex serve
 
 # Regression corpus over the synthetic test corpus:
 byetex corpus run --dir tests/corpus/
@@ -267,16 +264,13 @@ version:
 1. `byetex convert input.tex` is non-destructive and idempotent. Read `input.warnings.json`
    — empty means a clean conversion.
 2. Each warning's `suggested_skill` points to one of the **12 bundled skills** in `skills/`
-   that documents how to resolve that category. Reach them via `byetex skills read <name>`,
-   by opening `skills/<name>.md`, or over MCP with `read_skill`.
+   that documents how to resolve that category. Reach them via `byetex skills read <name>`
+   or by opening `skills/<name>.md`.
 3. When the `.typ` doesn't compile, `byetex diagnose input.tex` maps each typst error back
    to its LaTeX fragment + repair skill — the **compile-repair loop**. Edit the `.typ`,
    re-run `typst compile`, repeat.
 4. To grade *visual* fidelity, the `byetex-visual-grading` skill drives a vision agent
    against [`docs/fidelity-rubric.md`](docs/fidelity-rubric.md) — the **visual-fidelity loop**.
-5. For interactive use, `byetex serve` exposes the converter, the repair loop, and skills as
-   **seven MCP tools**: `convert`, `convert_file`, `convert_fragment`, `convert_project`,
-   `diagnose`, `list_skills`, `read_skill`.
 
 ## Project layout
 
@@ -296,8 +290,7 @@ ByeTex/
 │   │   │   ├── diagnose.rs      # compile-error → LaTeX-fragment mapping
 │   │   │   └── skills.rs        # skills embedded at build time
 │   │   └── vendor/             # vendored tree-sitter-latex (MIT, Patrick Förster 2021)
-│   ├── byetex-cli/         # the `byetex` binary (all filesystem/process I/O)
-│   └── byetex-mcp/         # rmcp-backed MCP server (feature: mcp)
+│   └── byetex-cli/         # the `byetex` binary (all filesystem/process I/O)
 ├── corpus/                 # arXiv regression corpus (manifest.json; payloads gitignored)
 ├── scripts/                # corpus_sweep.sh, acceptance.sh, visual_test.py, … (see scripts/README.md)
 ├── skills/                 # 12 bundled Markdown repair skills (+ INDEX.md)

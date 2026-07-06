@@ -2,7 +2,7 @@
 
 > **New here? Read [`AGENTS.md`](../AGENTS.md) first** — it's the cold-start guide
 > to the repair loop. This document is the deeper technical reference (schema,
-> MCP, jq recipes).
+> jq recipes).
 
 This document is for AI coding agents (Claude Code, Cursor, Codex, etc.) that
 want to convert a LaTeX document to Typst as part of a larger workflow.
@@ -13,10 +13,9 @@ want to convert a LaTeX document to Typst as part of a larger workflow.
    emitted. Inspect the sidecar JSON, not the exit code.
 2. **Warnings live in `<stem>.warnings.json`** next to the `.typ`. The file
    is always written, even if empty (`[]`).
-3. **Skills are reachable in three ways**:
+3. **Skills are reachable in two ways**:
    - `byetex skills list` and `byetex skills read <name>` from the CLI.
    - `skills/<name>.md` files in the release archive (or this repo).
-   - The `list_skills` and `read_skill` MCP tools when running `byetex serve`.
 4. **The output `.typ` is always written.** Even if some constructs are
    unconvertible, ByeTex emits something — possibly with `#text(red)[\foo]`
    placeholders — and points you at the warning + skill needed to repair it.
@@ -73,29 +72,20 @@ approximately.
    3. Apply edits to the `.typ` at the byte ranges given.
    4. Re-run `typst compile input.typ`.
 
-## MCP server mode
+## CLI subcommands
 
-For interactive use, the converter speaks MCP over stdio:
+Every capability is a `byetex` subcommand:
 
-```bash
-./byetex serve
-```
-
-The eleven tools exposed:
-
-| Tool                | Purpose                                                        |
+| Command             | Purpose                                                        |
 |---------------------|----------------------------------------------------------------|
-| `convert`           | Convert a LaTeX string in-memory, get `{typst, warnings}`.     |
-| `convert_file`      | Convert a `.tex` path, write `.typ` + sidecar, return paths.   |
-| `convert_fragment`  | Convert a snippet with a `context_hint`; math hints wrap it so bare math converts as math. |
-| `convert_project`   | Convert a multi-file project to a self-contained Typst dir.    |
+| `convert`           | Convert a `.tex` file or project, write `.typ` + sidecars.     |
 | `diagnose`          | Compile the output and map each typst error to its LaTeX fragment + skill. |
 | `validate`          | Stage-0 oracle: compile the *input* with tectonic to tell a broken source from a ByeTex bug. |
 | `compile`           | `typst compile` a `.typ`/`.tex` → PDF with **structured** errors `{ok, errors, pdf_path}`. |
 | `render`            | Render to per-page PNGs at a DPI → `{ok, errors, image_paths}` (visual inspection / grading). |
 | `explain`           | Per-node LaTeX → Typst map — "why did this LaTeX emit this Typst?". |
-| `list_skills`       | List bundled skills (`name`, `description`).                   |
-| `read_skill`        | Read a skill's full markdown body.                             |
+| `skills list`       | List bundled skills (`name`, `description`).                   |
+| `skills read`       | Read a skill's full markdown body.                             |
 
 ## Reading `warnings.json`
 

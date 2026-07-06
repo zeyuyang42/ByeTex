@@ -1,8 +1,7 @@
 # Contributing to ByeTex
 
 Thanks for your interest! ByeTex is a Rust workspace — `byetex-core` (the pure
-converter), `byetex` (the CLI), and `byetex-mcp` (the MCP server) — that turns
-LaTeX into Typst for AI agents.
+converter) and `byetex` (the CLI) — that turns LaTeX into Typst for AI agents.
 
 ## Setup
 

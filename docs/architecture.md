@@ -45,20 +45,19 @@ Project mode wraps the above (project.rs):
                       convert with them pre-seeded → ProjectPlan { body + asset list }
   materialize_project copy assets, write typst.toml + sidecars   (called by the CLI)
 
-The CLI and MCP layers own all filesystem I/O and process spawning (typst, tectonic).
+The CLI owns all filesystem I/O and process spawning (typst, tectonic).
 ```
 
 ## Code Map
 
-A Cargo workspace of three crates: a pure conversion library, a CLI binary, and
-an MCP server. The CLI depends on the core (and optionally the MCP crate); the
-MCP crate depends on the core.
+A Cargo workspace of two crates: a pure conversion library and a CLI binary.
+The CLI depends on the core.
 
 ### `crates/byetex-core` — the conversion library
 
 Where essentially all the logic lives.
 
-> Architecture Invariant: the core has no filesystem, CLI, or MCP dependencies
+> Architecture Invariant: the core has no filesystem or CLI dependencies
 > — its only dependencies are the parser, `serde`, and `anyhow`. Every entry
 > point is a pure function over strings, testable without touching disk.
 
@@ -66,8 +65,7 @@ Where essentially all the logic lives.
 plus an internal `convert_with_macros` the project layer uses to pre-seed macros
 and labels.
 
-> API Boundary: `convert` is the one stable entry point; both the CLI and the
-> MCP server go through it.
+> API Boundary: `convert` is the one stable entry point; the CLI goes through it.
 
 `parser.rs` — a thin wrapper over the vendored tree-sitter LaTeX grammar.
 `parse(source) -> Tree`; the tree's `has_error` flag drives parse-error warnings.
@@ -160,8 +158,7 @@ multi-file project orchestration over `convert`.
 ### `crates/byetex-cli` — the `byetex` binary
 
 `main.rs` — `clap`-based dispatch for the subcommands: `convert` (single file
-or `--project`), `agent-brief`, `doctor`, `corpus`, `skills`, and `serve` (the
-MCP server, behind the `mcp` feature).
+or `--project`), `diagnose`, `agent-brief`, `doctor`, `corpus`, and `skills`.
 
 > Architecture Invariant: this layer owns all filesystem I/O and all process
 > spawning (`typst`, `tectonic`). The core stays pure.
@@ -170,12 +167,6 @@ MCP server, behind the `mcp` feature).
 > count, and always writes the `.typ` and `.warnings.json` (even when empty).
 > Callers read the sidecar, never the exit code. (`doctor` is the exception: it
 > validates input and reports non-zero verdicts.)
-
-### `crates/byetex-mcp` — the MCP server
-
-`lib.rs` — `ByeTexServer` over stdio JSON-RPC (the `rmcp` crate). Each tool —
-`convert`, `convert_file`, `convert_fragment`, `convert_project`, `list_skills`,
-`read_skill` — is a thin async wrapper over the core.
 
 ## Cross-Cutting Concerns
 
@@ -199,8 +190,8 @@ couldn't parse the region — emit what's available and warn).
 ### Skills
 
 Repair guides authored as `skills/*.md`, embedded at build time, and surfaced
-through `byetex skills` and the MCP `list_skills`/`read_skill` tools. A
-warning's `suggested_skill` links the problem to its guide.
+through `byetex skills list`/`byetex skills read`. A warning's `suggested_skill`
+links the problem to its guide.
 
 ### Project mode vs single-file mode
 

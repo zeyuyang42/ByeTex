@@ -57,7 +57,7 @@ jobs:
           echo "CC_aarch64_unknown_linux_musl=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
 
       - name: Build release binary
-        run: cargo build -p byetex --release --target ${{ matrix.target }} --features mcp
+        run: cargo build -p byetex --release --target ${{ matrix.target }}
 
       - name: Stage artifact
         shell: bash

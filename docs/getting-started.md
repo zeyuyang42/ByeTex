@@ -68,7 +68,7 @@ ByeTex/
 ├── Cargo.toml                              ← Rust workspace config
 ├── README.md                               ← human-facing intro
 │
-├── crates/                                 ← three Rust libraries
+├── crates/                                 ← two Rust libraries
 │   ├── byetex-core/                       ← the brain
 │   │   ├── src/
 │   │   │   ├── lib.rs                      ← public `convert()` function
@@ -80,11 +80,8 @@ ByeTex/
 │   │   ├── vendor/tree-sitter-latex/       ← the 42 MB grammar (vendored)
 │   │   └── tests/                          ← unit + integration tests
 │   │
-│   ├── byetex-cli/                        ← the `byetex` command-line tool
-│   │   └── src/main.rs                     ← subcommands: convert, skills, serve, corpus
-│   │
-│   └── byetex-mcp/                        ← lets AI agents call ByeTex over a protocol
-│       └── src/lib.rs                      ← exposes 5 "tools" over stdio JSON-RPC
+│   └── byetex-cli/                        ← the `byetex` command-line tool
+│       └── src/main.rs                     ← subcommands: convert, diagnose, skills, corpus
 │
 ├── skills/                                 ← markdown how-to files for humans/AIs
 │   ├── byetex-using-warnings-json.md      ← read this first
@@ -113,7 +110,7 @@ ByeTex/
     └── release.yml                         ← build binaries when you tag a version
 ```
 
-**The mental model**: three Rust crates (libraries) in one workspace. `core` does the conversion. `cli` is what users run. `mcp` is for AI tools. The `skills/` folder has human-readable repair instructions; `tests/fixtures/` has small targeted snippets; `corpus/manifest.json` lists real arXiv papers for regression testing (payloads gitignored, fetched by `scripts/corpus_harvest.py`).
+**The mental model**: two Rust crates (libraries) in one workspace. `core` does the conversion. `cli` is what users (and AI agents) run. The `skills/` folder has human-readable repair instructions; `tests/fixtures/` has small targeted snippets; `corpus/manifest.json` lists real arXiv papers for regression testing (payloads gitignored, fetched by `scripts/corpus_harvest.py`).
 
 ---
 
@@ -160,15 +157,9 @@ byetex skills read byetex-tikz-to-typst
 
 That tells you how to manually rewrite TikZ diagrams in Typst's CeTZ library. Apply the fix to `paper.typ`, re-compile.
 
-### 3. From an AI assistant (the MCP path)
+### 3. From an AI assistant
 
-Start ByeTex as a server:
-
-```bash
-byetex serve
-```
-
-Now Claude Code, Cursor, etc. can call five "tools" — `convert`, `convert_file`, `convert_fragment`, `list_skills`, `read_skill` — and the AI uses these to convert your paper, read warnings, look up skills, and patch the `.typ` for you. The same machinery you'd use by hand, but exposed as a protocol.
+ByeTex is built to be driven by an AI coding agent (Claude Code, Cursor, etc.) straight through its CLI. The agent runs `byetex convert` to translate your paper, `byetex diagnose` to map compile errors to repair skills, and `byetex skills read <name>` to look them up — then patches the `.typ` for you. The 12 bundled skills are also available as a Claude Code plugin (`/byetex:<name>`); see [`plugin-setup.md`](plugin-setup.md). The same machinery you'd use by hand, driven by the agent.
 
 ### 4. Building from source
 
@@ -183,7 +174,7 @@ Run the test suite:
 
 ```bash
 cargo test --workspace
-# 29 golden tests + corpus check + compile check + MCP smoke + schema lock
+# 29 golden tests + corpus check + compile check + schema lock
 ```
 
 Try a real arXiv paper:

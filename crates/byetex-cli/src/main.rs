@@ -80,11 +80,6 @@ enum Command {
         action: SkillsAction,
     },
 
-    /// Run as an MCP server over stdio. Exposes the converter and skills to
-    /// MCP-aware AI agents (Claude Code, Cursor, etc.).
-    #[cfg(feature = "mcp")]
-    Serve,
-
     /// Harvest and run a corpus of LaTeX snippets from markdown docs.
     /// Used by CI to track regressions in supported coverage.
     Corpus {
@@ -312,8 +307,6 @@ fn main() -> Result<()> {
             }
         }
         Command::Skills { action } => run_skills(action),
-        #[cfg(feature = "mcp")]
-        Command::Serve => run_serve(),
         Command::Corpus { action } => run_corpus(action),
         Command::AgentBrief {
             input,
@@ -400,7 +393,7 @@ fn run_diagnose(input: PathBuf, project: bool, out: Option<PathBuf>) -> Result<(
     // planner+materialiser (copies assets, preprocesses .bib, resolves \input)
     // so `typst compile` of the produced `main.typ` sees a self-contained tree.
     // A single .tex without --project uses the fast flat path. The orchestration
-    // lives in `byetex_core::diagnose` so the MCP `diagnose` tool shares it.
+    // lives in `byetex_core::diagnose`.
     // A `.typ` input is an already-converted (often agent-edited) file: diagnose it
     // IN PLACE — compile + map errors without re-converting, so edits survive.
     let input_is_typ = input.extension().and_then(|e| e.to_str()) == Some("typ");
@@ -438,8 +431,8 @@ fn doctor_sidecar_path(input: &Path) -> PathBuf {
 /// `<stem>.doctor.json` verdict. Skips cleanly when tectonic is absent.
 ///
 /// The orchestration (tectonic/typst shell-outs + verdict) lives in
-/// [`byetex_core::validate`] so the MCP `validate` tool shares one code path;
-/// the CLI adds the sidecar write, the human-readable messages, and the
+/// [`byetex_core::validate`]; the CLI adds the sidecar write, the
+/// human-readable messages, and the
 /// attribution-driven exit codes on top.
 fn run_doctor(input: PathBuf, strict: bool, full: bool) -> Result<()> {
     use byetex_core::validate::Verdict;
@@ -970,14 +963,6 @@ fn category_kind_name(c: &byetex_core::Category) -> String {
         DropOnly { .. } => "drop_only".into(),
         NeedsManualReview { .. } => "needs_manual_review".into(),
     }
-}
-
-#[cfg(feature = "mcp")]
-fn run_serve() -> Result<()> {
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()?;
-    rt.block_on(byetex_mcp::run_stdio())
 }
 
 fn run_skills(action: SkillsAction) -> Result<()> {

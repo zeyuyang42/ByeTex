@@ -33,8 +33,6 @@ For a multi-file paper, pass the project directory (or the entry `.tex` with
   images) for the `byetex-visual-grading` skill.
 - `byetex explain -c '\frac12'` — show which LaTeX fragment produced which Typst.
 
-All of these are also MCP tools — `byetex serve` exposes **11 tools** total.
-
 ## The repair loop (diagnose-first)
 
 1. **Diagnose once.** `byetex diagnose paper.tex` writes `paper.diagnostics.json`:
