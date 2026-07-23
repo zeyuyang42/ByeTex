@@ -221,6 +221,20 @@ byetex doctor paper.tex                       # --strict to fail hard; --full to
 byetex skills list
 byetex skills read byetex-repair-loop
 
+# Compile / render the OUTPUT with structured errors (no stderr scraping);
+# input may be the .typ or the .tex (converted flat first):
+byetex compile paper.typ                      # → paper.pdf; --out to choose the path
+byetex render paper.typ                       # → paper.pages/ per-page PNGs; --dpi (default 144)
+
+# Visual-fidelity grading packet (truth↔typst page images) for byetex-visual-grading:
+byetex review paper.tex                       # --truth <pdf>, --dpi (default 120), --out <dir>
+
+# Explain a conversion node-by-node ("why did this LaTeX emit this Typst?"):
+byetex explain -c '\frac{1}{2}'               # or a .tex file, or `-` for stdin
+
+# Regression corpus over the synthetic test corpus:
+byetex corpus run --dir tests/corpus/
+
 # Inspect the warnings:
 cat paper.warnings.json | jq '.[].category.kind' | sort | uniq -c
 ```

@@ -182,7 +182,7 @@ enum Command {
     Compile {
         /// Path to a `.typ` file (or a `.tex`, converted flat first).
         input: PathBuf,
-        /// Output PDF path. Defaults to `<input>.pdf`.
+        /// Output PDF path. Defaults to `<input-stem>.pdf`.
         #[arg(long)]
         out: Option<PathBuf>,
     },

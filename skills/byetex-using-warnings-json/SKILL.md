@@ -35,7 +35,7 @@ Each warning has this shape:
    (see "Leaked LaTeX in the body" below).
 2. Group warnings by `category.kind`.
 3. For each group, if `suggested_skill` is non-null, read that skill with
-   `byetex skills read <name>` (or open `skills/<name>.md`) BEFORE editing the `.typ`.
+   `byetex skills read <name>` (or open `skills/<name>/SKILL.md`) BEFORE editing the `.typ`.
 4. Apply the fix in the `.typ`. NOTE: `range` is the LaTeX **source** location, not a
    `.typ` line — find the spot in the `.typ` by searching for the rendered text /
    `snippet` (or run `byetex diagnose input.typ` for `.typ`-line-anchored compile errors).
