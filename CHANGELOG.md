@@ -5,6 +5,63 @@ Notable changes to ByeTex. Format loosely follows
 
 ## [0.7.0] — unreleased
 
+### Fixed
+- **Multi-file projects lost most of their body.** The pre-parse guard that neutralises
+  `_` inside `\label`/`\ref`/`\cref` keys (0.6.67) ran only on the entry file, so every
+  `\input`ed file was still parsed raw and kept hitting the tree-sitter cascade it was
+  written to fix — the chapter-per-file layout `--project` mode exists for. The same
+  guard now runs on included files, on local `.sty`/`.cls` expansion, and on the three
+  project pre-scans (macros, referenced labels, `\chapter` detection), which previously
+  harvested nothing from a file whose parse had collapsed.
+- **A non-ASCII verbatim delimiter panicked the whole conversion.** `\verb§…§`,
+  `\verb*`, `\path`, `\lstinline` and `\mintinline` read the delimiter as a single byte
+  and then sliced the source at `byte + 1`, landing mid-codepoint (`byte index N is not
+  a char boundary`, exit 1, no output). Delimiters are decoded as chars now, and
+  `safe_copy` widens to enclosing char boundaries rather than panicking.
+- **A `.bib` registered twice was materialised EMPTY**, breaking every citation. The
+  `@key`-dedup state is shared across `.bib` files, so a second copy of the same
+  destination found every key already seen and wrote an empty file over the good one.
+  Assets now dedupe on (source, destination).
+- **A repeated `\bibliography{}` / `\printbibliography` emitted two `#bibliography(…)`
+  calls**, which Typst rejects outright ("multiple bibliographies are not yet
+  supported") — the generated project could not compile at all. Only the first is
+  emitted; the rest warn.
+- **A float body that rendered as several expressions produced invalid Typst.** A
+  `\vspace{-0.3cm}` ahead of a `tabular` yielded `v(-0.3cm)#table(…)` in code position
+  ("the character `#` is not valid in code", corpus 2605.22507). Leading spacing calls
+  are dropped and any remaining multi-expression body is wrapped in a content block.
+- **`diagnose --project --out DIR` silently deleted the contents of a user-named
+  directory** — it hardcoded the overwrite that `convert --project` gates behind
+  `--force`. `diagnose` now has `--force` too; the default byetex-owned
+  `<stem>.typst-project/` still regenerates itself so the repair loop is unaffected.
+- **`diagnose` destroyed a pre-existing PDF beside the `.typ`.** It compiled to
+  `<stem>.pdf` and then removed it, so `byetex diagnose main.typ` — documented as a
+  non-destructive in-place scan — deleted the user's `main.pdf`. The scratch PDF now
+  goes to a temp directory.
+- **Symlinked directories were invisible to the whole project pre-scan.** The walk
+  tested `is_dir()` before `is_symlink()`, and `symlink_metadata` reports a
+  symlink-to-directory as neither a dir nor a file, so such entries fell through both
+  arms and their macros/labels/chapters were silently dropped. Symlinked directories are
+  now followed (cycle- and size-bounded), matching what `\input` resolution already did.
+- **A directory with more than one `\documentclass` was unconvertible.** That is the
+  normal shape of a real LaTeX repository (a root `main.tex` beside an `examples/` or
+  `templates/` tree) and it hard-failed 5 of the 60 corpus projects. `detect_entry_file`
+  now prefers the shallowest candidate, then `main.tex`, and only reports an ambiguity
+  when neither singles one out.
+- **`byetex review` could grade against a random figure PDF.** The cached-truth probe
+  returned the first `.pdf` `read_dir` happened to yield, so a paper shipping figure PDFs
+  at its root (8 corpus papers do) was compared against a one-page plot —
+  non-deterministically, since `read_dir` order is unspecified. Only `<entry-stem>.pdf`
+  counts now.
+- **Stale page PNGs from an earlier render were reported as current output.**
+  `render_typ` / `rasterize_pdf` globbed their output directory afterwards, so a
+  document that got shorter still reported the older, longer page list into the grading
+  packet. Matching PNGs are cleared first.
+- **The refkey sentinel leaked into `warnings.json`.** Warning snippets are cut from the
+  neutralised source, so they carried a raw `U+001F` where the author wrote `_` — making
+  the snippet ungreppable against the real LaTeX, on the surface agents are pointed at
+  for repairs. Snippets, messages and reasons are restored along with the Typst output.
+
 ### Removed
 - **The MCP server (`byetex serve`) and the `byetex-mcp` crate.** Every MCP tool was a
   1:1 thin wrapper over `byetex-core` — the same functions the CLI already exposes

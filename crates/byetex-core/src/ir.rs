@@ -461,6 +461,17 @@ pub fn parse_and_lower(src: &str) -> Tree {
 /// (see `is_typst_label_char`), and is restored to `_` in the final Typst output.
 pub(crate) const REFKEY_US_SENTINEL: char = '\u{1f}';
 
+/// Undo [`neutralize_ref_key_underscores`] over an already-produced string. The
+/// sentinel only ever stands in for a `_` inside a label/ref key, so a blanket
+/// restore is unambiguous. Allocation-free when there is nothing to restore.
+pub(crate) fn restore_refkey_underscores(s: String) -> String {
+    if s.as_bytes().contains(&(REFKEY_US_SENTINEL as u8)) {
+        s.replace(REFKEY_US_SENTINEL, "_")
+    } else {
+        s
+    }
+}
+
 /// Neutralize `_` inside cross-reference / label command keys *before* the
 /// tree-sitter parse.
 ///

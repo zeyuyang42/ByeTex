@@ -374,7 +374,10 @@ impl<'a> Emitter<'a> {
         };
         // Walk the file's AST looking for `new_command_definition`,
         // `old_command_definition`, and `theorem_definition` nodes;
-        // harvest each one into a fresh map, then merge.
+        // harvest each one into a fresh map, then merge. Neutralize
+        // cross-reference-key underscores first for the same reason the entry
+        // file does — an ERROR-node parse yields no definitions at all.
+        let source = crate::ir::neutralize_ref_key_underscores(&source);
         let tree = crate::ir::parse_and_lower(&source);
         let mut harvested: HashMap<String, MacroDef> = HashMap::new();
         let mut harvested_theorems: HashMap<String, String> = HashMap::new();
@@ -500,6 +503,15 @@ impl<'a> Emitter<'a> {
                 return false;
             }
         };
+        // Included files get the SAME pre-parse guard the entry file gets in
+        // `convert_with_macros`: `_` inside a `\label`/`\ref`/`\cref` key makes
+        // tree-sitter read a math subscript, which on a dense document cascades
+        // into a whole-file ERROR node and swallows most of the body. Skipping
+        // it here meant chapter-per-file projects — the layout `--project` mode
+        // exists for — kept hitting the very bug PR #452 fixed (review #1).
+        // The substitution is byte-length-preserving, so every offset below
+        // stays valid; `sanitize_label_key` and the final output pass restore it.
+        let source = crate::ir::neutralize_ref_key_underscores(&source);
         let new_base = resolved.parent().map(Path::to_path_buf).unwrap_or(base_dir);
         let source_name = resolved.display().to_string();
         // Move the visited set into the child so the chain is shared. Insert
@@ -563,7 +575,11 @@ impl<'a> Emitter<'a> {
         // body (set from the parent's `\usetheme{metropolis}` / `\AtBeginSection`)
         // render their divider slide instead of being tagged `<touying:hidden>`.
         sub.beamer_has_section_slide = self.beamer_has_section_slide;
+        // One `#bibliography` per document: an `\input`ed file that also calls
+        // `\bibliography{}` must not emit a second one (review finding #4).
+        sub.emitted_bibliography = self.emitted_bibliography;
         sub.emit_root(tree.root_node());
+        self.emitted_bibliography |= sub.emitted_bibliography;
         // Merge the child's body and state back into the parent.
         if !self.out.ends_with('\n') && !self.out.is_empty() {
             self.out.push('\n');
@@ -735,7 +751,11 @@ pub(in crate::emit) fn extract_paired_delimiter(
 /// whole document chapter-bearing (health-check P1) — the entry file's prepass alone never
 /// sees it.
 pub(crate) fn harvest_uses_chapter_from_source(source: &str) -> bool {
-    let tree = crate::ir::parse_and_lower(source);
+    // Pre-parse refkey neutralization (see `convert_with_macros`): without it a
+    // chapter file dense in `\label{ch:my_chapter}` can parse to one ERROR node
+    // and the `chapter` node is never seen.
+    let source = crate::ir::neutralize_ref_key_underscores(source);
+    let tree = crate::ir::parse_and_lower(&source);
     let mut stack: Vec<Node<'_>> = vec![tree.root_node()];
     while let Some(n) = stack.pop() {
         if n.kind() == "chapter" {
@@ -754,6 +774,12 @@ pub(crate) fn harvest_uses_chapter_from_source(source: &str) -> bool {
 /// nodes), sanitized. Used by the project-mode pre-scan so a `\ref` in one
 /// file is known when the labelled section in another file is emitted.
 pub(crate) fn harvest_referenced_labels_from_source(source: &str) -> HashSet<String> {
+    // Pre-parse refkey neutralization (see `convert_with_macros`). Keys are run
+    // through `sanitize_label_key` below, which restores the sentinel, so the
+    // harvested set stays in plain `_` keyspace — the same one the emitter
+    // compares against.
+    let source = crate::ir::neutralize_ref_key_underscores(source);
+    let source = source.as_str();
     let tree = crate::ir::parse_and_lower(source);
     let mut out: HashSet<String> = HashSet::new();
     let mut stack: Vec<Node<'_>> = vec![tree.root_node()];
@@ -782,6 +808,11 @@ pub(crate) fn harvest_referenced_labels_from_source(source: &str) -> HashSet<Str
 /// `.cls`/`.sty` files or in sibling `.tex` files unreached by `\input`
 /// are still available when the entry file is converted.
 pub(crate) fn harvest_macros_from_source(source: &str) -> HashMap<String, MacroDef> {
+    // Pre-parse refkey neutralization (see `convert_with_macros`) — an
+    // ERROR-node parse harvests nothing, so a `\newcommand` living in a file
+    // that happens to use underscored label keys was silently lost.
+    let source = crate::ir::neutralize_ref_key_underscores(source);
+    let source = source.as_str();
     let tree = crate::ir::parse_and_lower(source);
     let mut out: HashMap<String, MacroDef> = HashMap::new();
     // `\let\new\old` pairs, resolved after the main pass so `\old` can refer

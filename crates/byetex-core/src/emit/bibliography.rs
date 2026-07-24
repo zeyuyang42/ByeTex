@@ -461,6 +461,26 @@ impl<'a> Emitter<'a> {
             self.warn_unsupported_command(node);
             return node.end_byte();
         }
+        // Typst allows exactly one `#bibliography` per document ("multiple
+        // bibliographies are not yet supported" is a hard error), so a repeated
+        // `\bibliography{}` / `\printbibliography` must be dropped instead of
+        // making the whole project uncompilable (review finding #4).
+        if self.emitted_bibliography {
+            self.warnings.push(Warning {
+                range: range_of(node),
+                category: Category::NeedsManualReview {
+                    reason: "repeated bibliography call: Typst supports only one #bibliography"
+                        .to_string(),
+                },
+                severity: Severity::Warning,
+                message: "the document renders its bibliography more than once; only the first \
+                          call was emitted (Typst rejects multiple bibliographies)"
+                    .to_string(),
+                snippet: self.src[node.start_byte()..node.end_byte()].to_string(),
+                suggested_skill: Some("byetex-bibliography".to_string()),
+            });
+            return node.end_byte();
+        }
         let style = self.pending_bib_style.take();
         // Convention: append `.bib` if no extension supplied.
         let paths_with_ext: Vec<String> = paths
@@ -581,6 +601,7 @@ impl<'a> Emitter<'a> {
         } else {
             let _ = write!(self.out, "#bibliography({})", path_arg);
         }
+        self.emitted_bibliography = true;
         node.end_byte()
     }
 

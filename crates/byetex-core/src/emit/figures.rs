@@ -1214,11 +1214,7 @@ impl<'a> Emitter<'a> {
                 e.emit_node(*n);
             }
         });
-        let body = body.trim().to_string();
-        let body = body
-            .strip_prefix('#')
-            .map(|s| s.to_string())
-            .unwrap_or(body);
+        let body = figure_body_as_code_expr(body.trim());
         if body.is_empty() {
             return None;
         }
@@ -1255,6 +1251,93 @@ impl<'a> Emitter<'a> {
             _ => None,
         }
     }
+}
+
+/// Normalise a rendered float body for use in CODE position — the first
+/// argument of `#figure(...)` / `#subpar.grid(...)`, where a bare `#` is a
+/// syntax error.
+///
+/// A body is usually one expression (`#table(...)`, `#image(...)`) and only the
+/// leading `#` has to go. But a float can render as SEVERAL expressions: a
+/// `\vspace{-0.3cm}` ahead of a `tabular` yields `#v(-0.3cm)#table(…)`, and
+/// stripping just the first `#` leaves the second one in code position, which
+/// Typst rejects outright — "the character `#` is not valid in code"
+/// (corpus 2605.22507, whose table was previously dropped altogether so the
+/// shape never surfaced). Leading spacing-only calls are dropped: they are
+/// layout nudges, and keeping them would cost the `table`-kind detection that
+/// drives caption placement. Anything still multi-expression is wrapped in a
+/// content block, which is always valid in code position.
+fn figure_body_as_code_expr(body: &str) -> String {
+    let mut rest = body.trim();
+    while let Some(after) = rest.strip_prefix('#') {
+        let Some((name, tail)) = after.split_once('(') else {
+            break;
+        };
+        if !matches!(name, "v" | "h") {
+            break;
+        }
+        let Some(close) = balanced_paren_end(tail) else {
+            break;
+        };
+        rest = tail[close..].trim_start();
+    }
+    if rest.is_empty() {
+        return String::new();
+    }
+    match rest.strip_prefix('#') {
+        Some(stripped) if is_single_call_expr(stripped) => stripped.to_string(),
+        Some(_) => format!("[{}]", rest),
+        None => rest.to_string(),
+    }
+}
+
+/// True if `s` is exactly ONE `name(...)` call with nothing after it — the
+/// shape that may safely lose its `#` and sit in code position. Deliberately
+/// conservative: anything else (a trailing second expression, a label, stray
+/// text) is wrapped in a content block instead.
+fn is_single_call_expr(s: &str) -> bool {
+    let s = s.trim();
+    let Some((head, tail)) = s.split_once('(') else {
+        return false;
+    };
+    if head.is_empty()
+        || !head
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '.' || c == '_' || c == '-')
+    {
+        return false;
+    }
+    balanced_paren_end(tail).is_some_and(|end| tail[end..].trim().is_empty())
+}
+
+/// Index one past the `)` that closes the group opened just before `s` (i.e.
+/// `s` starts INSIDE the parentheses). `None` when unbalanced.
+fn balanced_paren_end(s: &str) -> Option<usize> {
+    let mut depth = 1usize;
+    let mut in_str = false;
+    let mut prev_escape = false;
+    for (i, c) in s.char_indices() {
+        if in_str {
+            match c {
+                '\\' if !prev_escape => prev_escape = true,
+                '"' if !prev_escape => in_str = false,
+                _ => prev_escape = false,
+            }
+            continue;
+        }
+        match c {
+            '"' => in_str = true,
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i + 1);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 /// Extract the path argument from a `graphics_include` (`\includegraphics{X}`).

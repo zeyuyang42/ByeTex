@@ -176,11 +176,19 @@ pub(crate) fn convert_with_macros(
     // `ir::neutralize_ref_key_underscores`). The sentinel only ever stands in for a
     // `_` inside a label/ref key, so a blanket restore is unambiguous and also
     // catches any emit path that bypassed `sanitize_label_key`.
-    let typst = if typst.as_bytes().contains(&(ir::REFKEY_US_SENTINEL as u8)) {
-        typst.replace(ir::REFKEY_US_SENTINEL, "_")
-    } else {
-        typst
-    };
+    let typst = ir::restore_refkey_underscores(typst);
+    // Warning snippets are cut straight from the emitter's (neutralized) source,
+    // so they carried a raw control character where the author wrote `_`.
+    // `warnings.json` is the surface agents grep against the real LaTeX, so a
+    // snippet that cannot be found there is worse than useless.
+    let mut warnings = warnings;
+    for w in &mut warnings {
+        w.snippet = ir::restore_refkey_underscores(std::mem::take(&mut w.snippet));
+        w.message = ir::restore_refkey_underscores(std::mem::take(&mut w.message));
+        if let Category::NeedsManualReview { reason } = &mut w.category {
+            *reason = ir::restore_refkey_underscores(std::mem::take(reason));
+        }
+    }
     ConvertOutput {
         typst,
         warnings,

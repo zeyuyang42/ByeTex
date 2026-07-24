@@ -213,12 +213,40 @@ fn derive_manifest(_typst: &str) -> Option<String> {
 
 /// Walk `dir` recursively and collect every file whose extension matches
 /// one of `wanted`. Skips hidden directories (any path component
-/// starting with `.`), doesn't follow symlinks (avoids escaping the
-/// project tree), and ignores `target/`/`node_modules/` build outputs.
+/// starting with `.`) and ignores `target/`/`node_modules/` build outputs.
+/// Symlinked directories ARE followed (see the body for why and for the
+/// cycle/size bounds).
 fn walk_project_files(dir: &Path, wanted: &[&str]) -> Result<Vec<PathBuf>, ProjectError> {
+    // Symlinked directories are FOLLOWED, not skipped. The old code tested
+    // `file_type.is_dir()` first, and `symlink_metadata` reports a
+    // symlink-to-directory as neither a dir NOR a file — so the entry fell
+    // through both arms, the `is_symlink()` guard below it was unreachable dead
+    // code, and the whole subtree became invisible to macro harvesting,
+    // referenced-label harvesting, `\chapter` detection and entry detection
+    // alike (review finding #10). A `common/` or `chapters/` symlink pointing
+    // at a shared tree is a normal multi-paper layout, and `\input` resolution
+    // already reads straight through such links, so the scan must agree with it.
+    //
+    // This walk is READ-ONLY and only ever opens `.tex`/`.sty`/`.cls`. Copying
+    // files out of the tree stays blocked by `materialize_project`'s own
+    // path-traversal guard, which is the check that actually protects the
+    // output. Two bounds keep a hostile or careless link from running away:
+    // `visited` (canonical paths, so cycles terminate) and `MAX_DIRS`.
+    const MAX_DIRS: usize = 10_000;
     let mut out = Vec::new();
+    let mut visited: HashSet<PathBuf> = HashSet::new();
     let mut stack: Vec<PathBuf> = vec![dir.to_path_buf()];
     while let Some(current) = stack.pop() {
+        if !visited.insert(
+            current
+                .canonicalize()
+                .unwrap_or_else(|_| current.to_path_buf()),
+        ) {
+            continue;
+        }
+        if visited.len() > MAX_DIRS {
+            break;
+        }
         let read = match std::fs::read_dir(&current) {
             Ok(r) => r,
             // A dir that vanished mid-walk is uninteresting, not fatal.
@@ -234,16 +262,27 @@ fn walk_project_files(dir: &Path, wanted: &[&str]) -> Result<Vec<PathBuf>, Proje
             if name_str.starts_with('.') {
                 continue;
             }
-            if file_type.is_dir() {
+            let path = entry.path();
+            // Resolve the target kind through symlinks (`metadata` follows;
+            // `entry.file_type()` does not). A dangling link resolves to
+            // nothing and is skipped.
+            let resolved = if file_type.is_symlink() {
+                match std::fs::metadata(&path) {
+                    Ok(m) => m,
+                    Err(_) => continue,
+                }
+            } else {
+                match entry.metadata() {
+                    Ok(m) => m,
+                    Err(_) => continue,
+                }
+            };
+            if resolved.is_dir() {
                 if matches!(name_str.as_ref(), "target" | "node_modules") {
                     continue;
                 }
-                if file_type.is_symlink() {
-                    continue;
-                }
-                stack.push(entry.path());
-            } else if file_type.is_file() {
-                let path = entry.path();
+                stack.push(path.canonicalize().unwrap_or(path));
+            } else if resolved.is_file() {
                 if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
                     if wanted.iter().any(|w| w.eq_ignore_ascii_case(ext)) {
                         out.push(path);
@@ -294,13 +333,45 @@ pub fn detect_entry_file(dir: &Path) -> Result<PathBuf, ProjectError> {
             candidates.push(path);
         }
     }
-    match candidates.len() {
-        0 => Err(ProjectError::NoEntryFile {
+    if candidates.is_empty() {
+        return Err(ProjectError::NoEntryFile {
             searched: dir.to_path_buf(),
-        }),
-        1 => Ok(candidates.remove(0)),
-        _ => Err(ProjectError::AmbiguousEntryFile { candidates }),
+        });
     }
+    if candidates.len() == 1 {
+        return Ok(candidates.remove(0));
+    }
+    // More than one `\documentclass` is the NORMAL shape of a real LaTeX
+    // repository: a root `main.tex` beside an `examples/`, `templates/` or
+    // `doc-src/` directory that ships its own compilable sample. Failing
+    // outright made those trees unconvertible (5 of the 60 corpus projects —
+    // review finding #11). Prefer the shallowest candidate; that is the entry
+    // file in every such layout, and a nested sample can never outrank it.
+    let depth = |p: &Path| p.strip_prefix(dir).unwrap_or(p).components().count();
+    let min_depth = candidates.iter().map(|p| depth(p)).min().unwrap_or(0);
+    let mut shallowest: Vec<PathBuf> = candidates
+        .iter()
+        .filter(|p| depth(p) == min_depth)
+        .cloned()
+        .collect();
+    if shallowest.len() == 1 {
+        return Ok(shallowest.remove(0));
+    }
+    // Same-depth tie: `main.tex` is the near-universal convention.
+    let mut named_main: Vec<PathBuf> = shallowest
+        .iter()
+        .filter(|p| {
+            p.file_stem()
+                .and_then(|s| s.to_str())
+                .is_some_and(|s| s.eq_ignore_ascii_case("main"))
+        })
+        .cloned()
+        .collect();
+    if named_main.len() == 1 {
+        return Ok(named_main.remove(0));
+    }
+    // Genuinely ambiguous — report every candidate so the caller can choose.
+    Err(ProjectError::AmbiguousEntryFile { candidates })
 }
 
 /// Pre-scan every `.tex` / `.sty` / `.cls` under `dir` and merge their
@@ -496,6 +567,15 @@ pub fn materialize_project(
     // bibliography keys". Files are processed in `plan.assets` order, which is
     // the `\bibliography{...}` order, so the first file wins (matching BibTeX).
     let mut bib_seen_keys: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // The same (source, destination) pair can be registered twice — e.g. a
+    // document that calls `\bibliography{refs}` more than once. Copying it twice
+    // is redundant for images, but for a `.bib` it is destructive: the second
+    // `preprocess_bib_with_seen` finds every key already in `bib_seen_keys` and
+    // writes an EMPTY file over the good first copy, breaking every citation
+    // (review finding #3). Dedupe on the pair, so a genuine name collision
+    // between two DIFFERENT sources keeps its existing behaviour.
+    let mut copied: std::collections::HashSet<(PathBuf, PathBuf)> =
+        std::collections::HashSet::new();
     for asset in &plan.assets {
         // Path-traversal guard: skip any asset whose source escapes base_dir.
         // `asset.source` is already canonicalised by `asset_ref_to_copy`, but
@@ -518,6 +598,10 @@ pub fn materialize_project(
                 "byetex: skipping asset `{}` — source path escapes base directory (path traversal guard)",
                 asset.source.display()
             );
+            continue;
+        }
+
+        if !copied.insert((canonical_src.clone(), asset.rel_dest.clone())) {
             continue;
         }
 
