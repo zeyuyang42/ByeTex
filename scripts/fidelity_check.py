@@ -66,13 +66,38 @@ def trim_for_baseline(index):
     }
 
 
+def covers_whole_corpus(current, baseline):
+    """True when `current` measured every paper the baseline has metrics for.
+
+    Papers whose truth render failed carry no metrics, so they can never appear
+    in a run and are excluded from the comparison.
+    """
+    measured_baseline = {
+        pid
+        for pid, base in baseline.get("papers", {}).items()
+        if base.get("word_recall") is not None
+        and base.get("status") != "truth_render_failed"
+    }
+    return measured_baseline.issubset(set(current.get("papers", {})))
+
+
 def evaluate(current, baseline, score_tol, recall_tol):
     """Return (regressions, improvements) as lists of human-readable strings."""
     regressions, improvements = [], []
 
+    cur_papers_all = current.get("papers", {})
+    # The corpus `fidelity_score` is a weighted mean over the papers a run
+    # measured, so it is only comparable when the run covers the same
+    # population as the baseline. `fidelity_gate.sh --papers a b c` — the way a
+    # targeted change is checked — measures a handful, and comparing that score
+    # against the whole-corpus number fails the gate whenever the chosen papers
+    # sit below the corpus average, regardless of what the change did. The
+    # per-paper checks below are the meaningful signal for a subset run.
+    is_full_run = covers_whole_corpus(current, baseline)
+
     cur_score = current.get("fidelity_score")
     base_score = baseline.get("fidelity_score")
-    if base_score is not None and cur_score is not None:
+    if base_score is not None and cur_score is not None and is_full_run:
         if cur_score < base_score - score_tol:
             regressions.append(
                 f"corpus fidelity_score {cur_score:.3f} < baseline "
@@ -133,6 +158,13 @@ def main(argv=None):
 
     cs, bs = current.get("fidelity_score"), baseline.get("fidelity_score")
     print(f"fidelity: score {cs} (baseline {bs})")
+    if not covers_whole_corpus(current, baseline):
+        n_cur = len(current.get("papers", {}))
+        print(
+            f"  NOTE: partial run ({n_cur} paper(s)) — the corpus score is a mean over the "
+            "papers measured, so it is NOT compared against the whole-corpus baseline. "
+            "Per-paper checks below still gate."
+        )
 
     # Honesty surface: papers whose TRUTH render failed have no metrics (word_recall=None),
     # so they contribute nothing to the score and CANNOT register a regression — the gate is

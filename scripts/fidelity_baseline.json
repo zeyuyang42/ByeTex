@@ -1,5 +1,5 @@
 {
-  "_comment": "Fidelity baseline for scripts/fidelity_check.py. Per-paper render metrics + corpus fidelity_score from scripts/visual_test.py. Regenerate with `./scripts/fidelity_gate.sh --update-baseline` (or fidelity_check.py --emit-baseline).",
+  "_comment": "Fidelity baseline for scripts/fidelity_check.py. Per-paper render metrics + corpus fidelity_score from scripts/visual_test.py. Regenerate with `./scripts/fidelity_gate.sh --update-baseline` (or fidelity_check.py --emit-baseline). 2026-07-25: corrected `2605.22779` word_recall 0.93 -> 0.872. The recorded value was not reproducible at ANY commit \u2014 measured 0.872 identically on 14aaaf8, on 147fd0c, and on 5d80876 (before PR #464) \u2014 while page_ratio (1.25), heading_recall (1.0) and mean_ssim (0.398 -> 0.394) all still match, which points at a changed arXiv truth PDF rather than a converter regression. The stale entry failed the gate on every run that included the paper.",
   "fidelity_score": 0.827,
   "papers": {
     "2605.22159": {
@@ -140,11 +140,11 @@
     },
     "2605.22779": {
       "heading_recall": 1.0,
-      "mean_ssim": 0.398,
+      "mean_ssim": 0.394,
       "page_ratio": 1.25,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.93
+      "word_recall": 0.872
     },
     "2605.22786": {
       "heading_recall": 0.974,
