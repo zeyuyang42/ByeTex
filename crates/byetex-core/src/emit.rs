@@ -2868,9 +2868,26 @@ impl<'a> Emitter<'a> {
             Some("\\noindent") | Some("\\indent") => {
                 consume_trailing_inline_space(self.src, node.end_byte())
             }
-            // Table rule commands have no Typst equivalent in our default
-            // table emission (the table emitter reconstructs rules). Drop.
+            // Table rule commands have no Typst equivalent — the table emitter
+            // reconstructs the rules. Inside a tabular body it needs to know
+            // WHERE each one sits, so drop a sentinel into the rendered body
+            // instead of nothing: the row split that then positions it is the
+            // emitter's own split, which is the only way the two can't desync
+            // (see `emit_tabular`). Outside a tabular there is nothing to
+            // reconstruct, so drop as before.
             Some("\\hline") | Some("\\toprule") | Some("\\midrule") | Some("\\bottomrule") => {
+                if self.in_table_cell {
+                    // Space first: the row-break `\` the `\\` emitter writes is
+                    // only a break when followed by WHITESPACE, so a sentinel
+                    // glued straight onto it would silently swallow the row
+                    // break and merge two rows (corpus 2605.31063).
+                    self.out.push(' ');
+                    self.out.push(match name.as_deref() {
+                        Some("\\midrule") => tables::RULE_LIGHT,
+                        Some("\\hline") => tables::RULE_HLINE,
+                        _ => tables::RULE_HEAVY,
+                    });
+                }
                 node.end_byte()
             }
             // `\cmidrule[width](trim){a-b}`: drop the command but CONSUME its
@@ -2881,6 +2898,7 @@ impl<'a> Emitter<'a> {
             Some("\\cmidrule") => {
                 let bytes = self.src.as_bytes();
                 let mut i = node.end_byte();
+                let mut range: Option<String> = None;
                 loop {
                     while i < bytes.len() && bytes[i].is_ascii_whitespace() {
                         i += 1;
@@ -2899,13 +2917,39 @@ impl<'a> Emitter<'a> {
                             i += usize::from(i < bytes.len());
                         }
                         Some(b'{') => {
+                            let range_start = i + 1;
                             while i < bytes.len() && bytes[i] != b'}' {
                                 i += 1;
                             }
+                            range = Some(self.src[range_start..i].trim().to_string());
                             i += usize::from(i < bytes.len());
                             break;
                         }
                         _ => break,
+                    }
+                }
+                // Without a `(trim)`/`[width]` prefix, tree-sitter absorbs the
+                // `{a-b}` group INTO the command node, so the trailing scan
+                // above never sees it — `\cmidrule{2-5}` (corpus 2605.22507,
+                // 8 occurrences) would silently produce no rule at all. Fall
+                // back to the node's own group.
+                let range = range.or_else(|| {
+                    first_curly_group(node).map(|g| self.curly_group_inner_trimmed(g).to_string())
+                });
+                // Carry the `{a-b}` span in the sentinel so the table emitter
+                // can place the partial rule at the row ITS OWN split puts it
+                // in, with no second scan of the source (see `emit_tabular`).
+                if self.in_table_cell {
+                    if let Some(range) = range {
+                        // Leading space for the same reason as the full-rule
+                        // sentinels above.
+                        let _ = write!(
+                            self.out,
+                            " {}{}{}",
+                            tables::RULE_PARTIAL,
+                            range,
+                            tables::RULE_PARTIAL
+                        );
                     }
                 }
                 self.skip_until = self.skip_until.max(i);

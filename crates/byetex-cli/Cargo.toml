@@ -16,7 +16,7 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
-byetex-core = { path = "../byetex-core", version = "0.7.1" }
+byetex-core = { path = "../byetex-core", version = "0.7.2" }
 clap.workspace = true
 serde_json.workspace = true
 

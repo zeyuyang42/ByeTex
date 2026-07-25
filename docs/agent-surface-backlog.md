@@ -32,7 +32,22 @@ Resolved.
 > *general* fix was blocked by the finding below, which the visual grader and the diff
 > reviewer reached independently from opposite directions.
 >
-> ### O1. Table rule placement needs a row index shared with the emitter's row split — sev 4 (major) — ROUTE: Loop A (redesign, NOT a one-tick match-arm fix)
+> ### O1. Table rule placement needs a row index shared with the emitter's row split — sev 4 (major) — ROUTE: Loop A — ✅ RESOLVED (v0.7.2)
+> - **Fix:** rule commands emit sentinels into the rendered body; `emit_tabular` reads them
+>   back out of its OWN row split, so the two indices cannot desync. The unsound raw-byte
+>   scan (`parse_cmidrule_rules`) is deleted. Visual grader re-graded `2605.22821`
+>   table-by-table: all 91 full + 11 partial rules land at the declared positions across
+>   all 15 tables (14 of which use the two-line `\makecell` headers that broke the scan) —
+>   `verdict: match, severity 0`.
+> - **Two NEW items the re-grade surfaced (both unrelated to rules):**
+>   - **O2.** `\multirow{N}` is trusted over the actual counted rows, so a source that
+>     declares `\multirow{3}` with only 2 data rows before the next `\midrule` overruns
+>     into the next group and silently drops that group's own label cell (`2605.22821`
+>     Tables 13/14 lose their `$32k$` row-group labels; Table 15, consistent at
+>     `\multirow{2}`, renders fine). Clamp the rowspan to the rows actually present.
+>   - **O3.** `2605.22821`'s author block drops two email addresses and the per-author
+>     affiliation superscripts, and drops an `\href`+badge line entirely.
+> - **Original analysis (kept for the record):**
 > - **Symptom:** rules are drawn in the canonical booktabs positions (top / after row 0 /
 >   bottom), not where the LaTeX declares them. A `\midrule` after a two-row header, or
 >   separating two data groups, lands after the first row instead. On `2605.22821` the

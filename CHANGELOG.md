@@ -3,6 +3,30 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.7.2] — unreleased
+
+### Fixed
+- **Table rules are drawn where the LaTeX declares them** (backlog O1). The emitter drew
+  a fixed booktabs shape — top, one rule after the first row, bottom — regardless of the
+  source, so every mid-table `\midrule` group separator collapsed into a single rule and
+  a `\midrule` after a two-row header landed a row early. Corpus 2605.22821 declares 91
+  full-width rules and got 45; it now emits exactly 91, plus all 11 `\cmidrule` spans.
+
+  The row a rule follows now comes from the SAME split the emission loop iterates: the
+  rule commands emit sentinels into the rendered body while it is being emitted, and
+  `emit_tabular` reads them back out of its own row split. The previous attempt derived
+  the index from a second raw-byte scan of the source counting `\\`, which is unsound in
+  both directions — `\tabularnewline` is a `\\` synonym the scan misses, `\\` inside
+  `\makecell{a \\ b}` is a line break within one cell rather than a row separator, and
+  `\newline` in a cell makes emitted rows outnumber source breaks (97 tabulars across 24
+  corpus papers were miscounted). The unsound scan (`parse_cmidrule_rules`) is deleted.
+- `\cmidrule{a-b}` written without a `(trim)`/`[width]` prefix produced no rule at all:
+  tree-sitter absorbs the `{a-b}` group into the command node, so the trailing-source scan
+  never saw it (corpus 2605.22507, 8 occurrences).
+- A row that collapses to no cells — the standard `\multirow` placeholder row — no longer
+  swallows the rules declared at the boundary after it, which dropped the `\bottomrule` of
+  any table ending in one.
+
 ## [0.7.1] — unreleased
 
 ### Fixed
