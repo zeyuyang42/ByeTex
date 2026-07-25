@@ -238,6 +238,22 @@ impl<'a> Emitter<'a> {
             || raw_env.contains("\\bottomrule")
             || raw_env.contains("\\hline")
             || raw_env.contains("\\cmidrule");
+        // Whether the source declares a FULL-WIDTH inner rule at all. The header
+        // rule below is a heuristic — booktabs' `\midrule` sits after the header
+        // in the vast majority of academic tables — but it fired for ANY ruled
+        // table, so a header ruled with `\cmidrule{2-3}` alone got a full-width
+        // line drawn straight through it on top of the partial one (`\cmidrule`
+        // appears in 23 of the 59 corpus papers, 224 times), and a plain
+        // `\toprule`/`\bottomrule` table got an inner rule LaTeX never draws.
+        // Gate the heuristic on the source actually asking for a full-width
+        // inner rule somewhere.
+        //
+        // NOTE: this deliberately does NOT try to place rules at their true
+        // source positions. Doing that needs a row index shared with the
+        // emitter's own row split; a second raw-byte `\\` scan is unsound
+        // (`\tabularnewline`, `\newline`-in-cell, `\\` inside `\makecell{…}`),
+        // which is a larger redesign — see the agent-surface backlog.
+        let has_inner_full_rule = raw_env.contains("\\midrule") || raw_env.contains("\\hline");
         // `\cmidrule{a-b}` partial rules, keyed by the data-row index they follow.
         let partial_rules = parse_cmidrule_rules(raw_env);
 
@@ -351,8 +367,8 @@ impl<'a> Emitter<'a> {
             self.out.push_str(",\n");
             // Header rule: after the first emitted row (the common single-row
             // header). Booktabs' `\midrule` sits here in the vast majority of
-            // academic tables.
-            if has_rules && emitted_rows == 0 {
+            // academic tables — but only when the source declares one at all.
+            if has_inner_full_rule && emitted_rows == 0 {
                 self.out.push_str("  table.hline(stroke: 0.05em),\n");
             }
             // Partial `\cmidrule` rules that sit after this data row.

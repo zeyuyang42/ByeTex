@@ -27,6 +27,43 @@ Resolved.
 
 ## Open — P0 (frequent × blocking)
 
+> **Round 14 (2026-07-25, v0.7.1)** — Loop-A tick on table rules. The selected item
+> (spurious full-width rule under a `\cmidrule` header) shipped scoped-down; the
+> *general* fix was blocked by the finding below, which the visual grader and the diff
+> reviewer reached independently from opposite directions.
+>
+> ### O1. Table rule placement needs a row index shared with the emitter's row split — sev 4 (major) — ROUTE: Loop A (redesign, NOT a one-tick match-arm fix)
+> - **Symptom:** rules are drawn in the canonical booktabs positions (top / after row 0 /
+>   bottom), not where the LaTeX declares them. A `\midrule` after a two-row header, or
+>   separating two data groups, lands after the first row instead. On `2605.22821` the
+>   source declares 91 full-width rules (15 `\toprule` + 61 `\midrule` + 15 `\bottomrule`)
+>   and ByeTex emits **45** — every mid-table group separator collapses into one.
+> - **Why the obvious fix fails:** deriving "which row does this rule follow" from a
+>   second raw-byte scan for `\\` is unsound, in both directions:
+>   - `\tabularnewline` is a full `\\` synonym the scan misses entirely → every rule
+>     collapses onto row 0 (`2605.22507`: 3 tables lose their bottom rule and all group
+>     separators, 14 rows hanging below the last rule);
+>   - `\\` inside a braced group is a line break within ONE cell, not a row separator —
+>     `\makecell{Vocab \\ size}` — so every following rule lands a row late (`2605.22821`:
+>     14 of 15 tables use two-line `\makecell` headers; the one that does not renders
+>     correctly, isolating the cause);
+>   - `\newline` in a cell makes emitted rows OUTNUMBER source breaks (`2605.31561`:
+>     `\bottomrule` drawn after row 7 with 21 rows rendering below it);
+>   - a last row with no terminating `\\`, and commented-out `% … \\` rows, shift it too.
+>
+>   Measured by converting all 596 corpus `tabular` envs with both binaries: **97 tabulars
+>   across 24 of 59 papers** have raw-`\\` ≠ emitted-row counts.
+> - **Route:** rule positions must come from the SAME split the emission loop iterates —
+>   e.g. interleave rule markers into the rendered body before the row split, so the two
+>   cannot desync by construction. `parse_cmidrule_rules` has the identical latent flaw
+>   (its partial rules already land a row late on `\makecell` tables) and must move to the
+>   shared index at the same time.
+> - **Also noted (pre-existing, separate items):** `2605.22821` leaks literal braces around
+>   math symbols from doubly-indirected `\newcommand`-defining-`\newcommand` colour macros
+>   (`{Σ}`, `{{b}}` throughout); emits a `[cite: missing key ...]` diagnostic as visible
+>   body text rather than dropping it with a warning; and renders 32 of 34 figures as
+>   blank grey placeholders.
+
 > **Round 13 (2026-07-01, v0.6.70)** — dogfood of the hardest 3 (`2605.31499` GOOD_ENOUGH,
 > `2605.22821` NEEDS_FIX, `2605.22728` NEEDS_FIX). **Headline: the leak scanner is now
 > load-bearing** — `2605.22728`'s agent ran `byetex diagnose main.typ`, found 21 real leaks
