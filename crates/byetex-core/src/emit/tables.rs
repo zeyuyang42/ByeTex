@@ -9,6 +9,123 @@ use super::{
     skip_balanced_braces, split_math_rows, Emitter,
 };
 
+/// Sentinels the rule commands drop into the RENDERED tabular body so
+/// `emit_tabular` can place each rule at the row the emitter's own split puts it
+/// in. Control characters that cannot occur in real LaTeX content, and that
+/// `split_math_rows` ignores (it keys on `\` + whitespace).
+///
+/// Why sentinels rather than a second scan of the source: the row a rule
+/// follows has to agree with the row list the emission loop iterates, and that
+/// list comes from splitting the *rendered* body. Any independent `\\` count
+/// over the raw source disagrees with it — `\tabularnewline` is a `\\` synonym
+/// the count misses, `\\` inside `\makecell{a \\ b}` is a line break within one
+/// cell rather than a row separator, and `\newline` in a cell makes emitted rows
+/// outnumber source breaks. 97 tabulars across 24 corpus papers are miscounted
+/// that way. Carrying the position through the render is exact by construction.
+pub(in crate::emit) const RULE_HEAVY: char = '\u{11}'; // \toprule / \bottomrule
+pub(in crate::emit) const RULE_LIGHT: char = '\u{12}'; // \midrule
+pub(in crate::emit) const RULE_HLINE: char = '\u{13}'; // \hline
+pub(in crate::emit) const RULE_PARTIAL: char = '\u{14}'; // \cmidrule{a-b}, wraps the range
+
+/// The rules declared at one boundary between rows (or at the table's edges).
+#[derive(Default, Clone)]
+struct RuleEdge {
+    /// Weight of the full-width rule here, if any. Repeats collapse — Typst has
+    /// no stacked-rule primitive and `\hline\hline` is visually negligible.
+    full: Option<RuleWeight>,
+    /// `\cmidrule` spans, as Typst `(start, end)` column boundaries.
+    partials: Vec<(usize, usize)>,
+}
+
+impl RuleEdge {
+    fn merge(&mut self, other: RuleEdge) {
+        if let Some(w) = other.full {
+            // A heavier rule at the same boundary wins (`\hline\bottomrule`).
+            self.full = Some(match self.full {
+                Some(cur) if cur >= w => cur,
+                _ => w,
+            });
+        }
+        self.partials.extend(other.partials);
+    }
+
+    fn is_empty(&self) -> bool {
+        self.full.is_none() && self.partials.is_empty()
+    }
+}
+
+/// Stroke weight of a full-width rule. Ordered so `merge` can keep the heavier.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum RuleWeight {
+    /// `\hline` — no weight of its own; resolved against its position later.
+    Plain,
+    /// `\midrule`.
+    Light,
+    /// `\toprule` / `\bottomrule`.
+    Heavy,
+}
+
+/// Write one boundary's rules: the full-width rule first, then any `\cmidrule`
+/// spans (booktabs draws them in that order).
+fn emit_rule_edge(
+    out: &mut String,
+    edge: &RuleEdge,
+    idx: usize,
+    cols: usize,
+    stroke_of: &dyn Fn(usize, RuleWeight) -> &'static str,
+) {
+    if edge.is_empty() {
+        return;
+    }
+    if let Some(w) = edge.full {
+        let _ = writeln!(out, "  table.hline(stroke: {}),", stroke_of(idx, w));
+    }
+    for &(start, end) in &edge.partials {
+        let end = end.min(cols);
+        let start = start.min(end.saturating_sub(1));
+        let _ = writeln!(
+            out,
+            "  table.hline(start: {start}, end: {end}, stroke: 0.05em),"
+        );
+    }
+}
+
+/// Split `seg` into its text content and the rules declared in it.
+fn strip_rule_sentinels(seg: &str) -> (String, RuleEdge) {
+    let mut text = String::with_capacity(seg.len());
+    let mut edge = RuleEdge::default();
+    let mut chars = seg.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            RULE_HEAVY => edge.merge_full(RuleWeight::Heavy),
+            RULE_LIGHT => edge.merge_full(RuleWeight::Light),
+            RULE_HLINE => edge.merge_full(RuleWeight::Plain),
+            RULE_PARTIAL => {
+                // `\u{14}a-b\u{14}` — take up to the closing sentinel.
+                let range: String = chars.by_ref().take_while(|c| *c != RULE_PARTIAL).collect();
+                if let Some((a, b)) = range.split_once('-') {
+                    if let (Ok(a), Ok(b)) = (a.trim().parse::<usize>(), b.trim().parse::<usize>()) {
+                        // `{a-b}` is 1-indexed inclusive; Typst wants
+                        // end-exclusive column boundaries.
+                        edge.partials.push((a.saturating_sub(1), b));
+                    }
+                }
+            }
+            _ => text.push(c),
+        }
+    }
+    (text, edge)
+}
+
+impl RuleEdge {
+    fn merge_full(&mut self, w: RuleWeight) {
+        self.full = Some(match self.full {
+            Some(cur) if cur >= w => cur,
+            _ => w,
+        });
+    }
+}
+
 impl<'a> Emitter<'a> {
     /// If `inc` is a `\input{file}` whose resolved file contains a `tabular`
     /// (or array family) environment, render that file in a sub-emitter and
@@ -206,7 +323,12 @@ impl<'a> Emitter<'a> {
         self.in_minipage = saved_in_minipage;
         self.in_table_cell = saved_in_table_cell;
 
-        // Strip \hline (already emitted as raw text by the default emitter).
+        // Strip any literal `\hline` left in the buffer. It is NOT turned into a
+        // sentinel: this runs over the RENDERED body, where a `\hline` can also
+        // be verbatim cell content (`\verb|\hline|` renders as `#raw("\hline")`),
+        // and synthesizing a rule from that draws a line LaTeX never does. The
+        // parsed command emits its own sentinel while rendering, which is the
+        // only occurrence that carries a real position.
         let cleaned = body_str.replace("\\hline", "");
         // Rows are separated by `\` followed by whitespace (the LaTeX
         // `\\` row break, which our `\\` emitter writes as a single
@@ -215,10 +337,27 @@ impl<'a> Emitter<'a> {
         // `\$`, `\_`, `\*` that legitimately appear in cell content
         // — e.g. `\multicolumn{2}{c}{\textbf{\$10.23}}` which used
         // to fragment at every `\$`/`\*` and corrupt the table.
-        let rows: Vec<&str> = split_math_rows(&cleaned)
-            .into_iter()
-            .filter(|r| !r.trim().is_empty())
-            .collect();
+        //
+        // THIS split is what positions the rules: the rule commands dropped
+        // sentinels into `body_str` as they were emitted, so a sentinel's row is
+        // whatever row this split puts it in — no second scan of the source, and
+        // therefore no way for the two to disagree about `\tabularnewline`, a
+        // `\\` inside `\makecell{…}`, or a `\newline` that adds a row.
+        // `edge[i]` holds the rules sitting at the boundary BEFORE row `i`;
+        // `edge[rows.len()]` is the bottom edge. LaTeX always writes a rule at a
+        // boundary (`… \\ \midrule next-row`), so attributing every sentinel to
+        // the boundary preceding the row it was found in is exact.
+        let mut rows: Vec<String> = Vec::new();
+        let mut edges: Vec<RuleEdge> = vec![RuleEdge::default()];
+        for seg in split_math_rows(&cleaned) {
+            let (text, edge) = strip_rule_sentinels(seg);
+            edges.last_mut().expect("edge always present").merge(edge);
+            if text.trim().is_empty() {
+                continue; // a rule-only (or empty) segment adds no row
+            }
+            rows.push(text);
+            edges.push(RuleEdge::default());
+        }
         // Build per-row cell lists so we can track rowspan/colspan occupancy.
         // (`split_math_rows` already consumed any `\\[len]` vertical-space arg.)
         let rows_2d: Vec<Vec<String>> = rows
@@ -232,30 +371,26 @@ impl<'a> Emitter<'a> {
         // header / bottom). And a LaTeX tabular with NO rule commands draws no
         // lines at all. So: `stroke: none` always (kills the spurious grid),
         // and add booktabs rules only when the source actually ruled the table.
-        let raw_env = &self.src[node.start_byte()..node.end_byte()];
-        let has_rules = raw_env.contains("\\toprule")
-            || raw_env.contains("\\midrule")
-            || raw_env.contains("\\bottomrule")
-            || raw_env.contains("\\hline")
-            || raw_env.contains("\\cmidrule");
-        // Whether the source declares a FULL-WIDTH inner rule at all. The header
-        // rule below is a heuristic — booktabs' `\midrule` sits after the header
-        // in the vast majority of academic tables — but it fired for ANY ruled
-        // table, so a header ruled with `\cmidrule{2-3}` alone got a full-width
-        // line drawn straight through it on top of the partial one (`\cmidrule`
-        // appears in 23 of the 59 corpus papers, 224 times), and a plain
-        // `\toprule`/`\bottomrule` table got an inner rule LaTeX never draws.
-        // Gate the heuristic on the source actually asking for a full-width
-        // inner rule somewhere.
-        //
-        // NOTE: this deliberately does NOT try to place rules at their true
-        // source positions. Doing that needs a row index shared with the
-        // emitter's own row split; a second raw-byte `\\` scan is unsound
-        // (`\tabularnewline`, `\newline`-in-cell, `\\` inside `\makecell{…}`),
-        // which is a larger redesign — see the agent-surface backlog.
-        let has_inner_full_rule = raw_env.contains("\\midrule") || raw_env.contains("\\hline");
-        // `\cmidrule{a-b}` partial rules, keyed by the data-row index they follow.
-        let partial_rules = parse_cmidrule_rules(raw_env);
+        // `\hline` carries no weight of its own; booktabs' do. Resolve `Plain`
+        // against position — heavy at the table's outer edges, light inside —
+        // which is the shape an `\hline` table produced before rules were
+        // placed from source.
+        let last_edge = edges.len().saturating_sub(1);
+        let first_ruled = edges.iter().position(|e| e.full.is_some());
+        let last_ruled = edges.iter().rposition(|e| e.full.is_some());
+        let stroke_of = |idx: usize, w: RuleWeight| -> &'static str {
+            match w {
+                RuleWeight::Heavy => "0.08em",
+                RuleWeight::Light => "0.05em",
+                RuleWeight::Plain => {
+                    if Some(idx) == first_ruled || Some(idx) == last_ruled || idx == last_edge {
+                        "0.08em"
+                    } else {
+                        "0.05em"
+                    }
+                }
+            }
+        };
 
         // The column SPEC is only an upper bound: LaTeX papers commonly
         // over-declare it (`{llrrrrrrrrrrrrrr}` = 16) while the rows — via
@@ -293,10 +428,9 @@ impl<'a> Emitter<'a> {
             "#table(\n  columns: {},\n  align: ({}),\n  stroke: none,\n",
             columns_expr, align_str
         );
-        if has_rules {
-            // Top rule (heavier), then the header rule is injected after the
-            // first emitted row below.
-            self.out.push_str("  table.hline(stroke: 0.08em),\n");
+        // Rules at the top edge (before any row).
+        if let Some(e) = edges.first() {
+            emit_rule_edge(&mut self.out, e, 0, cols, &stroke_of);
         }
 
         // rowspan_cols[c] = number of additional rows for which column c is
@@ -305,8 +439,7 @@ impl<'a> Emitter<'a> {
         // Each subsequent visit to that column decrements the counter.
         let mut rowspan_cols = vec![0usize; cols];
 
-        let mut emitted_rows = 0usize;
-        for row_cells in &rows_2d {
+        for (row_idx, row_cells) in rows_2d.iter().enumerate() {
             let mut row_output: Vec<String> = Vec::new();
             let mut src = row_cells.iter();
             let mut col = 0usize;
@@ -333,9 +466,13 @@ impl<'a> Emitter<'a> {
                 }
             }
 
-            if row_output.is_empty() {
-                continue;
-            }
+            // NOTE: a row that collapses to nothing (every column covered by an
+            // active rowspan — the standard `\multirow` placeholder row) still
+            // OWNS the boundary after it, so the rule emission below must run
+            // even when no cells are written. Skipping the whole iteration
+            // dropped the `\bottomrule` of any table whose last row is a
+            // placeholder.
+            let has_cells = !row_output.is_empty();
             // LaTeX pads a short row (fewer cells than the column count) to the
             // full width implicitly; Typst's `table()` auto-placement does NOT —
             // it flows cells continuously, so an un-padded short row shifts every
@@ -343,49 +480,35 @@ impl<'a> Emitter<'a> {
             // grid edge ("colspan would exceed available columns", corpus
             // 2605.31203). Fill the remainder with empty cells, skipping columns
             // still held by an active rowspan (mirrors the placement loop above).
-            while col < cols {
-                if rowspan_cols[col] > 0 {
-                    rowspan_cols[col] -= 1;
-                } else {
-                    row_output.push(String::new());
+            if has_cells {
+                while col < cols {
+                    if rowspan_cols[col] > 0 {
+                        rowspan_cols[col] -= 1;
+                    } else {
+                        row_output.push(String::new());
+                    }
+                    col += 1;
                 }
-                col += 1;
-            }
-            self.out.push_str("  ");
-            for (i, cell) in row_output.iter().enumerate() {
-                if i > 0 {
-                    self.out.push_str(", ");
+                self.out.push_str("  ");
+                for (i, cell) in row_output.iter().enumerate() {
+                    if i > 0 {
+                        self.out.push_str(", ");
+                    }
+                    // Cells produced by `\multicolumn` / `\multirow` are already
+                    // `table.cell(...)` calls and must not be wrapped again.
+                    if cell.starts_with("table.cell(") {
+                        self.out.push_str(cell);
+                    } else {
+                        let _ = write!(self.out, "[{}]", escape_text_cell(cell));
+                    }
                 }
-                // Cells produced by `\multicolumn` / `\multirow` are already
-                // `table.cell(...)` calls and must not be wrapped again.
-                if cell.starts_with("table.cell(") {
-                    self.out.push_str(cell);
-                } else {
-                    let _ = write!(self.out, "[{}]", escape_text_cell(cell));
-                }
+                self.out.push_str(",\n");
             }
-            self.out.push_str(",\n");
-            // Header rule: after the first emitted row (the common single-row
-            // header). Booktabs' `\midrule` sits here in the vast majority of
-            // academic tables — but only when the source declares one at all.
-            if has_inner_full_rule && emitted_rows == 0 {
-                self.out.push_str("  table.hline(stroke: 0.05em),\n");
+            // Rules declared at the boundary AFTER this row — emitted whether or
+            // not the row itself produced cells.
+            if let Some(e) = edges.get(row_idx + 1) {
+                emit_rule_edge(&mut self.out, e, row_idx + 1, cols, &stroke_of);
             }
-            // Partial `\cmidrule` rules that sit after this data row.
-            if let Some(rules) = partial_rules.get(&emitted_rows) {
-                for &(start, end) in rules {
-                    let end = end.min(cols);
-                    let start = start.min(end.saturating_sub(1));
-                    let _ = writeln!(
-                        self.out,
-                        "  table.hline(start: {start}, end: {end}, stroke: 0.05em),"
-                    );
-                }
-            }
-            emitted_rows += 1;
-        }
-        if has_rules {
-            self.out.push_str("  table.hline(stroke: 0.08em),\n");
         }
         self.out.push(')');
         node.end_byte()
@@ -418,69 +541,6 @@ fn split_cells_on_unescaped_amp(row: &str) -> Vec<String> {
     }
     cells.push(cur.trim().to_string());
     cells
-}
-
-/// Parse `\cmidrule[width](trim){a-b}` rules from a raw tabular source, keyed by
-/// the data-row index they follow (= number of `\\` row breaks before the rule,
-/// minus one). A `{a-b}` range (1-indexed, inclusive) maps to a Typst hline span
-/// `(start, end)` = `(a-1, b)` (end-exclusive column boundary).
-fn parse_cmidrule_rules(raw: &str) -> std::collections::HashMap<usize, Vec<(usize, usize)>> {
-    let bytes = raw.as_bytes();
-    let mut map: std::collections::HashMap<usize, Vec<(usize, usize)>> =
-        std::collections::HashMap::new();
-    let mut i = 0usize;
-    let mut row_breaks = 0usize;
-    while i < bytes.len() {
-        if bytes[i] == b'\\' && bytes.get(i + 1) == Some(&b'\\') {
-            row_breaks += 1;
-            i += 2;
-            continue;
-        }
-        if bytes[i..].starts_with(b"\\cmidrule") {
-            let mut j = i + "\\cmidrule".len();
-            // Skip optional (trim) and [width] in any order.
-            loop {
-                while j < bytes.len() && bytes[j].is_ascii_whitespace() {
-                    j += 1;
-                }
-                match bytes.get(j) {
-                    Some(b'(') => {
-                        while j < bytes.len() && bytes[j] != b')' {
-                            j += 1;
-                        }
-                        j += usize::from(j < bytes.len());
-                    }
-                    Some(b'[') => {
-                        while j < bytes.len() && bytes[j] != b']' {
-                            j += 1;
-                        }
-                        j += usize::from(j < bytes.len());
-                    }
-                    _ => break,
-                }
-            }
-            if bytes.get(j) == Some(&b'{') {
-                let start = j + 1;
-                let mut k = start;
-                while k < bytes.len() && bytes[k] != b'}' {
-                    k += 1;
-                }
-                if let Some((a, b)) = raw[start..k].split_once('-') {
-                    if let (Ok(a), Ok(b)) = (a.trim().parse::<usize>(), b.trim().parse::<usize>()) {
-                        map.entry(row_breaks.saturating_sub(1))
-                            .or_default()
-                            .push((a.saturating_sub(1), b));
-                    }
-                }
-                i = k + usize::from(k < bytes.len());
-                continue;
-            }
-            i = j;
-            continue;
-        }
-        i += 1;
-    }
-    map
 }
 
 fn effective_column_count(rows_2d: &[Vec<String>], spec_count: usize) -> usize {
