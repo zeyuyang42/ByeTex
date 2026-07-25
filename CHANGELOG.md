@@ -3,6 +3,26 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.7.1] — unreleased
+
+### Fixed
+- **A table whose header is ruled by `\cmidrule` got a full-width line drawn straight
+  through it.** The emitter injected a "header rule" after the first row of ANY ruled
+  table, so `\cmidrule(lr){2-3}` produced its correct partial rule *plus* a spurious
+  full-width one. `\cmidrule` appears in 23 of the 59 corpus papers, 224 times. The same
+  heuristic also gave a plain `\toprule`/`\bottomrule` table an inner rule LaTeX never
+  draws. It is now gated on the source actually declaring a full-width inner rule
+  (`\midrule` / `\hline`).
+
+  Rules are still drawn in the canonical booktabs positions rather than where the source
+  puts them — a `\midrule` after a two-row header, or between two data groups, still
+  lands after the first row. Placing them faithfully needs a row index shared with the
+  emitter's own row split; deriving one from a second raw-byte `\\` scan is unsound
+  (`\tabularnewline` is a `\\` synonym the scan misses, `\newline`-in-cell makes emitted
+  rows outnumber source breaks, and `\\` inside `\makecell{…}` is not a row break at
+  all — 97 tabulars across 24 corpus papers are miscounted that way). Tracked as a
+  separate backlog item.
+
 ## [0.7.0] — unreleased
 
 ### Fixed
