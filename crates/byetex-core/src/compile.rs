@@ -72,6 +72,12 @@ pub fn render_typ(
     typst_bin: &str,
 ) -> Result<RenderResult> {
     std::fs::create_dir_all(out_dir).with_context(|| format!("create {}", out_dir.display()))?;
+    // Clear pages from a previous render first. `collect_page_pngs` globs the
+    // directory afterwards, so leftovers from a LONGER earlier document would be
+    // reported as current output — inflating the page count in the grading
+    // packet and mis-pairing it against the truth pages (review finding #7).
+    // Only `page-<N>.png` is removed; anything else the caller put here stays.
+    remove_page_pngs(out_dir);
     // typst replaces `{p}` with the 1-based page number, producing page-1.png,
     // page-2.png, … inside out_dir.
     let template = out_dir.join("page-{p}.png");
@@ -89,6 +95,14 @@ pub fn render_typ(
         errors: parse_typst_errors(&stderr),
         image_paths: collect_page_pngs(out_dir),
     })
+}
+
+/// Delete every `page-<N>.png` in `dir`. Best-effort: an unremovable file just
+/// stays and will be picked up as before.
+fn remove_page_pngs(dir: &Path) {
+    for stale in collect_page_pngs(dir) {
+        let _ = std::fs::remove_file(&stale);
+    }
 }
 
 /// Collect `page-<N>.png` files in `dir`, sorted by `N`. Pure over the

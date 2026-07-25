@@ -482,6 +482,54 @@ pub(in crate::emit) fn extract_label_ref_keys_and_end(
     Some((keys, end))
 }
 
+/// Largest index `<= i` that is a char boundary of `src` (clamped to `len`).
+pub(in crate::emit) fn floor_char_boundary(src: &str, i: usize) -> usize {
+    let mut i = i.min(src.len());
+    while i > 0 && !src.is_char_boundary(i) {
+        i -= 1;
+    }
+    i
+}
+
+/// Smallest index `>= i` that is a char boundary of `src` (clamped to `len`).
+pub(in crate::emit) fn ceil_char_boundary(src: &str, i: usize) -> usize {
+    let mut i = i.min(src.len());
+    while i < src.len() && !src.is_char_boundary(i) {
+        i += 1;
+    }
+    i
+}
+
+/// Scan a verb-style `<delim>…<delim>` run whose OPENING delimiter sits at byte
+/// `delim_pos`. Returns `(delim, content_start, content_end, after_close)`.
+///
+/// The delimiter is decoded as a `char`, never as a byte: `\verb` accepts any
+/// non-letter character, including multi-byte ones (`\verb§rm -rf /§`,
+/// `\verb€a b€`). Reading it as a byte and then slicing `src[pos + 1..close]`
+/// lands mid-codepoint and panics the whole conversion (review finding #2).
+pub(in crate::emit) fn scan_verb_delimited(
+    src: &str,
+    delim_pos: usize,
+) -> Option<(char, usize, usize, usize)> {
+    let delim = src.get(delim_pos..)?.chars().next()?;
+    let content_start = delim_pos + delim.len_utf8();
+    let rel = src.get(content_start..)?.find(delim)?;
+    let content_end = content_start + rel;
+    Some((
+        delim,
+        content_start,
+        content_end,
+        content_end + delim.len_utf8(),
+    ))
+}
+
+/// True if `c` can serve as a `\verb`-style delimiter: anything that is neither
+/// whitespace, alphanumeric, nor one of the group openers a non-delimited call
+/// form would start with.
+pub(in crate::emit) fn is_verb_delimiter(c: char) -> bool {
+    !c.is_whitespace() && !c.is_alphanumeric() && !matches!(c, '{' | '(' | '[')
+}
+
 // ─── Tabular, math rows & math sanitization ───────────────────────────────────
 
 /// Skip a `{...}` balanced-brace group starting at `start` (where `src[start] == '{'`).

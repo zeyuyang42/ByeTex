@@ -75,21 +75,44 @@ pub fn map_typst_errors(
         .collect()
 }
 
-/// Spawn `<typst_bin> compile <typ_path> <typ_path>.pdf`, return its stderr.
-/// The PDF is removed afterwards. Returns an empty string when typst can't be
-/// spawned (so a missing typst yields zero diagnostics rather than an error).
+/// Spawn `<typst_bin> compile <typ_path> <scratch>.pdf`, return its stderr.
+/// Returns an empty string when typst can't be spawned (so a missing typst
+/// yields zero diagnostics rather than an error).
+///
+/// The PDF goes to a private scratch directory, NOT to `<typ_path>.pdf`. Writing
+/// it beside the `.typ` and then unconditionally deleting it destroyed the
+/// user's own `main.pdf` — which `byetex diagnose main.typ` documents as a
+/// non-destructive scan, and which is exactly the filename `byetex review`
+/// looks for as a cached truth render (review finding #9).
 pub fn compile_typ_stderr(typ_path: &Path, typst_bin: &str) -> String {
-    let pdf = typ_path.with_extension("pdf");
-    match std::process::Command::new(typst_bin)
-        .arg("compile")
-        .arg(typ_path)
-        .arg(&pdf)
-        .output()
-    {
-        Ok(o) => {
+    let scratch = match tempfile::tempdir() {
+        Ok(d) => d,
+        // No usable temp dir: fall back to a sibling name that cannot collide
+        // with a real render, and clean it up.
+        Err(_) => {
+            let pdf = typ_path.with_extension("byetex-diagnose.pdf");
+            let out = std::process::Command::new(typst_bin)
+                .arg("compile")
+                .arg(typ_path)
+                .arg(&pdf)
+                .output();
             let _ = std::fs::remove_file(&pdf);
-            String::from_utf8_lossy(&o.stderr).into_owned()
+            return out
+                .map(|o| String::from_utf8_lossy(&o.stderr).into_owned())
+                .unwrap_or_default();
         }
+    };
+    let pdf = scratch.path().join("diagnose.pdf");
+    // `--root` keeps typst's file access anchored at the `.typ`'s directory even
+    // though the output now lives elsewhere.
+    let root = typ_path.parent().filter(|p| !p.as_os_str().is_empty());
+    let mut cmd = std::process::Command::new(typst_bin);
+    cmd.arg("compile");
+    if let Some(r) = root {
+        cmd.arg("--root").arg(r);
+    }
+    match cmd.arg(typ_path).arg(&pdf).output() {
+        Ok(o) => String::from_utf8_lossy(&o.stderr).into_owned(),
         Err(_) => String::new(),
     }
 }
@@ -309,10 +332,18 @@ pub fn diagnose_flat(
 /// `main.typ`) from `input` (a `.tex` entry file or a project directory) into
 /// `out_dir`, then compile + map `main.typ`. Returns the `main.typ` path and the
 /// diagnostics.
+///
+/// `force` gates the destructive part: materialising into a NON-EMPTY `out_dir`
+/// wipes its contents first. This used to be hardcoded to `true`, so a
+/// `diagnose --project --out some/dir` deleted everything the user had there —
+/// including a LaTeX source tree, if that is what they pointed at (review
+/// finding #5). `convert --project` has always required `--force` for the same
+/// operation; `diagnose` now matches it.
 pub fn diagnose_project(
     input: &Path,
     out_dir: Option<&Path>,
     typst_bin: &str,
+    force: bool,
 ) -> Result<(PathBuf, Vec<Diagnostic>)> {
     let input_is_dir = input.is_dir();
     // no_toml=true (a diagnostics run doesn't need typst.toml); capture the map.
@@ -328,6 +359,12 @@ pub fn diagnose_project(
     } else {
         base_dir_of(&plan.entry_tex)
     };
+    // A caller-supplied `--out` is a directory the USER owns and may well have
+    // put something in, so wiping it needs `force`. The default
+    // `<entry-stem>.typst-project/` is byetex-owned and re-generated on every
+    // run, so it keeps overwriting itself — otherwise the repair loop would
+    // fail on its own second invocation.
+    let force = force || out_dir.is_none();
     let out_dir = out_dir.map(Path::to_path_buf).unwrap_or_else(|| {
         let stem = plan
             .entry_tex
@@ -339,7 +376,7 @@ pub fn diagnose_project(
             .unwrap_or_else(|| Path::new("."))
             .join(format!("{stem}.typst-project"))
     });
-    materialize_project(&plan, &out_dir, &base_dir, true)
+    materialize_project(&plan, &out_dir, &base_dir, force)
         .with_context(|| format!("materialising project to {}", out_dir.display()))?;
 
     let main_typ = out_dir.join("main.typ");

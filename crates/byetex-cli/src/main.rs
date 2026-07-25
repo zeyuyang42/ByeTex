@@ -141,6 +141,10 @@ enum Command {
         /// `<entry-stem>.typst-project/`).
         #[arg(long)]
         out: Option<PathBuf>,
+        /// Project mode: overwrite a non-empty output directory. Without this,
+        /// diagnose refuses rather than deleting what is already there.
+        #[arg(long)]
+        force: bool,
     },
 
     /// Stage-0 input-validation oracle: compile the INPUT LaTeX with
@@ -337,7 +341,8 @@ fn main() -> Result<()> {
             input,
             project,
             out,
-        } => run_diagnose(input, project, out),
+            force,
+        } => run_diagnose(input, project, out, force),
         Command::Doctor {
             input,
             strict,
@@ -387,7 +392,7 @@ fn typst_bin() -> String {
 /// Exits 0 in all cases — errors are recorded in the JSON file, not in the
 /// exit code. When typst is absent the `.typ` is still written and an empty
 /// `[]` diagnostics file is produced.
-fn run_diagnose(input: PathBuf, project: bool, out: Option<PathBuf>) -> Result<()> {
+fn run_diagnose(input: PathBuf, project: bool, out: Option<PathBuf>, force: bool) -> Result<()> {
     let typst = typst_bin();
     // A directory input, or an explicit --project, goes through the project
     // planner+materialiser (copies assets, preprocesses .bib, resolves \input)
@@ -401,7 +406,7 @@ fn run_diagnose(input: PathBuf, project: bool, out: Option<PathBuf>) -> Result<(
         let diags = byetex_core::diagnose::diagnose_typ(&input, &typst)?;
         (input.clone(), diags)
     } else if project || input.is_dir() {
-        byetex_core::diagnose::diagnose_project(&input, out.as_deref(), &typst)?
+        byetex_core::diagnose::diagnose_project(&input, out.as_deref(), &typst, force)?
     } else {
         byetex_core::diagnose::diagnose_flat(&input, out.as_deref(), &typst)?
     };
@@ -719,12 +724,15 @@ fn resolve_truth_pdf(
     } else {
         base_dir_from_file(entry_tex)
     };
-    if let Ok(rd) = std::fs::read_dir(&src_dir) {
-        for e in rd.flatten() {
-            let p = e.path();
-            if p.extension().and_then(|s| s.to_str()) == Some("pdf") {
-                return Ok((Some(p), "cached"));
-            }
+    // ONLY `<entry-stem>.pdf` counts as a cached render of this paper. Taking
+    // the first `.pdf` `read_dir` happened to yield graded the conversion
+    // against whatever figure PDF the source tree shipped — 8 corpus papers
+    // keep one at their root — and did so non-deterministically, since
+    // `read_dir` order is unspecified (review finding #6).
+    if let Some(stem) = entry_tex.file_stem().and_then(|s| s.to_str()) {
+        let cached = src_dir.join(format!("{stem}.pdf"));
+        if cached.is_file() {
+            return Ok((Some(cached), "cached"));
         }
     }
     // Compile the original LaTeX with tectonic (best-effort; absent → no truth).
@@ -757,6 +765,12 @@ fn resolve_truth_pdf(
 /// `BYETEX_PDFTOPPM_BIN`.
 fn rasterize_pdf(pdf: &Path, out_dir: &Path, dpi: u32) -> Result<Vec<String>> {
     std::fs::create_dir_all(out_dir).with_context(|| format!("create {}", out_dir.display()))?;
+    // Drop truth pages from a previous run: `collect_numbered_pngs` globs the
+    // directory afterwards, so a shorter document would still report the older,
+    // longer page list (review finding #7).
+    for stale in collect_numbered_pngs(out_dir, "truth") {
+        let _ = std::fs::remove_file(&stale);
+    }
     let bin = std::env::var("BYETEX_PDFTOPPM_BIN").unwrap_or_else(|_| "pdftoppm".to_string());
     let status = std::process::Command::new(&bin)
         .arg("-png")

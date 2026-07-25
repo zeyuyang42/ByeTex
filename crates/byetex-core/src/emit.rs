@@ -58,12 +58,13 @@ pub(crate) use macros::{
 };
 pub(crate) use math_symbols::lookup_math_symbol;
 pub(in crate::emit) use node_utils::{
-    brace_balanced_end, color_command_parts, color_from_model_spec, command_name_of,
-    command_name_text, environment_name, extract_label_name, extract_label_name_and_end,
-    extract_label_ref_keys_and_end, first_curly_group, first_curly_like, flatten_text_children,
-    is_command, is_comment, is_section_kind, leading_font_switch, math_font_decl_wrapper,
-    named_color, needs_empty_base, needs_subscript_parens, nth_curly_group, parse_definecolor,
-    peek_tex_assignment_end, range_of, section_level, skip_balanced_braces, split_math_rows,
+    brace_balanced_end, ceil_char_boundary, color_command_parts, color_from_model_spec,
+    command_name_of, command_name_text, environment_name, extract_label_name,
+    extract_label_name_and_end, extract_label_ref_keys_and_end, first_curly_group, first_curly_like,
+    flatten_text_children, floor_char_boundary, is_command, is_comment, is_section_kind,
+    is_verb_delimiter, leading_font_switch, math_font_decl_wrapper, named_color, needs_empty_base,
+    needs_subscript_parens, nth_curly_group, parse_definecolor, peek_tex_assignment_end, range_of,
+    scan_verb_delimited, section_level, skip_balanced_braces, split_math_rows,
 };
 pub(in crate::emit) use preamble::{
     build_neutral_preamble, extract_class_and_options, extract_latex_include_path,
@@ -505,6 +506,12 @@ pub(crate) struct Emitter<'a> {
     /// `#cite` aborts the compile. Stricter than `had_bib_file`, which is also
     /// set for `.bbl`-only papers (the key harvest reads `.bbl` files too).
     bib_will_render: bool,
+    /// True once a `#bibliography(...)` has actually been written to the output.
+    /// Typst hard-errors with "multiple bibliographies are not yet supported",
+    /// so the second `\bibliography{}` / `\printbibliography` in a document —
+    /// common when a stray one survives alongside a class-provided call — must
+    /// be dropped rather than emitted (review finding #4).
+    emitted_bibliography: bool,
     /// Citation mode forced by an explicit natbib/biblatex package option
     /// (`\usepackage[numbers]{natbib}` → Numeric, `[authoryear]` → AuthorYear).
     /// `None` when no relevant option was given — then the `\bibliographystyle`
@@ -746,6 +753,7 @@ impl<'a> Emitter<'a> {
             has_bibtex_include: false,
             had_bib_file: false,
             bib_will_render: false,
+            emitted_bibliography: false,
             natbib_mode: None,
             record_source_map: false,
             source_map: Vec::new(),
@@ -1332,6 +1340,12 @@ impl<'a> Emitter<'a> {
         if from >= to {
             return;
         }
+        // "Safe" also means char-safe: several byte-scanning handlers hand us
+        // offsets derived from `position(|&b| …)` searches, and on a document
+        // with non-ASCII text those can land mid-codepoint. Widen to the
+        // enclosing char boundaries rather than panicking the conversion.
+        let from = floor_char_boundary(self.src, from);
+        let to = ceil_char_boundary(self.src, to);
         let text = &self.src[from..to];
         if self.in_math {
             self.out.push_str(text);
@@ -1475,8 +1489,11 @@ impl<'a> Emitter<'a> {
         // the preamble) must reach sub-emitted content too (mirrors
         // `bib_will_render`).
         sub.natbib_mode = self.natbib_mode;
+        // One `#bibliography` per document, across every buffer (review #4).
+        sub.emitted_bibliography = self.emitted_bibliography;
         sub.emit_root(tree.root_node());
         // Merge side-effects back into the parent.
+        self.emitted_bibliography |= sub.emitted_bibliography;
         self.visited_includes = std::mem::take(&mut sub.visited_includes);
         for (k, v) in sub.macros.drain() {
             self.macros.entry(k).or_insert(v);
@@ -2470,20 +2487,15 @@ impl<'a> Emitter<'a> {
         // after `\verb` to the next occurrence of the delimiter, and skip any
         // tokens the grammar produced inside.
         if name.as_deref() == Some("\\verb") || name.as_deref() == Some("\\verb*") {
-            let bytes = self.src.as_bytes();
-            let end = node.end_byte();
-            if let Some(&delim) = bytes.get(end) {
-                if let Some(rel) = bytes[end + 1..].iter().position(|&b| b == delim) {
-                    let close = end + 1 + rel;
-                    let content = &self.src[end + 1..close];
-                    // Use #raw(...) rather than backtick syntax so the
-                    // post_process_typography backtick-escape pass does not
-                    // double-escape the delimiters.
-                    let escaped = content.replace('\\', "\\\\").replace('"', "\\\"");
-                    let _ = write!(self.out, "#raw(\"{}\")", escaped);
-                    self.skip_until = close + 1;
-                    return close + 1;
-                }
+            if let Some((_delim, cs, ce, after)) = scan_verb_delimited(self.src, node.end_byte()) {
+                let content = &self.src[cs..ce];
+                // Use #raw(...) rather than backtick syntax so the
+                // post_process_typography backtick-escape pass does not
+                // double-escape the delimiters.
+                let escaped = content.replace('\\', "\\\\").replace('"', "\\\"");
+                let _ = write!(self.out, "#raw(\"{}\")", escaped);
+                self.skip_until = after;
+                return after;
             }
             self.warn_unsupported_command(node);
             return node.end_byte();
@@ -2497,21 +2509,13 @@ impl<'a> Emitter<'a> {
         // mis-read as verbatim. tikzpicture bodies are dropped elsewhere, so in
         // practice only path.sty's form reaches here.
         if name.as_deref() == Some("\\path") || name.as_deref() == Some("\\path*") {
-            let bytes = self.src.as_bytes();
-            let end = node.end_byte();
-            if let Some(&delim) = bytes.get(end) {
-                let is_verb_delim = !delim.is_ascii_whitespace()
-                    && !delim.is_ascii_alphanumeric()
-                    && !matches!(delim, b'{' | b'(' | b'[');
-                if is_verb_delim {
-                    if let Some(rel) = bytes[end + 1..].iter().position(|&b| b == delim) {
-                        let close = end + 1 + rel;
-                        let content = &self.src[end + 1..close];
-                        let escaped = content.replace('\\', "\\\\").replace('"', "\\\"");
-                        let _ = write!(self.out, "#raw(\"{}\")", escaped);
-                        self.skip_until = close + 1;
-                        return close + 1;
-                    }
+            if let Some((delim, cs, ce, after)) = scan_verb_delimited(self.src, node.end_byte()) {
+                if is_verb_delimiter(delim) {
+                    let content = &self.src[cs..ce];
+                    let escaped = content.replace('\\', "\\\\").replace('"', "\\\"");
+                    let _ = write!(self.out, "#raw(\"{}\")", escaped);
+                    self.skip_until = after;
+                    return after;
                 }
             }
             self.warn_unsupported_command(node);
@@ -2574,13 +2578,13 @@ impl<'a> Emitter<'a> {
                     let close = skip_balanced_braces(self.src, i);
                     Some((self.src[i + 1..close.saturating_sub(1)].to_string(), close))
                 }
-                Some(&delim) if !delim.is_ascii_whitespace() && !delim.is_ascii_alphanumeric() => {
-                    bytes[i + 1..].iter().position(|&b| b == delim).map(|rel| {
-                        let close = i + 1 + rel;
-                        (self.src[i + 1..close].to_string(), close + 1)
-                    })
-                }
-                _ => None,
+                // Verb-style `<delim>code<delim>`. The delimiter is decoded as a
+                // char so a multi-byte one (`\lstinline§foo(1)§`) does not slice
+                // mid-codepoint (review finding #2).
+                _ => scan_verb_delimited(self.src, i).and_then(|(delim, cs, ce, after)| {
+                    (!delim.is_whitespace() && !delim.is_alphanumeric())
+                        .then(|| (self.src[cs..ce].to_string(), after))
+                }),
             };
 
             if let Some((code, end)) = body {
