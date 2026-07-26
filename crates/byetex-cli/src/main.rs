@@ -54,8 +54,9 @@ enum Command {
         #[arg(long, value_name = "DIR", requires = "project")]
         project_out: Option<PathBuf>,
 
-        /// Skip writing typst.toml even when a known Typst Universe package is detected.
-        #[arg(long, requires = "project")]
+        /// Reserved: `typst.toml` generation is currently disabled, so this is a
+        /// no-op. Kept hidden so existing scripts keep working.
+        #[arg(long, requires = "project", hide = true)]
         no_toml: bool,
 
         /// Overwrite non-empty --project-out directory.
@@ -106,8 +107,9 @@ enum Command {
         /// `<input-stem>.typst-project/`.
         #[arg(long, value_name = "DIR", requires = "project")]
         project_out: Option<PathBuf>,
-        /// Skip writing typst.toml even when a known Typst Universe package is detected.
-        #[arg(long, requires = "project")]
+        /// Reserved: `typst.toml` generation is currently disabled, so this is a
+        /// no-op. Kept hidden so existing scripts keep working.
+        #[arg(long, requires = "project", hide = true)]
         no_toml: bool,
         /// Overwrite non-empty --project-out directory.
         #[arg(long, requires = "project")]
@@ -1198,7 +1200,6 @@ fn run_project(
 
     let n_warnings = plan.warnings.len();
     let n_assets = plan.assets.len();
-    let has_manifest = plan.manifest.is_some();
 
     byetex_core::project::materialize_project(&plan, &out_dir, base_dir, force)
         .with_context(|| format!("writing project to {}", out_dir.display()))?;
@@ -1212,13 +1213,12 @@ fn run_project(
         .with_context(|| format!("writing {}", warnings_path.display()))?;
 
     eprintln!(
-        "wrote project → {} ({} asset{}, {} warning{}, typst.toml: {})",
+        "wrote project → {} ({} asset{}, {} warning{})",
         out_dir.display(),
         n_assets,
         if n_assets == 1 { "" } else { "s" },
         n_warnings,
         if n_warnings == 1 { "" } else { "s" },
-        if has_manifest { "yes" } else { "no" },
     );
 
     if !brief.skip {

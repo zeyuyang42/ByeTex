@@ -1,16 +1,18 @@
 {
   "name": "byetex",
-  "description": "ByeTex — LaTeX → Typst converter for AI agents.",
+  "description": "ByeTex \u2014 LaTeX \u2192 Typst converter for AI agents.",
   "owner": {
     "name": "Zeyu Yang"
   },
   "plugins": [
     {
       "name": "byetex",
-      "description": "LaTeX → Typst converter: a CLI and 12 repair/grading skills. Requires the `byetex` binary on PATH (cargo install byetex / brew / install.sh).",
-      "version": "0.3.0",
+      "description": "LaTeX \u2192 Typst converter: a CLI and 14 repair/grading skills. Requires the `byetex` binary on PATH (see install.sh in the repo).",
+      "version": "0.7.3",
       "source": "./",
-      "author": { "name": "Zeyu Yang" }
+      "author": {
+        "name": "Zeyu Yang"
+      }
     }
   ]
 }

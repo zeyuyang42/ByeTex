@@ -824,6 +824,31 @@ impl<'a> Emitter<'a> {
         env.end_byte()
     }
 
+    /// A `tikzpicture` body: drop the drawing commands (they are not prose and
+    /// have no Typst equivalent) but leave a VISIBLE placeholder and a
+    /// structured `Category::Tikz` warning, so the loss is never silent and the
+    /// `byetex-tikz-to-typst` skill becomes reachable via `suggested_skill`.
+    pub(in crate::emit) fn emit_tikz_placeholder(&mut self, node: Node<'_>) -> usize {
+        let snippet = self.src[node.start_byte()..node.end_byte()].to_string();
+        self.warnings.push(Warning {
+            range: range_of(node),
+            category: Category::Tikz,
+            severity: Severity::Warning,
+            message: "tikzpicture dropped — TikZ has no Typst equivalent. Re-create it with \
+                      the `cetz` package, or export the picture to PDF/SVG and `#image` it."
+                .to_string(),
+            snippet,
+            suggested_skill: Some("byetex-tikz-to-typst".to_string()),
+        });
+        self.ensure_paragraph_break();
+        self.out
+            .push_str("#block(stroke: 0.5pt + gray, inset: 8pt, radius: 2pt)[\n");
+        self.out
+            .push_str("  #text(gray)[(tikzpicture omitted \u{2014} re-create with cetz, or embed the picture as an image)]\n");
+        self.out.push_str("]\n");
+        node.end_byte()
+    }
+
     pub(in crate::emit) fn warn_unsupported_environment(
         &mut self,
         node: Node<'_>,

@@ -53,6 +53,7 @@ pub(in crate::emit) use macros::{
     new_command_token_kind, newcommand_body_true_end, read_newif_flag,
 };
 pub(crate) use macros::{
+    extract_include_paths_from_source, resolve_include_path,
     harvest_macros_from_source, harvest_referenced_labels_from_source,
     harvest_uses_chapter_from_source, MacroDef,
 };
@@ -4823,9 +4824,14 @@ impl<'a> Emitter<'a> {
                     self.emit_theorem_env(node, &display)
                 }
             }
-            // tikzpicture: TikZ drawing commands have no Typst equivalent.
-            // tikz package is already nooped; silently drop the environment body.
-            Some("tikzpicture") | Some("tikzpicture*") => node.end_byte(),
+            // tikzpicture: TikZ drawing commands have no Typst equivalent, so the
+            // body is dropped — but NOT silently. Dropping the drawing with no
+            // placeholder and no warning meant a paper whose figures are TikZ
+            // lost them with `warnings.json == []`, breaking the documented
+            // "anything untranslatable becomes a visible placeholder plus a
+            // structured warning" contract on the single most common
+            // untranslatable construct in academic LaTeX.
+            Some("tikzpicture") | Some("tikzpicture*") => self.emit_tikz_placeholder(node),
             // multicols: multi-column layout; content is meaningful text, so
             // pass it through. Column layout itself is lost (Typst handles this
             // separately via `set page(columns: N)`), but no warning is needed

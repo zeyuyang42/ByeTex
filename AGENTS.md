@@ -25,7 +25,7 @@ For a multi-file paper, pass the project directory (or the entry `.tex` with
 
 ### More commands
 
-- `byetex validate paper.tex` — Stage-0 oracle: is the *input* LaTeX itself broken,
+- `byetex doctor paper.tex` — Stage-0 oracle: is the *input* LaTeX itself broken,
   or is the failure a ByeTex bug? Run it before repairing to attribute the problem.
 - `byetex compile paper.typ` / `byetex render paper.typ` — `typst compile` to PDF /
   per-page PNGs with **structured** errors (no raw shell-out + stderr scraping).

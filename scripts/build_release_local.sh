@@ -25,6 +25,10 @@ build_one() {
   local name="byetex-${TAG}-${triple}"
   local stage="$DIST/$name"
   mkdir -p "$stage"
+  # The README and docs/for-agents.md both promise the archive bundles the
+  # repair skills; without this the tarball held only the binary and
+  # `skills/<name>/SKILL.md` was unreachable for anyone who installed a release.
+  cp -r skills "$stage/"
   if [[ "$triple" == *windows* ]]; then
     cp "target/$triple/release/byetex.exe" "$stage/"
     ( cd "$DIST" && 7z a "${name}.zip" "$name" >/dev/null || zip -rq "${name}.zip" "$name" )

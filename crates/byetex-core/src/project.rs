@@ -133,10 +133,19 @@ pub fn plan_project(
         source_name: Some(main_tex.display().to_string()),
         base_dir: Some(base_dir.clone()),
     };
-    // Pre-scan sibling files for `\ref` targets so cross-file multi-label
-    // sections attach the referenced alias (the `\ref` and the labelled
-    // `\section` often live in different `\input`'d files).
-    let refs = harvest_project_referenced_labels(&base_dir).unwrap_or_default();
+    // Pre-scan for `\ref` targets so cross-file multi-label sections attach the
+    // referenced alias (the `\ref` and the labelled `\section` often live in
+    // different `\input`'d files).
+    //
+    // Scoped to the entry file's `\input` CLOSURE, not every `.tex` under
+    // `base_dir`. Flat `byetex convert paper.tex` routes through here too, so a
+    // whole-directory scan meant converting a paper in a directory holding other
+    // LaTeX projects injected THEIR label keys as hidden anchors — and made the
+    // output depend on unrelated neighbouring files, breaking the documented
+    // "same input, same output" guarantee. Pointing at a DIRECTORY is an
+    // explicit statement that the whole tree is one project, so
+    // `plan_project_from_dir` still scans it all.
+    let refs = harvest_referenced_labels_in_input_closure(main_tex, &base_dir);
     // `\chapter`-usage detection is keyed on `base_dir` inside `convert_with_macros`.
     let out = convert_with_macros(&source, &opts, HashMap::new(), refs, record_source_map);
 
@@ -416,6 +425,38 @@ pub(crate) fn harvest_project_referenced_labels(
         }
     }
     Ok(refs)
+}
+
+/// Collect referenced labels from `entry` and every file reachable from it via
+/// `\input`/`\include`, transitively. Cycle-safe; unreadable or unresolvable
+/// includes are skipped silently.
+///
+/// This is the single-file counterpart to [`harvest_project_referenced_labels`]:
+/// same purpose, but the reachable set is what the document actually pulls in
+/// rather than whatever else happens to share a directory with it.
+fn harvest_referenced_labels_in_input_closure(entry: &Path, base_dir: &Path) -> HashSet<String> {
+    let mut refs: HashSet<String> = HashSet::new();
+    let mut seen: HashSet<PathBuf> = HashSet::new();
+    let mut queue: Vec<PathBuf> = vec![entry.to_path_buf()];
+    while let Some(path) = queue.pop() {
+        let key = path.canonicalize().unwrap_or_else(|_| path.clone());
+        if !seen.insert(key) {
+            continue;
+        }
+        let Ok(source) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        refs.extend(crate::emit::harvest_referenced_labels_from_source(&source));
+        for raw in crate::emit::extract_include_paths_from_source(&source) {
+            let from_here = path.parent().unwrap_or(base_dir);
+            if let Some(p) = crate::emit::resolve_include_path(from_here, &raw)
+                .or_else(|| crate::emit::resolve_include_path(base_dir, &raw))
+            {
+                queue.push(p);
+            }
+        }
+    }
+    refs
 }
 
 /// True if ANY `.tex` in the project uses `\chapter` — the include-aware signal for

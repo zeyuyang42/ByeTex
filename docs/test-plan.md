@@ -381,11 +381,11 @@ This tests the path an AI assistant would use. You need a Claude Code session
 
 ```bash
 byetex --version
-byetex skills list        # 12 skills
+byetex skills list        # 14 skills
 byetex skills read byetex-using-warnings-json
 ```
 
-**Expected**: the version prints, `skills list` shows the 12 bundled skills, and
+**Expected**: the version prints, `skills list` shows the 14 bundled skills, and
 `skills read` prints the skill body.
 
 ### E2. Wire the skills into Claude Code (optional)

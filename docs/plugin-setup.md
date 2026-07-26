@@ -1,6 +1,6 @@
 # Plugin setup (Claude Code)
 
-ByeTex ships as a Claude Code plugin that bundles the 12 repair skills. The plugin
+ByeTex ships as a Claude Code plugin that bundles the 14 repair skills. The plugin
 needs the `byetex` binary on PATH — install it first.
 
 ## 1. Install the binary
@@ -10,8 +10,6 @@ curl -fsSL https://raw.githubusercontent.com/zeyuyang42/ByeTex/main/install.sh |
 # or build from source:
 cargo install --git https://github.com/zeyuyang42/ByeTex byetex
 ```
-
-> `cargo install byetex` (crates.io) and `brew install` (a Homebrew tap) are coming soon.
 
 ## 2. Install the plugin (Claude Code)
 
@@ -27,5 +25,5 @@ binary isn't found on PATH.
 
 ```bash
 byetex --version
-byetex skills list        # 12 skills
+byetex skills list        # 14 skills
 ```

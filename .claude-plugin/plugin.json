@@ -1,12 +1,19 @@
 {
   "name": "byetex",
-  "description": "LaTeX → Typst converter for AI agents: a CLI (convert, diagnose, validate, compile, render, explain, …) and 12 repair/grading skills.",
-  "version": "0.3.0",
+  "description": "LaTeX \u2192 Typst converter for AI agents: a CLI (convert, diagnose, doctor, compile, render, explain, \u2026) and 14 repair/grading skills.",
+  "version": "0.7.3",
   "author": {
     "name": "Zeyu Yang"
   },
   "homepage": "https://github.com/zeyuyang42/ByeTex",
   "repository": "https://github.com/zeyuyang42/ByeTex",
   "license": "MIT OR Apache-2.0",
-  "keywords": ["latex", "typst", "converter", "cli", "academic", "pdf"]
+  "keywords": [
+    "latex",
+    "typst",
+    "converter",
+    "cli",
+    "academic",
+    "pdf"
+  ]
 }

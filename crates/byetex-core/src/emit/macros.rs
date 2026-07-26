@@ -773,6 +773,37 @@ pub(crate) fn harvest_uses_chapter_from_source(source: &str) -> bool {
 /// `\ref`/`\cref`/`\eqref`/`\autoref`/`\pageref` (all `label_reference`
 /// nodes), sanitized. Used by the project-mode pre-scan so a `\ref` in one
 /// file is known when the labelled section in another file is emitted.
+/// Every `\input`/`\include`/`\subfile` path written in `source`, as raw
+/// (unresolved) path strings. Used by the project layer to walk a document's
+/// include CLOSURE rather than every `.tex` that shares its directory.
+pub(crate) fn extract_include_paths_from_source(source: &str) -> Vec<String> {
+    let source = crate::ir::neutralize_ref_key_underscores(source);
+    let tree = crate::ir::parse_and_lower(&source);
+    let mut out = Vec::new();
+    let mut stack: Vec<Node<'_>> = vec![tree.root_node()];
+    while let Some(n) = stack.pop() {
+        if n.kind() == "latex_include" || n.kind() == "generic_command" {
+            if let Some(p) = extract_latex_include_path(n, &source) {
+                out.push(p);
+            }
+        }
+        let mut cursor = n.walk();
+        for c in n.children(&mut cursor) {
+            stack.push(c);
+        }
+    }
+    out
+}
+
+/// Resolve a raw `\input` path against `base`, honouring the implicit `.tex`
+/// extension. Crate-visible wrapper over the emit-internal resolver.
+pub(crate) fn resolve_include_path(
+    base: &std::path::Path,
+    raw: &str,
+) -> Option<std::path::PathBuf> {
+    resolve_input_path(base, raw)
+}
+
 pub(crate) fn harvest_referenced_labels_from_source(source: &str) -> HashSet<String> {
     // Pre-parse refkey neutralization (see `convert_with_macros`). Keys are run
     // through `sanitize_label_key` below, which restores the sentinel, so the
