@@ -21,6 +21,83 @@ density) is strong** — most `match` rows are there. Fidelity damage concentrat
 
 ---
 
+## Launch audit (2026-07-26) — undisclosed limitations
+
+Found by a full sweep of every public claim against measured ground truth, run before
+posting the project publicly. These are **real gaps a new user hits early**; ranked by how
+fast they bite. Two findings from the same sweep were fixed immediately (TikZ silent drop,
+convert purity — v0.7.3) and are not repeated here.
+
+### L1. `.eps` / `.ps` / `.pgf` figures become grey placeholder boxes — sev 4, wide
+Typst cannot read EPS, so `emit/figures.rs` emits a labelled grey rect. On 2605.22821 that
+is **32 of 34 figures**. Many older arXiv sources ship EPS exclusively. Candidate fix:
+shell out to ghostscript / `epstopdf` during project materialisation when available, and
+warn (rather than silently box) when not.
+
+### L2. A tree-sitter parse failure produces NO warning — sev 4
+`Category::ParseError` is never constructed anywhere, so a document whose parse collapsed
+degrades silently. 64 of 495 synthetic snippets (13%) fail to parse. Worst known case
+(agent-surface L1): the parse root became one ERROR node and **11 of 12 section headings
+were dropped** while the output still compiled cleanly — invisible to the compile gate.
+Partially recovered by #452/#453; 2605.22728 still recovers only ~8/12. Emitting the
+category at all would at least make it visible.
+
+### L3. Page density diverges from the original — sev 3, DEFERRED
+`page_ratio` across the corpus runs 0.31 → 1.33. Known: NeurIPS **34pp vs 26pp** (H2),
+IEEEtran **8pp vs 6pp** (M3). Both previously deferred because naive margin tightening
+regressed the composite score. Needs per-class `StyleProfile` spacing, not global tweaks.
+
+### L4. Books / theses have no style profile — sev 4
+No `DocClass` variant for `book`/`report`/`memoir`/thesis classes; they fall through to
+`ArxivArticle` or `Unknown` and get the neutral preamble. Measured: `gh-amberj-latex-book-template`
+`page_ratio` **0.312**, `gh-dzwaneveld-tudelft-thesis` **0.50** (both `structure_failed`).
+6 of 8 book/thesis corpus entries have **no truth render at all**, so they are ungated.
+The README says the corpus spans books and theses — true, but they are the weakest area.
+
+### L5. Beamer decks are always re-themed to touying/metropolis — sev 3
+`emit/preamble.rs` hardcodes `themes.metropolis` regardless of the source theme.
+`corpus/beamer-demo` is a *Madrid* deck scored against a metropolis render — so the beamer
+fidelity number is measured against the wrong target. Beamer also requires a network fetch
+of `@preview/touying`.
+
+### L6. `Fig.~\ref{x}` renders as "Fig. Figure 3" — sev 4
+See §9 below: root-caused, **fix reverted**, still open. An extremely common LaTeX idiom.
+
+### L7. No float placement — sev 2
+`#figure(...)` is emitted with no `placement:`, so wide figures neither span columns nor
+float to the page top, which shifts pagination on every two-column class. (Also §5.)
+
+### L8. `\newcommandx` (xargs) and `\ifthenelse` are unsupported — sev 3, narrow but brutal
+On one corpus paper this is **840 of 943 warnings (89%)**. Marked HARD previously.
+Related: `\makeatletter` `@`-commands leak as strings (19× on one paper).
+
+### L9. Silent, unwarned formatting drops at corpus scale — sev 2, very wide
+From `docs/fidelity-nonvisual-audit.md`, "fidelity lost with NO warning": `\vspace`/`\hspace`
+(39 papers, 1205×), `\definecolor` (28), `\textcolor` (23 papers, 310×), `\resizebox` (21),
+`>{}/<{}/@{}` column decorators (18), `\item[custom-label]` (16 papers, 268×), `enumitem`
+list styles (15), `\colorbox` (3). Several are already handled but still counted; the audit
+over-reports. **Worth re-verifying which are genuinely unhandled before acting** — a probe
+during this sweep found `\textcolor`, `\definecolor`, `\cmidrule` and `\item[label]` all
+working, so this list is stale as a whole.
+
+### L10. `acmart` and `elsarticle` are advertised but never validated — sev 3
+The corpus contains **no** paper in either class (census: 40 `article`, 4 `amsart`,
+3 `IEEEtran`, 2 `svmult`, 2 `llncs`, 1 `revtex4-1`, plus one-offs). Both have `StyleProfile`
+unit tests but no real-paper evidence. Either add one of each to the corpus or soften the
+claim.
+
+### L11. Three corpus papers are ungated — sev 2
+`beamer-demo`, `ctan-memoir` and `gh-maurovm-thesis-template` are in neither `known_pass`
+nor `known_fail` in `scripts/acceptance_baseline.json`, so a regression in them fails
+nothing. `gh-maurovm-thesis-template` additionally hits the ambiguous-entry error (two
+same-depth `\documentclass` files, neither named `main`).
+
+### L12. `#cite(form:)` is gated on a real `.bib` — sev 2
+Papers that ship only a `.bbl` / inline `thebibliography` fall back to bare `@key`, losing
+`\citet`-style prose citations. Deliberate (it prevents an abort), but undisclosed.
+
+---
+
 ## P0 — high frequency, high severity
 
 ### 1. Author-block LaTeX leakage / mangling  — 6 of 8 papers, peak sev 5  — ✅ RESOLVED (PR #219)

@@ -25,6 +25,55 @@ fidelity polish). Verdicts: all `NEEDS_FIX` (clean compile reached only via
 workaround/gave-up). Re-dogfood any item's evidence papers twice before marking it
 Resolved.
 
+## Launch audit (2026-07-26) — agent-surface & repo hygiene
+
+Residue from the pre-launch sweep. The user-facing lies (`cargo install byetex`, `brew`,
+`byetex validate`, `typst.toml`, the "12 skills" count, the v0.6.29-only release) were all
+fixed in v0.7.3; these are what remains.
+
+### LA1. Stale MCP references in source comments — sev 1
+The MCP server was deleted in 0.7.0, but comments still describe MCP tools as live callers:
+`validate.rs:8,19,34,148` ("the MCP `validate` tool"), `project.rs` ("Both the CLI and the
+MCP server invoke this function"), `compile.rs:4`, `diagnose.rs:7,22`, `lib.rs:161`,
+`snippet.rs:74` ("Parse an MCP `context_hint` string"), `tests/diagnose_flat.rs:3`.
+Invisible to a website visitor, misleading to anyone reading the code.
+
+### LA2. `crates/byetex-mcp/` still exists on disk — sev 1
+Contains only a stray `.DS_Store`. Untracked, so it never shows on GitHub, but it confuses
+a local clone. Delete it.
+
+### LA3. `vendor/katex/` is a submodule and nothing says so — sev 2
+A plain `git clone` leaves it empty, so the README's "coverage gated against the entire
+KaTeX command set" claim cannot be reproduced without `--recursive`. Also worth noting the
+gate carries **321 documented exclusions** against ~827 extracted names — honest phrasing
+would be "gated against the full KaTeX command set with 321 explicitly-listed exclusions".
+
+### LA4. `tests/corpus/` cannot be populated from a fresh clone — sev 2
+`byetex corpus run` needs `tests/corpus/`, but both it and its harvest source
+(`context/`) are gitignored, and no documented command regenerates them. The README
+example was removed rather than fixed; the command is now effectively undocumented.
+
+### LA5. README's "don't re-run `diagnose` mid-edit" is half-wrong — sev 3 (recurring)
+Since the `--force` work, `byetex diagnose paper.typ` is the *safe* in-place path and the
+warning applies only to the source-based form. As written it discourages the exact command
+agents should be using — this already burned the dogfood agents twice (N4, L4).
+
+### LA6. `--compile` vs `agent-brief` is explained twice, 20 lines apart — sev 1
+`README.md` documents them as equivalent in both the CLI block and the following
+paragraph, which makes a reader wonder why both exist.
+
+### LA7. `docs/scorecard.md` is a month stale — sev 2
+Says "~67 papers … ~63 PASS and 4 INPUT_BROKEN" and "7 UNMEASURED"; current is 68 PASS /
+0 BYETEX_FAIL and 6 UNMEASURED. Its newest dated update is 2026-06-12 while the repo is at
+0.7.3. It is linked from the README's Status section.
+
+### LA8. The README's 87% synthetic-corpus figure is self-superseded — sev 2
+`docs/scorecard.md` explicitly says that number "supersedes … the README '87% pass-rate'
+(which only measured *ran without parse error*, a weaker bar)" — yet it is still the last
+number in the README's Status section, where it reads as a headline result.
+
+---
+
 ## Open — P0 (frequent × blocking)
 
 > **Round 14 (2026-07-25, v0.7.1)** — Loop-A tick on table rules. The selected item

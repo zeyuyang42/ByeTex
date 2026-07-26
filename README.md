@@ -36,6 +36,10 @@ $ cal(L)(theta) &= bb(E)_(x tilde.op p_("data"))[log p_(theta)(x)] \
 body text carried across. The dropped author emails and the heading style are real,
 current gaps.*
 
+New here? [`docs/getting-started.md`](docs/getting-started.md) is a guided tour.
+[`CONTRIBUTING.md`](CONTRIBUTING.md) covers the dev loop (TDD, the acceptance and fidelity
+gates), fetching the corpus, and how to add a repair skill.
+
 **What it won't do.** TikZ pictures become a marked placeholder (Typst has no TikZ; use
 `cetz` or embed an image), `.eps` figures become a grey box because Typst can't read EPS,
 and page density often differs from the LaTeX original. Nothing is dropped silently —
@@ -323,7 +327,8 @@ ByeTex/
 ├── tests/                  # corpus/ fixtures/ visual/ (outputs gitignored)
 ├── vendor/katex/           # KaTeX submodule — math-coverage TEST oracle, not a runtime dep
 └── docs/
-    ├── architecture.md         # the code map — start here
+    ├── getting-started.md      # a beginner's tour — start here if you're new
+    ├── architecture.md         # the code map — start here if you're reading the code
     ├── conversion-logic.md     # emitter behavior in prose
     ├── for-agents.md           # the agent contract
     ├── fidelity-rubric.md      # the visual-grading oracle
