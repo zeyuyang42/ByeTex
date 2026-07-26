@@ -30,6 +30,12 @@ $ cal(L)(theta) &= bb(E)_(x tilde.op p_("data"))[log p_(theta)(x)] \
  &<= sum_(i=1)^(n) alpha_i ||nabla f(x_i)||_2^2 $
 ```
 
+![LaTeX original next to the ByeTex-converted Typst render](docs/img/side-by-side.png)
+
+*arXiv:2605.31499 — two-column IEEE-style layout, title block, abstract, vector figure and
+body text carried across. The dropped author emails and the heading style are real,
+current gaps.*
+
 **What it won't do.** TikZ pictures become a marked placeholder (Typst has no TikZ; use
 `cetz` or embed an image), `.eps` figures become a grey box because Typst can't read EPS,
 and page density often differs from the LaTeX original. Nothing is dropped silently —
