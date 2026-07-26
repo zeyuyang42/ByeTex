@@ -15,7 +15,7 @@ want to convert a LaTeX document to Typst as part of a larger workflow.
    is always written, even if empty (`[]`).
 3. **Skills are reachable in two ways**:
    - `byetex skills list` and `byetex skills read <name>` from the CLI.
-   - `skills/<name>.md` files in the release archive (or this repo).
+   - `skills/<name>/SKILL.md` in the release archive (or this repo).
 4. **The output `.typ` is always written.** Even if some constructs are
    unconvertible, ByeTex emits something — possibly with `#text(red)[\foo]`
    placeholders — and points you at the warning + skill needed to repair it.
@@ -23,10 +23,8 @@ want to convert a LaTeX document to Typst as part of a larger workflow.
 ## Quickstart
 
 ```bash
-# Download and extract a release tarball (single static binary):
-curl -sSL -o byetex.tar.gz https://github.com/zeyuyang42/ByeTex/releases/latest/download/byetex-vX.Y.Z-x86_64-unknown-linux-musl.tar.gz
-tar -xzf byetex.tar.gz
-cd byetex-vX.Y.Z-x86_64-unknown-linux-musl
+# Install the latest release (resolves your platform automatically):
+curl -fsSL https://raw.githubusercontent.com/zeyuyang42/ByeTex/main/install.sh | sh
 
 # Convert:
 ./byetex convert paper.tex
@@ -80,12 +78,15 @@ Every capability is a `byetex` subcommand:
 |---------------------|----------------------------------------------------------------|
 | `convert`           | Convert a `.tex` file or project, write `.typ` + sidecars.     |
 | `diagnose`          | Compile the output and map each typst error to its LaTeX fragment + skill. |
-| `validate`          | Stage-0 oracle: compile the *input* with tectonic to tell a broken source from a ByeTex bug. |
+| `doctor`            | Stage-0 oracle: compile the *input* with tectonic to tell a broken source from a ByeTex bug. |
 | `compile`           | `typst compile` a `.typ`/`.tex` → PDF with **structured** errors `{ok, errors, pdf_path}`. |
 | `render`            | Render to per-page PNGs at a DPI → `{ok, errors, image_paths}` (visual inspection / grading). |
 | `explain`           | Per-node LaTeX → Typst map — "why did this LaTeX emit this Typst?". |
 | `skills list`       | List bundled skills (`name`, `description`).                   |
 | `skills read`       | Read a skill's full markdown body.                             |
+| `agent-brief`       | `convert --compile` — folds a real `typst` log into the brief. |
+| `review`            | Build a visual grading packet (truth↔typst page images).       |
+| `corpus`            | Harvest / run the regression corpus.                           |
 
 ## Reading `warnings.json`
 
