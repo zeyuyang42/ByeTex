@@ -8,7 +8,7 @@
     {
       "name": "byetex",
       "description": "LaTeX \u2192 Typst converter: a CLI and 14 repair/grading skills. Requires the `byetex` binary on PATH (see install.sh in the repo).",
-      "version": "0.7.2",
+      "version": "0.7.3",
       "source": "./",
       "author": {
         "name": "Zeyu Yang"

@@ -3,6 +3,32 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
+## [0.7.3] — unreleased
+
+### Fixed
+- **TikZ pictures were dropped silently.** No placeholder, no warning —
+  `warnings.json` came back `[]`. That broke the documented "anything ByeTex can't
+  translate becomes a visible placeholder plus a structured warning" guarantee on the
+  most common untranslatable construct in academic LaTeX: a paper whose figures are
+  TikZ lost them with zero signal. A `tikzpicture` now leaves a marked placeholder and
+  a `tikz` warning, which also makes the bundled `byetex-tikz-to-typst` skill reachable
+  via `suggested_skill` for the first time — the category was never constructed.
+- **Converting a file read every other `.tex` in its directory.** `plan_project`
+  harvested `\ref` targets from the whole parent directory, and flat
+  `byetex convert paper.tex` routes through it, so converting a paper in a directory
+  holding unrelated LaTeX projects injected THEIR label keys as hidden anchors (measured:
+  145 junk lines in a 16-line document). It also meant the same input produced different
+  output depending on its neighbours. The harvest is now scoped to the entry file's
+  `\input` closure; pointing at a directory still scans the whole declared project.
+
+### Changed
+- `--no-toml` is hidden and documented as a no-op: `typst.toml` generation is disabled
+  (`derive_manifest` returns `None`), so the flag never did anything. `typst.toml` is no
+  longer listed as project-mode output.
+- Release archives now bundle `skills/`, which the README and `docs/for-agents.md`
+  already promised. `cargo install byetex` and `brew install` are no longer advertised —
+  neither has ever existed.
+
 ## [0.7.2] — unreleased
 
 ### Fixed
