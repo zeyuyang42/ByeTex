@@ -19,8 +19,8 @@
     {
       "kind": "ambiguous_math",
       "name": "",
-      "papers": 20,
-      "occurrences": 1441
+      "papers": 18,
+      "occurrences": 1421
     },
     {
       "kind": "drop_only",
@@ -37,20 +37,14 @@
     {
       "kind": "unsupported_command",
       "name": "\\",
-      "papers": 8,
-      "occurrences": 61
+      "papers": 7,
+      "occurrences": 60
     },
     {
       "kind": "drop_only",
       "name": "\\tag",
       "papers": 7,
       "occurrences": 28
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\onecolumn",
-      "papers": 7,
-      "occurrences": 7
     },
     {
       "kind": "unsupported_command",
@@ -63,6 +57,12 @@
       "name": "\\vskip",
       "papers": 5,
       "occurrences": 11
+    },
+    {
+      "kind": "drop_only",
+      "name": "\\centering",
+      "papers": 5,
+      "occurrences": 7
     },
     {
       "kind": "unsupported_command",
@@ -125,18 +125,6 @@
       "occurrences": 5
     },
     {
-      "kind": "drop_only",
-      "name": "\\centering",
-      "papers": 4,
-      "occurrences": 5
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\twocolumn",
-      "papers": 4,
-      "occurrences": 4
-    },
-    {
       "kind": "unsupported_command",
       "name": "\\SetMathAlphabet",
       "papers": 4,
@@ -167,12 +155,6 @@
       "occurrences": 8
     },
     {
-      "kind": "unsupported_command",
-      "name": "\\ss",
-      "papers": 3,
-      "occurrences": 5
-    },
-    {
       "kind": "drop_only",
       "name": "\\raggedright",
       "papers": 3,
@@ -183,12 +165,6 @@
       "name": "usepackage:threeparttable",
       "papers": 3,
       "occurrences": 4
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\v",
-      "papers": 3,
-      "occurrences": 3
     },
     {
       "kind": "unsupported_command",
@@ -264,7 +240,7 @@
     },
     {
       "kind": "unsupported_command",
-      "name": "\\smash",
+      "name": "\\ss",
       "papers": 2,
       "occurrences": 4
     },
@@ -273,6 +249,12 @@
       "name": "\\arraybackslash",
       "papers": 2,
       "occurrences": 4
+    },
+    {
+      "kind": "drop_only",
+      "name": "\\tag*",
+      "papers": 2,
+      "occurrences": 3
     },
     {
       "kind": "unsupported_command",
@@ -409,12 +391,6 @@
     {
       "kind": "unsupported_command",
       "name": "\\newlength",
-      "papers": 2,
-      "occurrences": 2
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\u",
       "papers": 2,
       "occurrences": 2
     },
@@ -624,7 +600,13 @@
     },
     {
       "kind": "unsupported_command",
-      "name": "\\subsection",
+      "name": "\\nabla",
+      "papers": 1,
+      "occurrences": 4
+    },
+    {
+      "kind": "unsupported_command",
+      "name": "\\vert",
       "papers": 1,
       "occurrences": 4
     },
@@ -666,19 +648,19 @@
     },
     {
       "kind": "unsupported_command",
-      "name": "\\subsubsection",
+      "name": "\\tfrac",
+      "papers": 1,
+      "occurrences": 3
+    },
+    {
+      "kind": "unsupported_command",
+      "name": "\\smash",
       "papers": 1,
       "occurrences": 3
     },
     {
       "kind": "unsupported_command",
       "name": "\\TDI",
-      "papers": 1,
-      "occurrences": 3
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\algnewcommand",
       "papers": 1,
       "occurrences": 3
     },
@@ -750,19 +732,7 @@
     },
     {
       "kind": "unsupported_command",
-      "name": "\\section",
-      "papers": 1,
-      "occurrences": 2
-    },
-    {
-      "kind": "unsupported_command",
       "name": "\\operatorname",
-      "papers": 1,
-      "occurrences": 2
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\tfrac",
       "papers": 1,
       "occurrences": 2
     },
@@ -775,12 +745,6 @@
     {
       "kind": "unsupported_command",
       "name": "\\noalign",
-      "papers": 1,
-      "occurrences": 2
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\algrenewcommand",
       "papers": 1,
       "occurrences": 2
     },
@@ -978,12 +942,6 @@
     },
     {
       "kind": "unsupported_command",
-      "name": "\\c",
-      "papers": 1,
-      "occurrences": 1
-    },
-    {
-      "kind": "unsupported_command",
       "name": "\\etocsettocdepth",
       "papers": 1,
       "occurrences": 1
@@ -997,12 +955,6 @@
     {
       "kind": "unsupported_command",
       "name": "\\externaldocument",
-      "papers": 1,
-      "occurrences": 1
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\ref",
       "papers": 1,
       "occurrences": 1
     },
@@ -1044,13 +996,13 @@
     },
     {
       "kind": "unsupported_command",
-      "name": "\\mathbbold",
+      "name": "\\Omega",
       "papers": 1,
       "occurrences": 1
     },
     {
       "kind": "unsupported_command",
-      "name": "\\nabla",
+      "name": "\\mathbbold",
       "papers": 1,
       "occurrences": 1
     },
@@ -1099,18 +1051,6 @@
     {
       "kind": "unsupported_command",
       "name": "\\mdfsetup",
-      "papers": 1,
-      "occurrences": 1
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\algorithmicrequire",
-      "papers": 1,
-      "occurrences": 1
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\algorithmicensure",
       "papers": 1,
       "occurrences": 1
     },
@@ -1477,24 +1417,6 @@
     {
       "kind": "unsupported_command",
       "name": "usepackage:balance",
-      "papers": 1,
-      "occurrences": 1
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\algorithmicinput",
-      "papers": 1,
-      "occurrences": 1
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\Input",
-      "papers": 1,
-      "occurrences": 1
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\Statex",
       "papers": 1,
       "occurrences": 1
     },
