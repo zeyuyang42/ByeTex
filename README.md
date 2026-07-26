@@ -347,15 +347,15 @@ release pushes fidelity.
 coverage *breadth* (a different measure from the arXiv compile gate above):
 
 <!-- corpus-summary:start -->
-_Last updated: 2026-07-26 (commit 12b42fa)_
+_Last updated: 2026-07-26 (commit 20172e2)_
 
 Corpus pass-rate (clean + warnings): **87%** — 431/495 files.
 
 | Bucket | Count |
 |---|---:|
 | Total | 495 |
-| Clean | 209 |
-| Warnings (≥1, no parse error) | 222 |
+| Clean | 207 |
+| Warnings (≥1, no parse error) | 224 |
 | Parse errors | 64 |
 
 | Warning category | Count |
@@ -365,6 +365,7 @@ Corpus pass-rate (clean + warnings): **87%** — 431/495 files.
 | `unsupported_environment` | 47 |
 | `ambiguous_math` | 27 |
 | `needs_manual_review` | 6 |
+| `tikz` | 4 |
 <!-- corpus-summary:end -->
 
 ## License
