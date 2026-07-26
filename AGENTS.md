@@ -79,7 +79,7 @@ $ typst compile paper.typ               # → paper.pdf, no errors. Done.
 
 If a region is hopeless (many `needs_manual_review` / `parse_error`), render the
 original LaTeX fragment to PDF/SVG with `tectonic` or `pdflatex` and `#image(...)`
-it from Typst. See [`skills/byetex-unsupported-environment.md`](skills/byetex-unsupported-environment.md).
+it from Typst. See [`skills/byetex-unsupported-environment/SKILL.md`](skills/byetex-unsupported-environment/SKILL.md).
 
 ---
 

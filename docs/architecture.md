@@ -11,8 +11,6 @@ This document is the overview; for detail beyond it, see the deeper docs:
 - [`getting-started.md`](getting-started.md) — install and first conversions.
 - [`conversion-logic.md`](conversion-logic.md) — how the emitter behaves, in prose.
 - [`for-agents.md`](for-agents.md) — the contract for AI agents.
-- [`emit-refactor-insights.md`](emit-refactor-insights.md) — internals of `emit.rs`.
-- [`tectonic-integration-analysis.md`](tectonic-integration-analysis.md) — the `doctor` oracle.
 
 It records only slow-changing facts. It names files and types but does not link
 to them or cite line numbers — use symbol search. Review it periodically, not
@@ -82,8 +80,7 @@ lines, down from a ~11k-line monolith after the 13-module split). It owns the
 `render_in_sub_emitter`, `with_sub_buffer`, `ensure_paragraph_break`, the
 `warn_*` family). The per-concern leaf logic lives in the `emit/` submodules
 below; each is an `impl Emitter` block (or free fns) reached from the
-dispatchers, kept emit-internal via `pub(in crate::emit)`. See
-`emit-refactor-insights.md` for its internals.
+dispatchers, kept emit-internal via `pub(in crate::emit)`.
 
 > Architecture Invariant: math is hand-rolled (the syntax tree is translated
 > through a manual symbol table), not delegated to MiTeX, KaTeX, or any engine.

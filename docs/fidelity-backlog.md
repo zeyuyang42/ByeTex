@@ -35,8 +35,7 @@ that brace-matched its real extent (tree-sitter mis-bounds bare comma lists), an
 `refine_from_package` now matching path-prefixed conference packages (`style/neurips_2026`) — which
 ALSO restored NeurIPS/ICML/ICLR title+abstract styling on those papers. Re-graded 2605.22507 (now
 3 clean authors + affiliations + rules), 22765 (`\quad`-row split), 22159 (un-glued). **Residuals
-logged below as 1a/1b (out of the stop-the-leakage scope).** Spec/plan:
-`docs/superpowers/{specs,plans}/2026-06-12-author-block-*`.
+logged below as 1a/1b (out of the stop-the-leakage scope).**
 
 - **1a (sev 2):** `\newcolumntype{C}[1]{>{}p{#1}}` p-column spec still leaks above Keywords on 22820 —
   a *preamble capture-boundary* issue (the spec leaks as body text, not via the author block).

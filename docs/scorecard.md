@@ -79,7 +79,7 @@ harvested `source/00README.json` and are the 2 SKIPs. So of the **26 real papers
 
 Excluding the source that is itself broken, **ByeTex-attributable compile-rate = 23/25 (92%)**.
 
-**This supersedes the stale figures** in `docs/test-results-2026-05-23.md` (29% compile) and the
+**This supersedes the stale figures** from the v0.2.0 manual test run (29% compile) and the
 README "87% pass-rate" (which only measured *ran without parse error*, a weaker bar).
 
 ### Current failures
