@@ -81,12 +81,13 @@ ByeTex/
 │   │   └── tests/                          ← unit + integration tests
 │   │
 │   └── byetex-cli/                        ← the `byetex` command-line tool
-│       └── src/main.rs                     ← subcommands: convert, diagnose, skills, corpus
+│       └── src/main.rs                     ← subcommands: convert, diagnose, doctor,
+│                                              compile, render, review, explain, skills, corpus
 │
 ├── skills/                                 ← markdown how-to files for humans/AIs
-│   ├── byetex-using-warnings-json.md      ← read this first
-│   ├── byetex-tikz-to-typst.md            ← how to rewrite a TikZ diagram
-│   └── ... (4 more)
+│   ├── byetex-using-warnings-json/SKILL.md  ← read this first
+│   ├── byetex-tikz-to-typst/SKILL.md        ← how to rewrite a TikZ diagram
+│   └── ... (12 more; see skills/INDEX.md)
 │
 ├── docs/
 │   ├── for-agents.md                       ← entry doc for AI assistants
@@ -101,7 +102,8 @@ ByeTex/
 ├── corpus/manifest.json                    ← committed manifest of known arXiv papers
 │   (5 marked pinned:true are the regression set; payloads gitignored)
 │
-├── context/                                ← scraped LaTeX/Typst docs (495 examples)
+├── context/                                ← scraped LaTeX/Typst reference docs
+│   │   (gitignored — generated locally, not in a fresh clone)
 │   ├── latex-context.md
 │   └── typst-context.md
 │
@@ -159,7 +161,7 @@ That tells you how to manually rewrite TikZ diagrams in Typst's CeTZ library. Ap
 
 ### 3. From an AI assistant
 
-ByeTex is built to be driven by an AI coding agent (Claude Code, Cursor, etc.) straight through its CLI. The agent runs `byetex convert` to translate your paper, `byetex diagnose` to map compile errors to repair skills, and `byetex skills read <name>` to look them up — then patches the `.typ` for you. The 12 bundled skills are also available as a Claude Code plugin (`/byetex:<name>`); see [`plugin-setup.md`](plugin-setup.md). The same machinery you'd use by hand, driven by the agent.
+ByeTex is built to be driven by an AI coding agent (Claude Code, Cursor, etc.) straight through its CLI. The agent runs `byetex convert` to translate your paper, `byetex diagnose` to map compile errors to repair skills, and `byetex skills read <name>` to look them up — then patches the `.typ` for you. The 14 bundled skills are also available as a Claude Code plugin (`/byetex:<name>`); see [`plugin-setup.md`](plugin-setup.md). The same machinery you'd use by hand, driven by the agent.
 
 ### 4. Building from source
 
@@ -174,7 +176,7 @@ Run the test suite:
 
 ```bash
 cargo test --workspace
-# 29 golden tests + corpus check + compile check + schema lock
+# ~1,300 tests: golden snapshots + corpus check + compile check + schema lock
 ```
 
 Try a real arXiv paper:
@@ -192,20 +194,20 @@ That's a real cs.LG paper — the LaTeX source becomes a compilable Typst doc wi
 
 ## The four key files to read if you want to understand the code
 
-1. **`crates/byetex-core/src/lib.rs`** (~30 lines) — the public API. Just shows `convert(source) -> (typst, warnings)`. The whole thing.
+1. **`crates/byetex-core/src/lib.rs`** (~200 lines) — the public API: `convert(source, opts) -> ConvertOutput { typst, warnings, … }`.
 
 2. **`crates/byetex-core/src/warnings.rs`** (~50 lines) — what a warning *is*. A `Range`, a `Category`, a message, a snippet, a suggested skill name. This shape is locked by a test so it can't drift.
 
-3. **`crates/byetex-core/src/emit.rs`** (~1000 lines) — the actual translation logic. Big but pattern-rich. Reading the top-level `emit_node` function tells you everything the converter handles: math containers, section commands, generic commands, environments, etc. Everything else in the file is a helper for one of those.
+3. **`crates/byetex-core/src/emit.rs`** (~5,800 lines, plus 15 `emit/` submodules) — the actual translation logic. Big but pattern-rich. Reading the top-level `emit_node` function tells you everything the converter handles: math containers, section commands, generic commands, environments, etc. Everything else in the file is a helper for one of those.
 
-4. **`crates/byetex-cli/src/main.rs`** (~250 lines) — the CLI. Just argument parsing (via the `clap` library) and calls into `byetex-core`. Good first place to land if you want to add a new subcommand.
+4. **`crates/byetex-cli/src/main.rs`** (~1,550 lines) — the CLI. Just argument parsing (via the `clap` library) and calls into `byetex-core`. Good first place to land if you want to add a new subcommand.
 
 ---
 
 ## What ByeTex is not
 
-- **Not** a full LaTeX engine. We translate the *structure*, not run TeX macros. `\def\foo{...}` and custom commands fall outside our scope and become warnings.
-- **Not** a perfect 1-to-1 mapping. Some LaTeX idioms have no Typst equivalent (page-level layout primitives, certain `\verb` corner cases, exotic packages like TikZ).
+- **Not** a full LaTeX engine. We translate the *structure* rather than running TeX. Custom macros (`\newcommand`/`\def`) *are* pre-scanned and expanded, but arbitrary TeX programming (`\ifthenelse`, category-code tricks, `\makeatletter` internals) is not.
+- **Not** a perfect 1-to-1 mapping. Some LaTeX idioms have no Typst equivalent: TikZ pictures become a marked placeholder, `.eps` figures become a grey box (Typst can't read EPS), and page density often differs from the original.
 - **Not** a black box. Every conversion is deterministic and reproducible; the same input always produces the same output. The warnings tell you exactly what's unfinished.
 
 That's the whole picture — a Rust binary that uses a tree-sitter grammar to parse LaTeX, walks the tree applying translation rules, emits Typst code, and writes a JSON file listing the cases that need human follow-up.

@@ -137,7 +137,7 @@ Project mode is a two-layer design in `crates/byetex-core/src/project.rs`
                        - writes main.typ
                        - copies assets through the path-
                          traversal guard
-                       - writes typst.toml + warnings.json
+                       - writes warnings.json
                        - writes agent_brief.md (unless --no-brief)
 ```
 
@@ -279,10 +279,6 @@ uses `write_agent_brief`):
   reads the sidecars via tool calls. Paths are rendered relative to
   the brief's own directory so the doc stays portable.
   On by default; `--no-brief` suppresses.
-- `<out>/typst.toml` (project mode only) — derived in
-  `derive_manifest` by peeking the first few lines of the
-  generated `.typ` for an `#import "@preview/X:V"` line and
-  building a minimal package manifest.
 
 The `byetex agent-brief` subcommand is now a thin wrapper that
 runs the same convert flow with the brief always on and the

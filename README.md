@@ -9,13 +9,39 @@ repair instructions. The [Typst](https://typst.app) it emits is good enough to t
 hand-rolled native math and class-faithful layout. It works best on academic papers
 today — where its fidelity is tuned — and the approach generalizes outward.
 
+```bash
+curl -fsSL https://raw.githubusercontent.com/zeyuyang42/ByeTex/main/install.sh | sh
+byetex convert ./my-paper --project     # a folder, an arXiv tarball, or a single .tex
+typst compile my-paper.typst-project/main.typ
+```
+
+Math is hand-rolled to **native, editable** Typst — not delegated to an external engine,
+not rasterised to images:
+
+```latex
+\begin{align}
+  \mathcal{L}(\theta) &= \mathbb{E}_{x \sim p_{\text{data}}}\bigl[\log p_\theta(x)\bigr] \\
+                      &\leq \sum_{i=1}^{n} \alpha_i \|\nabla f(x_i)\|_2^2
+\end{align}
+```
+
+```typst
+$ cal(L)(theta) &= bb(E)_(x tilde.op p_("data"))[log p_(theta)(x)] \
+ &<= sum_(i=1)^(n) alpha_i ||nabla f(x_i)||_2^2 $
+```
+
+**What it won't do.** TikZ pictures become a marked placeholder (Typst has no TikZ; use
+`cetz` or embed an image), `.eps` figures become a grey box because Typst can't read EPS,
+and page density often differs from the LaTeX original. Nothing is dropped silently —
+every gap is a structured warning in `warnings.json`.
+
 ## Why ByeTex
 
 - **Natively AI-in-the-loop.** Not a wrapper around an LLM — a deterministic tool
   *designed* to be finished by one. When the output doesn't compile, `byetex diagnose`
   maps every Typst error back to the exact LaTeX fragment that caused it and names the
   repair skill that fixes it: the agent gets a worklist, not a stack trace. It ships as
-  an agent-first CLI, **12 bundled repair skills**, and an [`AGENTS.md`](AGENTS.md)
+  an agent-first CLI, **14 bundled repair skills**, and an [`AGENTS.md`](AGENTS.md)
   cold-start — drop it into Claude Code or Cursor with no glue.
 - **Best-in-class math.** ByeTex hand-rolls LaTeX → Typst math instead of delegating to
   an external engine — ~450 symbols/operators, coverage gated against the **entire KaTeX
@@ -56,7 +82,7 @@ it never hard-fails:
              StyleProfile (title / abstract / heading sizes)          emit/preamble.rs, style_profile.rs
       ▼
   project    --project: copy assets, preprocess .bib, resolve
-             \input, write typst.toml                                 project.rs
+             \input                                                    project.rs
       ▼
  .typ  +  warnings.json   (+ agent_brief.md, + diagnostics.json)
 ```
@@ -128,8 +154,8 @@ A condensed view; see [`docs/architecture.md`](docs/architecture.md) and
   pre-scanned from every `.tex`/`.sty`/`.cls` in the project tree before conversion.
 
 Anything else produces a structured warning categorised as `unsupported_command`,
-`unsupported_environment`, `drop_only`, `unknown_package`, `tikz`, `custom_macro`,
-`parse_error`, `ambiguous_math`, or `needs_manual_review`.
+`unsupported_environment`, `drop_only`, `tikz`, `custom_macro`, `ambiguous_math`, or
+`needs_manual_review`.
 
 ## Install
 
@@ -154,8 +180,6 @@ Linux musl (arm64/x86_64), and Windows x86_64 — each archive bundles the `byet
 binary and the `skills/` directory; verify against `SHA256SUMS`. See
 [`packaging/README.md`](packaging/README.md) and
 [`docs/plugin-setup.md`](docs/plugin-setup.md) (Claude Code / Cursor).
-
-> **Coming soon:** `cargo install byetex` (crates.io) and `brew install` (a Homebrew tap).
 
 ## CLI
 
@@ -187,9 +211,6 @@ byetex doctor paper.tex                       # --strict to fail hard; --full to
 byetex skills list
 byetex skills read byetex-repair-loop
 
-# Regression corpus over the synthetic test corpus:
-byetex corpus run --dir tests/corpus/
-
 # Inspect the warnings:
 cat paper.warnings.json | jq '.[].category.kind' | sort | uniq -c
 ```
@@ -211,7 +232,6 @@ byetex convert ./paper-source --project
 #   main.typ        — the converted Typst body
 #   fig/foo.pdf     — asset files copied from the source project
 #   refs.bib        — bibliography copied as-is (Typst reads it natively)
-#   typst.toml      — optional manifest for known document classes (skip with --no-toml)
 #   warnings.json   — structured warnings sidecar
 #   agent_brief.md  — portable Markdown brief (skip with --no-brief)
 
@@ -263,9 +283,9 @@ version:
 
 1. `byetex convert input.tex` is non-destructive and idempotent. Read `input.warnings.json`
    — empty means a clean conversion.
-2. Each warning's `suggested_skill` points to one of the **12 bundled skills** in `skills/`
+2. Each warning's `suggested_skill` points to one of the **14 bundled skills** in `skills/`
    that documents how to resolve that category. Reach them via `byetex skills read <name>`
-   or by opening `skills/<name>.md`.
+   or by opening `skills/<name>/SKILL.md`.
 3. When the `.typ` doesn't compile, `byetex diagnose input.tex` maps each typst error back
    to its LaTeX fragment + repair skill — the **compile-repair loop**. Edit the `.typ`,
    re-run `typst compile`, repeat.
@@ -293,7 +313,7 @@ ByeTex/
 │   └── byetex-cli/         # the `byetex` binary (all filesystem/process I/O)
 ├── corpus/                 # arXiv regression corpus (manifest.json; payloads gitignored)
 ├── scripts/                # corpus_sweep.sh, acceptance.sh, visual_test.py, … (see scripts/README.md)
-├── skills/                 # 12 bundled Markdown repair skills (+ INDEX.md)
+├── skills/                 # 14 bundled Markdown repair skills (+ INDEX.md)
 ├── tests/                  # corpus/ fixtures/ visual/ (outputs gitignored)
 ├── vendor/katex/           # KaTeX submodule — math-coverage TEST oracle, not a runtime dep
 └── docs/

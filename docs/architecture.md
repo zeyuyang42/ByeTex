@@ -41,7 +41,7 @@ LaTeX source
 Project mode wraps the above (project.rs):
   plan_project        scan the \input tree, harvest every macro & label up front,
                       convert with them pre-seeded → ProjectPlan { body + asset list }
-  materialize_project copy assets, write typst.toml + sidecars   (called by the CLI)
+  materialize_project copy assets + write sidecars               (called by the CLI)
 
 The CLI owns all filesystem I/O and process spawning (typst, tectonic).
 ```
@@ -194,8 +194,8 @@ links the problem to its guide.
 
 Single-file mode is one `convert` call: includes and figures are dropped with
 `needs_manual_review`. Project mode (`plan_project` → harvest → convert →
-`materialize_project`) is the only mode that resolves `\input` trees, copies
-assets, and generates `typst.toml`.
+`materialize_project`) is the only mode that resolves `\input` trees and copies
+assets.
 
 ### Codegen
 
