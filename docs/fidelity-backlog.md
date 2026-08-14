@@ -60,8 +60,22 @@ The README says the corpus spans books and theses — true, but they are the wea
 fidelity number is measured against the wrong target. Beamer also requires a network fetch
 of `@preview/touying`.
 
-### L6. `Fig.~\ref{x}` renders as "Fig. Figure 3" — sev 4
-See §9 below: root-caused, **fix reverted**, still open. An extremely common LaTeX idiom.
+### L6. `Fig.~\ref{x}` renders as "Fig. Figure 3" — sev 4 — ✅ RESOLVED (PR #469, v0.7.4)
+See §9 below for the root cause and the two sharp edges that reverted the first attempt.
+**Resolution.** Emit the empty-supplement SHORTHAND `@key[]` for plain `\ref` and `\eqref`
+(and `#ref(<key>, supplement: none)` inside math, where a bare `@key` is an identifier)
+instead of the `#ref(...)` FUNCTION form the reverted attempt used. That structurally
+removes both blockers: `@key[]` cannot be call-applied, so `\ref{x}(ii)` stays literal
+text; and it carries no `<`/`_` for the table-cell escaper to mangle. `\eqref` was the
+louder half of the same bug — `(@key)` rendered "(Equation 1)" where LaTeX prints "(1)".
+`\cref`/`\Cref`/`\autoref` keep the bare `@key` (they DO print a prefix in LaTeX);
+cleveref's no-prefix `\labelcref` is included in the fix. Deliberately NOT included:
+`\vref` (varioref — counter + "on page N"; ByeTex does not model the page half at all,
+so half-converting it would be worse), `\pageref`/`\cpageref` (page numbers) and
+`\nameref` (prints a name, not a counter).
+Two incidental wins: the form self-terminates, so the adjacency guard that turned
+`\ref{a}--\ref{b}` into "1 –2" no longer fires, and a closing `_` can't absorb it, so
+`\emph{… \ref{x}}` keeps the compact shorthand instead of falling back to `#emph[…]`.
 
 ### L7. No float placement — sev 2
 `#figure(...)` is emitted with no `placement:`, so wide figures neither span columns nor
@@ -95,6 +109,14 @@ same-depth `\documentclass` files, neither named `main`).
 ### L12. `#cite(form:)` is gated on a real `.bib` — sev 2
 Papers that ship only a `.bbl` / inline `thebibliography` fall back to bare `@key`, losing
 `\citet`-style prose citations. Deliberate (it prevents an abort), but undisclosed.
+
+### L13. A `\ref`/`\cite` inside a TABLE CELL renders as literal text — sev 3
+Found while fixing L6, **pre-existing on main** and independent of it. `escape_text_cell`
+escapes the `@` sigil (`[see Fig.~\@fig:a]`), so every reference and citation inside a
+table cell is emitted as a dead literal instead of a link — the number never resolves.
+The escaper is right to escape a *source* `@`, but wrong to escape one ByeTex itself
+emitted. Candidate fix: make the cell escaper ref/cite-aware (copy an emitted `@key`,
+`@key[]` or `#ref(...)` token through verbatim, the way it already copies `#raw(...)`).
 
 ---
 
@@ -213,7 +235,7 @@ non-interpreting cell context; data columns dropped).
 **Fix sketch.** Reproduce with a minimal `\multirow`+`\cmidrule` fixture; fix rowspan/cmidrule
 parsing so data cells aren't consumed and `\textbf` in a cell emits Typst strong, not literal `*`.
 
-### 9. Reference double-prefix  — lncs+others, sev 4  — ⚠️ ROOT-CAUSED; fix reverted (needs a more robust approach)
+### 9. Reference double-prefix  — lncs+others, sev 4  — ✅ RESOLVED (PR #469, v0.7.4; see L6)
 **Symptom.** "Fig. **Figure** 3", "Section **Section** H.1".
 **Root cause (2026-06-12, corrected).** NOT `\cref`. byetex converts `\cref`/`\ref` correctly. The
 double-prefix is from plain **`\ref`**: authors very commonly write `Fig.~\ref{x}` / `Section~\ref{x}`
@@ -228,7 +250,13 @@ as a CALL (`unknown variable: ii`, 2605.22800) — fixable with a trailing-space
 (b) `\ref` inside a **table cell** gets its `<…>`/`_` escaped by the cell-content escaper →
 `#ref(\<sec\_x>…)` → "character `\` is not valid in code" (2605.31072). (b) is the blocker: the cell
 escaper mangles the fn-form's label. Churns ~6 ref test files too.
-**Better approach for a clean future fix:** either (1) make the cell/escaping path ref-aware so an
+**How it was finally fixed (PR #469).** Neither of the two options below — a THIRD one avoids
+the problem entirely: Typst's `@key[…]` shorthand takes a supplement as a trailing content
+block, so the EMPTY block `@key[]` gives the counter-only render without ever leaving the
+robust shorthand shape. Nothing to re-escape, nothing callable. Options (1) and (2) are kept
+below for the record.
+
+**Better approach for a clean future fix (superseded):** either (1) make the cell/escaping path ref-aware so an
 emitted `#ref(...)` is never re-escaped, THEN re-apply the `\ref`→`supplement: none` + the `(`/`[`/`.`
 adjacency guard (both are written-and-tested in git history of the reverted `fidelity-cleveref`
 branch); or (2) a global preamble show-rule that strips the supplement for plain refs without the

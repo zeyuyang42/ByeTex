@@ -74,7 +74,12 @@ fn emph_ending_in_ref_uses_emph_fn() {
     // gh-maurovm-thesis-template). The outer boundary is a clean word boundary,
     // so the alphanumeric heuristic alone misses it — the absorber is INSIDE the
     // content. Use the boundary-independent function form.
-    let t = typ(r"\emph{An introduction \ref{ex}} done");
+    //
+    // `\cref` is the absorbing case: it still emits the bare `@key` so Typst can
+    // supply its prefix. Plain `\ref` now emits the self-terminating `@key[]`
+    // empty-supplement form (see `tests/ref_supplement_none.rs`), which a `_`
+    // cannot absorb — asserted separately below.
+    let t = typ(r"\emph{An introduction \cref{ex}} done");
     assert!(
         t.contains("#emph[") && t.contains("@ex"),
         "ref-trailing emph must use function form; got:\n{t}"
@@ -83,6 +88,15 @@ fn emph_ending_in_ref_uses_emph_fn() {
         !t.contains("@ex_"),
         "closing `_` must not glue to the ref label; got:\n{t}"
     );
+}
+
+#[test]
+fn emph_ending_in_plain_ref_keeps_shorthand() {
+    // `@key[]` ends in `]`, not a label char, so the closing `_` closes the emph
+    // normally — the fn form is unnecessary here.
+    let t = typ(r"\emph{An introduction \ref{ex}} done");
+    assert!(t.contains("_An introduction @ex[]_"), "got:\n{t}");
+    assert!(!t.contains("#emph"), "got:\n{t}");
 }
 
 #[test]
@@ -100,7 +114,7 @@ fn emph_with_ref_not_at_edge_keeps_shorthand() {
     // The ref is mid-content; the closing `_` follows a plain word → safe.
     // Don't over-trigger the function form.
     let t = typ(r"a \emph{see \ref{ex} and more} word");
-    assert!(t.contains("_see @ex and more_"), "got:\n{t}");
+    assert!(t.contains("_see @ex[] and more_"), "got:\n{t}");
     assert!(!t.contains("#emph"), "got:\n{t}");
 }
 

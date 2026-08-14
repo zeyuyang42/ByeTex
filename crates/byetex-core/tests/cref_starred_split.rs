@@ -50,9 +50,11 @@ fn plural_namecref_commands_split_on_comma() {
 #[test]
 fn eqref_comma_still_literal_after_fix() {
     // Regression guard: the #137 behaviour for single-key commands is preserved.
+    // (The trailing `[]` is the empty supplement — `\eqref` renders "(3)", not
+    // "(Equation 3)"; see `tests/ref_supplement_none.rs`.)
     let out = refs("Eq. \\eqref{eqn:a,eqn:b}.\n");
     assert!(
-        out.contains("(@eqn:a-eqn:b)"),
+        out.contains("(@eqn:a-eqn:b[])"),
         "single-key \\eqref must keep the comma as a literal key; got:\n{out}"
     );
 }

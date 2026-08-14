@@ -302,7 +302,7 @@ emitting structured findings.
 | 2605.22820 | iclr | 4 | author/`\thanks`/`\newcolumntype` leak; small-caps over-applied |
 | 2605.31244 | icml | 2 | heading sizes ~2× too large; title too large |
 | 2605.31526 | ieeetran | 2 | 2/13 figs render; author list collapses to one name |
-| 2605.31598 | lncs | 2 | `\multirow`+`\cmidrule` table corruption; cleveref double-prefix |
+| 2605.31598 | lncs | 2 | `\multirow`+`\cmidrule` table corruption; ~~ref double-prefix~~ (fixed v0.7.4) |
 | 2605.22776 | article | 1 | author/affiliation/email block dropped |
 
 **Headline:** **author-block LaTeX leakage is a major defect in 6 of 8 papers** — entirely
@@ -311,6 +311,6 @@ invisible to the prior metrics. The two NeurIPS papers fail it *differently* (22
 uniformly wrong. The body (math, bibliography, geometry, density) grades strong across the board.
 
 Top backlog items (freq × severity): #1 author block (6 papers) → #3 per-class heading sizes →
-#7 heading math-leak → #8 LNCS table multirow → #9 cleveref double-prefix. See
+#7 heading math-leak → #8 LNCS table multirow → ~~#9 ref double-prefix~~ (RESOLVED v0.7.4). See
 `docs/fidelity-backlog.md` for the suspected `emit/` site + fix sketch on each; per-paper
 `findings.json` live under `tests/visual/<id>/` (gitignored).

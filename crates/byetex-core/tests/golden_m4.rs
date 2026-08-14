@@ -56,7 +56,7 @@ fn m4_figure_basic() {
       caption: [An example figure.],
     ) <fig:ex>
 
-    See Figure @fig:ex for details.
+    See Figure @fig:ex[] for details.
     ==== WARNINGS ====
     []
     "#);
@@ -73,7 +73,7 @@ fn m4_cite_ref() {
 
     Multiple keys: @dirac @bohr @planck.
 
-    Reference: see Section @sec:intro and equation (@eq:emc).
+    Reference: see Section @sec:intro[] and equation (@eq:emc[]).
     ==== WARNINGS ====
     []
     "#);

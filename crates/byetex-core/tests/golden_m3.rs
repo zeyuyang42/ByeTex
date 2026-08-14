@@ -394,7 +394,7 @@ fn m3_section_with_underscore_label_in_title_ref_attaches() {
     // separate paragraph (which Typst rejects as `cannot reference text`).
     assert!(
         out.typst
-            .contains("= Proof of Lemma~@thm:UAP_general_dim <sec:appendix>"),
+            .contains("= Proof of Lemma~@thm:UAP_general_dim[] <sec:appendix>"),
         "expected heading + inline label; got:\n{}",
         out.typst
     );
@@ -908,8 +908,8 @@ fn m3_ref_inside_math_uses_text_interpolation() {
         },
     );
     assert!(
-        out.typst.contains("#ref(<eqn:AMPa>)"),
-        "expected `#ref(<eqn:AMPa>)`; got:\n{}",
+        out.typst.contains("#ref(<eqn:AMPa>, supplement: none)"),
+        "expected `#ref(<eqn:AMPa>, supplement: none)`; got:\n{}",
         out.typst
     );
     // The bare `@eqn:AMPa` math-context form must not appear.
@@ -1119,7 +1119,7 @@ fn m3_eqref_wraps_in_parens() {
         },
     );
     assert!(
-        out.typst.contains("(@eq:foo)") || out.typst.contains("(#ref(<eq:foo>))"),
+        out.typst.contains("(@eq:foo[])") || out.typst.contains("(#ref(<eq:foo>, supplement: none))"),
         "expected parenthesized eqref, got:\n{}",
         out.typst
     );
@@ -1471,8 +1471,8 @@ fn m3_eqref_comma_is_single_literal_key() {
     );
     // The comma-containing key is one sanitized reference, wrapped in parens.
     assert!(
-        out.typst.contains("(@eqn:a-eqn:b)"),
-        "expected single literal key `(@eqn:a-eqn:b)`; got:\n{}",
+        out.typst.contains("(@eqn:a-eqn:b[])"),
+        "expected single literal key `(@eqn:a-eqn:b[])`; got:\n{}",
         out.typst
     );
     // It must NOT have split into two separate references.
@@ -1481,10 +1481,10 @@ fn m3_eqref_comma_is_single_literal_key() {
         "a single-key eqref must not split on the comma; got:\n{}",
         out.typst
     );
-    // Single-key eqref regression: `\eqref{eqn:c}` must still produce `(@eqn:c)`.
+    // Single-key eqref regression: `\eqref{eqn:c}` must still produce `(@eqn:c[])`.
     assert!(
-        out.typst.contains("(@eqn:c)"),
-        "single-key eqref regression: expected `(@eqn:c)`; got:\n{}",
+        out.typst.contains("(@eqn:c[])"),
+        "single-key eqref regression: expected `(@eqn:c[])`; got:\n{}",
         out.typst
     );
     // needs_equation_numbering must be triggered by the eqn: prefix.
