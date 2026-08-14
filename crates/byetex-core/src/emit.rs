@@ -134,7 +134,7 @@ fn parse_setcounter_tocdepth(cmd: &str) -> Option<i64> {
     after[..close2].trim().parse().ok()
 }
 
-fn typst_string_escape(s: &str) -> String {
+pub(in crate::emit) fn typst_string_escape(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     let bytes = s.as_bytes();
     let mut i = 0;
@@ -1477,7 +1477,13 @@ impl<'a> Emitter<'a> {
             (0..b.len()).any(|i| b[i] == b'$' && (i == 0 || b[i - 1] != b'\\'))
         };
         if !has_math {
-            let _ = write!(self.out, "\"{}\"", typst_string_escape(inner));
+            // The common case. Resolve LaTeX spacing commands first — see the
+            // longer note on the split path below.
+            let _ = write!(
+                self.out,
+                "\"{}\"",
+                typst_string_escape(&Self::sanitize_math_text(inner))
+            );
             return;
         }
         let mut pieces: Vec<String> = Vec::new();
@@ -1496,9 +1502,17 @@ impl<'a> Emitter<'a> {
                 }
                 i += 1;
             }
-            let text = inner[text_start..i].trim();
+            // Resolve LaTeX spacing commands BEFORE escaping: `\ `, `\,`, `\quad`
+            // are spacing in LaTeX but literal characters inside a Typst string,
+            // so `\text{ a.e.\ in }` rendered a visible backslash. Trimming is
+            // deliberately NOT applied — LaTeX's leading/trailing space is real,
+            // and dropping it glued the next math symbol onto the closing quote.
+            let text = Self::sanitize_math_text(&inner[text_start..i]);
+            // `is_empty`, NOT `trim().is_empty()`: a whitespace-only run IS the
+            // separator. Dropping it re-glued the neighbour on the inner-math
+            // path (`\text{ $y$ }\Omega` → `y Omega` with no text space).
             if !text.is_empty() {
-                pieces.push(format!("\"{}\"", typst_string_escape(text)));
+                pieces.push(format!("\"{}\"", typst_string_escape(&text)));
             }
             if i >= inner.len() {
                 break;
@@ -1513,9 +1527,9 @@ impl<'a> Emitter<'a> {
             if i >= inner.len() {
                 // Unbalanced `$` (a literal dollar with no closer) — re-emit the `$` and
                 // the remainder as literal text rather than swallowing it as math.
-                let tail = inner[dollar..].trim();
+                let tail = Self::sanitize_math_text(&inner[dollar..]);
                 if !tail.is_empty() {
-                    pieces.push(format!("\"{}\"", typst_string_escape(tail)));
+                    pieces.push(format!("\"{}\"", typst_string_escape(&tail)));
                 }
                 break;
             }
@@ -1795,11 +1809,15 @@ impl<'a> Emitter<'a> {
             // upright. Don't recurse (we'd otherwise split letters).
             "text_mode" if self.in_math => {
                 if let Some(arg) = first_curly_group(node) {
+                    // NOT trimmed: `\text{ a.e. in }\Omega` renders with a space
+                    // before the Omega in LaTeX, and trimming it here glued the
+                    // next math symbol onto the closing quote
+                    // (`"a.e. in"Omega`). `sanitize_math_text` collapses runs but
+                    // keeps one edge space when the source had any.
                     let inner = self
                         .src
                         .get(arg.start_byte() + 1..arg.end_byte() - 1)
-                        .unwrap_or("")
-                        .trim();
+                        .unwrap_or("");
                     self.emit_math_text_mode(inner);
                 }
                 return node.end_byte();
