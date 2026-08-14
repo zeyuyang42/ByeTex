@@ -9,7 +9,7 @@ use super::{
     environment_name, escape_paren_semicolons, escape_unbalanced_math_brackets, first_curly_group,
     flatten_text_children, lookup_math_symbol, math_font_decl_wrapper, needs_empty_base,
     needs_subscript_parens, protect_top_level_commas, split_math_rows, try_consume_math_arg,
-    BracelessArg, Emitter, MATH_WORD_BOUNDARY,
+    BracelessArg, Emitter, BOX_SENTINEL, MATH_WORD_BOUNDARY,
 };
 
 impl<'a> Emitter<'a> {
@@ -284,10 +284,24 @@ impl<'a> Emitter<'a> {
             return node.end_byte();
         }
         self.ensure_paragraph_break();
+        // LaTeX numbers EVERY line of the align family; a Typst equation block
+        // gets ONE number, so a multi-line block silently shifted every later
+        // equation number in the document (32 corpus papers, 472 lost numbers).
+        // `@preview/equate` in line mode fixes it — pulled in via `used_equate`
+        // only when such an environment actually appears. The STARRED forms
+        // print no numbers at all, so they need nothing.
+        let per_line_numbered = matches!(
+            env_name.as_str(),
+            "align" | "eqnarray" | "gather" | "flalign" | "alignat"
+        );
         self.out.push_str("$ ");
         let body_start = self.out.len();
         let was = self.in_math;
         self.in_math = true;
+        // `\label` / `\nonumber` inside a per-line-numbered env bind to their
+        // LINE, so they are emitted inline (see `in_per_line_env`).
+        let was_per_line = self.in_per_line_env;
+        self.in_per_line_env = per_line_numbered;
 
         // Bug #44: INHERIT pre-staged labels (e.g. from
         // `subequations`'s top-level `\label{...}`). Don't take/restore
@@ -311,12 +325,39 @@ impl<'a> Emitter<'a> {
         }
 
         self.in_math = was;
+        self.in_per_line_env = was_per_line;
         while self.out.len() > body_start && (self.out.ends_with(' ') || self.out.ends_with('\n')) {
             self.out.pop();
         }
         self.collapse_math_spaces(body_start);
         self.balance_math_brackets(body_start);
         self.escape_math_semicolons(body_start);
+        // Does the emitted body actually span lines? `split_math_rows` is the
+        // same row splitter the matrix/cases emitters key on, so this sees the
+        // rendered `\` breaks rather than guessing from the source.
+        let multi_line = split_math_rows(&self.out[body_start..]).len() > 1;
+        if per_line_numbered && multi_line {
+            self.used_equate = true;
+            self.equate_active = true;
+        } else if multi_line {
+            // LaTeX numbers `equation`/`multline` ONCE even when a `split`/
+            // `aligned` body spans lines. Under equate's global line mode they
+            // would get one number per LINE, so the body is boxed — the box hides
+            // the breaks from equate while leaving the block's `<label>`
+            // attachable. equate's own escape (`<equate:revoke>`) can't be used:
+            // it may not coexist with a label, and 158 of the 195 such corpus
+            // blocks carry one.
+            //
+            // Only MARK it here; `apply_deferred_equation_boxes` decides at
+            // finish() time. Two things are unknowable now: whether the document
+            // ends up importing equate at all (an `align` may come later, and
+            // boxing is pure risk without it), and whether the FINAL text is
+            // safe to box — `post_process_typography` runs afterwards and turns
+            // ``X'' into "X", so a body that looks quote-balanced here may not be.
+            let inner = self.out[body_start..].trim().to_string();
+            self.out.truncate(body_start);
+            let _ = write!(self.out, "{0}{1}{0}", BOX_SENTINEL, inner);
+        }
         self.out.push_str(" $");
         // Emit ALL collected labels — first attached to this equation,
         // the rest as hidden equation-kind figures so each `\ref{...}`
@@ -1400,6 +1441,103 @@ impl<'a> Emitter<'a> {
         let _ = write!(self.out, "mat({})", rendered.join("; "));
         self.in_math = was;
         node.end_byte()
+    }
+
+    /// Resolve the `BOX_SENTINEL` markers left by `emit_math_environment`.
+    ///
+    /// A marked body is wrapped in `#box[$ … $]` only when BOTH hold:
+    /// * the document actually imports equate (`used_equate`) — without the
+    ///   line-mode show rule the box changes nothing and is pure risk; and
+    /// * the final text is safe to box ([`Emitter::safe_to_box`]).
+    ///
+    /// Otherwise the markers are simply removed, leaving exactly the output this
+    /// document had before. Runs after the typography passes so it sees the text
+    /// Typst will actually parse.
+    pub(in crate::emit) fn apply_deferred_equation_boxes(&mut self) {
+        if !self.out.contains(BOX_SENTINEL) {
+            return;
+        }
+        // If ANY candidate body can't be boxed, equate must not be enabled for
+        // this document at all. Leaving that one body unboxed under a global
+        // line-mode rule would give it one number PER LINE — the very drift this
+        // work removes — so the safe fallback is the document's previous
+        // behaviour, not a partial application. (Review finding: the earlier
+        // comment claimed unboxed meant "per-block numbering"; it does not.)
+        let mut boxed = self.equate_active;
+        if boxed {
+            let mut rest = self.out.as_str();
+            while let Some(open) = rest.find(BOX_SENTINEL) {
+                let after = &rest[open + BOX_SENTINEL.len_utf8()..];
+                let Some(close) = after.find(BOX_SENTINEL) else { break };
+                if !Self::safe_to_box(&after[..close]) {
+                    boxed = false;
+                    break;
+                }
+                rest = &after[close + BOX_SENTINEL.len_utf8()..];
+            }
+            if !boxed {
+                // Drop the import+show rule we already prepended.
+                if let Some(at) = self.out.find(crate::emit::EQUATE_PREAMBLE) {
+                    self.out
+                        .replace_range(at..at + crate::emit::EQUATE_PREAMBLE.len(), "");
+                }
+                self.equate_active = false;
+            }
+        }
+        let mut out = String::with_capacity(self.out.len());
+        let mut rest = self.out.as_str();
+        while let Some(open) = rest.find(BOX_SENTINEL) {
+            let (before, after_open) = rest.split_at(open);
+            out.push_str(before);
+            let after_open = &after_open[BOX_SENTINEL.len_utf8()..];
+            let Some(close) = after_open.find(BOX_SENTINEL) else {
+                // Unpaired marker (shouldn't happen) — drop it and stop, rather
+                // than leaking a control char into the output.
+                out.push_str(after_open);
+                self.out = out;
+                return;
+            };
+            let body = &after_open[..close];
+            if boxed {
+                let _ = write!(out, "#box[$ {} $]", body.trim());
+            } else {
+                out.push_str(body);
+            }
+            rest = &after_open[close + BOX_SENTINEL.len_utf8()..];
+        }
+        out.push_str(rest);
+        self.out = out;
+    }
+
+    /// Whether a math body can safely be wrapped in `#box[$ … $]`.
+    ///
+    /// Checked at finish() time on the FINAL text — see the emit site.
+    ///
+    /// A `"` opens a Typst string in math. An ODD number of them leaves one
+    /// unterminated, which inside a bare `$ … $` merely renders oddly (it runs
+    /// on until some later quote) but inside a content block swallows the `]`
+    /// that closes the box → `unclosed delimiter`. Three corpus papers
+    /// (2605.22724, 2605.31306, 2605.31440) emit exactly that, caught by the
+    /// acceptance gate.
+    ///
+    /// The unbalanced quote is a pre-existing emitter defect — it is wrong in
+    /// bare math too — so this only declines to box such a body rather than
+    /// pretending to fix it. The cost is narrow: that one block keeps per-block
+    /// numbering under equate (i.e. today's behaviour) instead of the correct
+    /// single number, and it still compiles.
+    pub(in crate::emit) fn safe_to_box(body: &str) -> bool {
+        let mut quotes = 0usize;
+        let mut chars = body.chars();
+        while let Some(c) = chars.next() {
+            match c {
+                '\\' => {
+                    chars.next();
+                }
+                '"' => quotes += 1,
+                _ => {}
+            }
+        }
+        quotes % 2 == 0
     }
 
     /// `\begin{cases} ... \end{cases}` → `cases(...)`. Each LaTeX row maps

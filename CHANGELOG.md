@@ -6,6 +6,18 @@ Notable changes to ByeTex. Format loosely follows
 ## [0.7.4] — unreleased
 
 ### Fixed
+- **`align` numbered only once, shifting every later equation number.** LaTeX
+  numbers EVERY line of `align`/`gather`/`eqnarray`/`flalign`; ByeTex emitted one
+  Typst block, so it got one number and everything downstream was wrong for the
+  rest of the document — a reference to "(21)" landed on equation 19. Corpus-wide
+  that was 32 papers and 472 lost numbers (one paper lost 187). Such a document
+  now pulls in `@preview/equate` in per-line mode, conditionally, the same way
+  multi-caption floats pull in `@preview/subpar`. `\nonumber`/`\notag` lines are
+  revoked so they stay unnumbered, and `equation`/`multline` — which LaTeX numbers
+  ONCE even with a `split`/`aligned` body — keep a single number.
+  Known limitation: a `\label` inside an align still resolves to the block's
+  FIRST line rather than its own line. Numbers are right and every reference
+  resolves; exact per-line label binding is a follow-up.
 - **`Fig.~\ref{x}` rendered "Fig. Figure 3".** LaTeX's plain `\ref` prints the counter
   only, but ByeTex mapped it to Typst's `@key`, which auto-prepends the target's
   supplement — so the extremely common `Fig.~\ref{}` / `Section~\ref{}` / `Table~\ref{}`
