@@ -168,6 +168,72 @@ pub(crate) fn escape_paren_semicolons(body: &str) -> String {
     out
 }
 
+/// Protect TOP-LEVEL commas in one `cases()` row so they render as literal
+/// commas instead of splitting the row into two cases.
+///
+/// The emitter used to wrap each row in `[...]` for this. That protects the
+/// comma, but in Typst MATH mode `[`/`]` are literal bracket GLYPHS (not a
+/// content block, as they are in markup), so every case row rendered with
+/// visible brackets — `[1 quad "if" x > 0,]`. Found by the dogfood loop on
+/// 2605.22728; 22 corpus papers were affected and nothing flagged it, because
+/// the wrong output compiles perfectly well.
+///
+/// Quoting the comma as `","` renders the glyph without being an argument
+/// separator — the same trick [`escape_paren_semicolons`] uses for `;`. Only
+/// depth-0 commas need it: one inside `frac(a, b)` is a real separator that
+/// Typst's own paren nesting already scopes correctly, and quoting it would
+/// break the call. Commas already inside a `"…"` string are left alone.
+///
+/// **Run this AFTER [`escape_unbalanced_math_brackets`]**, so the depth counter
+/// sees exactly what Typst will: an escaped `\[` / `\)` is a literal glyph that
+/// does NOT scope, and only a surviving bare bracket does. Protecting first got
+/// a half-open interval wrong — `x in [0,1)` looked "nested" here, then both
+/// brackets were escaped, and Typst read the comma as a row separator (review
+/// finding H2: 2 rows rendered as 3).
+///
+/// Only `(`/`)` and `[`/`]` count toward depth. Typst math braces do NOT scope a
+/// `cases()` argument — `cases({a, b} & x, y)` really does split at that comma —
+/// so `{`/`}` are ignored (review finding L1).
+pub(crate) fn protect_top_level_commas(row: &str) -> String {
+    let mut out = String::with_capacity(row.len());
+    let mut depth = 0i32;
+    let mut in_str = false;
+    let mut chars = row.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            // Keep backslash escapes intact (`\,` is a thin space, not a comma;
+            // `\[` is a literal glyph, not a scope).
+            '\\' => {
+                out.push('\\');
+                if let Some(next) = chars.next() {
+                    out.push(next);
+                }
+            }
+            '"' => {
+                in_str = !in_str;
+                out.push('"');
+            }
+            '(' | '[' if !in_str => {
+                depth += 1;
+                out.push(c);
+            }
+            ')' | ']' if !in_str => {
+                // Clamp: an unmatched closer must not drive depth NEGATIVE, or a
+                // later `(` would climb back to 0 and a genuine separator would
+                // get quoted — `a) + \binom{n}{k}` produced `binom(n"," k)`,
+                // which Typst rejects with `missing argument: lower` (review
+                // finding H1). A stray closer means "still top level", not "less
+                // than top level".
+                depth = (depth - 1).max(0);
+                out.push(c);
+            }
+            ',' if !in_str && depth == 0 => out.push_str("\",\""),
+            other => out.push(other),
+        }
+    }
+    out
+}
+
 /// `[...]` brackets are treated as content-scope boundaries: parens opened
 /// inside a `[...]` cannot match parens from the outer scope, and vice versa.
 /// This prevents a stray `)` inside a `cases([...])` row from mis-escaping
@@ -372,4 +438,52 @@ pub(crate) fn escape_text_cell(s: &str) -> String {
         i += 1;
     }
     out
+}
+
+#[cfg(test)]
+mod protect_comma_tests {
+    use super::protect_top_level_commas;
+
+    #[test]
+    fn quotes_only_top_level_commas() {
+        assert_eq!(protect_top_level_commas("a, b"), "a\",\" b");
+        // A comma inside a call is a real argument separator — leave it.
+        assert_eq!(protect_top_level_commas("frac(a, b)"), "frac(a, b)");
+    }
+
+    #[test]
+    fn an_unmatched_closer_keeps_depth_at_top_level() {
+        // Review finding H1: without clamping, `)` → depth -1, then `(` → 0, so
+        // binom's genuine separator got quoted and Typst rejected the call.
+        assert_eq!(
+            protect_top_level_commas("a) + binom(n, k)"),
+            "a) + binom(n, k)"
+        );
+    }
+
+    #[test]
+    fn braces_do_not_scope_a_cases_argument() {
+        // Review finding L1: Typst math braces do NOT scope a `cases()` arg —
+        // `cases({a, b} & x, y)` really does split at that comma — so `{`/`}`
+        // must not count toward depth.
+        assert_eq!(protect_top_level_commas("{a, b} & x"), "{a\",\" b} & x");
+    }
+
+    #[test]
+    fn escaped_brackets_do_not_scope() {
+        // Review finding H2: `\[` / `\)` are literal glyphs after escaping, so a
+        // comma between them is top level and must be quoted.
+        assert_eq!(
+            protect_top_level_commas(r"x in \[0,1\)"),
+            "x in \\[0\",\"1\\)"
+        );
+    }
+
+    #[test]
+    fn a_comma_inside_a_string_is_left_alone() {
+        assert_eq!(
+            protect_top_level_commas(r#"a & "if x, y""#),
+            r#"a & "if x, y""#
+        );
+    }
 }

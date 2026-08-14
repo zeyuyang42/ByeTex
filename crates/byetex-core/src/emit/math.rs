@@ -8,8 +8,8 @@ use super::{
     apply_text_accent, boundary, consume_braceless_arg, consume_trailing_brace_groups,
     environment_name, escape_paren_semicolons, escape_unbalanced_math_brackets, first_curly_group,
     flatten_text_children, lookup_math_symbol, math_font_decl_wrapper, needs_empty_base,
-    needs_subscript_parens, split_math_rows, try_consume_math_arg, BracelessArg, Emitter,
-    MATH_WORD_BOUNDARY,
+    needs_subscript_parens, protect_top_level_commas, split_math_rows, try_consume_math_arg,
+    BracelessArg, Emitter, MATH_WORD_BOUNDARY,
 };
 
 impl<'a> Emitter<'a> {
@@ -1405,11 +1405,14 @@ impl<'a> Emitter<'a> {
     /// `\begin{cases} ... \end{cases}` → `cases(...)`. Each LaTeX row maps
     /// to one Typst cases argument. Rows are separated in the source by
     /// `\\`, and inside each row the value and condition are separated by
-    /// `&` (e.g. `value & condition \\`). Typst's `cases()` only takes a
-    /// list of expressions, so we collapse the row's value and condition
-    /// with a `quad` space between them, then wrap the entire row in a
-    /// math grouping construct that preserves nested commas — without it,
-    /// commas inside `\max\{a, 0\}` are read as cases separators.
+    /// `&` (e.g. `value & condition \\`) — which Typst's `cases()` accepts
+    /// natively as a column separator, so it is kept rather than flattened.
+    ///
+    /// A comma inside a row (`\max\{a, 0\}`) would otherwise be read as a
+    /// `cases()` argument separator. That used to be prevented by wrapping the
+    /// row in `[...]`, but in MATH mode those are literal bracket glyphs, so
+    /// every row rendered visibly bracketed. Rows are now escaped and then
+    /// comma-protected — see [`protect_top_level_commas`].
     pub(in crate::emit) fn emit_cases_env(&mut self, node: Node<'_>) -> usize {
         let was = self.in_math;
         self.in_math = true;
@@ -1441,21 +1444,30 @@ impl<'a> Emitter<'a> {
             .into_iter()
             .map(|r| {
                 let r = r.trim();
-                // Inside a row, `&` separates value from condition.
-                // Replace with ` quad ` (an em of horizontal space) and
-                // wrap the row in `[...]` so internal commas are
-                // preserved as content, not parsed as cases separators.
-                let row = r.replace('&', " quad ");
-                // Pre-escape any unbalanced parens INSIDE this row before
-                // wrapping it in `[...]`. Without this, an extra `)` from a
-                // malformed LaTeX source (e.g. stray `)` inside `\frac{}{}`)
-                // leaks into the global math body and causes the outer
-                // `cases(...)` closing paren to be incorrectly identified
-                // as unbalanced by `escape_unbalanced_math_brackets`.
-                let row = escape_unbalanced_math_brackets(&row);
-                format!("[{}]", row)
+                // Inside a row, `&` separates value from condition. Typst's
+                // `cases()` supports `&` as a column separator natively, so
+                // keep it — flattening it to `quad` (as this did before)
+                // throws away the value/condition alignment LaTeX gives.
+                //
+                // Internal commas still must not be read as `cases()`
+                // argument separators. That used to be handled by wrapping
+                // the row in `[...]`, but in MATH mode those are literal
+                // bracket glyphs, so every row rendered visibly bracketed
+                // (dogfood find on 2605.22728; 22 corpus papers). Quote the
+                // top-level commas instead — same idiom as `;` in
+                // `escape_paren_semicolons` — and emit the row bare.
+                //
+                // ESCAPE FIRST, THEN PROTECT. `escape_unbalanced_math_brackets`
+                // turns an unmatched `[`/`)` into a literal `\[`/`\)`, which no
+                // longer scopes in Typst — so the comma protector has to run on
+                // the ALREADY-escaped text or its idea of "nested" diverges from
+                // Typst's. (Escaping also neutralises stray closers before they
+                // can perturb the depth counter.) Doing it the other way round
+                // split `x in [0,1)` across two rows.
+                let row = escape_unbalanced_math_brackets(r);
+                protect_top_level_commas(&row)
             })
-            .filter(|r| r != "[]")
+            .filter(|r| !r.trim().is_empty())
             .collect();
         // Letter-boundary guard so a preceding identifier doesn't fuse
         // with the leading `c` of `cases(` (same shape as Bug #26 for
@@ -1506,15 +1518,16 @@ impl<'a> Emitter<'a> {
             .into_iter()
             .map(|r| {
                 let r = r.trim();
-                // Cells: `&` separator gets collapsed to `quad`. Wrap
-                // the whole row in `[content]` so internal commas
-                // don't get read as cases() argument separators.
-                // Pre-escape unbalanced parens as in emit_cases_env.
-                let row = r.replace('&', " quad ");
-                let row = escape_unbalanced_math_brackets(&row);
-                format!("[{}]", row)
+                // Identical treatment to `emit_cases_env` — this is the OTHER
+                // common piecewise idiom (`\left\{\begin{array}{ll}…`), and it
+                // had the same literal-bracket defect: keep `&` as Typst's
+                // column separator, escape unbalanced brackets, then quote the
+                // top-level commas instead of wrapping the row in `[...]`
+                // (which renders as visible brackets in math mode).
+                let row = escape_unbalanced_math_brackets(r);
+                protect_top_level_commas(&row)
             })
-            .filter(|r| r != "[]")
+            .filter(|r| !r.trim().is_empty())
             .collect();
         let _ = write!(self.out, "cases({})", rows.join(", "));
         node.end_byte()

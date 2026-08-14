@@ -17,6 +17,18 @@ Notable changes to ByeTex. Format loosely follows
   Two incidental wins: the self-terminating form no longer needs the adjacency space
   that turned `\ref{a}--\ref{b}` into "1 –2", and it can't be absorbed by a closing
   `_`, so `\emph{… \ref{x}}` keeps the compact shorthand.
+- **`\begin{cases}` rendered literal square brackets.** Each row was wrapped in
+  `[...]` to stop internal commas being read as `cases()` argument separators —
+  correct in Typst *markup*, where that is a content block, but in **math mode**
+  `[`/`]` are literal bracket glyphs. Every case row therefore rendered as
+  `[1 quad "if" x > 0,]`, brackets and all (22 corpus papers, 123 occurrences).
+  Rows are now escaped and then comma-protected — a top-level comma becomes the
+  quoted string `","`, the same idiom already used for `;` — and emitted bare.
+  The `&` column separator is also kept as Typst's own rather than flattened to
+  `quad`, restoring LaTeX's value/condition alignment. The same defect in the
+  `\left\{\begin{array}{ll}…` piecewise idiom is fixed alongside it.
+  Nothing flagged this: the wrong output compiles perfectly well, so it was
+  invisible to `warnings.json`, to `byetex diagnose`, and to the compile gate.
 
 ## [0.7.3] — 2026-07-26
 

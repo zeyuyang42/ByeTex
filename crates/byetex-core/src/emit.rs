@@ -40,8 +40,8 @@ pub(in crate::emit) use braceless::{
 };
 pub(crate) use escape::{
     escape_paren_semicolons, escape_text_cell, escape_text_for_typst_content,
-    escape_unbalanced_math_brackets, is_typst_label_char, needs_text_escape, sanitize_label_key,
-    strip_trailing_typst_label,
+    escape_unbalanced_math_brackets, is_typst_label_char, needs_text_escape,
+    protect_top_level_commas, sanitize_label_key, strip_trailing_typst_label,
 };
 pub(in crate::emit) use figures::parse_graphicspath_dirs;
 pub(in crate::emit) use macros::{
