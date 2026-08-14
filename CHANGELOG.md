@@ -6,6 +6,14 @@ Notable changes to ByeTex. Format loosely follows
 ## [0.7.4] — unreleased
 
 ### Fixed
+- **LaTeX spacing commands inside `\text{}` rendered as visible backslashes.**
+  `\ `, `\,`, `\;`, `\quad` are spacing in LaTeX but literal characters inside a
+  Typst string, so `\text{ a.e.\ in }\Omega` rendered `a.e.\ inΩ` — a stray
+  backslash mid-sentence, and the next symbol glued on because the argument was
+  also trimmed of LaTeX's real edge spaces. 24 corpus papers, 197 occurrences,
+  invisible to `byetex diagnose` (its leak scan reads the body, never inside an
+  emitted string). `\mathrm`/`\mathnormal` share the emit path but are MATH mode,
+  where LaTeX ignores whitespace, so they keep trimming.
 - **A `\ref`/`\cite` inside a TABLE CELL rendered as dead literal text.** The
   per-cell escaper runs over already-emitted content and escapes `@` — correct
   for an `@` that came from the source (an email in a cell must not become a

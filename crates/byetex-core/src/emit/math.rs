@@ -739,20 +739,122 @@ impl<'a> Emitter<'a> {
     /// attaches the above/below labels via Typst's `attach` mechanism
     /// (`arrow.r^"above"_"below"`). When labels are missing, emits
     /// the bare arrow.
-    /// Render a `\text{X}`-family call in math mode. Emits `"X"` (a
-    /// Typst quoted string that renders as upright text inside math).
-    /// Handles the case where tree-sitter attached the `{X}` as an
-    /// AST sibling rather than a child of the generic_command —
-    /// same source-byte fallback shape PR #27 used for `\xrightarrow`.
+    /// Turn a `\text{...}` argument into the body of a Typst string.
+    ///
+    /// The argument used to be copied verbatim, so LaTeX spacing commands
+    /// survived as literal characters: `\text{ a.e.\ in }` rendered
+    /// `a.e.\ in` — a visible backslash mid-sentence (40 occurrences on
+    /// 2605.22728 alone; 24 corpus papers, 197 occurrences). Inside a Typst
+    /// string there is no command layer, so they must be resolved here.
+    ///
+    /// This does NOT trim: LaTeX's `\text{ a.e. in }\Omega` puts a space before
+    /// the Ω, and trimming it glued the next symbol onto the closing quote.
+    /// Callers that are MATH mode rather than text mode (`\mathrm`) trim first —
+    /// see `emit_math_text_call`.
+    pub(in crate::emit) fn sanitize_math_text(inner: &str) -> String {
+        // Longest first so `\qquad` isn't matched as `\quad`, and the
+        // zero-width `\!` doesn't shadow anything.
+        const SPACERS: &[&str] = &[
+            r"\\",
+            r"\qquad",
+            r"\quad",
+            r"\medspace",
+            r"\thickspace",
+            r"\negmedspace",
+            r"\negthickspace",
+            r"\thinspace",
+            r"\enspace",
+            r"\negthinspace",
+            r"\;",
+            r"\:",
+            r"\,",
+            r"\!",
+            r"\ ",
+        ];
+        let mut out = String::with_capacity(inner.len());
+        let mut rest = inner;
+        'outer: while !rest.is_empty() {
+            for sp in SPACERS {
+                if let Some(tail) = rest.strip_prefix(sp) {
+                    // `\!` is negative space — it separates nothing.
+                    if !matches!(
+                        *sp,
+                        r"\!" | r"\negthinspace" | r"\negmedspace" | r"\negthickspace"
+                    ) {
+                        out.push(' ');
+                    }
+                    // LaTeX swallows whitespace after a control WORD (letters),
+                    // so `a\negthinspace b` is "ab", not "a b". A control SYMBOL
+                    // (`\,`, `\!`, `\ `) does not swallow.
+                    rest = if sp.ends_with(|c: char| c.is_ascii_alphabetic()) {
+                        tail.trim_start()
+                    } else {
+                        tail
+                    };
+                    continue 'outer;
+                }
+            }
+            let c = rest.chars().next().expect("non-empty");
+            // `~` is a non-breaking space in LaTeX text. Everything else is
+            // passed through unchanged — quoting and backslash escaping belong
+            // to `typst_string_escape`, which runs after this.
+            out.push(if c == '~' { ' ' } else { c });
+            rest = &rest[c.len_utf8()..];
+        }
+        // Collapse runs so `\quad\quad` or stray newlines don't widen the gap,
+        // but keep one leading/trailing space when the source had any.
+        let lead = out.starts_with(char::is_whitespace);
+        let trail = out.ends_with(char::is_whitespace);
+        let mut body: String = out.split_whitespace().collect::<Vec<_>>().join(" ");
+        if body.is_empty() {
+            return if lead || trail { " ".into() } else { String::new() };
+        }
+        if lead {
+            body.insert(0, ' ');
+        }
+        if trail {
+            body.push(' ');
+        }
+        body
+    }
+
+    /// `\text{…}` argument → a complete, quoted Typst string.
+    ///
+    /// `math_mode` selects LaTeX's whitespace rule. `\mathrm`/`\mathnormal` are
+    /// MATH mode, where LaTeX ignores whitespace entirely — `\frac{\mathrm{ d
+    /// }y}{…}` renders "dy", so keeping the spaces would print "d y" and would
+    /// also let source line-wrapping leak indentation into the output. The
+    /// text-mode members of the same dispatch (`\text`, `\mbox`, `\textbf`, …)
+    /// DO have real edge spaces and must keep them.
+    fn quoted_math_text(inner: &str, math_mode: bool) -> String {
+        let inner = if math_mode { inner.trim() } else { inner };
+        format!(
+            "\"{}\"",
+            crate::emit::typst_string_escape(&Self::sanitize_math_text(inner))
+        )
+    }
+
+    /// Whether a `\text`-family command is MATH mode (whitespace-insensitive)
+    /// rather than text mode. Read from the source at the node start.
+    fn is_math_mode_wrapper(&self, node: Node<'_>) -> bool {
+        let head = &self.src[node.start_byte()..node.end_byte().min(self.src.len())];
+        head.starts_with("\\mathrm") || head.starts_with("\\mathnormal")
+    }
+
+    /// Render a `\text{X}`-family call in math mode. Emits `"X"` (a Typst quoted
+    /// string that renders as upright text inside math). Handles the case where
+    /// tree-sitter attached the `{X}` as an AST sibling rather than a child of
+    /// the generic_command — the same source-byte fallback shape PR #27 used for
+    /// `\xrightarrow`.
     pub(in crate::emit) fn emit_math_text_call(&mut self, node: Node<'_>) -> usize {
+        let math_mode = self.is_math_mode_wrapper(node);
         // First: AST child path.
         if let Some(arg) = first_curly_group(node) {
             let inner = self
                 .src
                 .get(arg.start_byte() + 1..arg.end_byte() - 1)
-                .unwrap_or("")
-                .trim();
-            let _ = write!(self.out, "\"{}\"", inner);
+                .unwrap_or("");
+            let _ = write!(self.out, "{}", Self::quoted_math_text(inner, math_mode));
             return node.end_byte();
         }
         // Fallback: scan source bytes after node.end_byte() for `{...}`.
@@ -783,8 +885,8 @@ impl<'a> Emitter<'a> {
                 j += 1;
             }
             if j < bytes.len() && bytes[j] == b'}' {
-                let inner = self.src[inner_start..j].trim();
-                let _ = write!(self.out, "\"{}\"", inner);
+                let inner = &self.src[inner_start..j];
+                let _ = write!(self.out, "{}", Self::quoted_math_text(inner, math_mode));
                 let end = j + 1;
                 self.skip_until = self.skip_until.max(end);
                 return end;
@@ -1717,4 +1819,32 @@ fn unwrap_upright_wrapper(mut s: &str) -> &str {
         }
         return s;
     }
+}
+
+#[cfg(test)]
+mod sanitize_text_tests {
+    use crate::emit::Emitter;
+
+    #[test]
+    fn spacers_become_spaces() {
+        assert_eq!(Emitter::sanitize_math_text(r"a.e.\ in"), "a.e. in");
+        assert_eq!(Emitter::sanitize_math_text(r"a\,b"), "a b");
+        assert_eq!(Emitter::sanitize_math_text(r"a\quad b"), "a b");
+        // A line break inside \text degrades to a space — far better than the
+        // two literal backslashes it used to render.
+        assert_eq!(Emitter::sanitize_math_text(r"a\\b"), "a b");
+    }
+
+    #[test]
+    fn negative_spacers_separate_nothing() {
+        assert_eq!(Emitter::sanitize_math_text(r"a\!b"), "ab");
+        assert_eq!(Emitter::sanitize_math_text(r"a\negthinspace b"), "ab");
+    }
+
+    #[test]
+    fn edge_space_is_kept_but_collapsed() {
+        assert_eq!(Emitter::sanitize_math_text("  a.e.  in  "), " a.e. in ");
+        assert_eq!(Emitter::sanitize_math_text("plain"), "plain");
+    }
+
 }

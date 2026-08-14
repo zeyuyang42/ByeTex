@@ -45,6 +45,11 @@ fn embedded_quote_is_escaped() {
 #[test]
 fn plain_text_no_math_unchanged() {
     // A `\text{}` with no inner `$...$` still becomes a single quoted string.
+    //
+    // The edge spaces are now KEPT (`" for all "`, not `"for all"`): LaTeX's
+    // `\text{ for all }` really does put a space on each side, and trimming them
+    // glued the next math symbol onto the closing quote — `\text{ a.e. in }\Omega`
+    // rendered "a.e. inΩ". See `tests/text_in_math_spacing.rs`.
     let t = typ("\\documentclass{article}\\begin{document}\\[ a = b \\text{ for all } c \\]\\end{document}");
-    assert!(t.contains("\"for all\""), "plain text stays a quoted string; got:\n{t}");
+    assert!(t.contains("\" for all \""), "plain text stays a quoted string; got:\n{t}");
 }
