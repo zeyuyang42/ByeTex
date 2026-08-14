@@ -51,6 +51,43 @@ check(
     f"no home directory leaks into the artifact (got {rendered!r})",
 )
 
+
+# ── silent-gap probes ────────────────────────────────────────────────────────
+# The "silent gaps" table is the loop's step-1 measurement for picking Loop-A
+# work, and it was almost entirely false positives: the scan counted constructs
+# in the SOURCE and never checked whether the converter handled them, so 12 of
+# the 13 tracked gaps named constructs that already work (`\textcolor` ->
+# `#text(fill:)`, `\vspace` -> `#v()`, `\cmidrule` -> `table.hline()`, ...).
+# Measured 2026-08-14; the biggest entry (`\vspace/\hspace`, 39 papers / 1205x)
+# was entirely spurious.
+#
+# Every gap must carry a probe AND a negative control. A probe whose marker the
+# control also produces proves nothing, and since a passing probe DELETES the
+# gap from the published work list, a vacuous probe hides real work — strictly
+# worse than the noise it replaces. Two first-draft probes were exactly that.
+
+check(
+    set(fa.GAP_PROBES) == set(fa.SILENT_GAPS),
+    "every silent-gap label has a probe (no gap can be reported unverified)",
+)
+for _label, _probe in sorted(fa.GAP_PROBES.items()):
+    check(len(_probe) == 3, f"probe for {_label!r} carries a negative control")
+    _src, _expect, _ctrl = _probe
+    check(bool(_src.strip()) and bool(_expect.strip()) and bool(_ctrl.strip()),
+          f"probe for {_label!r} has LaTeX, a marker, and a control")
+    # A control identical to the probe can never discriminate.
+    check(_src.strip() != _ctrl.strip(),
+          f"probe for {_label!r} differs from its control")
+    # The marker must not be a literal substring of the control INPUT either —
+    # a cheap offline guard against asserting something the control also states.
+    check(_expect not in _ctrl,
+          f"marker for {_label!r} is absent from its control input")
+
+check(
+    hasattr(fa, "verify_gaps"),
+    "fidelity_audit exposes verify_gaps() to run the probes",
+)
+
 print()
 if fails:
     print(f"{len(fails)} FAILED")

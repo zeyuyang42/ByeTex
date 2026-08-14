@@ -1187,6 +1187,12 @@
       "occurrences": 1
     },
     {
+      "kind": "tikz",
+      "name": "",
+      "papers": 1,
+      "occurrences": 1
+    },
+    {
       "kind": "unsupported_command",
       "name": "\\vbox",
       "papers": 1,
@@ -1720,73 +1726,85 @@
       "gap": "\\vspace/\\hspace",
       "cluster": "color/spacing",
       "papers": 39,
-      "occurrences": 1205
+      "occurrences": 1205,
+      "handled": true
     },
     {
       "gap": "\\definecolor",
       "cluster": "color/spacing",
       "papers": 28,
-      "occurrences": 189
+      "occurrences": 189,
+      "handled": true
     },
     {
       "gap": "\\textcolor",
       "cluster": "color/spacing",
       "papers": 23,
-      "occurrences": 310
+      "occurrences": 310,
+      "handled": true
     },
     {
       "gap": "\\cmidrule",
       "cluster": "float-sizing/tables",
       "papers": 23,
-      "occurrences": 224
+      "occurrences": 224,
+      "handled": true
     },
     {
       "gap": "\\resizebox",
       "cluster": "float-sizing/tables",
       "papers": 21,
-      "occurrences": 112
+      "occurrences": 112,
+      "handled": false
     },
     {
       "gap": "theorem-env [Note]",
       "cluster": "lists/theorems",
       "papers": 20,
-      "occurrences": 409
+      "occurrences": 409,
+      "handled": true
     },
     {
       "gap": ">{}/<{}/@{} col decorators",
       "cluster": "float-sizing/tables",
       "papers": 18,
-      "occurrences": 116
+      "occurrences": 116,
+      "handled": false
     },
     {
       "gap": "\\item[custom-label]",
       "cluster": "lists/theorems",
       "papers": 16,
-      "occurrences": 268
+      "occurrences": 268,
+      "handled": true
     },
     {
       "gap": "\\smallskip/\\medskip/\\bigskip",
       "cluster": "color/spacing",
       "papers": 15,
-      "occurrences": 75
+      "occurrences": 75,
+      "handled": true
     },
     {
       "gap": "enumerate[style] (enumitem)",
       "cluster": "lists/theorems",
       "papers": 15,
-      "occurrences": 59
+      "occurrences": 59,
+      "handled": true
     },
     {
       "gap": "p/m/b column widths",
       "cluster": "float-sizing/tables",
       "papers": 7,
-      "occurrences": 13
+      "occurrences": 13,
+      "handled": true
     },
     {
       "gap": "\\colorbox/\\fcolorbox",
       "cluster": "color/spacing",
       "papers": 3,
-      "occurrences": 39
+      "occurrences": 39,
+      "handled": true
     }
   ]
 }
