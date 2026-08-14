@@ -6,6 +6,15 @@ Notable changes to ByeTex. Format loosely follows
 ## [0.7.4] — unreleased
 
 ### Fixed
+- **A `\ref`/`\cite` inside a TABLE CELL rendered as dead literal text.** The
+  per-cell escaper runs over already-emitted content and escapes `@` — correct
+  for an `@` that came from the source (an email in a cell must not become a
+  Typst reference) but wrong for a token ByeTex itself emitted, so
+  `[see Fig.~\@fig:a]` printed "@fig:a" and never resolved. 19 corpus papers,
+  258 occurrences. The token is now marked at the emit site, where it is known
+  to be ours, so a source `@` is still escaped. Refs reached through a macro
+  (`\figref{x}`) or a font wrapper (`{\bf \ref{x}}`) are covered too, as are
+  nested tables (whose cells are escaped twice).
 - **`align` numbered only once, shifting every later equation number.** LaTeX
   numbers EVERY line of `align`/`gather`/`eqnarray`/`flalign`; ByeTex emitted one
   Typst block, so it got one number and everything downstream was wrong for the

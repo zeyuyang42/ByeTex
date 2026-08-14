@@ -242,7 +242,7 @@ impl<'a> Emitter<'a> {
                 }
             }
         }
-        self.out.push_str(&typst);
+        self.push_cell_safe(&typst);
         // See `emit_label_reference` for why we sometimes append a separator
         // after `@key`. Same logic applies to citations.
         let end = node.end_byte();
@@ -285,6 +285,25 @@ impl<'a> Emitter<'a> {
                 ),
                 None => format!("#cite(<{}>, form: {})", sanitized_key, f),
             },
+        }
+    }
+
+    /// Append a reference/citation token, protecting it from the per-cell
+    /// escaper when we're inside a table cell.
+    ///
+    /// `escape_text_cell` escapes `@` so a source `@` (an email in a cell) can't
+    /// be read by Typst as a reference. That is right for source text and wrong
+    /// for a token WE emitted — `[see Fig.~\@fig:a]` printed the reference as
+    /// literal text and never resolved it (19 corpus papers, 258 occurrences).
+    /// Marking here, at the one place that knows the token is ours, keeps both
+    /// cases correct.
+    fn push_cell_safe(&mut self, token: &str) {
+        if self.in_table_cell {
+            self.out.push(crate::emit::CELL_KEEP_SENTINEL);
+            self.out.push_str(token);
+            self.out.push(crate::emit::CELL_KEEP_SENTINEL);
+        } else {
+            self.out.push_str(token);
         }
     }
 
@@ -363,12 +382,14 @@ impl<'a> Emitter<'a> {
                 // Wrap the full comma-separated list in one pair of parens —
                 // `\eqref{a,b}` → `(@a[], @b[])`, matching LaTeX convention.
                 let parts: Vec<String> = keys.iter().map(|k| fmt_key(k)).collect();
-                let _ = write!(self.out, "({})", parts.join(", "));
+                let joined = format!("({})", parts.join(", "));
+                self.push_cell_safe(&joined);
             }
             Some("\\pageref") => {
                 // Typst doesn't have a direct equivalent; warn once and emit refs.
                 let parts: Vec<String> = keys.iter().map(|k| fmt_key(k)).collect();
-                self.out.push_str(&parts.join(", "));
+                let joined = parts.join(", ");
+                self.push_cell_safe(&joined);
                 self.warnings.push(Warning {
                     range: range_of(node),
                     category: Category::NeedsManualReview {
@@ -399,7 +420,8 @@ impl<'a> Emitter<'a> {
                     }
                 }
                 let parts: Vec<String> = keys.iter().map(|k| fmt_key(k)).collect();
-                self.out.push_str(&parts.join(", "));
+                let joined = parts.join(", ");
+                self.push_cell_safe(&joined);
             }
         }
         // Typst labels include `-`, `.`, `:`, etc. If the source has
