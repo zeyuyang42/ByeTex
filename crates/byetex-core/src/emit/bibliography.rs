@@ -323,35 +323,51 @@ impl<'a> Emitter<'a> {
         // Bug #24: inside math mode, a bare `@key` is parsed by Typst as
         // an identifier. Wrap in `#ref(<key>)` to escape math context.
         let in_math = self.in_math;
+        // Fidelity backlog L6/§9: LaTeX's plain `\ref` renders the COUNTER ONLY
+        // ("3") and `\eqref` the counter in parens ("(3)"), but Typst's `@key`
+        // auto-prepends the target's supplement ("Figure 3" / "Equation 1"). On
+        // the very common `Fig.~\ref{x}` / `Section~\ref{x}` idiom that produced
+        // a double prefix ("Fig. Figure 3"). Suppress the supplement for exactly
+        // those two commands; `\cref`/`\Cref`/`\autoref` DO print a prefix in
+        // LaTeX, so they keep the bare `@key` and let Typst supply it.
+        //
+        // The empty-supplement SHORTHAND `@key[]` is used rather than the
+        // `#ref(<key>, supplement: none)` function form (the earlier, reverted
+        // attempt at this fix): the fn form broke on `\ref{x}(ii)` — Typst reads
+        // `(ii)` as a CALL — and on the table-cell escaper mangling its `<`/`_`.
+        // `@key[]` keeps the shorthand shape, so neither hazard can arise. In
+        // math the fn form is unavoidable (a bare `@key` is an identifier there),
+        // and it is safe because a math ref has no markup escaper over it.
+        let base_cmd = first_kind
+            .as_deref()
+            .map(|k| k.strip_suffix('*').unwrap_or(k));
+        // `\labelcref` is cleveref's no-prefix sibling of `\cref` — it prints the
+        // bare counter, so it has the same defect. `\pageref`/`\cpageref` are page
+        // numbers (handled separately) and `\nameref` prints a name, not a
+        // counter; neither belongs here. `\vref` (varioref) is counter + "on page
+        // N" and would also qualify, but ByeTex does not model its page half at
+        // all — left out deliberately rather than half-converted.
+        let strip_supplement = matches!(
+            base_cmd,
+            Some("\\ref") | Some("\\eqref") | Some("\\labelcref")
+        );
+        let fmt_key = |k: &str| match (in_math, strip_supplement) {
+            (true, true) => format!("#ref(<{}>, supplement: none)", k),
+            (true, false) => format!("#ref(<{}>)", k),
+            (false, true) => format!("@{}[]", k),
+            (false, false) => format!("@{}", k),
+        };
         match first_kind.as_deref() {
             Some("\\eqref") => {
                 self.needs_equation_numbering = true;
                 // Wrap the full comma-separated list in one pair of parens —
-                // `\eqref{a,b}` → `(@a, @b)`, matching LaTeX convention.
-                let parts: Vec<String> = keys
-                    .iter()
-                    .map(|k| {
-                        if in_math {
-                            format!("#ref(<{}>)", k)
-                        } else {
-                            format!("@{}", k)
-                        }
-                    })
-                    .collect();
+                // `\eqref{a,b}` → `(@a[], @b[])`, matching LaTeX convention.
+                let parts: Vec<String> = keys.iter().map(|k| fmt_key(k)).collect();
                 let _ = write!(self.out, "({})", parts.join(", "));
             }
             Some("\\pageref") => {
                 // Typst doesn't have a direct equivalent; warn once and emit refs.
-                let parts: Vec<String> = keys
-                    .iter()
-                    .map(|k| {
-                        if in_math {
-                            format!("#ref(<{}>)", k)
-                        } else {
-                            format!("@{}", k)
-                        }
-                    })
-                    .collect();
+                let parts: Vec<String> = keys.iter().map(|k| fmt_key(k)).collect();
                 self.out.push_str(&parts.join(", "));
                 self.warnings.push(Warning {
                     range: range_of(node),
@@ -382,16 +398,7 @@ impl<'a> Emitter<'a> {
                         self.needs_heading_numbering = true;
                     }
                 }
-                let parts: Vec<String> = keys
-                    .iter()
-                    .map(|k| {
-                        if in_math {
-                            format!("#ref(<{}>)", k)
-                        } else {
-                            format!("@{}", k)
-                        }
-                    })
-                    .collect();
+                let parts: Vec<String> = keys.iter().map(|k| fmt_key(k)).collect();
                 self.out.push_str(&parts.join(", "));
             }
         }
@@ -412,6 +419,18 @@ impl<'a> Emitter<'a> {
         // whole predicate so the rule can't drift between ASCII and non-ASCII
         // label chars — and so `&str` slicing always lands on a char boundary
         // (review #7).
+        //
+        // The markup `@key[]` form is the ONE form that needs no guard: the `]`
+        // ends the label and nothing can be appended to it, so guarding it only
+        // injects a stray space (`\ref{a}--\ref{b}` → "1 –2"). Every other form
+        // still needs it. In particular the math `#ref(...)` fn form must KEEP the
+        // guard even though it ends in `)`: Typst continues a CODE expression
+        // across a `.`, so `#ref(<a>, supplement: none).x` parses as a field
+        // access and hard-errors with `ref does not have field "x"` — the tail
+        // char of `self.out` is the wrong thing to key on (review finding #1).
+        if !in_math && strip_supplement {
+            return node.end_byte();
+        }
         let end = node.end_byte();
         let mut rest = self.src[end..].chars();
         if let Some(c0) = rest.next() {

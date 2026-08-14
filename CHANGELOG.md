@@ -3,7 +3,22 @@
 Notable changes to ByeTex. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver.
 
-## [0.7.3] — unreleased
+## [0.7.4] — unreleased
+
+### Fixed
+- **`Fig.~\ref{x}` rendered "Fig. Figure 3".** LaTeX's plain `\ref` prints the counter
+  only, but ByeTex mapped it to Typst's `@key`, which auto-prepends the target's
+  supplement — so the extremely common `Fig.~\ref{}` / `Section~\ref{}` / `Table~\ref{}`
+  idiom came out with a doubled prefix. `\eqref` and cleveref's no-prefix `\labelcref`
+  had the same defect — `\eqref`'s in a louder form:
+  `(@key)` rendered "(Equation 1)" instead of "(1)". Both now emit the empty-supplement
+  shorthand `@key[]` (and `#ref(<key>, supplement: none)` inside math). `\cref`, `\Cref`
+  and `\autoref` do print a prefix in LaTeX, so they keep the bare `@key`.
+  Two incidental wins: the self-terminating form no longer needs the adjacency space
+  that turned `\ref{a}--\ref{b}` into "1 –2", and it can't be absorbed by a closing
+  `_`, so `\emph{… \ref{x}}` keeps the compact shorthand.
+
+## [0.7.3] — 2026-07-26
 
 ### Fixed
 - **TikZ pictures were dropped silently.** No placeholder, no warning —
