@@ -22,10 +22,28 @@ It is two interlocking loops plus a corpus-expansion gate:
 
 ```bash
 cargo build --release                       # the byetex binary the loop drives
-export BYETEX_BIN="$PWD/target/release/byetex"
+export BYETEX_BIN="$PWD/target/release/byetex"   # see "Which binary" below
 bash scripts/sync_agents.sh                 # agents/*.md → .claude/agents/ (gitignored)
 bash scripts/setup_truth_deps.sh            # tectonic deps: pinned biber + fonts for the TRUTH render
 ```
+
+**Which binary gets measured.** `dogfood.py` resolves `$BYETEX_BIN` → the repo's
+`target/release/byetex` → **hard error**; `PATH` is never searched. Every verb prints the
+resolved path + `--version` on stderr and warns on two kinds of staleness: a version that
+disagrees with `Cargo.toml`, and (the common one) a binary **older than `crates/**/*.rs`**
+— an unbuilt working-tree edit, where the version still matches.
+
+This is not paranoia. It *used* to fall through to `byetex` on PATH, picked up the
+install.sh copy in `~/.local/bin` (**v0.3.0**, ~40 releases old), and seeded a whole
+dogfood round from it — producing `blocker`-severity findings against skills that were
+describing the current converter perfectly accurately, plus a skewed `fidelity_before`
+and hardest-3 ranking. Note the *agent* half is the other exposure: it reaches skills via
+`$BYETEX skills read`, and **skills are served by the binary**, so step 6 must hand it an
+absolute path (`dogfood.py byetex-path`) rather than let it call a bare `byetex`.
+
+**Rebuild before dogfooding, and if a report claims "the converter dropped X", re-run that
+construct through the current binary before routing it.** (`visual_test.py` / the fidelity
+gate build the repo binary themselves, so they were never exposed to this.)
 
 **Truth-first rule.** The fidelity DRIVER compares ByeTex output against the *truth* — the
 paper's original LaTeX rendered with tectonic. `scripts/setup_truth_deps.sh` provisions what
@@ -164,11 +182,18 @@ For each id:
 ```bash
 SB=$(uv run --with requests --with Pillow --with numpy --with scikit-image \
         python scripts/dogfood.py prepare <id>)     # last stdout line = sandbox path
+BYETEX=$(python scripts/dogfood.py byetex-path)     # NEVER let the agent use bare `byetex`
 ```
 Then spawn the **fresh Sonnet** tester via the **Agent tool**:
 - `subagent_type: "byetex-dogfood-tester"`, `model: "sonnet"`
-- `prompt`: `SANDBOX=<$SB>  PAPER_ID=<id>  BYETEX=<$BYETEX_BIN>` + "cd to SANDBOX, follow
+- `prompt`: `SANDBOX=<$SB>  PAPER_ID=<id>  BYETEX=<$BYETEX>` + "cd to SANDBOX, follow
   your procedure, emit the dogfood report JSON as the last fenced block."
+
+**`BYETEX` must be an absolute path, and must never be empty.** The agent reaches skills
+via `$BYETEX skills read`, and **skills are served by the binary** — so a bare `byetex`
+resolved from the sandbox's `PATH` can hand a fresh agent an ancient surface. Deriving it
+from `dogfood.py byetex-path` (rather than from `$BYETEX_BIN`, which may be unset) keeps
+both halves of the loop — harness and agent — on the same binary.
 
 Save the agent's final JSON block, then score it:
 ```bash
