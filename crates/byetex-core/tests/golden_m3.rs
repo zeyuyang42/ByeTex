@@ -124,6 +124,9 @@ fn m3_equation_env() {
 
 #[test]
 fn m3_align_env() {
+    // NO equate import here, deliberately: this fixture never references an
+    // equation, so numbering is never switched on and per-line numbering would
+    // reorganise numbers nobody displays. See `tests/align_per_line_numbering.rs`.
     insta::assert_snapshot!(run("m3_math/align_env.tex"), @r"
     ==== TYPST ====
     $ a &= b + c \

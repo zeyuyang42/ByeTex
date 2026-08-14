@@ -75,6 +75,25 @@ pub(in crate::emit) use preamble::{
 pub(crate) use typography::apply_text_accent;
 use typography::{is_operatorname_only_function, should_split_math_word};
 
+/// Marks a multi-line `equation`/`multline` body as a candidate for `#box`ing,
+/// so the decision can be made at finish() time. See `emit_math_environment` and
+/// [`Emitter::apply_deferred_equation_boxes`].
+pub(in crate::emit) const BOX_SENTINEL: char = '\u{1e}';
+
+/// Import + show rule that makes a multi-line equation number PER LINE, the way
+/// LaTeX's `align`/`gather`/`eqnarray` do. Emitted only when such an environment
+/// is actually present (`used_equate`), so documents that gain nothing don't take
+/// on a network-fetched dependency.
+///
+/// `number-mode: "line"` applies to every block equation, so environments LaTeX
+/// numbers ONCE (`equation`/`multline`, incl. a `split`/`aligned` body) have
+/// their body boxed at the emit site — the box hides the line breaks from equate
+/// while leaving the block's `<label>` attachable. equate's own escape hatch
+/// (`<equate:revoke>`) can't be used there: it may not coexist with a label, and
+/// 158 of the 195 such corpus blocks carry one.
+pub(in crate::emit) const EQUATE_PREAMBLE: &str = "#import \"@preview/equate:0.3.2\": equate\n\
+     #show: equate.with(breakable: true, sub-numbering: false, number-mode: \"line\")\n";
+
 /// Sentinel character emitted by `push_math_symbol` immediately after a
 /// multi-character math identifier so that `collapse_math_spaces` can
 /// later decide whether to insert a real separator (when the next char
@@ -485,6 +504,24 @@ pub(crate) struct Emitter<'a> {
     /// `kind: "anchor"` figure so the label is referenceable. Gates the
     /// `#show figure.where(kind: "anchor"): it => none` rule in `finish()`.
     used_text_label_anchor: bool,
+    /// Set when a numbered multi-line align-family environment is emitted;
+    /// triggers the conditional `#import "@preview/equate"` + its line-mode show
+    /// rule in `finish()`. LaTeX numbers EVERY line of `align`/`gather`/
+    /// `eqnarray`/`flalign`, but a Typst equation block gets ONE number — so
+    /// without this, every equation number after the first such block is wrong
+    /// for the rest of the document (32 corpus papers, 472 lost numbers).
+    used_equate: bool,
+    /// Same signal as `used_equate`, but never cleared. `used_equate` is reset
+    /// once the preamble is emitted (so the fragment path can't prepend it
+    /// twice), and that happens BEFORE the deferred equation boxes are resolved
+    /// — which would otherwise silently skip every box.
+    equate_active: bool,
+    /// True while emitting the body of a per-line-numbered align-family
+    /// environment. Inside one, a `\label` and a `\nonumber` belong to the
+    /// LINE they sit on, not the block: equate exposes both as inline markers
+    /// (`#<key>` / `#<equate:revoke>`), so they must be emitted in place rather
+    /// than flushed after the closing `$`.
+    in_per_line_env: bool,
     /// Set when a `#subpar.grid(...)` is emitted; triggers the conditional
     /// `#import "@preview/subpar:0.2.2"` at the top of the document in `finish()`.
     used_subpar: bool,
@@ -750,6 +787,9 @@ impl<'a> Emitter<'a> {
             emitting_float_body: false,
             in_overlay_context: false,
             used_text_label_anchor: false,
+            used_equate: false,
+            equate_active: false,
+            in_per_line_env: false,
             used_subpar: false,
             has_bibtex_include: false,
             had_bib_file: false,
@@ -1161,6 +1201,16 @@ impl<'a> Emitter<'a> {
             let title_block = std::mem::take(&mut self.out);
             // Self-contained preamble first, then this document's numbering
             // rules (LaTeX numbers sections by default), then title + body.
+            // Equation numbering is demand-driven here, so a document with an
+            // align but no equation reference prints no numbers at all — pulling
+            // in a network-fetched package to reorganise numbers nobody shows
+            // would only break air-gapped compiles.
+            if self.used_equate && self.needs_equation_numbering {
+                self.out.push_str(EQUATE_PREAMBLE);
+            } else {
+                self.equate_active = false;
+            }
+            self.used_equate = false;
             if self.used_subpar {
                 self.out.push_str("#import \"@preview/subpar:0.2.2\"\n");
                 // Emitted here; clear so the fragment-preamble block below
@@ -1246,6 +1296,11 @@ impl<'a> Emitter<'a> {
         // numbering only when a fragment references a heading; equation
         // numbering stays demand-driven.
         let mut preamble = String::new();
+        if self.used_equate && self.needs_equation_numbering {
+            preamble.push_str(EQUATE_PREAMBLE);
+        } else if self.used_equate {
+            self.equate_active = false;
+        }
         if self.used_subpar {
             preamble.push_str("#import \"@preview/subpar:0.2.2\"\n");
         }
@@ -1275,6 +1330,9 @@ impl<'a> Emitter<'a> {
         self.out = post_process_typography(&self.out);
         self.out = break_raw_paren_chains(&self.out);
         self.out = break_math_comment_tokens(&self.out);
+
+        // Now that the text is final, resolve the deferred equation boxes.
+        self.apply_deferred_equation_boxes();
 
         // Backstop for dangling `\ref`/`\cref` targets. A label that LaTeX would
         // merely warn about — commented out (`% \label{x}`, corpus 2605.31586),
@@ -1495,6 +1553,12 @@ impl<'a> Emitter<'a> {
         sub.emit_root(tree.root_node());
         // Merge side-effects back into the parent.
         self.emitted_bibliography |= sub.emitted_bibliography;
+        // An align emitted from inside a macro body still needs the document to
+        // import equate; without this the macro-emitted block keeps per-block
+        // numbering while top-level blocks go per-line, and the two drift apart.
+        self.used_equate |= sub.used_equate;
+        self.equate_active |= sub.equate_active;
+        self.used_subpar |= sub.used_subpar;
         self.visited_includes = std::mem::take(&mut sub.visited_includes);
         for (k, v) in sub.macros.drain() {
             self.macros.entry(k).or_insert(v);
@@ -1964,6 +2028,17 @@ impl<'a> Emitter<'a> {
                 // all; the env-closing flush emits the first as the
                 // attached `<key>` and emits each extra as a hidden
                 // equation block so every `\ref{...}` resolves.
+                // NOTE: inside a per-line-numbered env a `\label` really belongs
+                // to its LINE, and equate exposes an inline `#<key>` form for
+                // that. Emitting it inline was tried and REVERTED: it bypasses
+                // the close-flush's hidden-stub fallback, so labels reached via
+                // other paths (pre-staged `subequations` keys, nested envs) lost
+                // their anchor entirely and every `@key` to them became "label
+                // does not exist" (corpus 2605.22724/31306/31440). Until the
+                // label plumbing can guarantee an anchor for every key, block
+                // attachment stays — a ref then resolves to the block's FIRST
+                // line rather than its own, which is inexact but always resolves
+                // and is still strictly better than the pre-equate numbering.
                 if !self
                     .pending_math_labels
                     .iter()
@@ -4869,6 +4944,17 @@ impl<'a> Emitter<'a> {
                 return node.end_byte();
             }
         };
+        // `\nonumber`/`\notag` normally drop to nothing: Typst doesn't number an
+        // equation unless asked. But inside a per-line-numbered align-family env
+        // equate numbers EVERY line, so the suppression has to be expressed —
+        // otherwise a `\nonumber` line gets a number LaTeX never gave it and every
+        // later equation in the document shifts. 21 of the 27 corpus align papers
+        // use `\nonumber` (232 occurrences), so without this the per-line fix is a
+        // net REGRESSION. equate's per-line escape is a `<equate:revoke>` label.
+        if self.in_per_line_env && matches!(n, "\\nonumber" | "\\notag") {
+            self.out.push_str("#<equate:revoke>");
+            return node.end_byte();
+        }
         if let Some(typst) = lookup_math_symbol(n) {
             self.push_math_symbol(typst);
             return node.end_byte();
