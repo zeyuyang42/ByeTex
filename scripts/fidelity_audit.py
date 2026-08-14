@@ -160,6 +160,110 @@ SILENT_GAPS: dict[str, tuple[str, object]] = {
 }
 
 
+# ── gap probes: does the converter ALREADY handle this? ──────────────────────
+# label -> (latex_with_construct, marker, latex_WITHOUT_construct)
+#
+# The silent-gap scan counts constructs in the SOURCE. On its own that says
+# nothing about fidelity: a construct the converter translates correctly emits
+# no warning either, so "appears in source, no warning" is NOT evidence of loss.
+# Measured 2026-08-14 (before the negative controls below): 12 of 13 probes
+# reported handled and the
+# ranked table was almost entirely false positives — including its biggest entry
+# (`\vspace/\hspace`, 39 papers / 1205 occurrences), which steered Loop-A work
+# toward constructs that had worked for months.
+#
+# Each gap carries a probe AND a NEGATIVE CONTROL: the same LaTeX with the
+# construct removed. The marker must appear for the probe and NOT for the
+# control, or the probe proves nothing. Two of the first-draft probes were
+# vacuous exactly this way — `>{\bfseries}` asserted `align: (left, center)`,
+# which a plain `{l c}` also emits, and `\resizebox` asserted `#table(`, which a
+# bare `tabular` emits — so they were about to hide two REAL gaps (18 and 21
+# papers). A false negative here is worse than the false positive this fixes:
+# it deletes work from the list instead of adding noise to it.
+GAP_PROBES: dict[str, tuple[str, str, str]] = {
+    r"\resizebox": (
+        r"\resizebox{\columnwidth}{!}{\begin{tabular}{ll}a&b\\ \end{tabular}}",
+        "scale(",                      # the SCALING, not merely a surviving table
+        r"\begin{tabular}{ll}a&b\\ \end{tabular}",
+    ),
+    "p/m/b column widths": (
+        r"\begin{tabular}{p{3cm}l}a&b\\ \end{tabular}",
+        "3cm",
+        r"\begin{tabular}{ll}a&b\\ \end{tabular}",
+    ),
+    r">{}/<{}/@{} col decorators": (
+        r"\begin{tabular}{>{\bfseries}l c}a&b\\ \end{tabular}",
+        "strong",                      # the DECORATOR's effect, not the alignment
+        r"\begin{tabular}{l c}a&b\\ \end{tabular}",
+    ),
+    r"\cmidrule": (
+        r"\begin{tabular}{ll}a&b\\ \cmidrule{1-2} c&d\\ \end{tabular}",
+        "table.hline(",
+        r"\begin{tabular}{ll}a&b\\ c&d\\ \end{tabular}",
+    ),
+    r"\textcolor": (r"\textcolor{red}{x}", "#text(fill: red)", "x"),
+    r"\colorbox/\fcolorbox": (r"\colorbox{yellow}{x}", "#highlight(", "x"),
+    r"\definecolor": (
+        r"\definecolor{mine}{RGB}{10,20,30} \textcolor{mine}{x}",
+        "rgb(10, 20, 30)",
+        r"\textcolor{red}{x}",
+    ),
+    r"\vspace/\hspace": ("A.\n\n\\vspace{1cm}\n\nB.", "#v(1cm)", "A.\n\nB."),
+    r"\smallskip/\medskip/\bigskip": ("A.\n\n\\bigskip\n\nB.", "#v(", "A.\n\nB."),
+    r"\item[custom-label]": (
+        r"\begin{itemize}\item[(a)] x \end{itemize}",
+        "/ (a):",
+        r"\begin{itemize}\item x \end{itemize}",
+    ),
+    "enumerate[style] (enumitem)": (
+        r"\begin{enumerate}[label=(\alph*)]\item x\end{enumerate}",
+        'numbering: "(a)"',
+        r"\begin{enumerate}\item x\end{enumerate}",
+    ),
+    r"\renewcommand{\labelenum*}": (
+        r"\renewcommand{\labelenumi}{(\alph{enumi})}\begin{enumerate}\item x\end{enumerate}",
+        'numbering: "(a)"',
+        r"\begin{enumerate}\item x\end{enumerate}",
+    ),
+    "theorem-env [Note]": (
+        r"\newtheorem{thm}{Theorem}\begin{thm}[Pythagoras] Body. \end{thm}",
+        "caption:",
+        r"\newtheorem{thm}{Theorem}\begin{thm} Body. \end{thm}",
+    ),
+}
+
+
+def _convert(byetex: Path, latex: str) -> str | None:
+    try:
+        proc = subprocess.run(
+            [str(byetex), "convert", "-c", latex],
+            capture_output=True, text=True, timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return proc.stdout if proc.returncode == 0 else None
+
+
+def verify_gaps(byetex: Path) -> dict[str, bool]:
+    """Run each gap probe against its negative control; return {label: handled}.
+
+    Handled iff the marker appears WITH the construct and NOT without it. Every
+    other outcome — conversion failure, or a marker the control also produces
+    (a vacuous probe that proves nothing) — is reported as NOT handled, so the
+    gap stays on the work list. Fail closed: over-reporting a gap costs a probe
+    review, hiding one costs the work item entirely.
+    """
+    handled: dict[str, bool] = {}
+    for label, (latex, marker, control) in GAP_PROBES.items():
+        got = _convert(byetex, latex)
+        base = _convert(byetex, control)
+        handled[label] = (
+            got is not None and base is not None
+            and marker in got and marker not in base
+        )
+    return handled
+
+
 def ensure_bin() -> Path:
     env = os.environ.get("BYETEX_BIN")
     if env:
@@ -240,8 +344,14 @@ def main() -> int:
                     silent_total[label] += n
             print(f"  audited {pid}", file=sys.stderr)
 
+    # Verify each tracked gap against the converter before publishing it as a
+    # work item — see GAP_PROBES.
+    handled = verify_gaps(byetex)
+    n_handled = sum(1 for v in handled.values() if v)
+    print(f"  gap probes: {n_handled}/{len(handled)} already handled", file=sys.stderr)
+
     report = render(paper_ids, audited, skipped,
-                    warn_papers, warn_total, silent_papers, silent_total)
+                    warn_papers, warn_total, silent_papers, silent_total, handled)
     DOCS_OUT.parent.mkdir(parents=True, exist_ok=True)
     DOCS_OUT.write_text(report)
 
@@ -256,7 +366,8 @@ def main() -> int:
         ],
         "silent_gaps": [
             {"gap": label, "cluster": SILENT_GAPS[label][0],
-             "papers": len(silent_papers[label]), "occurrences": silent_total[label]}
+             "papers": len(silent_papers[label]), "occurrences": silent_total[label],
+             "handled": bool(handled.get(label))}
             for label in sorted(silent_total, key=lambda l: (-len(silent_papers[l]), -silent_total[l]))
         ],
     }
@@ -266,7 +377,8 @@ def main() -> int:
     return 0
 
 
-def render(paper_ids, audited, skipped, warn_papers, warn_total, silent_papers, silent_total) -> str:
+def render(paper_ids, audited, skipped, warn_papers, warn_total, silent_papers, silent_total,
+           handled: dict[str, bool] | None = None) -> str:
     out = ["# Non-visual fidelity audit", "",
            f"Corpus: `{corpus_display(CORPUS_DIR)}` — {len(paper_ids)} papers ({audited} audited, {skipped} skipped).",
            "",
@@ -274,12 +386,36 @@ def render(paper_ids, audited, skipped, warn_papers, warn_total, silent_papers, 
            "**Silent gaps** (fidelity lost with NO warning, ranked by #papers) and",
            "**Warnings** (the converter already flags these).", ""]
 
-    out += ["## Silent gaps (in-scope clusters)", "",
-            "| gap | cluster | papers | occurrences |", "| --- | --- | --: | --: |"]
-    for label in sorted(silent_total, key=lambda l: (-len(silent_papers[l]), -silent_total[l])):
+    handled = handled or {}
+    order = sorted(silent_total, key=lambda l: (-len(silent_papers[l]), -silent_total[l]))
+    unhandled = [l for l in order if not handled.get(l)]
+    verified = [l for l in order if handled.get(l)]
+
+    out += ["## Silent gaps (in-scope clusters)", ""]
+    if handled:
+        out += ["Counted in the SOURCE, then **verified against the converter**: a gap whose",
+                "probe round-trips (and whose negative control does not) is listed under",
+                "*Already handled* instead, not here. Without that check the table was almost",
+                "entirely false positives — a construct the converter translates correctly",
+                "emits no warning either, so \"appears in source, no warning\" is not evidence",
+                "of loss.", ""]
+    else:
+        out += ["**UNVERIFIED** — no probe results were supplied, so every counted construct",
+                "is listed below regardless of whether the converter handles it.", ""]
+    out += ["| gap | cluster | papers | occurrences |", "| --- | --- | --: | --: |"]
+    for label in unhandled:
         cluster = SILENT_GAPS[label][0]
         out.append(f"| `{label}` | {cluster} | {len(silent_papers[label])} | {silent_total[label]} |")
+    if not unhandled:
+        out.append("| _(none — every tracked gap round-trips)_ | | | |")
     out.append("")
+
+    if verified:
+        out += ["### Already handled (probe round-trips; not work items)", "",
+                "| gap | papers | occurrences |", "| --- | --: | --: |"]
+        for label in verified:
+            out.append(f"| `{label}` | {len(silent_papers[label])} | {silent_total[label]} |")
+        out.append("")
 
     ranked = sorted(warn_total, key=lambda x: (-len(warn_papers[x]), -warn_total[x]))
     TOP = 40
