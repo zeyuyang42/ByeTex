@@ -41,7 +41,8 @@ pub(in crate::emit) use braceless::{
 pub(crate) use escape::{
     escape_paren_semicolons, escape_text_cell, escape_text_for_typst_content,
     escape_unbalanced_math_brackets, is_typst_label_char, needs_text_escape,
-    protect_top_level_commas, sanitize_label_key, strip_trailing_typst_label,
+    protect_top_level_commas, sanitize_label_key, strip_cell_keep_markers,
+    strip_trailing_typst_label,
 };
 pub(in crate::emit) use figures::parse_graphicspath_dirs;
 pub(in crate::emit) use macros::{
@@ -74,6 +75,19 @@ pub(in crate::emit) use preamble::{
 };
 pub(crate) use typography::apply_text_accent;
 use typography::{is_operatorname_only_function, should_split_math_word};
+
+/// Wraps a reference/citation token emitted INSIDE a table cell so the per-cell
+/// escaper copies it through instead of escaping its `@` to literal text.
+///
+/// The marker is applied at the emit site, where we know the token is ours. The
+/// escaper can't tell an emitted `@key` from a source `@` (an email in a cell
+/// must still be escaped, or Typst reads it as a reference and errors), so
+/// pattern-matching `@` there would break one case or the other.
+///
+/// `escape_text_cell` consumes these; `strip_cell_keep_markers` is the backstop
+/// for cell paths that bypass it (e.g. `\multicolumn`, which emits a
+/// `table.cell(...)` call directly).
+pub(in crate::emit) const CELL_KEEP_SENTINEL: char = '\u{1d}';
 
 /// Marks a multi-line `equation`/`multline` body as a candidate for `#box`ing,
 /// so the decision can be made at finish() time. See `emit_math_environment` and
@@ -1330,6 +1344,11 @@ impl<'a> Emitter<'a> {
         self.out = post_process_typography(&self.out);
         self.out = break_raw_paren_chains(&self.out);
         self.out = break_math_comment_tokens(&self.out);
+        // Cheap guard: the marker is rare, and this would otherwise clone the
+        // whole document on every conversion.
+        if self.out.contains(CELL_KEEP_SENTINEL) {
+            self.out = strip_cell_keep_markers(&self.out);
+        }
 
         // Now that the text is final, resolve the deferred equation boxes.
         self.apply_deferred_equation_boxes();
@@ -1534,6 +1553,12 @@ impl<'a> Emitter<'a> {
         // is itself in an overlay context, so a further nested reveal must collapse
         // (it would otherwise emit a wrapper that touying can't nest).
         sub.in_overlay_context = self.in_overlay_context;
+        // Content sub-emitted from inside a table cell is still IN that cell, so a
+        // `\ref`/`\cite` reached through a macro (`\figref{x}`) or a font wrapper
+        // (`{\bf \ref{x}}`) must be fenced against the per-cell escaper too —
+        // otherwise those very common shapes keep rendering as dead literal text
+        // while a bare `\ref` in the same table works.
+        sub.in_table_cell = self.in_table_cell;
         sub.newif_flags = self.newif_flags.clone();
         sub.referenced_labels = self.referenced_labels.clone();
         if increment_depth {

@@ -360,6 +360,33 @@ pub(crate) fn escape_text_cell(s: &str) -> String {
         // underscore inside `#raw("a_b")` must stay `a_b`, not become `a\_b`,
         // which is not a valid Typst string escape). Track string literals so a
         // `)` inside the content doesn't end the call early.
+        // A reference/citation token WE emitted is fenced in
+        // `CELL_KEEP_SENTINEL`s — copy it through untouched so its `@` isn't
+        // escaped into literal text. A source `@` carries no fence and is still
+        // escaped below.
+        //
+        // The fences are KEPT, not consumed: a nested `tabular` inside a cell is
+        // escaped twice, and dropping them on the first pass left the ref bare
+        // for the second, which killed it again. `strip_cell_keep_markers`
+        // removes them once, at the end.
+        //
+        // Only treat this as a fence when a CLOSING one actually follows.
+        // Row/cell splitters can cut through a fenced token (e.g. the `\ ` inside
+        // `\citep[p.\ 5]{k}`), stranding a lone marker — copying "to the end"
+        // there would silently disable escaping for the rest of the cell.
+        if c == super::CELL_KEEP_SENTINEL {
+            if let Some(close) =
+                chars[i + 1..].iter().position(|&x| x == super::CELL_KEEP_SENTINEL)
+            {
+                let end = i + 1 + close;
+                out.extend(&chars[i..=end]);
+                i = end + 1;
+            } else {
+                // Stranded marker: drop it and keep escaping normally.
+                i += 1;
+            }
+            continue;
+        }
         if !in_math && chars[i..].starts_with(&['#', 'r', 'a', 'w', '(']) {
             out.push_str("#raw(");
             i += 5;
@@ -485,5 +512,19 @@ mod protect_comma_tests {
             protect_top_level_commas(r#"a & "if x, y""#),
             r#"a & "if x, y""#
         );
+    }
+}
+
+/// Backstop: drop any `CELL_KEEP_SENTINEL` that reached the final output.
+///
+/// `escape_text_cell` consumes the fences on the normal cell path, but a few
+/// cell paths bypass it (`\multicolumn`/`\multirow` emit a `table.cell(...)`
+/// call directly), and a control character in the `.typ` would be far worse
+/// than an unescaped `@`.
+pub(crate) fn strip_cell_keep_markers(s: &str) -> String {
+    if s.contains(super::CELL_KEEP_SENTINEL) {
+        s.replace(super::CELL_KEEP_SENTINEL, "")
+    } else {
+        s.to_string()
     }
 }
