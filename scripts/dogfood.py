@@ -23,8 +23,12 @@ Usage (run under uv so the SSIM + PDF deps are present, like fidelity_gate.sh):
     uv run --with requests --with Pillow --with numpy --with scikit-image \
         python scripts/dogfood.py score <sandbox> --report report.json
 
-Env: BYETEX_BIN (byetex binary, default `byetex`), BYETEX_TYPST_BIN (default `typst`),
+Env: BYETEX_BIN (byetex binary; default = this repo's target/release/byetex — PATH is
+     never searched, see `resolve_byetex`), BYETEX_TYPST_BIN (default `typst`),
      BYETEX_TECTONIC_BIN (default `tectonic`).
+
+`python scripts/dogfood.py byetex-path` prints the resolved binary, so the tester
+agent can be handed an absolute path instead of trusting PATH.
 """
 
 import argparse
@@ -61,8 +65,132 @@ DPI = 100
 # Small subprocess helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
+def resolve_byetex() -> str:
+    """Resolve the byetex binary the whole harness drives.
+
+    Order: `$BYETEX_BIN` → the repo's own `target/release/byetex` → hard error.
+
+    There is deliberately NO fall-through to `byetex` on PATH. This used to be
+    `os.environ.get("BYETEX_BIN", "byetex")`, and with BYETEX_BIN unset it picked
+    up the install.sh copy in `~/.local/bin` — which on 2026-08-14 was **v0.3.0**,
+    roughly 40 releases behind. An entire dogfood round was seeded from it and
+    reported `blocker`-severity findings against skills that were describing the
+    CURRENT converter accurately (`\\tableofcontents`→`#outline`, `\\frontmatter`
+    page numbering, `\\chapter`/`\\section` nesting all work; the v0.3.0 seed just
+    predated them). `fidelity_before` and the hardest-3 ranking were skewed too.
+
+    A stale binary makes every Loop-B finding untrustworthy while looking
+    completely normal, so guessing is worse than stopping.
+    """
+    env = os.environ.get("BYETEX_BIN")
+    if env:
+        return env
+    repo_bin = REPO_ROOT / "target" / "release" / "byetex"
+    if repo_bin.is_file() and os.access(repo_bin, os.X_OK):
+        return str(repo_bin)
+    raise SystemExit(
+        "dogfood: no byetex binary.\n"
+        f"  looked for: {repo_bin}\n"
+        "  fix: run `cargo build --release`, or set BYETEX_BIN to the binary you "
+        "want measured.\n"
+        "  (PATH is NOT searched on purpose — a stale install.sh binary once "
+        "seeded a whole dogfood round and invalidated its findings.)"
+    )
+
+
 def _byetex() -> str:
-    return os.environ.get("BYETEX_BIN", "byetex")
+    return resolve_byetex()
+
+
+def workspace_version() -> str | None:
+    """`[workspace.package] version` from the repo's Cargo.toml, or None."""
+    try:
+        text = (REPO_ROOT / "Cargo.toml").read_text()
+    except OSError:
+        return None
+    in_pkg = False
+    for line in text.splitlines():
+        s = line.strip()
+        if s.startswith("["):
+            in_pkg = s == "[workspace.package]"
+            continue
+        if in_pkg and s.startswith("version"):
+            _, _, val = s.partition("=")
+            return val.strip().strip('"')
+    return None
+
+
+def _version_token(version_output: str) -> str | None:
+    """The bare version from `byetex --version` ("byetex 0.7.3" → "0.7.3")."""
+    for tok in version_output.split():
+        if tok and tok[0].isdigit():
+            return tok
+    return None
+
+
+def binary_is_older_than_sources() -> str | None:
+    """Newest `crates/**/*.rs` mtime newer than the binary's → the stale reason.
+
+    The version check alone misses the COMMON case: converter edits in the working
+    tree with no version bump (most ticks), where the binary reports the matching
+    version while predating the code. mtime catches that.
+    """
+    try:
+        binary = Path(resolve_byetex())
+        bin_mtime = binary.stat().st_mtime
+    except (OSError, SystemExit):
+        return None
+    newest, newest_src = 0.0, None
+    for src in (REPO_ROOT / "crates").rglob("*.rs"):
+        try:
+            m = src.stat().st_mtime
+        except OSError:
+            continue
+        if m > newest:
+            newest, newest_src = m, src
+    if newest_src is not None and newest > bin_mtime:
+        return f"{newest_src.relative_to(REPO_ROOT)} is newer than the binary"
+    return None
+
+
+def report_byetex_identity() -> None:
+    """Print WHICH binary is about to be measured, and shout if it looks stale.
+
+    The point is that the harness can never again measure one converter while the
+    operator believes it is measuring another — see `resolve_byetex`.
+    """
+    binary = resolve_byetex()
+    try:
+        out = subprocess.run([binary, "--version"], capture_output=True,
+                             text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as e:
+        raise SystemExit(f"dogfood: cannot run {binary}: {e}")
+    version = (out.stdout or out.stderr).strip()
+    # A binary that cannot even report itself must not be silently measured.
+    if out.returncode != 0 or not version:
+        raise SystemExit(
+            f"dogfood: `{binary} --version` failed "
+            f"(exit {out.returncode}): {version or '<no output>'}"
+        )
+    print(f"[dogfood] byetex: {binary} ({version})", file=sys.stderr)
+
+    def warn(msg: str) -> None:
+        print(f"[dogfood] WARNING: {msg}", file=sys.stderr)
+
+    want = workspace_version()
+    got = _version_token(version)
+    # Exact token compare — substring matching would call 0.7.3 == 0.7.31.
+    if want and got and want != got:
+        warn(
+            f"this binary is {got}, but the repo's Cargo.toml says {want}. You "
+            f"are measuring a DIFFERENT converter than the working tree. Run "
+            f"`cargo build --release` (or fix BYETEX_BIN) unless deliberate."
+        )
+    elif (reason := binary_is_older_than_sources()) is not None:
+        warn(
+            f"the binary predates the working tree ({reason}). The version "
+            f"matches, so this is an UNBUILT edit — run `cargo build --release`."
+        )
 
 
 def _typst() -> str:
@@ -446,7 +574,18 @@ def main() -> int:
     pc.add_argument("--report", default="-", help="report JSON path, or - for stdin")
     pc.set_defaults(func=cmd_score)
 
+    # The tester agent must be handed an ABSOLUTE binary path: it reaches skills
+    # via `byetex skills read`, and skills are served BY the binary, so a bare
+    # `byetex` resolved from PATH inside the sandbox can feed the agent an
+    # ancient surface — the other half of the v0.3.0 incident.
+    pb = sub.add_parser("byetex-path", help="print the resolved byetex binary path")
+    pb.set_defaults(func=lambda _a: (print(resolve_byetex()), 0)[1])
+
     args = p.parse_args()
+    # Every verb drives the binary (select reads baselines but ranks what the
+    # other two will measure), so announce it up front — on stderr, so `select
+    # --json` stays machine-readable.
+    report_byetex_identity()
     return args.func(args)
 
 

@@ -38,39 +38,46 @@ it.** It contains:
 
 ## Hard rules
 
+- **Always invoke the binary as `$BYETEX`** — the absolute path given in your prompt —
+  never a bare `byetex`. A `byetex` on `PATH` may be an old installed copy, and since
+  **skills are served by the binary**, a stale one silently hands you a stale surface:
+  in one round that produced confident, wholly false reports that skills were
+  documenting behaviour the converter "didn't have" (it did; the binary was ~40
+  releases old). Start every command with `$BYETEX`, e.g. `$BYETEX skills list`.
+  If `$BYETEX` is empty or unset, **stop and say so** rather than falling back.
 - **Edit `main.typ` only.** Make the smallest local edit per problem; preserve what
   already compiles. Never rewrite the whole file.
-- **Reach skills ONLY via `byetex skills read <name>`** — never read skill files off
-  disk (there are none in the sandbox). `byetex skills list` shows them all. Start
-  with `byetex skills read byetex-getting-started`.
-- **`byetex diagnose main.typ` (the `.typ` file) is SAFE and encouraged** — it scans
+- **Reach skills ONLY via `$BYETEX skills read <name>`** — never read skill files off
+  disk (there are none in the sandbox). `$BYETEX skills list` shows them all. Start
+  with `$BYETEX skills read byetex-getting-started`.
+- **`$BYETEX diagnose main.typ` (the `.typ` file) is SAFE and encouraged** — it scans
   the already-edited file IN PLACE (compile errors + a leaked-LaTeX body scan) and
   **preserves your edits**; it only writes a `main.diagnostics.json` sidecar. Use it in
   the fidelity phase to catch leaked LaTeX that compiles fine but renders as garbage
   (a `\section`-glued heading, a leaked `\begin{align}`/`\begin{proof}`, `\hspace{..}`).
-- **Do NOT run the re-materializing forms** — `byetex diagnose <src>.tex`, `diagnose
+- **Do NOT run the re-materializing forms** — `$BYETEX diagnose <src>.tex`, `diagnose
   --project`, or `diagnose --out .`. Those re-convert from source and **wipe your
   edits** (and the sandbox). The rule is about *re-conversion*, not the word "diagnose":
   `diagnose main.typ` re-converts nothing. If you wish `diagnose main.typ` also re-mapped
   new errors back to their LaTeX fragment, **log a `missing_tool_wishlist` item**.
-- **Iterate with `typst compile main.typ`** (or `byetex compile main.typ` for
-  structured errors). Inspect your own render with `byetex render main.typ --out
+- **Iterate with `typst compile main.typ`** (or `$BYETEX compile main.typ` for
+  structured errors). Inspect your own render with `$BYETEX render main.typ --out
   my-pages/` and compare against `truth-pages/`.
 - **Never touch ByeTex's own source or skills** — you are using byetex as a
   black box, exactly as a real user would.
 
 ## Procedure
 
-1. `byetex skills read byetex-getting-started`, then read `main.diagnostics.json`.
+1. `$BYETEX skills read byetex-getting-started`, then read `main.diagnostics.json`.
 2. **Compile first.** For each diagnostic: read its `src_fragment`/`typ_region`; if
-   `skill_name` is set, `byetex skills read <skill_name>`; apply the smallest edit to
+   `skill_name` is set, `$BYETEX skills read <skill_name>`; apply the smallest edit to
    `main.typ`; `typst compile main.typ`. Repeat until it compiles.
-3. **Then fidelity.** Run `byetex diagnose main.typ` to surface leaked LaTeX in the body
+3. **Then fidelity.** Run `$BYETEX diagnose main.typ` to surface leaked LaTeX in the body
    (it's safe — see the hard rules), read `warnings.json` (group by `category.kind`),
-   read the suggested skills, render with `byetex render main.typ --out my-pages/`, and
+   read the suggested skills, render with `$BYETEX render main.typ --out my-pages/`, and
    compare page-by-page against `truth-pages/`. Fix the highest-impact gaps you can
    (author block leaking raw LaTeX, dropped floats, wrong headings) with small edits.
-   Re-run `byetex diagnose main.typ` after a batch of edits to confirm the leaks are gone.
+   Re-run `$BYETEX diagnose main.typ` after a batch of edits to confirm the leaks are gone.
 4. **Stop** per the termination rule, then emit your report.
 
 ## Termination (do not loop forever)
