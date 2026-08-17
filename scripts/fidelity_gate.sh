@@ -34,8 +34,26 @@ for a in "$@"; do
   esac
 done
 
-# Produce a fresh index.json. visual_test.py needs numpy/Pillow for SSIM; if
-# they aren't importable, run this via `uv run --with numpy --with pillow -- ...`.
+# Produce a fresh index.json.
+#
+# DEPENDENCIES — the layout tier is SILENT when they are missing, so this matters:
+#   requests, Pillow          required (visual_test imports them at module level)
+#   numpy, scikit-image       SSIM; absent -> mean_ssim None
+#   pymupdf                   the T1 GEOMETRIC PROFILE (margins, columns, font
+#                             tiers, leading, ink); absent -> every layout_*
+#                             property is None on every paper
+#
+# A missing pymupdf does not fail anything and does not look like an error: the
+# tier just reports nothing, which is indistinguishable from a clean corpus. The
+# gate prints "LAYOUT: not computed on N/M papers" when that happens — heed it.
+#
+#   uv run --with requests --with Pillow --with numpy --with scikit-image \
+#          --with pymupdf -- ./scripts/fidelity_gate.sh --all
+#
+# pymupdf is DEV-ONLY and deliberately NOT in scripts/requirements.txt: it is
+# AGPL-licensed, and it must never be linked into the shipped Rust binary or
+# become a runtime dependency of ByeTex itself. It is a measurement tool for this
+# harness only.
 # `${VT_ARGS[@]+…}` (not `"${VT_ARGS[@]}"`): under `set -u`, macOS's bash 3.2 treats an
 # empty-array expansion as an unbound variable and aborts. This idiom expands to the
 # elements when set, and to NOTHING when empty (no stray empty arg).

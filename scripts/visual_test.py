@@ -1544,6 +1544,21 @@ def process_paper(
             extract_pdf_text_reading_order(truth_dest),
             extract_pdf_text_reading_order(typst_pdf),
         ))
+
+        # T1 geometric profile: margins, columns, font tiers, leading, ink.
+        #
+        # THE tier this whole effort exists for. Everything above measures WHAT
+        # text is present; none of it can see WHERE the text sits. The paper with
+        # the corpus's worst layout (2605.22315: text column +43%, left margin
+        # moved 63pt, both figures dropped) scores word_recall 0.923 and
+        # structure_ok true, and passes.
+        #
+        # Needs pymupdf, which is a DEV-ONLY dependency: it is AGPL and must
+        # never enter scripts/requirements.txt or the shipped Rust binary. When
+        # it is absent every property is None and `layout_skipped` names the
+        # reason — the same graceful degradation page_image_similarity uses for
+        # numpy/scikit-image. Run with `uv run --with pymupdf` to enable it.
+        structure.update(lm.layout_compare(truth_dest, typst_pdf))
         mean_ssim = ssim_res["mean_ssim"]
         if (
             args.min_mean_ssim > 0
@@ -1788,6 +1803,20 @@ def main() -> None:
             "anchor_matched": (summary.get("anchors") or {}).get("anchor_matched"),
             "ordered_recall": structure.get("ordered_recall"),
             "ordered_precision": structure.get("ordered_precision"),
+            # T1 geometry (None without pymupdf — see layout_compare).
+            "layout_pages_compared": structure.get("layout_pages_compared"),
+            "layout_page_trim_ratio": structure.get("layout_page_trim_ratio"),
+            "layout_left_margin_ratio": structure.get("layout_left_margin_ratio"),
+            "layout_right_margin_ratio": structure.get("layout_right_margin_ratio"),
+            "layout_top_margin_ratio": structure.get("layout_top_margin_ratio"),
+            "layout_text_width_ratio": structure.get("layout_text_width_ratio"),
+            "layout_column_mismatch_frac": structure.get("layout_column_mismatch_frac"),
+            "layout_body_font_ratio": structure.get("layout_body_font_ratio"),
+            "layout_small_tier_share_delta": structure.get("layout_small_tier_share_delta"),
+            "layout_fontsize_tier_emd": structure.get("layout_fontsize_tier_emd"),
+            "layout_leading_ratio": structure.get("layout_leading_ratio"),
+            "layout_lines_per_page_ratio": structure.get("layout_lines_per_page_ratio"),
+            "layout_ink_ratio": structure.get("layout_ink_ratio"),
             "composite": str(out / arxiv_id.replace("/", "_") / "composite.png")
                 if summary.get("typst_ok") else None,
             # Vintage. Without these, a paper measured a year ago is

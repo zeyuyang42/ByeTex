@@ -61,7 +61,25 @@ LAYOUT_TOLERANCES = {
     "anchor_recall":                 ("down",       0.05),
     "ordered_recall":                ("down",       0.05),
     "ordered_precision":             ("down",       0.05),
-    "layout_column_mismatch_frac":   ("up",         0.00),   # relational — no epsilon
+    # layout_column_mismatch_frac is DELIBERATELY ABSENT.
+    #
+    # It was the plan's designated first hard gate — column count is relational
+    # and categorical, so it needs no tolerance chosen for it. Measurement killed
+    # that plan. The detector validates perfectly on the synthetic fixtures
+    # (clean prose, a real gutter, a full-width table crossing it) and falls
+    # apart on real papers, which have sparse figure pages, wide tables and
+    # display equations:
+    #
+    #   2605.22507  truth [1,1,1,1,1,1,1,2,1,1]   out [1,1,1,1,2,1,2,1,6,1]
+    #
+    # Six columns on a single-column page. It fired on 58/65 corpus papers with
+    # a median mismatch fraction of 0.667, which is not 58 broken papers — it is
+    # one broken detector. Reporting it would have buried the properties that
+    # ARE trustworthy under noise, which is exactly how a gate gets ignored.
+    #
+    # Still computed and stored in index.json so the fix can be measured against
+    # today's numbers; simply not reported or gateable until the detector
+    # distinguishes a column gutter from a sparse page. Re-add here then.
     "layout_text_width_ratio":       ("toward_one", 0.05),
     "layout_leading_ratio":          ("toward_one", 0.10),
     "layout_left_margin_ratio":      ("toward_one", 0.08),
@@ -339,15 +357,30 @@ def main(argv=None):
                  f"choose from {sorted(LAYOUT_TOLERANCES)} or `all`")
     l_regs, l_notices, l_imps = evaluate_layout(current, baseline, gated, LAYOUT_TOLERANCES)
 
-    measured = sum(1 for p in current.get("papers", {}).values()
-                   if p.get("anchor_recall") is not None or p.get("ordered_recall") is not None)
-    n_cur = len(current.get("papers", {}))
-    if n_cur and measured * 2 < n_cur:
-        # A blind tier must be LOUD about being blind. Silently returning None on
-        # every paper is indistinguishable from "nothing to report".
-        print(f"  LAYOUT: not computed on {n_cur - measured}/{n_cur} papers "
-              "— re-run visual_test.py (and `uv run --with pymupdf` for the "
-              "geometric profile).")
+    # A blind tier must be LOUD about being blind: silently returning None on
+    # every paper is indistinguishable from "nothing to report", which is how a
+    # gate ends up reporting a clean corpus it never looked at.
+    #
+    # T0/T2 and T1 are reported SEPARATELY because they go blind for different
+    # reasons and one masks the other. T0/T2 are stdlib-only and just need a
+    # fresh run; T1 needs pymupdf, an AGPL dev-only dependency that is absent by
+    # default — so a run with populated T0/T2 and empty T1 is the NORMAL failure
+    # mode, and a combined counter would never notice it.
+    papers = current.get("papers", {})
+    n_cur = len(papers)
+    tiers = (
+        ("T0/T2 (anchors, ordered stream)",
+         sum(1 for p in papers.values()
+             if p.get("anchor_recall") is not None or p.get("ordered_recall") is not None),
+         "re-run visual_test.py"),
+        ("T1 (geometric profile)",
+         sum(1 for p in papers.values() if p.get("layout_pages_compared") is not None),
+         "re-run with `uv run --with pymupdf` — it is NOT installed by default"),
+    )
+    for label, measured, hint in tiers:
+        if n_cur and measured * 2 < n_cur:
+            print(f"  LAYOUT BLIND — {label}: not computed on "
+                  f"{n_cur - measured}/{n_cur} papers. {hint}.")
     if l_notices or l_regs:
         label = ("LAYOUT DRIFT (report-only — promote with --gate-layout)"
                  if not gated else f"LAYOUT DRIFT (gated: {', '.join(sorted(gated))})")
