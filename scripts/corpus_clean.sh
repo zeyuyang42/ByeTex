@@ -56,6 +56,27 @@ zap() {  # <path>...
 # An arXiv id top-level dir looks like 2605.22159 / 2606.12397.
 ID_RE='^[0-9]{4}\.[0-9]{4,6}$'
 
+# Papers the manifest claims. The manifest is the ONLY committed part of the
+# corpus, so anything it lists is tracked data — never junk — regardless of what
+# metadata files happen to sit inside the directory.
+MANIFEST_IDS="$(python3 - "$CORPUS/manifest.json" <<'PY'
+import json, sys
+try:
+    papers = json.load(open(sys.argv[1])).get("papers", [])
+except Exception:
+    sys.exit(0)  # unreadable manifest -> empty list; the rules below stay as they were
+if isinstance(papers, dict):
+    ids = papers.keys()
+else:
+    ids = [p.get("id") for p in papers if isinstance(p, dict)]
+print("\n".join(str(i) for i in ids if i))
+PY
+)"
+
+in_manifest() {  # <dir-name>
+  [[ -n "$MANIFEST_IDS" ]] && grep -qxF "$1" <<<"$MANIFEST_IDS"
+}
+
 echo "Cleaning corpus root: $CORPUS"
 $DRY_RUN && echo "(dry run — no changes)"
 
@@ -66,6 +87,17 @@ for entry in "$CORPUS"/*/; do
   [[ "$name" == "_out" ]] && continue            # generated tree, handled below
   [[ "$name" =~ $ID_RE ]] && continue            # an arXiv paper — keep
   [[ -f "$entry/source/00README.json" ]] && continue  # non-arXiv paper (corpus_add_local.py) — keep
+  # A paper the manifest lists is tracked data, even if its `00README.json` is
+  # missing. Without this check the readme was load-bearing for SURVIVAL, and a
+  # `source: local` paper — hand-authored, not re-downloadable, gitignored — was
+  # deleted by a routine `--purge-out` run purely because it lacked one
+  # (beamer-demo, 2026-08-17; recovered only because its rendered truth.pdf
+  # happened to still be in tests/visual). Warn loudly instead of deleting.
+  if in_manifest "$name"; then
+    echo "  WARN keeping $name — listed in manifest.json but has no source/00README.json;" >&2
+    echo "       add one (see corpus_add_local.py) so the harness can find its toplevel." >&2
+    continue
+  fi
   zap "$entry"                                    # online/, inhouse/, anything else
 done
 
