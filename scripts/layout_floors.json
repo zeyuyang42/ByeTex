@@ -1,5 +1,21 @@
 {
   "_comment": "Measured noise floors for the layout tier (scripts/layout_loop.py floors). FROZEN: change only by explicit PR, never as a side effect of a run. An auto-updating floor tracks the regression and is worse than no floor. `corpus_*` fields describe the WORKLOAD and must never be adopted as thresholds.",
+  "_known_bad_comment": "Papers already failing a GATED property on the day it was promoted. Excluded from that property's regressions so the gate is green on day one and fires only on NEW breakage \u2014 a gate that starts red gets ignored. This is a BACKLOG, not an amnesty: a paper that comes back within tolerance is reported as an improvement so the list shrinks. Seven of the eleven are confirmed real drift (same page size, different body point size: the class size option is resolved wrongly); the other four also differ in page size, so their residual is plausible but not cleanly confirmable. See docs/layout-floors-2026-08-17.md.",
+  "known_bad": {
+    "layout_body_font_ratio": [
+      "2605.22281",
+      "2605.22549",
+      "2605.22557",
+      "2605.31394",
+      "2605.31563",
+      "2605.31564",
+      "2605.31584",
+      "2605.31586",
+      "2606.12397",
+      "gh-bard-metropolis",
+      "gh-mtheme-demo"
+    ]
+  },
   "legit_per_variant": {
     "bib_style": {
       "layout_body_font_ratio": 0.0,

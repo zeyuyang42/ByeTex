@@ -11,6 +11,7 @@ subset of below-average papers then fails the gate no matter what the change
 did. The per-paper checks are the meaningful signal for a subset run and already
 skip papers absent from the run.
 """
+import json
 import sys
 from pathlib import Path
 
@@ -196,6 +197,60 @@ check("layout_column_mismatch_frac" in fc.BASELINE_FIELDS_LEGACY
 check(set(fc.GATED_FIELDS) <= set(fc.BASELINE_FIELDS)
       and "anchor_recall" in fc.BASELINE_FIELDS,
       "BASELINE_FIELDS persists both the gated set and the reported tier")
+
+# ── promotion: measured floors + a KNOWNBAD list ─────────────────────────────
+# A gate that starts RED gets `|| true`-d within a week. So the first promoted
+# property ships with the papers that already fail it listed as known-bad: the
+# gate is green on day one and fires only on NEW breakage. That is the Chromium
+# lesson and the SILE `KNOWNBAD` model.
+FLOORS = {
+    "properties": {
+        "layout_body_font_ratio": {"proposed_threshold": 0.075},
+        "layout_leading_ratio": {"proposed_threshold": 0.0687},
+    },
+    "known_bad": {"layout_body_font_ratio": ["old1", "old2"]},
+}
+tol = fc.tolerances_from_floors(FLOORS, fc.LAYOUT_TOLERANCES)
+check(tol["layout_body_font_ratio"] == ("toward_one", 0.075),
+      f"a MEASURED threshold overrides the provisional default, got {tol['layout_body_font_ratio']}")
+check(tol["anchor_recall"] == fc.LAYOUT_TOLERANCES["anchor_recall"],
+      "a property with no measured floor keeps its provisional default")
+
+BAD = {"papers": {
+    "old1": {**paper(0.95), "layout_body_font_ratio": 1.40},   # already broken
+    "old2": {**paper(0.95), "layout_body_font_ratio": 0.80},   # already broken
+    "fresh": {**paper(0.95), "layout_body_font_ratio": 1.00},  # currently fine
+}}
+# Same values as the baseline: nothing changed, so nothing may fire.
+regs, _, _ = fc.evaluate_layout(BAD, BAD, gated={"layout_body_font_ratio"}, tols=tol,
+                                known_bad=FLOORS["known_bad"])
+check(regs == [], f"the gate is GREEN on day one — known-bad papers do not fail it, got {regs}")
+
+# A NEW paper breaking the same property must fail.
+BROKE = json.loads(json.dumps(BAD))
+BROKE["papers"]["fresh"]["layout_body_font_ratio"] = 1.40
+regs, _, _ = fc.evaluate_layout(BROKE, BAD, gated={"layout_body_font_ratio"}, tols=tol,
+                                known_bad=FLOORS["known_bad"])
+check(any("fresh" in r for r in regs),
+      f"a NEW paper breaking a gated property DOES fail the build, got {regs}")
+check(not any("old1" in r or "old2" in r for r in regs),
+      "...while the known-bad papers stay excluded")
+
+# A known-bad paper getting WORSE still must not fail — it is already on the list,
+# and re-reporting it would make the gate noisy without adding information.
+WORSE = json.loads(json.dumps(BAD))
+WORSE["papers"]["old1"]["layout_body_font_ratio"] = 2.00
+regs, _, notices = fc.evaluate_layout(WORSE, BAD, gated={"layout_body_font_ratio"}, tols=tol,
+                                      known_bad=FLOORS["known_bad"])
+check(regs == [], f"a known-bad paper degrading further does not fail the gate, got {regs}")
+
+# But a known-bad paper that gets FIXED must be reported, or the list rots.
+FIXED = json.loads(json.dumps(BAD))
+FIXED["papers"]["old1"]["layout_body_font_ratio"] = 1.00
+_, _, imps = fc.evaluate_layout(FIXED, BAD, gated={"layout_body_font_ratio"}, tols=tol,
+                                known_bad=FLOORS["known_bad"])
+check(any("old1" in i for i in imps),
+      f"a known-bad paper that is FIXED is reported so the list can shrink, got {imps}")
 
 print()
 if fails:
