@@ -2,8 +2,16 @@
 **/*.rs.bk
 Cargo.lock.bak
 
-# Per-project agent state — Claude Code worktrees, plans, memory.
-/.claude/
+# Per-project agent state — Claude Code worktrees, plans, memory, review scratch.
+# Ignored by default because it is machine-local and can grow large.
+#
+# `.claude/skills/` is the exception: those are shared DEV skills for working on
+# this repo (distinct from `skills/`, which ships to ByeTex users via the plugin),
+# so they belong in version control like any other tooling. Git cannot re-include
+# a path whose parent directory is excluded, hence the `dir/*` + negation form
+# rather than a plain `!` line.
+/.claude/*
+!/.claude/skills/
 
 # Test corpus — manifest is committed; arXiv payloads are gitignored (large binaries).
 # Fetch the regression set with: python scripts/corpus_harvest.py --pinned
