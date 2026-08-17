@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# requires: none
 """Unit tests for the corpus-ingestion truth gate (scripts/corpus_add_local.py).
 
 The gate decides whether a paper may be accepted into the corpus based on whether its

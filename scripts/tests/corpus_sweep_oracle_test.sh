@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# requires: none
 # Test for `corpus_sweep.sh --with-oracle` failure attribution.
 #
 # Builds a synthetic mini-corpus and fake `byetex` / `typst` tools so the

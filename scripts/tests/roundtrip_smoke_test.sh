@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# requires: none
 # Smoke test for scripts/roundtrip.sh — runs a full round-trip on a tiny,
 # self-contained LaTeX file and asserts the expected artifacts are produced.
 #

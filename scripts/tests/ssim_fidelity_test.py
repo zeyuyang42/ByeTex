@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# requires: requests Pillow numpy scikit-image
 """Unit tests for the SSIM fidelity metric in visual_test.py:
   - page_image_similarity: per-page SSIM over rasterized page images
   - aggregate_fidelity_score: single corpus-wide fidelity number

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# requires: none
 """Unit tests for scripts/fidelity_audit.py helpers.
 
 Run: python3 scripts/tests/fidelity_audit_test.py
