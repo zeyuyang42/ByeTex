@@ -57,8 +57,31 @@ fi
 # current paper context ($src_dir/$top_tex/$stem/$paper_id) and bumps the
 # matching counter. Falls back to UNATTRIBUTED when the oracle can't run
 # (e.g. tectonic not installed) — never silently blames ByeTex.
+# Typst errors that are STRUCTURALLY ByeTex's fault. Each describes the shape of
+# the Typst *we emitted*; no property of the LaTeX input can make one correct.
+# ByeTex's contract is that it always emits Typst that COMPILES — a broken source
+# may excuse wrong CONTENT, never a malformed document.
+#
+# Without this, the oracle lets one fact excuse an unrelated one. gh-maurovm-
+# thesis-template emits a dangling `<prior1977physical>`, and tectonic also can't
+# build the thesis (missing class deps), so `byetex doctor` returned input_broken
+# and the failure was filed as the input's fault — while the acceptance gate
+# reported BYETEX_FAIL: 0. Those are two independent facts about two different
+# documents.
+#
+# Deliberately a TIGHT list. Anything ambiguous (a missing image, an unresolvable
+# input path) still goes to the oracle, because those really can be the source's
+# doing.
+BYETEX_STRUCTURAL_ERRORS='does not exist in the document|unclosed delimiter|unclosed label|unclosed string|multiple bibliographies'
+
 attribute_failure() {  # <first-error-message>
   local msg="$1" verdict=""
+  # Categorical exclusion, checked BEFORE the oracle: no verdict can override it.
+  if echo "$msg" | grep -qE "$BYETEX_STRUCTURAL_ERRORS"; then
+    $SUMMARY_ONLY || echo "BYETEX_FAIL $paper_id: $msg [structural — oracle not consulted]"
+    byetex_fail=$((byetex_fail+1))
+    return
+  fi
   (cd "$src_dir" && "$BYETEX" doctor "$top_tex" > /dev/null 2>&1) || true
   verdict=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('verdict',''))" \
             "$src_dir/${stem}.doctor.json" 2>/dev/null || true)
