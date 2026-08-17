@@ -29,6 +29,21 @@ track both, never trade one for the other.
   Any "validated" claim for those rests on **dogfood-agent reading**, not metrics — keep that
   distinction explicit. Strengthening this is tracked as a gate-hardening follow-up.
 
+  Partly addressed: T0 `anchor_recall` needs **no truth PDF**, so it now measures those papers
+  (`gh-calpolycsc-thesis` 1.000 of 34 labels, `gh-sikatikenmogne-report` 0.885 of 26,
+  `ctan-memoir` **0.228 of 215**). It is one signal, not a fidelity score — but it is the first
+  number any of them has ever had.
+- **The composite score cannot see layout, and its pixel term is anti-correlated with fidelity.**
+  `pearson(truth ink coverage, mean_ssim) = −0.913`: SSIM is very nearly a function of how blank
+  the truth page is. On controlled variants a 1-column→2-column collapse scores **0.602** while a
+  benign font swap scores **0.543**, and a fully reversed bibliography scores **0.985** — the
+  ordering is inverted, so the 0.20 `mean_ssim` weight rewards the wrong thing.
+  `scripts/layout_metrics.py` measures geometry directly and reports **named properties, never a
+  scalar**; a scalar is what let the drift hide. Corpus-wide it finds leading beyond floor on
+  **50 of 65** papers and margins on ~45 — none of which moved the composite score.
+  `2605.22315` (text column +42%, margins halved) still scores `word_recall 0.924`,
+  `structure_ok: true`. See `docs/layout-floors-2026-08-17.md`.
+
 ## How to reproduce
 
 ```bash

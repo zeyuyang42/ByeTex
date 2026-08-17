@@ -97,15 +97,32 @@ regression.
 ### 1. Measure
 ```bash
 uv run --with requests --with Pillow python scripts/fidelity_audit.py   # → docs/fidelity-nonvisual-audit.{md,json}
+uv run --with pymupdf python scripts/layout_loop.py rank --n 5 --json   # → the worst LAYOUT drift
 ```
 Then read: `docs/fidelity-nonvisual-audit.md` (converter-gap + warning ranks),
 `scripts/fidelity_baseline.json` (lowest-fidelity outliers), `scripts/acceptance_baseline.json`
-(any `known_fail`), and `docs/agent-surface-backlog.md` (open Loop-B items).
+(any `known_fail`), `docs/agent-surface-backlog.md` (open Loop-B items), and
+`docs/layout-backlog.jsonl` (open layout items).
+
+`rank` answers a question the other signals cannot: **where the text sits**.
+Everything else measures *what* text is present, which is why a paper with a 42%
+too-wide text column and halved margins scores `word_recall 0.924` and passes.
+Papers whose tier never ran surface as `severity: null, reason: "unmeasured"` —
+they are not clean, they are unmeasured, and they include the corpus's worst
+geometry.
 
 ### 2. Select ONE highest-value item (one item per cycle → one PR)
-- An open **agent-surface** item, or a **converter-gap / warning-noise** item.
+- An open **agent-surface** item, a **converter-gap / warning-noise** item, or a
+  **layout-drift** item from `rank`.
 - Prefer items with the widest paper evidence. A converter gap that also blocks the
   dogfood agent is highest value (fixes both loops at once).
+- A `drift_class` that ALSO appears as a converter gap in the audit outranks either
+  alone — two independent signals pointing at one emitter is the strongest evidence
+  available, and the fix closes both.
+- Read `severity` as an ordering, not a magnitude. It is the largest excess over a
+  property's own floor, and floors differ in kind: some are measured, some are the
+  0.005 resolution floor. `page_trim` on a slide deck reaches 757 because its floor
+  is tiny, not because it is 8× worse than a paper at 93.
 
 ### 3. Fix in a fresh worktree, strict TDD (red test first)
 ```bash
@@ -135,6 +152,23 @@ BYETEX_BIN=../ByeTex-<slug>/target/release/byetex ./scripts/acceptance.sh   # ex
   vision regression blocks.
 - **Skill-only Loop-B change** → re-dogfood the item's evidence papers (step 5); they
   must reach `GOOD_ENOUGH` for the item to be Resolved.
+
+**The layout tier in the gate.** `fidelity_gate.sh` gates one layout property —
+`layout_body_font_ratio`, whose threshold is measured and whose already-failing
+papers are listed as `known_bad`, so it is green today and fires only on NEW
+breakage. Every other layout property prints as a report-only `LAYOUT DRIFT`
+block. Two rules:
+
+- Never merge a change that moves a layout property beyond its floor without
+  explaining it in the PR body. A report-only notice is information, not permission.
+- `scripts/layout_floors.json` changes **only by explicit PR**, never as a side
+  effect of a run. An auto-updating floor tracks the regression and is worse than
+  no floor. Re-measure with `layout_loop.py floors` after any typst or pymupdf
+  upgrade and treat a moved floor as a finding.
+
+If the gate prints `LAYOUT BLIND — T1 … not computed`, the run had no pymupdf and
+the geometric tier measured nothing. That is not a clean corpus; re-run with
+`uv run --with pymupdf`.
 
 CI is unreliable and **red CI is acceptable** — the *local* gates above are the real
 check. Never block on GitHub Actions.
@@ -206,14 +240,38 @@ the self-report, appends a record to `docs/agent-surface-backlog.jsonl`, and pri
 `GOOD_ENOUGH` | `NEEDS_FIX`. Curate every `NEEDS_FIX` into `docs/agent-surface-backlog.md`
 using the routing rubric.
 
+### 6.5. Route a layout item (Loop A, geometry)
+
+```bash
+uv run --with pymupdf python scripts/layout_loop.py rank --n 5 --json
+REC=$(uv run --with pymupdf python scripts/layout_loop.py record <paper_id> | tail -1)
+uv run --with pymupdf python scripts/layout_loop.py triage <paper_id> --record "$REC" \
+    --run-ts "$(date -u +%Y%m%dT%H%M%SZ)" --note "<what you concluded>"
+```
+
+`record` recomputes the tier for one paper from artifacts already on disk — a fast
+recheck after an emitter fix, with no corpus run. `triage` appends a routed record
+to `docs/layout-backlog.jsonl` and prints a bare `DRIFT` | `WITHIN_FLOOR`.
+
+The record carries `drift_class`, `suspected_site` and `routing_reason`. Treat the
+site as a **lead, not a diagnosis** — confirm it against the generated `.typ`
+before writing a test.
+
 ### 7. Loop or stop
 - Backlog non-empty → next tick (`ScheduleWakeup`).
-- **Both backlogs empty AND the hardest 3 all `GOOD_ENOUGH`** → there is no work:
+- **All THREE backlogs empty AND the hardest 3 all `GOOD_ENOUGH`** → there is no work
+  (`docs/agent-surface-backlog.md`, the converter-gap audit, and
+  `docs/layout-backlog.jsonl` / a clean `rank`):
   propose the next **use cases / document types** to harden (e.g. beamer decks, CVs,
   books/theses per `docs/tier1-baseline-2026-06-15.md`) and **ASK the user before
   pulling more data** (`corpus_harvest.py --search` / `corpus_add_local.py`). Never
   expand the corpus unprompted.
 - Three quiet ticks in a row → scale back to a quick gate check and report.
+- **Self-audit:** if the last three ticks routed ZERO layout items, the tier is
+  wallpaper. Either promote a property to a hard gate (`--gate-layout`, backed by
+  measured floors and by manually confirming the papers it flags) or delete the
+  report-only notice block. A signal nobody acts on is worse than no signal — it
+  costs attention and buys the appearance of coverage.
 
 ---
 
@@ -228,6 +286,26 @@ using the routing rubric.
 | `compiled` but low `fidelity_after`, **no** stuck point (agent never noticed) | **Loop B** (surface didn't *surface* it — strengthen `warnings.json` / grading) |
 | Genuinely out-of-scope construct, agent escaped correctly (e.g. image-fallback for TikZ) | **No fix** (record; revisit only if frequent) |
 | Tie (same construct → Loop A on one paper, Loop B on another) | **Loop A** — fix once deterministically beats teaching the agent N times |
+
+### Layout drift (`drift_class` → fix site)
+
+From `scripts/layout_loop.py DRIFT_CLASS_ROUTES`. Each row is a **lead**, not a
+diagnosis — confirm against the generated `.typ` first.
+
+| `drift_class` | Route | Why there |
+|---|---|---|
+| `page_trim` | `emit/preamble.rs`, `style_profile.rs` | page size comes from class options + the neutral preamble |
+| `margin` | `style_profile.rs`, `emit/preamble.rs` | margins are set per DocClass in `#set page(...)` |
+| `text_width` | `style_profile.rs`, `emit/preamble.rs` | measure = page size − margins; check both |
+| `font_size` | `class_map.rs`, `style_profile.rs` | the `10pt`/`11pt`/`12pt` class option resolves to the body size |
+| `type_scale` | `style_profile.rs`, `emit/typography.rs` | heading and body sizes are emitted as a scale |
+| `small_tier` | `emit/typography.rs` | `\small` / `\footnotesize` / `\scriptsize` switches |
+| `leading` | `emit/preamble.rs` | `#set par(leading:)` vs the class's baselineskip |
+| `density` | `emit/preamble.rs`, `style_profile.rs` | lines/page follows leading + margins; fix those first |
+| `columns` | `emit/preamble.rs`, `style_profile.rs` | `#set page(columns: 2)` + the spanning-title float |
+| `ink` | `emit/figures.rs`, `emit/tables.rs` | ink density is dominated by dropped/resized floats |
+| `anchors` | `ir.rs`, `emit/sections.rs` | `\label` keys normalised pre-parse, emitted as `<key>` |
+| `ordering` | `emit.rs`, `emit/macros.rs` | dropped/duplicated content — check `\input` + unsupported commands |
 
 ## Verdict rule (`scripts/dogfood.py score`, per paper)
 
