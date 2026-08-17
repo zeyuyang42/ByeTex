@@ -60,6 +60,36 @@ def load_pinned_ids() -> list[str]:
     return [p["id"] for p in data.get("papers", []) if p.get("pinned")]
 
 
+def corpus_paper_ids() -> list[str]:
+    """Every harvested corpus paper, in sorted order.
+
+    `--papers` defaults to the 5 PINNED papers, which is the right default for a
+    quick iteration and the wrong one for a release gate: it silently measures
+    5 of 71 against a 71-paper baseline, and fidelity_check then skips the
+    corpus-score comparison because the populations differ. `--all` makes the
+    whole-corpus run a documented one-liner instead of a shell substitution
+    nobody remembers.
+
+    Selection is what THIS tool can process — a source/ directory holding at
+    least one .tex — deliberately NOT corpus_sweep.sh's stricter
+    source/00README.json gate. `corpus/beamer-demo` has no 00README, so the
+    sweep skips it, yet it sits in the fidelity baseline with real metrics
+    (word_recall 0.929) because find_toplevel_tex falls back when the README is
+    absent. Adopting the sweep's gate here would have silently dropped a paper
+    the baseline already gates on, which is the same class of blind spot this
+    flag exists to close.
+
+    `_out/` is the sibling GENERATED tree, not a paper.
+    """
+    if not CORPUS_DIR.is_dir():
+        return []
+    return sorted(
+        d.name for d in CORPUS_DIR.iterdir()
+        if d.is_dir() and d.name != "_out"
+        and (d / "source").is_dir() and any((d / "source").rglob("*.tex"))
+    )
+
+
 def manifest_source(paper_id: str) -> str:
     """Return the manifest `source` for an id ('arxiv' by default). Non-arXiv
     entries (added by corpus_add_local.py) have no arXiv PDF, so truth rendering
@@ -1525,7 +1555,14 @@ def main() -> None:
     )
     p.add_argument(
         "--papers", nargs="+", default=DEFAULT_PAPERS, metavar="ID",
-        help="arXiv IDs to process (default: pinned set from corpus/manifest.json)",
+        help="arXiv IDs to process (default: the PINNED set from corpus/manifest.json "
+             "— a handful, not the corpus; use --all for a release gate)",
+    )
+    p.add_argument(
+        "--all", action="store_true",
+        help="process EVERY corpus paper instead of the pinned default. Required "
+             "for a whole-corpus fidelity gate: the corpus fidelity_score is only "
+             "comparable against the baseline when the run covers the same papers.",
     )
     p.add_argument(
         "--out", type=Path, default=Path("tests/visual"), metavar="PATH",
@@ -1603,6 +1640,14 @@ def main() -> None:
              "cross-engine renders never reach 1.0.",
     )
     args = p.parse_args()
+    if args.all:
+        args.papers = corpus_paper_ids()
+        print(f"--all: {len(args.papers)} corpus papers")
+    elif args.papers == DEFAULT_PAPERS:
+        n_corpus = len(corpus_paper_ids())
+        if n_corpus > len(args.papers):
+            print(f"note: measuring the {len(args.papers)} PINNED papers, not the corpus "
+                  f"({n_corpus} available). Use --all to gate the whole corpus.")
 
     out = args.out if args.out.is_absolute() else (REPO_ROOT / args.out)
     out.mkdir(parents=True, exist_ok=True)

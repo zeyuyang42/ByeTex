@@ -66,19 +66,37 @@ def trim_for_baseline(index):
     }
 
 
-def covers_whole_corpus(current, baseline):
-    """True when `current` measured every paper the baseline has metrics for.
-
-    Papers whose truth render failed carry no metrics, so they can never appear
-    in a run and are excluded from the comparison.
+def measurable_baseline_papers(baseline):
+    """Baseline papers that CAN be gated: they carry metrics and their truth
+    render succeeded. Papers whose truth render failed can never appear in a run.
     """
-    measured_baseline = {
+    return {
         pid
         for pid, base in baseline.get("papers", {}).items()
         if base.get("word_recall") is not None
         and base.get("status") != "truth_render_failed"
     }
-    return measured_baseline.issubset(set(current.get("papers", {})))
+
+
+def unchecked_papers(current, baseline):
+    """Gateable baseline papers this run did NOT measure — the gate's blind spot.
+
+    Distinct from UNMEASURED (no truth render, unmeasurable by anyone): these are
+    papers the gate COULD have checked and simply did not, because the run did
+    not include them. `visual_test.py --papers` defaults to the 5 PINNED papers,
+    so a bare `./scripts/fidelity_gate.sh` — the documented pre-release command —
+    checks 5 papers against a 71-paper baseline and skips the corpus-score
+    comparison entirely. That is a defensible default for a quick check and a
+    dangerous one for a release gate, so it has to be impossible to miss: a gate
+    that silently covers 7% of the corpus reads exactly like one that covers all
+    of it. Use `--all` to measure the whole corpus.
+    """
+    return sorted(measurable_baseline_papers(baseline) - set(current.get("papers", {})))
+
+
+def covers_whole_corpus(current, baseline):
+    """True when `current` measured every paper the baseline has metrics for."""
+    return not unchecked_papers(current, baseline)
 
 
 def evaluate(current, baseline, score_tol, recall_tol):
@@ -158,13 +176,22 @@ def main(argv=None):
 
     cs, bs = current.get("fidelity_score"), baseline.get("fidelity_score")
     print(f"fidelity: score {cs} (baseline {bs})")
-    if not covers_whole_corpus(current, baseline):
+    unchecked = unchecked_papers(current, baseline)
+    if unchecked:
         n_cur = len(current.get("papers", {}))
+        n_gateable = len(measurable_baseline_papers(baseline))
         print(
-            f"  NOTE: partial run ({n_cur} paper(s)) — the corpus score is a mean over the "
-            "papers measured, so it is NOT compared against the whole-corpus baseline. "
-            "Per-paper checks below still gate."
+            f"  ⚠ PARTIAL RUN — measured {n_cur} of {n_gateable} gateable papers; "
+            f"{len(unchecked)} NOT CHECKED ({100 * len(unchecked) / max(n_gateable, 1):.0f}% "
+            "of the corpus is invisible to this run)."
         )
+        print(
+            "    The corpus fidelity_score is a mean over the papers measured, so it is NOT "
+            "compared against the whole-corpus baseline. Per-paper checks below still gate, "
+            "but only for the papers above."
+        )
+        print(f"    Re-run with `--all` to gate the whole corpus. Skipped: "
+              f"{', '.join(unchecked[:8])}{' …' if len(unchecked) > 8 else ''}")
 
     # Honesty surface: papers whose TRUTH render failed have no metrics (word_recall=None),
     # so they contribute nothing to the score and CANNOT register a regression — the gate is
