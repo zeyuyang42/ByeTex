@@ -107,8 +107,32 @@ BASELINE_FIELDS_LEGACY = (
     "byetex_version",
 )
 
-# Persistence set: the gated metrics, the reported tier, and vintage.
-BASELINE_FIELDS = tuple(dict.fromkeys(BASELINE_FIELDS_LEGACY + REPORTED_FIELDS))
+# Computed by visual_test.py and BASELINED, but deliberately not reported and not
+# gateable. Excluding a property from LAYOUT_TOLERANCES used to drop it from the
+# committed baseline too, because the persistence set was derived from the
+# tolerance table — so the comment above promising that
+# `layout_column_mismatch_frac` is "still computed and stored so the fix can be
+# measured against today's numbers" was not true of the baseline, leaving nothing
+# to diff a fix against. `layout_right_margin_ratio` is the sharper case: its left
+# and top siblings ARE baselined, and it is the property layout_floors.json shows
+# failing on 58/65 papers.
+#
+# Persisting a value costs nothing and gating it is a separate, explicit decision
+# (see LAYOUT_TOLERANCES / --gate-layout).
+MEASURED_ONLY_FIELDS = (
+    "layout_column_mismatch_frac",
+    "layout_right_margin_ratio",
+    "layout_lines_per_page_ratio",
+    "layout_fontsize_tier_emd",
+    # Coverage, not a metric: how many pages the geometric compare actually saw.
+    # Without it a baseline entry cannot be told apart from one where T1 never ran.
+    "layout_pages_compared",
+)
+
+# Persistence set: the gated metrics, the reported tier, measured-only extras, and
+# vintage.
+BASELINE_FIELDS = tuple(dict.fromkeys(
+    BASELINE_FIELDS_LEGACY + REPORTED_FIELDS + MEASURED_ONLY_FIELDS))
 
 
 def tolerances_from_floors(floors, defaults):
@@ -156,6 +180,16 @@ def evaluate_layout(current, baseline, gated, tols, known_bad=None):
     the list, and re-reporting it adds noise without information. But one that is
     FIXED is reported as an improvement, so the list can shrink instead of
     rotting into a permanent amnesty.
+
+    The threshold is ABSOLUTE, not a delta against the baseline. That is what
+    `layout_floors.json` measured it as — "past here it is definitely not
+    measurement noise" — and it is the only reading the rest of this design is
+    consistent with: `known_bad` exists precisely to excuse the papers already
+    past the floor on promotion day, which is meaningless if being past the floor
+    were not itself the trigger. Comparing `dc > db + tol` instead let a paper sit
+    forever at 0.074 against a 0.075 floor without ever firing, let any paper
+    worsen by a full tolerance on every baseline refresh, and made the 11-entry
+    `known_bad` list inert.
     """
     known_bad = known_bad or {}
     regressions, notices, improvements = [], [], []
@@ -166,25 +200,30 @@ def evaluate_layout(current, baseline, gated, tols, known_bad=None):
             continue
         for field, (direction, tol) in sorted(tols.items()):
             b, c = base.get(field), cur.get(field)
+            # Both sides still required. The threshold is absolute, but a field
+            # ABSENT from the committed baseline means the tier has not been
+            # baselined yet, and absolute-gating that would report the whole
+            # corpus as regressed the moment a property is added. Presence in the
+            # baseline is the opt-in; the floor then decides.
             if b is None or c is None:
                 continue
             db, dc = _deviation(field, b), _deviation(field, c)
             excused = pid in known_bad.get(field, ())
-            if dc > db + tol:
-                msg = (f"{pid}: {field} {c:.3f} vs baseline {b:.3f} "
-                       f"({direction}, tol {tol})")
+            if dc > tol:
+                msg = (f"{pid}: {field} {c:.3f} is {dc:.3f} past the {direction} "
+                       f"floor {tol} (baseline {b:.3f})")
                 if field in gated and not excused:
                     regressions.append(msg)
                 else:
                     notices.append(msg + (" [known-bad]" if excused else ""))
-            elif dc < db - tol:
-                improvements.append(f"{pid}: {field} {c:.3f} vs baseline {b:.3f} (improved)")
-            elif excused and dc <= tol:
+            elif excused:
                 # A known-bad paper now WITHIN tolerance: say so, or the list
                 # silently accumulates papers that are no longer broken.
                 improvements.append(
                     f"{pid}: {field} {c:.3f} is now within tolerance "
                     "— remove it from known_bad in scripts/layout_floors.json")
+            elif dc < db - tol:
+                improvements.append(f"{pid}: {field} {c:.3f} vs baseline {b:.3f} (improved)")
     return regressions, notices, improvements
 
 
@@ -286,6 +325,16 @@ def evaluate(current, baseline, score_tol, recall_tol):
         cur = cur_papers.get(pid)
         if cur is None:
             continue  # absent this run; skip (gitignored corpus payload)
+        # A truth render that failed THIS run cannot be a byetex regression: the
+        # truth PDF is tectonic on the original LaTeX, with no byetex output
+        # involved. It means the local environment lost the render (unprovisioned
+        # biber/fonts — see scripts/setup_truth_deps.sh), which collapses
+        # word_recall to None and structure_ok to false. Reporting that as
+        # "structure_ok true→false" turns a missing dependency into a red fidelity
+        # gate and buries any real regression beside it. Name it as lost coverage.
+        if (cur.get("status") == "truth_render_failed"
+                and base.get("status") != "truth_render_failed"):
+            continue  # reported by `truth_render_lost`
         if base.get("structure_ok") and not cur.get("structure_ok"):
             regressions.append(f"{pid}: structure_ok true→false")
         bw, cw = base.get("word_recall"), cur.get("word_recall")
@@ -298,6 +347,21 @@ def evaluate(current, baseline, score_tol, recall_tol):
             elif cw > bw + recall_tol:
                 improvements.append(f"{pid}: word_recall {cw:.3f} > baseline {bw:.3f}")
     return regressions, improvements
+
+
+def truth_render_lost(current, baseline):
+    """Papers measurable in the baseline whose TRUTH render failed this run.
+
+    Lost coverage, not a regression — see the skip in `evaluate`. Reported so a
+    gate that has gone blind to a paper never passes for looking quiet.
+    """
+    cur_papers = current.get("papers", {})
+    return sorted(
+        pid
+        for pid, base in baseline.get("papers", {}).items()
+        if (cur_papers.get(pid) or {}).get("status") == "truth_render_failed"
+        and base.get("status") != "truth_render_failed"
+    )
 
 
 def main(argv=None):
@@ -365,15 +429,39 @@ def main(argv=None):
     # so they contribute nothing to the score and CANNOT register a regression — the gate is
     # blind to them. Name them explicitly so a green gate is never mistaken for "all papers
     # are fine" (health-check P2). These are typically book/thesis classes tectonic can't build.
-    unmeasured = sorted(
-        pid
-        for pid, base in baseline.get("papers", {}).items()
-        if base.get("word_recall") is None or base.get("status") == "truth_render_failed"
-    )
+    #
+    # The REASON has to be the paper's real one. The selector is broader than "no
+    # truth render" — `word_recall is None` also catches papers whose TYPST side
+    # failed to compile — so labelling the whole list "no truth render" misreported
+    # them (2 of 6 entries in the rebaselined 2026-08-17 baseline). Misattributing
+    # a failure is the exact defect this block exists to prevent, so each paper is
+    # grouped under its own status.
+    unmeasured: dict[str, list[str]] = {}
+    for pid, base in sorted(baseline.get("papers", {}).items()):
+        status = base.get("status")
+        if status == "truth_render_failed":
+            reason = "no truth render"
+        elif base.get("word_recall") is None:
+            reason = f"no metrics ({status})" if status else "no metrics"
+        else:
+            continue
+        unmeasured.setdefault(reason, []).append(pid)
+    lost = truth_render_lost(current, baseline)
+    if lost:
+        print(f"  TRUTH RENDER LOST this run ({len(lost)}) — NOT a byetex regression: the "
+              "truth PDF is\n  tectonic on the original LaTeX, so a failure here is a local "
+              "dependency, not\n  output drift. These papers WERE measurable in the baseline, "
+              "so the gate is now\n  blind to them — run scripts/setup_truth_deps.sh to "
+              "restore coverage:")
+        for pid in lost:
+            print(f"    ! {pid}")
     if unmeasured:
-        print(f"  UNMEASURED (not gated — no truth render, {len(unmeasured)}):")
-        for pid in unmeasured:
-            print(f"    ? {pid}")
+        total = sum(len(v) for v in unmeasured.values())
+        print(f"  UNMEASURED (not gated, {total}):")
+        for reason, pids in sorted(unmeasured.items()):
+            print(f"    {reason} ({len(pids)}):")
+            for pid in pids:
+                print(f"      ? {pid}")
 
     vintages = baseline_vintages(baseline)
     if len(vintages) > 1:
@@ -433,6 +521,23 @@ def main(argv=None):
         if n_cur and measured * 2 < n_cur:
             print(f"  LAYOUT BLIND — {label}: not computed on "
                   f"{n_cur - measured}/{n_cur} papers. {hint}.")
+    # …and being loud is not enough for a GATED property. `evaluate_layout` skips
+    # a field that is None, so a gated property measured on zero papers produces
+    # zero regressions and the gate exits 0 — "the first hard layout gate" passing
+    # a run that measured no geometry at all. T1 needs pymupdf, which is absent by
+    # default and is NOT in the invocation CLAUDE.md documents for the gate, so
+    # this is the DEFAULT path, not an edge case. An unmeasurable gate is an error.
+    blind_gated = sorted(
+        f for f in gated
+        if not any(p.get(f) is not None for p in papers.values())
+    )
+    if blind_gated and n_cur:
+        print(f"  GATE UNMEASURABLE — {', '.join(blind_gated)}: gated but computed on "
+              f"0/{n_cur} papers.", file=sys.stderr)
+        print("FAIL: a gated property was never measured, so the gate proves nothing. "
+              "Re-run with `uv run --with pymupdf`, or drop it from --gate-layout.",
+              file=sys.stderr)
+        return 1
     if l_notices or l_regs:
         label = ("LAYOUT DRIFT (report-only — promote with --gate-layout)"
                  if not gated else f"LAYOUT DRIFT (gated: {', '.join(sorted(gated))})")
@@ -441,6 +546,19 @@ def main(argv=None):
             print(f"    ~ {n}")
         if len(l_notices) > args.max_notices:
             print(f"    … {len(l_notices) - args.max_notices} more")
+            # An absolute floor reports every CURRENT breach, not just what moved
+            # since the baseline, so the list is a census and the first N of it are
+            # simply the alphabetically-first papers. Summarise by property so the
+            # shape is visible — which properties are broadly out of tolerance is
+            # the actionable signal, and it is the one a truncated list hides.
+            per_prop: dict[str, int] = {}
+            for n in l_notices:
+                field = n.split(": ", 1)[1].split(" ", 1)[0] if ": " in n else "?"
+                per_prop[field] = per_prop.get(field, 0) + 1
+            n_papers = len({n.split(":", 1)[0] for n in l_notices})
+            print(f"    by property, over {n_papers} paper(s):")
+            for field, count in sorted(per_prop.items(), key=lambda kv: (-kv[1], kv[0])):
+                print(f"      {count:4d}  {field}")
     if l_imps:
         print(f"  LAYOUT IMPROVED ({len(l_imps)}; consider `--update-baseline`):")
         for i in l_imps[:args.max_notices]:

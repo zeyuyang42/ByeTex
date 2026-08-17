@@ -57,7 +57,27 @@ done
 # `${VT_ARGS[@]+…}` (not `"${VT_ARGS[@]}"`): under `set -u`, macOS's bash 3.2 treats an
 # empty-array expansion as an unbound variable and aborts. This idiom expands to the
 # elements when set, and to NOTHING when empty (no stray empty arg).
-python3 "$REPO_ROOT/scripts/visual_test.py" --out "$OUT" ${VT_ARGS[@]+"${VT_ARGS[@]}"}
+#
+# A gate must MEASURE what it gates. `layout_body_font_ratio` is promoted to a
+# hard gate below, and that property is None on every paper without pymupdf — so
+# the bare `./scripts/fidelity_gate.sh` that CLAUDE.md and scripts/README.md
+# document would have gated on nothing at all. When pymupdf is not importable,
+# re-run through `uv` (which the repo already requires for scripts) so the
+# geometric tier is actually populated. If uv is unavailable too, we do NOT
+# quietly continue: fidelity_check.py fails on a gated-but-unmeasured property.
+if python3 -c 'import fitz' >/dev/null 2>&1; then
+  python3 "$REPO_ROOT/scripts/visual_test.py" --out "$OUT" ${VT_ARGS[@]+"${VT_ARGS[@]}"}
+elif command -v uv >/dev/null 2>&1; then
+  echo "fidelity: pymupdf not importable — running visual_test.py via uv so the" >&2
+  echo "          geometric tier (T1) is measured rather than silently skipped." >&2
+  uv run --with requests --with Pillow --with numpy --with scikit-image \
+         --with pymupdf -- python "$REPO_ROOT/scripts/visual_test.py" \
+         --out "$OUT" ${VT_ARGS[@]+"${VT_ARGS[@]}"}
+else
+  echo "fidelity: pymupdf not importable and uv not found — the geometric tier" >&2
+  echo "          will be EMPTY and any gated layout property will fail below." >&2
+  python3 "$REPO_ROOT/scripts/visual_test.py" --out "$OUT" ${VT_ARGS[@]+"${VT_ARGS[@]}"}
+fi
 INDEX="$OUT/index.json"
 
 if [[ ! -f "$INDEX" ]]; then

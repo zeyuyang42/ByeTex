@@ -116,6 +116,10 @@ SAFETY_FACTOR = 1.5  # applied to max(repeat_floor, legit_floor)
 MIN_THRESHOLD = 0.005
 
 
+def _fmt_floor(v: float | None) -> str:
+    return "—" if v is None else f"{v:.4f}"
+
+
 def _tool_version(cmd: list[str]) -> str:
     try:
         return subprocess.run(cmd, capture_output=True, text=True, check=True).stdout.strip()
@@ -132,11 +136,18 @@ def _pymupdf_version() -> str:
 
 
 def measure_self_floor(paper_dirs: list[Path]) -> dict:
-    """Profile each truth.pdf against ITSELF.
+    """Extract each truth.pdf TWICE and compare the two extractions.
 
     The precondition for everything else: identical input must give identical
     output. A non-1.0 here means the extraction path is nondeterministic and no
     downstream comparison means anything.
+
+    It must be two SEPARATE `profile_pdf` calls. Comparing one profile object to
+    itself makes every ratio `mean(xs) / mean(the same xs)` — exactly 1.0 by
+    construction, for any input, however nondeterministic the extractor is. That
+    is not a measurement of the instrument, it is a measurement of division, and
+    it made the `STOP` branch below unreachable and `self_floor_ok: true`
+    unearned.
     """
     worst: dict[str, float] = {}
     offenders: list[str] = []
@@ -145,10 +156,10 @@ def measure_self_floor(paper_dirs: list[Path]) -> dict:
         truth = d / "truth.pdf"
         if not truth.exists():
             continue
-        prof = lm.profile_pdf(truth)
-        if prof is None:
+        first, second = lm.profile_pdf(truth), lm.profile_pdf(truth)
+        if first is None or second is None:
             continue
-        res = lm.compare_profiles(prof, prof)
+        res = lm.compare_profiles(first, second)
         n += 1
         bad = False
         for name in FLOOR_PROPERTIES:
@@ -320,7 +331,23 @@ def cmd_floors(args) -> int:
           f"{'corpus p50':>11s} {'fail@thr':>9s}")
     proposals = {}
     papers = json.loads(index_path.read_text()).get("papers", {})
+    # Saying "repeat_floor is UNKNOWN, not zero" and then letting `.get(name, 0.0)`
+    # substitute zero one screen later is the same vacuous control wearing a
+    # warning label: `max(0.0, legit_floor) * 1.5` still prints a threshold and
+    # still marks properties promotable, on an instrument floor nobody measured.
+    # No repeat_floor, no proposals.
+    rep_unmeasured = rep.get("unmeasured", False)
+    if rep_unmeasured:
+        print("   NO PROPOSALS — repeat_floor was not measured, so no threshold "
+              "below it can be\n   distinguished from instrument noise. Generate "
+              "corpus/_out/<id>/main.typ and\n   re-run before proposing or "
+              "promoting anything.", file=sys.stderr)
     for name in FLOOR_PROPERTIES:
+        if rep_unmeasured:
+            print(f"{name:34s} {'UNKNOWN':>8s} "
+                  f"{_fmt_floor(legit['worst'].get(name)):>8s} {'—':>9s} "
+                  f"{corpus[name].get('p50', float('nan')):11.4f} {'—':>9s}")
+            continue
         r = rep["worst"].get(name, 0.0)
         lg = legit["worst"].get(name)
         if lg is None:
@@ -350,6 +377,14 @@ def cmd_floors(args) -> int:
     print("   MANUALLY CONFIRMED as real drift. This tool cannot do the last step.")
 
     if args.emit:
+        # The emitted file is the FROZEN evidence a hard gate is later promoted
+        # from. Writing it with `repeat_floor_measured: false` hands the next
+        # reader a floors file whose floors are placeholders, so refuse instead.
+        if rep_unmeasured:
+            print(f"\nREFUSING to write {args.emit}: repeat_floor was not measured, "
+                  "and a frozen\nfloors file with unmeasured floors is worse than no "
+                  "file.", file=sys.stderr)
+            return 1
         payload = {
             "_comment": (
                 "Measured noise floors for the layout tier (scripts/layout_loop.py "
@@ -488,12 +523,31 @@ BACKLOG = REPO_ROOT / "docs" / "layout-backlog.jsonl"
 
 def cmd_triage(args) -> int:
     rec = json.loads(Path(args.record).read_text())
-    verdict = "DRIFT" if (rec.get("properties_out_of_floor") or []) else "WITHIN_FLOOR"
+    # Three verdicts, not two. A record whose tier never ran — no pymupdf, or a
+    # missing truth.pdf/typst.pdf — has an empty `properties_out_of_floor` and a
+    # null `severity`, which a two-way split files as WITHIN_FLOOR: the CLEAN
+    # word, and the word docs/autonomous-dev.md §6.5 tells the loop to consume.
+    # "I could not look" must never print as "I looked and it was fine".
+    # `rank_layout_offenders` already keeps this distinction (`reason:
+    # "unmeasured"`); triage used to throw it away.
+    if rec.get("severity") is None and not (rec.get("properties_out_of_floor") or []):
+        verdict = "UNMEASURED"
+    elif rec.get("properties_out_of_floor"):
+        verdict = "DRIFT"
+    else:
+        verdict = "WITHIN_FLOOR"
     floors = _load_floors(args.floors)
+    paper_id = rec.get("paper_id")
+    # The positional exists, so honour it: silently filing results under the
+    # record's own id makes a mismatched invocation look like it worked.
+    if args.paper_id and paper_id and args.paper_id != paper_id:
+        print(f"triage: record is for {paper_id!r}, not {args.paper_id!r}",
+              file=sys.stderr)
+        return 2
     entry = {
         "run_ts": args.run_ts or "unset",
         "schema": 1,
-        "paper_id": rec.get("paper_id"),
+        "paper_id": paper_id or args.paper_id,
         "verdict": verdict,
         "source": "layout_loop.triage",
         "severity": rec.get("severity"),
@@ -535,7 +589,8 @@ def main(argv=None) -> int:
 
     rc = sub.add_parser("record", help="recompute the tier for ONE paper from disk")
     rc.add_argument("paper_id")
-    rc.add_argument("--index")
+    # No `--index`: `record` recomputes from the paper's own artifacts on disk and
+    # never reads the corpus index, so accepting the flag only implied otherwise.
     rc.add_argument("--out", help="paper artifact dir (default tests/visual/<id>)")
     rc.add_argument("--floors")
     rc.set_defaults(func=cmd_record)

@@ -258,7 +258,13 @@ emits **one** SyncTeX box for a document with three labels, and 88% of its file
 entries are unnamed, so essentially every label is unattributable. See
 `docs/layout-t3-synctex-not-viable.md`, including the content-anchored design that
 would work instead. `triage` appends a routed record
-to `docs/layout-backlog.jsonl` and prints a bare `DRIFT` | `WITHIN_FLOOR`.
+to `docs/layout-backlog.jsonl` and prints a bare `DRIFT` | `WITHIN_FLOOR` |
+`UNMEASURED`.
+
+`UNMEASURED` is **not** a pass. It means the tier never ran on that paper (no
+pymupdf, or a missing `truth.pdf` / `typst.pdf`), so nothing was compared. Fix
+the measurement before reading any verdict for that paper, and never fold it in
+with `WITHIN_FLOOR` when deciding whether the backlog is empty.
 
 The record carries `drift_class`, `suspected_site` and `routing_reason`. Treat the
 site as a **lead, not a diagnosis** — confirm it against the generated `.typ`
