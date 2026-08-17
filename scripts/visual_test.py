@@ -1268,6 +1268,29 @@ def analyse_warnings(warn_path: Path | None) -> dict:
 # Index (aggregate JSON)
 # ─────────────────────────────────────────────────────────────────────────────
 
+def byetex_version(byetex_bin: Path) -> str:
+    """`byetex --version`, stamped onto every paper this run measures.
+
+    index.json ACCUMULATES: load_index() reads the existing file and a run only
+    overwrites the papers it measured. Combined with the gate's 5-pinned-paper
+    default, that means the committed baseline is NOT a snapshot of any single
+    code version — each paper's entry is from whenever it was last measured,
+    which for most of the corpus was many releases ago.
+
+    That is how `ctan-memoir` and `gh-maurovm-thesis-template` came to sit in the
+    baseline as `truth_render_failed` while both have in fact failed to COMPILE
+    since well before the baseline file itself was written: their entries were
+    never refreshed, so nothing ever noticed. Stamping the version makes that
+    staleness visible instead of invisible.
+    """
+    try:
+        r = subprocess.run([str(byetex_bin), "--version"],
+                           capture_output=True, text=True, check=True)
+        return r.stdout.strip() or "unknown"
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        return "unknown"
+
+
 def load_index(path: Path) -> dict:
     if path.exists():
         return json.loads(path.read_text())
@@ -1656,6 +1679,8 @@ def main() -> None:
 
     session = make_session(args.user_agent)
     byetex_bin = ensure_byetex(args.profile)
+    version = byetex_version(byetex_bin)
+    measured_now: list[str] = []
 
     for arxiv_id in args.papers:
         print(f"\n=== {arxiv_id} ===", flush=True)
@@ -1694,31 +1719,67 @@ def main() -> None:
             "mean_ssim": structure.get("mean_ssim"),
             "composite": str(out / arxiv_id.replace("/", "_") / "composite.png")
                 if summary.get("typst_ok") else None,
+            # Vintage. Without these, a paper measured a year ago is
+            # indistinguishable from one measured in this run.
+            "measured_at": _now(),
+            "byetex_version": version,
         }
+        measured_now.append(arxiv_id)
         flush_index(index, index_path)
         print(f"  → status: {summary.get('status')}", flush=True)
 
-    ok_count = sum(1 for v in index["papers"].values() if v["status"] == "ok")
-    structure_ok_count = sum(
-        1 for v in index["papers"].values() if v.get("structure_ok")
-    )
-    typst_ok_count = sum(
-        1 for v in index["papers"].values() if v.get("typst_ok")
-    )
-    # Single corpus-wide fidelity number (relative regression detector).
-    fidelity = aggregate_fidelity_score(index["papers"])
-    index["fidelity_score"] = fidelity
+    # Statistics come in two flavours and conflating them produced nonsense:
+    # every counter below used to be summed over the WHOLE accumulated index
+    # while the denominator was this run's paper list, so a 5-paper run printed
+    # "Done: 63/5 fully processed" next to a "Corpus fidelity score" derived
+    # almost entirely from papers it had not looked at.
+    run_papers = {pid: index["papers"][pid] for pid in measured_now}
+
+    def counts(papers):
+        return (
+            sum(1 for v in papers.values() if v["status"] == "ok"),
+            sum(1 for v in papers.values() if v.get("structure_ok")),
+            sum(1 for v in papers.values() if v.get("typst_ok")),
+        )
+
+    ok_count, structure_ok_count, typst_ok_count = counts(run_papers)
+    # The index-wide score stays the committed metric (fidelity_check compares
+    # it, and only when the run covers the whole corpus), but it is now labelled
+    # for what it is rather than presented as this run's result.
+    index["fidelity_score"] = aggregate_fidelity_score(index["papers"])
+    index["run_fidelity_score"] = aggregate_fidelity_score(run_papers)
+    index["run_papers"] = sorted(measured_now)
     flush_index(index, index_path)
 
-    print(f"\nDone: {ok_count}/{len(args.papers)} fully processed.")
+    print(f"\nDone: {ok_count}/{len(measured_now)} fully processed.")
     print(
-        f"  Stage counts: typst_ok={typst_ok_count} | "
+        f"  Stage counts (this run): typst_ok={typst_ok_count} | "
         f"structure_ok={structure_ok_count} | overall_ok={ok_count}"
     )
+    print(
+        f"  This run's fidelity score: {index['run_fidelity_score']} "
+        f"over {len(measured_now)} paper(s)"
+    )
+    n_index = len(index["papers"])
+    if n_index != len(measured_now):
+        i_ok, i_struct, i_typst = counts(index["papers"])
+        print(
+            f"  Whole index ({n_index} papers, ACCUMULATED across runs — "
+            f"{n_index - len(measured_now)} not measured now): "
+            f"typst_ok={i_typst} | structure_ok={i_struct} | overall_ok={i_ok}"
+        )
+        print(f"  Index fidelity score: {index['fidelity_score']} "
+              "— mixes this run with older measurements; only meaningful "
+              "after a `--all` run.")
+    # The committed corpus number, printed last so it is the line people quote.
+    # It is an INDEX-wide figure; the run-scoped one is printed above.
+    fidelity = index["fidelity_score"]
     fidelity_str = f"{fidelity:.3f}" if fidelity is not None else "n/a (no fully-measured papers)"
+    scope = "whole corpus" if len(measured_now) == n_index else \
+        f"ACCUMULATED index — only {len(measured_now)}/{n_index} measured now"
     print(
         "  Corpus fidelity score "
-        f"(0.35·recall + 0.25·headings + 0.2·ssim + 0.2·page): {fidelity_str}"
+        f"(0.35·recall + 0.25·headings + 0.2·ssim + 0.2·page): {fidelity_str} [{scope}]"
     )
     print(f"Index: {index_path}")
     print("Next: ask the agent to read each composite.png and write tests/visual/report.md")
