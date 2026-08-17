@@ -1,5 +1,13 @@
 {
   "_comment": "Acceptance baseline for scripts/acceptance.sh. Papers in `known_pass` currently emit Typst that compiles (BYETEX-attributable PASS); the gate FAILS if any of them regresses to BYETEX_FAIL. `known_fail` are the currently-open BYETEX_FAIL papers (allowed; a fix flips one and should be promoted to known_pass). Only papers whose payloads are present locally are checked, so the gate is robust to gitignored corpus payloads. Update deliberately when fixing/breaking a paper. Captured 2026-07-25 via `corpus_sweep.sh --with-oracle` (PASS 68 / BYETEX_FAIL 0) after the ground-up review-fix batch; the entry-file disambiguation fix made 5 previously-unconvertible repos (ambiguous \\documentclass) reachable, and they compile.",
+  "_known_fail_notes": {
+    "ctan-memoir": "typst: unclosed delimiter + unclosed label. A literal `*` in the memoir manual's prose is emitted unescaped and opens strong emphasis. Long-standing: reproduces at 701dfbe. Was hidden as INPUT_BROKEN.",
+    "gh-maurovm-thesis-template": "typst: label `<prior1977physical>` does not exist. The oxengthesis class's `\\listofreferences` is unsupported, so no `#bibliography` renders while `\\cite` still emits `@key`. Partially fixed in the cite-validation PR; the remaining case is citations inside `\\input`ed files. Was hidden as INPUT_BROKEN."
+  },
+  "known_fail": [
+    "ctan-memoir",
+    "gh-maurovm-thesis-template"
+  ],
   "known_pass": [
     "2605.22159",
     "2605.22281",
@@ -69,6 +77,5 @@
     "gh-mtheme-demo",
     "gh-pelegs-maths-book",
     "gh-sikatikenmogne-report"
-  ],
-  "known_fail": []
+  ]
 }
