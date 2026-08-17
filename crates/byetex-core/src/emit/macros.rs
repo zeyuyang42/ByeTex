@@ -585,6 +585,9 @@ impl<'a> Emitter<'a> {
             self.out.push('\n');
         }
         self.out.push_str(&sub.out);
+        // Sentinels in the included body are resolved by the ROOT's `finish()`,
+        // so the records that resolve them must travel with the text.
+        self.deferred_cites.append(&mut sub.deferred_cites);
         self.warnings.append(&mut sub.warnings);
         self.asset_refs.append(&mut sub.asset_refs);
         // Merge back any \graphicspath dirs the included file declared (e.g. a

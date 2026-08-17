@@ -194,7 +194,6 @@ impl<'a> Emitter<'a> {
         // assume the user provided the right keys and preserve the
         // old behaviour.
         let mut missing: Vec<&str> = Vec::new();
-        let mut undefined: Vec<&str> = Vec::new();
         let mut typst_parts: Vec<String> = Vec::new();
         let last_idx = keys.len() - 1;
         for (i, raw_key) in keys.iter().enumerate() {
@@ -209,14 +208,46 @@ impl<'a> Emitter<'a> {
             // class calls `\listofreferences`, which ByeTex does not support, so
             // the bibliography is dropped while `references.bib` still harvests
             // and every `\cite` sails through validation.
-            let will_be_defined =
+            //
+            // Only the POSITIVE half of (2) is knowable here. `bib_will_render`
+            // is a prepass flag over the top-level tree, so it says "yes" early
+            // but never says "no": the bibliography command can live in an
+            // `\input`ed file, or discover its `.bib` paths at emit time. Treating
+            // a false flag as "nothing will define this" degraded every citation
+            // in such a document to plain text beside a rendered reference list.
+            // So a false flag means UNKNOWN, and the answer is deferred.
+            let definitely_defined =
                 self.bib_will_render || self.bib_anchor_keys.contains(&sanitized);
             if !self.bibliography_keys.is_empty() && !self.bibliography_keys.contains(&sanitized) {
                 missing.push(raw_key.as_str());
                 typst_parts.push(format!("[cite: missing key `{}`]", raw_key));
-            } else if !self.bibliography_keys.is_empty() && !will_be_defined {
-                undefined.push(raw_key.as_str());
-                typst_parts.push(format!("[cite: {}]", raw_key));
+            } else if !self.bibliography_keys.is_empty() && !definitely_defined {
+                typst_parts.push(format!(
+                    "{0}{1}{0}",
+                    super::DEFERRED_CITE_SENTINEL, sanitized
+                ));
+                self.deferred_cites.push(super::DeferredCite {
+                    sanitized,
+                    raw: raw_key.clone(),
+                    warning: Warning {
+                        range: range_of(node),
+                        category: Category::NeedsManualReview {
+                            reason: format!(
+                                "\\cite{{{}}}: no bibliography is rendered, so the reference cannot resolve",
+                                raw_key
+                            ),
+                        },
+                        severity: Severity::Warning,
+                        message: format!(
+                            "cite key `{}` exists in a `.bib` but NO `#bibliography(...)` is emitted \
+                             (the document's bibliography command is unsupported or was dropped), so \
+                             `@{}` would abort the Typst compile — emitting plain text instead",
+                            raw_key, raw_key
+                        ),
+                        snippet: self.src[node.start_byte()..node.end_byte()].to_string(),
+                        suggested_skill: None,
+                    },
+                });
             } else if let Some(cmd) = command.as_deref() {
                 // Supplement only on the last key.
                 let supp = if i == last_idx {
@@ -244,30 +275,15 @@ impl<'a> Emitter<'a> {
                 suggested_skill: None,
             });
         }
-        for key in &undefined {
-            self.warnings.push(Warning {
-                range: range_of(node),
-                category: Category::NeedsManualReview {
-                    reason: format!(
-                        "\\cite{{{}}}: no bibliography is rendered, so the reference cannot resolve",
-                        key
-                    ),
-                },
-                severity: Severity::Warning,
-                message: format!(
-                    "cite key `{}` exists in a `.bib` but NO `#bibliography(...)` is emitted \
-                     (the document's bibliography command is unsupported or was dropped), so \
-                     `@{}` would abort the Typst compile — emitting plain text instead",
-                    key, key
-                ),
-                snippet: self.src[node.start_byte()..node.end_byte()].to_string(),
-                suggested_skill: None,
-            });
-        }
         let mut typst = typst_parts.join(" ");
         // `\citeyearpar` renders the year form wrapped in parentheses.
+        //
+        // Deferral never reaches here: `command` is `Some` only when `use_forms`
+        // is set, which requires `bib_will_render` — and that already makes every
+        // key `definitely_defined`. So the form path and the sentinel path are
+        // mutually exclusive, and this block only has to consider `missing`.
         if let Some(cmd) = command.as_deref() {
-            if missing.is_empty() && undefined.is_empty() {
+            if missing.is_empty() {
                 if normalize_cite_command(cmd) == "\\citeyearpar" {
                     typst = format!("({})", typst);
                 }
@@ -505,6 +521,65 @@ impl<'a> Emitter<'a> {
             }
         }
         node.end_byte()
+    }
+
+    /// Resolve every `DEFERRED_CITE_SENTINEL` pair now that the whole document
+    /// has been emitted and it is finally known whether anything defines the key.
+    ///
+    /// Two definers, both only knowable at the end:
+    ///   * `emitted_bibliography` — a real `#bibliography(...)` was written, from
+    ///     wherever the command turned out to live (top level, an `\input`ed
+    ///     file, or `discover_bib_files()`);
+    ///   * `bib_anchor_keys` — a `\bibitem` wrote a literal `<key>` anchor.
+    ///
+    /// A key with neither becomes readable plain text (and only then does its
+    /// warning fire), because `@key` with no anchor aborts the entire compile.
+    pub(in crate::emit) fn resolve_deferred_cites(&mut self) {
+        if self.deferred_cites.is_empty() {
+            debug_assert!(
+                !self.out.contains(super::DEFERRED_CITE_SENTINEL),
+                "a deferred-cite sentinel is in the output with no record to resolve it"
+            );
+            return;
+        }
+        let bib_rendered = self.emitted_bibliography;
+        let deferred = std::mem::take(&mut self.deferred_cites);
+        let raw_of: std::collections::HashMap<&str, &str> = deferred
+            .iter()
+            .map(|d| (d.sanitized.as_str(), d.raw.as_str()))
+            .collect();
+        let sent = super::DEFERRED_CITE_SENTINEL;
+        let src = std::mem::take(&mut self.out);
+        let mut out = String::with_capacity(src.len());
+        let mut rest = src.as_str();
+        while let Some(open) = rest.find(sent) {
+            out.push_str(&rest[..open]);
+            let after = &rest[open + sent.len_utf8()..];
+            let Some(close) = after.find(sent) else {
+                // Unterminated marker: drop it rather than ship a control
+                // character into the .typ. Unreachable — both halves are written
+                // by the same `format!` — but the fallback must not be a leak.
+                out.push_str(after);
+                rest = "";
+                break;
+            };
+            let key = &after[..close];
+            if bib_rendered || self.bib_anchor_keys.contains(key) {
+                out.push('@');
+                out.push_str(key);
+            } else {
+                let _ = write!(out, "[cite: {}]", raw_of.get(key).copied().unwrap_or(key));
+            }
+            rest = &after[close + sent.len_utf8()..];
+        }
+        out.push_str(rest);
+        self.out = out;
+        // Warn only for the keys that really did stay undefined.
+        for d in deferred {
+            if !bib_rendered && !self.bib_anchor_keys.contains(&d.sanitized) {
+                self.warnings.push(d.warning);
+            }
+        }
     }
 
     pub(in crate::emit) fn emit_bibliography(&mut self, node: Node<'_>) -> usize {

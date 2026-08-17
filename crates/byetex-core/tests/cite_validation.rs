@@ -254,6 +254,128 @@ fn cite_without_a_rendering_bibliography_degrades_to_placeholder() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+// ── the bibliography is REACHED, just not from the top-level prepass ────────
+//
+// `bib_will_render` is set only by `prepass_collect`, which walks the top-level
+// tree. But the emit pass resolves `\input`, and `\printbibliography` falls back
+// to `discover_bib_files()` when no `\addbibresource` path was collected. So a
+// real `#bibliography(...)` renders while the flag stays false — and then EVERY
+// citation degrades to `[cite: key]` next to a fully-rendered reference list.
+//
+// That is why the decision cannot be made when the `\cite` is emitted: the
+// citation comes first in document order, the bibliography command later. It has
+// to be deferred to `finish()`, where `emitted_bibliography` is authoritative.
+
+#[test]
+fn addbibresource_in_an_included_file_still_resolves_cites() {
+    let dir = tmpdir("input-addbibresource");
+    fs::write(
+        dir.join("refs.bib"),
+        "@book{prior1977physical, author={Prior}, year={1977}}\n",
+    )
+    .unwrap();
+    // The resource declaration lives in an `\input`ed file, so the top-level
+    // prepass never sees the `biblatex_include` node.
+    fs::write(dir.join("setup.tex"), "\\addbibresource{refs.bib}\n").unwrap();
+    fs::write(
+        dir.join("thesis.tex"),
+        "\\documentclass{article}\\input{setup}\\begin{document}\
+         Vital signs \\cite{prior1977physical}.\\printbibliography\\end{document}\n",
+    )
+    .unwrap();
+    let opts = ConvertOptions {
+        source_name: Some("thesis.tex".into()),
+        base_dir: Some(dir.clone()),
+    };
+    let out = convert(&fs::read_to_string(dir.join("thesis.tex")).unwrap(), &opts);
+    assert!(
+        out.typst.contains("#bibliography("),
+        "precondition: a real bibliography must render here; got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("@prior1977physical"),
+        "a rendered `#bibliography(...)` DEFINES the key, so `@key` must be kept — \
+         degrading to a plain-text placeholder next to a rendered reference list \
+         loses every citation in the document; got:\n{}",
+        out.typst
+    );
+    assert!(
+        !out.typst.contains("[cite: prior1977physical]"),
+        "the placeholder must not appear when the bibliography renders; got:\n{}",
+        out.typst
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn bibliography_command_in_an_included_file_still_resolves_cites() {
+    let dir = tmpdir("input-bibliography");
+    fs::write(
+        dir.join("refs.bib"),
+        "@book{prior1977physical, author={Prior}, year={1977}}\n",
+    )
+    .unwrap();
+    // Back matter in its own file — the `bibtex_include` node is invisible to
+    // the top-level prepass, so `bib_will_render` stays false.
+    fs::write(dir.join("backmatter.tex"), "\\bibliography{refs}\n").unwrap();
+    fs::write(
+        dir.join("thesis.tex"),
+        "\\documentclass{article}\\begin{document}\
+         Vital signs \\cite{prior1977physical}.\\input{backmatter}\\end{document}\n",
+    )
+    .unwrap();
+    let opts = ConvertOptions {
+        source_name: Some("thesis.tex".into()),
+        base_dir: Some(dir.clone()),
+    };
+    let out = convert(&fs::read_to_string(dir.join("thesis.tex")).unwrap(), &opts);
+    assert!(
+        out.typst.contains("#bibliography("),
+        "precondition: a real bibliography must render here; got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("@prior1977physical"),
+        "an `\\input`ed `\\bibliography{{}}` still defines the key; got:\n{}",
+        out.typst
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn no_deferred_cite_sentinel_survives_into_the_output() {
+    // The deferral resolves inside `finish()`. If any path ever bypassed that
+    // resolution the sentinel would ship as literal garbage in the .typ, so
+    // assert on the control character directly rather than on either outcome.
+    let dir = tmpdir("sentinel-leak");
+    fs::write(
+        dir.join("refs.bib"),
+        "@book{k1, author={A}, year={1999}}\n@book{k2, author={B}, year={2000}}\n",
+    )
+    .unwrap();
+    fs::write(dir.join("setup.tex"), "\\addbibresource{refs.bib}\n").unwrap();
+    fs::write(
+        dir.join("main.tex"),
+        "\\documentclass{article}\\input{setup}\\begin{document}\
+         A \\cite{k1} and B \\cite{k1,k2}.\\printbibliography\\end{document}\n",
+    )
+    .unwrap();
+    let opts = ConvertOptions {
+        source_name: Some("main.tex".into()),
+        base_dir: Some(dir.clone()),
+    };
+    let out = convert(&fs::read_to_string(dir.join("main.tex")).unwrap(), &opts);
+    // `DEFERRED_CITE_SENTINEL` (crate-private); the neighbouring markers are
+    // \u{1d} cell-keep, \u{1e} box, \u{1f} ref-key — none may ship either.
+    assert!(
+        !out.typst.contains(|c| ('\u{1c}'..='\u{1f}').contains(&c)),
+        "an emitter sentinel leaked into the emitted Typst:\n{:?}",
+        out.typst
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn cite_with_thebibliography_still_emits_at_form() {
     // The control that stops the fix over-reaching: no `#bibliography()` renders

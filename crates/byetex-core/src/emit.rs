@@ -94,6 +94,11 @@ pub(in crate::emit) const CELL_KEEP_SENTINEL: char = '\u{1d}';
 /// [`Emitter::apply_deferred_equation_boxes`].
 pub(in crate::emit) const BOX_SENTINEL: char = '\u{1e}';
 
+/// Marks a `\cite` whose `@key`-vs-placeholder rendering could not be decided
+/// when it was emitted, so the decision can be made at finish() time. See
+/// [`Emitter::resolve_deferred_cites`].
+pub(in crate::emit) const DEFERRED_CITE_SENTINEL: char = '\u{1c}';
+
 /// Import + show rule that makes a multi-line equation number PER LINE, the way
 /// LaTeX's `align`/`gather`/`eqnarray` do. Emitted only when such an environment
 /// is actually present (`used_equate`), so documents that gain nothing don't take
@@ -494,6 +499,19 @@ pub(crate) struct Emitter<'a> {
     /// the emitted `@key` then aborts the entire compile because nothing ever
     /// wrote `<key>`.
     bib_anchor_keys: std::collections::HashSet<String>,
+    /// `\cite`s emitted before it was knowable whether anything would define
+    /// their key, each standing in the output as a `DEFERRED_CITE_SENTINEL` pair.
+    ///
+    /// The question "will a `#bibliography(...)` render?" cannot be answered at
+    /// the `\cite` — the citation comes FIRST in document order and the
+    /// bibliography command last, and that command may sit in an `\input`ed file
+    /// the prepass never walked, or resolve its paths through
+    /// `discover_bib_files()` at emit time. Deciding early on `bib_will_render`
+    /// (a prepass, top-level-only flag) degrades every citation in the document
+    /// to `[cite: key]` while a real reference list renders right below it.
+    /// So the decision is deferred to `resolve_deferred_cites`, where
+    /// `emitted_bibliography` is authoritative.
+    deferred_cites: Vec<DeferredCite>,
     /// Assets (images, bib files) resolved on disk during this emit pass.
     /// Populated only when `base_dir` is `Some`. Bubbled up to `ConvertOutput`
     /// by `finish()` so the project layer can copy them to the output dir.
@@ -604,6 +622,16 @@ const MAX_MACRO_DEPTH: u32 = 24;
 
 /// Everything [`Emitter::finish`] produces. A named struct (vs a tuple) keeps
 /// the signature readable and avoids positional destructuring as fields grow.
+/// One `\cite` key whose rendering was postponed to `finish()`.
+pub(in crate::emit) struct DeferredCite {
+    /// The key as it appears in the output (`@sanitized` / `<sanitized>`).
+    pub sanitized: String,
+    /// The key as the author wrote it, for the human-readable placeholder.
+    pub raw: String,
+    /// Pushed only if the key really does end up undefined.
+    pub warning: Warning,
+}
+
 pub(crate) struct FinishOutput {
     pub typst: String,
     pub warnings: Vec<Warning>,
@@ -809,6 +837,7 @@ impl<'a> Emitter<'a> {
             env_arg_counts: HashMap::new(),
             bibliography_keys: std::collections::HashSet::new(),
             bib_anchor_keys: std::collections::HashSet::new(),
+            deferred_cites: Vec::new(),
             asset_refs: Vec::new(),
             macro_depth: 0,
             in_minipage: false,
@@ -1357,6 +1386,12 @@ impl<'a> Emitter<'a> {
             self.out = preamble;
         }
 
+        // Every buffer is assembled, so `emitted_bibliography` is final: decide
+        // now which deferred `\cite`s have something to resolve against. Done
+        // BEFORE the string passes below so a resolved citation is treated
+        // exactly like one emitted directly.
+        self.resolve_deferred_cites();
+
         // Typographic substitutions: LaTeX `---` / `--` → em-/en-dash;
         // LaTeX-style double quotes ``X'' → ASCII "X" (Typst will smart-quote).
         // Done as a final string pass so we don't have to wrangle token-level
@@ -1628,6 +1663,10 @@ impl<'a> Emitter<'a> {
         // calls) need to flow back so the parent's citations resolve.
         self.bibliography_keys.extend(sub.bibliography_keys.drain());
         self.bib_anchor_keys.extend(sub.bib_anchor_keys.drain());
+        // The child's sentinels travel with its text into the parent buffer, so
+        // the records that resolve them have to travel too — only the ROOT
+        // emitter runs `finish()`.
+        self.deferred_cites.append(&mut sub.deferred_cites);
         self.warnings.append(&mut sub.warnings);
         self.asset_refs.append(&mut sub.asset_refs);
         sub.out
