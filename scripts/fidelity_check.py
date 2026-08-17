@@ -29,6 +29,7 @@ Usage:
 import argparse
 import json
 import sys
+from pathlib import Path
 
 # Fields kept in the committed baseline: enough to gate + promote, and NO
 # machine-specific absolute paths (the index.json `composite` field is dropped).
@@ -110,6 +111,18 @@ BASELINE_FIELDS_LEGACY = (
 BASELINE_FIELDS = tuple(dict.fromkeys(BASELINE_FIELDS_LEGACY + REPORTED_FIELDS))
 
 
+def tolerances_from_floors(floors, defaults):
+    """Overlay MEASURED thresholds from layout_floors.json onto the provisional
+    defaults. A property with no measured floor keeps its default, so adding a
+    property to the tier never silently gates it on a guess."""
+    tols = dict(defaults)
+    for name, info in (floors or {}).get("properties", {}).items():
+        thr = info.get("proposed_threshold")
+        if name in tols and thr is not None:
+            tols[name] = (tols[name][0], thr)
+    return tols
+
+
 def _deviation(field, value):
     """Distance from "no drift", per the field's declared direction."""
     direction, _ = LAYOUT_TOLERANCES[field]
@@ -120,7 +133,7 @@ def _deviation(field, value):
     return abs(value)  # "up"
 
 
-def evaluate_layout(current, baseline, gated, tols):
+def evaluate_layout(current, baseline, gated, tols, known_bad=None):
     """-> (regressions, notices, improvements).
 
     Only fields named in `gated` can produce a REGRESSION; everything else is a
@@ -132,7 +145,19 @@ def evaluate_layout(current, baseline, gated, tols):
     never as failing. Until a baseline is re-emitted, every field here is absent
     on the baseline side, and reporting that as a mass regression would bury the
     tier before it said anything true.
+
+    `known_bad` is {property: [paper_id, ...]} — papers that ALREADY fail a
+    property on the day it is promoted. They are excluded from that property's
+    REGRESSIONS so the gate is green on day one and fires only on NEW breakage.
+    A gate that starts red gets `|| true`-d within a week; this is the SILE
+    KNOWNBAD model and the direct answer to Chromium's demoted layout dumps.
+
+    A known-bad paper degrading further still does not fail — it is already on
+    the list, and re-reporting it adds noise without information. But one that is
+    FIXED is reported as an improvement, so the list can shrink instead of
+    rotting into a permanent amnesty.
     """
+    known_bad = known_bad or {}
     regressions, notices, improvements = [], [], []
     cur_papers = current.get("papers", {})
     for pid, base in sorted(baseline.get("papers", {}).items()):
@@ -144,12 +169,22 @@ def evaluate_layout(current, baseline, gated, tols):
             if b is None or c is None:
                 continue
             db, dc = _deviation(field, b), _deviation(field, c)
+            excused = pid in known_bad.get(field, ())
             if dc > db + tol:
                 msg = (f"{pid}: {field} {c:.3f} vs baseline {b:.3f} "
                        f"({direction}, tol {tol})")
-                (regressions if field in gated else notices).append(msg)
+                if field in gated and not excused:
+                    regressions.append(msg)
+                else:
+                    notices.append(msg + (" [known-bad]" if excused else ""))
             elif dc < db - tol:
                 improvements.append(f"{pid}: {field} {c:.3f} vs baseline {b:.3f} (improved)")
+            elif excused and dc <= tol:
+                # A known-bad paper now WITHIN tolerance: say so, or the list
+                # silently accumulates papers that are no longer broken.
+                improvements.append(
+                    f"{pid}: {field} {c:.3f} is now within tolerance "
+                    "— remove it from known_bad in scripts/layout_floors.json")
     return regressions, notices, improvements
 
 
@@ -280,6 +315,11 @@ def main(argv=None):
              "tier reports only. `all` promotes everything (escape hatch). Promote "
              "one property per PR, each backed by measured floors.",
     )
+    ap.add_argument(
+        "--layout-floors", metavar="PATH", default="scripts/layout_floors.json",
+        help="measured floors + known-bad list (default scripts/layout_floors.json). "
+             "Properties with no measured floor keep their provisional default.",
+    )
     ap.add_argument("--max-notices", type=int, default=10, metavar="N",
                     help="cap on reported layout notices (default 10)")
     ap.add_argument("--score-tol", type=float, default=0.02)
@@ -355,7 +395,19 @@ def main(argv=None):
     if unknown:
         ap.error(f"--gate-layout: unknown field(s) {sorted(unknown)}; "
                  f"choose from {sorted(LAYOUT_TOLERANCES)} or `all`")
-    l_regs, l_notices, l_imps = evaluate_layout(current, baseline, gated, LAYOUT_TOLERANCES)
+    floors = {}
+    fp = Path(args.layout_floors) if args.layout_floors else None
+    if fp and not fp.is_absolute():
+        fp = Path(__file__).resolve().parent.parent / fp
+    if fp and fp.exists():
+        floors = json.loads(fp.read_text())
+    elif gated:
+        # Gating on provisional defaults would be gating on guesses.
+        ap.error(f"--gate-layout given but no measured floors at {args.layout_floors}; "
+                 "run `layout_loop.py floors --emit` first")
+    tols = tolerances_from_floors(floors, LAYOUT_TOLERANCES)
+    l_regs, l_notices, l_imps = evaluate_layout(
+        current, baseline, gated, tols, known_bad=floors.get("known_bad"))
 
     # A blind tier must be LOUD about being blind: silently returning None on
     # every paper is indistinguishable from "nothing to report", which is how a

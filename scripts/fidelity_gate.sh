@@ -70,5 +70,19 @@ if [[ "$UPDATE" == "1" ]]; then
   exit 0
 fi
 
+# LAYOUT GATE — one property, promoted deliberately.
+#
+# `layout_body_font_ratio` is the first layout property allowed to fail a build.
+# Its threshold (0.075) is MEASURED, not chosen: 1.5x the worst deviation any
+# legitimate synthetic variant produces. The 11 papers already failing it are
+# listed as known_bad in scripts/layout_floors.json, so this gate is GREEN today
+# and fires only on NEW breakage.
+#
+# Everything else in the tier stays report-only. Promote one property per PR,
+# each backed by measured floors and by manually confirming the papers it flags —
+# see docs/layout-floors-2026-08-17.md.
+GATE_LAYOUT="${FIDELITY_GATE_LAYOUT:-layout_body_font_ratio}"
+
 echo "─── fidelity gate ───"
-python3 "$REPO_ROOT/scripts/fidelity_check.py" --current "$INDEX" --baseline "$BASELINE"
+python3 "$REPO_ROOT/scripts/fidelity_check.py" --current "$INDEX" --baseline "$BASELINE" \
+        --gate-layout "$GATE_LAYOUT"
