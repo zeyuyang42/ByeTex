@@ -1,0 +1,193 @@
+{
+  "_comment": [
+    "Synthetic layout-drift fixtures: manifest AND goldens for",
+    "scripts/tests/layout_synthetic_test.py and layout_ordering_test.py.",
+    "",
+    "Layout drift is the one thing in this harness that can be SYNTHESIZED with",
+    "known ground truth, so unlike every other metric here its correctness is",
+    "checkable rather than merely plausible. Each variant renders the SAME body",
+    "(body.typ) with one property changed, and declares which drift_classes must",
+    "and must not fire.",
+    "",
+    "`overrides` is appended after `base_preamble`; later #set / #let wins in",
+    "Typst, so a variant states only what it changes.",
+    "",
+    "kind:",
+    "  legit       - a difference a converter must be FORGIVEN for. No LAYOUT",
+    "                class may fire on any of these. This set is the negative",
+    "                control for every real variant.",
+    "  real        - drift a converter must be CAUGHT for.",
+    "  known_blind - real drift this tier provably CANNOT see. Asserted as",
+    "                invisible so the blind spot is documented rather than",
+    "                assumed away -- and so that if a future change makes it",
+    "                visible, this test fails and tells us to promote it.",
+    "",
+    "Goldens are named properties, never numbers: `must_fire` must all fire,",
+    "`must_not_fire` must none fire, anything unlisted is don't-care. Listing",
+    "every class on every variant would be exactly the over-specification that",
+    "makes a golden suite churn."
+  ],
+
+  "base_preamble": [
+    "#set page(paper: \"a4\", margin: (x: 2.5cm, y: 2.5cm))",
+    "#set text(size: 10pt)",
+    "#let para(n) = lorem(n)",
+    "#let small(body) = text(size: 8pt, body)",
+    "#let showfig = true",
+    "#let dup = false",
+    "#let refnum(n) = [\\[#n\\]]",
+    "#let biborder = (1, 2, 3, 4, 5, 6)",
+    "#let REFS = (",
+    "  [A. Author and B. Author. #emph[On the measurement of layout drift]. Journal of Typography, 2021.],",
+    "  [C. Author. #emph[Content-anchored comparison of rendered documents]. Proc. Fidelity, 2022.],",
+    "  [D. Author. #emph[Structural similarity considered harmful]. Trans. Metrics, 2023.],",
+    "  [E. Author and F. Author. #emph[Geometric profiles for cross-engine comparison]. Comput. Doc., 2024.],",
+    "  [G. Author. #emph[Tolerance design for rendered output]. Softw. Test. Verif., 2020.],",
+    "  [H. Author and I. Author. #emph[Against pixel registration]. Digit. Publ., 2019.],",
+    ")"
+  ],
+
+  "variants": [
+    {
+      "name": "font_fam",
+      "kind": "legit",
+      "why": "a different font family is unavoidable across engines",
+      "overrides": ["#set text(font: \"Helvetica\")"],
+      "expect": {"must_fire": [], "must_not_fire": "ALL_LAYOUT"}
+    },
+    {
+      "name": "just",
+      "kind": "legit",
+      "why": "justified vs ragged-right is a paragraph-breaker difference, not drift",
+      "overrides": ["#set par(justify: false)"],
+      "expect": {"must_fire": [], "must_not_fire": "ALL_LAYOUT"}
+    },
+    {
+      "name": "size1pt",
+      "kind": "legit",
+      "why": "half-point body-size drift is within what class detection can resolve",
+      "overrides": ["#set text(size: 10.5pt)"],
+      "expect": {"must_fire": [], "must_not_fire": "ALL_LAYOUT"}
+    },
+    {
+      "name": "hyphenate_off",
+      "kind": "legit",
+      "why": "hyphenation policy differs between engines by default",
+      "overrides": ["#set text(hyphenate: false)"],
+      "expect": {"must_fire": [], "must_not_fire": "ALL_LAYOUT"}
+    },
+    {
+      "name": "bib_style",
+      "kind": "legit",
+      "why": "reference label style is a bibliography choice, not layout drift",
+      "overrides": ["#let refnum(n) = [#n.]"],
+      "expect": {"must_fire": [], "must_not_fire": "ALL_LAYOUT"}
+    },
+    {
+      "name": "different_words",
+      "kind": "legit",
+      "why": "CONTROL 4 (orthogonality): identical layout, different words. Every layout property must stay within floor while the content tier craters. If a layout metric moves here, it is secretly a text metric.",
+      "overrides": ["#let para(n) = lorem(n + 60).split(\" \").slice(60).join(\" \")"],
+      "expect": {"must_fire": ["ordering"], "must_not_fire": "ALL_LAYOUT"}
+    },
+
+    {
+      "name": "margin",
+      "kind": "real",
+      "why": "margins nearly halved",
+      "overrides": ["#set page(margin: (x: 1.2cm, y: 1.2cm))"],
+      "expect": {
+        "must_fire": ["margin", "text_width"],
+        "must_not_fire": ["columns", "page_trim", "font_size", "small_tier"]
+      }
+    },
+    {
+      "name": "shift1cm",
+      "kind": "real",
+      "why": "CONTROL 5 (orthogonality): the text block moves 1cm right at constant width. Geometry must fire, content must not.",
+      "overrides": ["#set page(margin: (left: 3.5cm, right: 1.5cm, y: 2.5cm))"],
+      "expect": {
+        "must_fire": ["margin"],
+        "must_not_fire": ["columns", "page_trim", "font_size", "text_width", "small_tier", "leading", "ordering"]
+      }
+    },
+    {
+      "name": "twocol",
+      "kind": "real",
+      "why": "1 column collapses to 2 -- the case mean_ssim scores ABOVE a benign font swap (0.602 vs 0.543)",
+      "overrides": ["#set page(columns: 2)"],
+      "expect": {
+        "must_fire": ["columns"],
+        "must_not_fire": ["page_trim", "font_size", "small_tier", "margin", "leading", "ordering"]
+      }
+    },
+    {
+      "name": "font12",
+      "kind": "real",
+      "why": "body size 10pt -> 12pt",
+      "overrides": ["#set text(size: 12pt)"],
+      "expect": {
+        "must_fire": ["font_size", "type_scale"],
+        "must_not_fire": ["columns", "page_trim", "margin", "ordering"]
+      }
+    },
+    {
+      "name": "lead",
+      "kind": "real",
+      "why": "leading loosened; the property that drifts in 58/64 corpus papers",
+      "overrides": ["#set par(leading: 1.4em, spacing: 2em)"],
+      "expect": {
+        "must_fire": ["leading"],
+        "must_not_fire": ["columns", "page_trim", "font_size", "margin", "text_width", "small_tier", "ordering"]
+      }
+    },
+    {
+      "name": "page_letter",
+      "kind": "real",
+      "why": "A4 -> US Letter; the paper size itself changed",
+      "overrides": ["#set page(paper: \"us-letter\")"],
+      "expect": {
+        "must_fire": ["page_trim"],
+        "must_not_fire": ["columns", "font_size", "small_tier", "ordering"]
+      }
+    },
+    {
+      "name": "small_tier_flattened",
+      "kind": "real",
+      "why": "reproduces the LIVE converter bug: \\small / \\footnotesize flattened into the body size. Every other property is untouched, which is exactly why no pre-existing metric sees it.",
+      "overrides": ["#let small(body) = text(size: 10pt, body)"],
+      "expect": {
+        "must_fire": ["small_tier"],
+        "must_not_fire": ["columns", "page_trim", "margin", "text_width", "font_size", "leading"]
+      }
+    },
+    {
+      "name": "dup_block",
+      "kind": "real",
+      "why": "a paragraph emitted twice -- content DUPLICATION, which lowers precision while leaving recall at 1.0. word_recall is a set() and cannot see this at all. small_tier is deliberately NOT in must_not_fire: adding 120 words of body text genuinely dilutes the small-tier share (measured -0.032), which is a true consequence rather than a misattribution. The geometry classes ARE listed, because duplicating content must not move a margin.",
+      "overrides": ["#let dup = true"],
+      "expect": {
+        "must_fire": ["ordering"],
+        "must_not_fire": ["columns", "page_trim", "font_size", "margin", "text_width"]
+      }
+    },
+    {
+      "name": "shuffle_bib",
+      "kind": "real",
+      "why": "the reference list is emitted in reverse order. word_recall is a set() and scores this 1.000.",
+      "overrides": ["#let biborder = (6, 5, 4, 3, 2, 1)"],
+      "expect": {
+        "must_fire": ["ordering"],
+        "must_not_fire": ["columns", "page_trim", "font_size", "margin", "text_width", "small_tier", "leading"]
+      }
+    },
+
+    {
+      "name": "drop_figure",
+      "kind": "known_blind",
+      "why": "A dropped figure is real, serious drift that this tier CANNOT see. extract_spans() reads TEXT spans only, so a vector figure contributes nothing to any geometric property, and losing its caption moves ordered_recall by ~1% -- far under any defensible floor. Documented rather than papered over. Figure COUNT is covered separately by visual_test.py's source_float_counts, and the fix path here is to include page.get_drawings() bboxes in layout_ink_ratio. If this variant ever starts firing, this test fails on purpose: the blind spot closed and the golden should be promoted to kind: real.",
+      "overrides": ["#let showfig = false"],
+      "expect": {"must_fire": [], "must_not_fire": "ALL_LAYOUT"}
+    }
+  ]
+}

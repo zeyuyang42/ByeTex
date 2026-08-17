@@ -40,6 +40,11 @@ Cargo.lock.bak
 /tests/fixtures/**/*.typ
 /tests/fixtures/**/*.warnings.json
 /tests/fixtures/**/*.pdf
+# ...except the synthetic layout fixture body, which is SOURCE, not output: its
+# variants compile into target/layout-fixtures/, never back into this dir.
+# Without this negation the file is silently dropped from the commit and
+# layout_synthetic_test.py fails on a fresh clone with a missing-file error.
+!/tests/fixtures/layout/*.typ
 
 
 # insta pending snapshot files (transient, not source)
