@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# requires: requests Pillow
 """Unit tests for D4: source-anchored truth extraction in visual_test.py.
 
 The truth heading/float lists were derived from `pdftotext` of the rendered

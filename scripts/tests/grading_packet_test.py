@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# requires: requests Pillow
 """Unit tests for the front-matter crop + grading packet pieces in visual_test.py:
   - crop_front_matter: full-width, top-fraction crop of a page raster
   - detect_doc_class: documentclass detection (incl. conference packages)

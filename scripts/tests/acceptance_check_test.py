@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# requires: none
 """Unit tests for the acceptance-gate comparator (scripts/acceptance_check.py).
 
 Run: python3 scripts/tests/acceptance_check_test.py

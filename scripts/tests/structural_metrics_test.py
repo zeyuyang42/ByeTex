@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# requires: requests Pillow
 """Unit tests for the Phase-2a structural fidelity metrics in visual_test.py:
   - word_count_ratio: typst/truth token COUNT ratio (catches deletion/duplication
     that the set-based word_recall/word_jaccard miss)

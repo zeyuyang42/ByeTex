@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# requires: none
 """Unit tests for the fidelity-gate comparator (scripts/fidelity_check.py).
 
 Run: python3 scripts/tests/fidelity_check_test.py

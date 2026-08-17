@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# requires: requests Pillow
 """Unit test for visual_test.resolve_truth_source — the truth-PDF source
 selection logic (arXiv download vs local tectonic render vs auto).
 
