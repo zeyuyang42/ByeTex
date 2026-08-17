@@ -479,6 +479,21 @@ pub(crate) struct Emitter<'a> {
     /// exist`. Keys are stored sanitized (see `sanitize_label_key`).
     /// Empty set short-circuits validation (legacy convert path).
     bibliography_keys: std::collections::HashSet<String>,
+    /// Subset of `bibliography_keys` that will actually get a `<key>` ANCHOR in
+    /// the emitted document: `\bibitem` entries (a source `thebibliography`, or
+    /// an inlined `.bbl`). A key present only in a `.bib` on disk is NOT here —
+    /// it is defined only if a real `#bibliography(...)` renders, which is what
+    /// `bib_will_render` tracks.
+    ///
+    /// The distinction is the whole point: `bibliography_keys` answers "does this
+    /// key exist somewhere?", which is not the question that decides whether
+    /// Typst compiles. That question is "will this key be DEFINED in the document
+    /// we emit?" — and the two come apart whenever the bibliography command is
+    /// one ByeTex does not support (e.g. the oxengthesis class's
+    /// `\listofreferences`): the `.bib` harvests, every `\cite` validates, and
+    /// the emitted `@key` then aborts the entire compile because nothing ever
+    /// wrote `<key>`.
+    bib_anchor_keys: std::collections::HashSet<String>,
     /// Assets (images, bib files) resolved on disk during this emit pass.
     /// Populated only when `base_dir` is `Some`. Bubbled up to `ConvertOutput`
     /// by `finish()` so the project layer can copy them to the output dir.
@@ -793,6 +808,7 @@ impl<'a> Emitter<'a> {
             amsthm_loaded: false,
             env_arg_counts: HashMap::new(),
             bibliography_keys: std::collections::HashSet::new(),
+            bib_anchor_keys: std::collections::HashSet::new(),
             asset_refs: Vec::new(),
             macro_depth: 0,
             in_minipage: false,
@@ -844,7 +860,7 @@ impl<'a> Emitter<'a> {
         // `\bibitem{key}` keys discovered during the main emit pass
         // are added to the set incrementally.
         if let Some(ref base) = self.base_dir.clone() {
-            harvest_bib_keys_from_dir(base, &mut self.bibliography_keys);
+            harvest_bib_keys_from_dir(base, &mut self.bibliography_keys, &mut self.bib_anchor_keys);
         }
         // A .bib resolved on disk iff the harvest added any keys (no `\bibitem`
         // keys are present yet — those are inserted during emit).
@@ -856,7 +872,11 @@ impl<'a> Emitter<'a> {
         // that hard-fails the whole Typst compile (`label <key> does not exist`).
         // Done after `had_bib_file` so inline entries don't masquerade as a `.bib`.
         for key in extract_bbl_bibitem_keys(self.src) {
-            self.bibliography_keys.insert(sanitize_label_key(&key));
+            let k = sanitize_label_key(&key);
+            self.bibliography_keys.insert(k.clone());
+            // A `\bibitem` DOES emit an anchor, so `@key` resolves against it
+            // even though no `#bibliography(...)` renders.
+            self.bib_anchor_keys.insert(k);
         }
         // amsthm theorem-body styling: tag each `\newtheorem` kind by the active
         // `\theoremstyle` (plain → italic body) in document order. A separate
@@ -1579,6 +1599,7 @@ impl<'a> Emitter<'a> {
             sub.macro_depth = self.macro_depth + 1;
         }
         sub.bibliography_keys = self.bibliography_keys.clone();
+        sub.bib_anchor_keys = self.bib_anchor_keys.clone();
         // Citation forms are safe in the child iff the root will emit a real
         // `#bibliography(.bib)`; inherit that gate so `\citet` etc. in
         // expanded/included content also resolve as `#cite(form: …)`.
@@ -1606,6 +1627,7 @@ impl<'a> Emitter<'a> {
         // inlined `.bbl` runs through here and emits `\bibitem`
         // calls) need to flow back so the parent's citations resolve.
         self.bibliography_keys.extend(sub.bibliography_keys.drain());
+        self.bib_anchor_keys.extend(sub.bib_anchor_keys.drain());
         self.warnings.append(&mut sub.warnings);
         self.asset_refs.append(&mut sub.asset_refs);
         sub.out
@@ -2835,6 +2857,7 @@ impl<'a> Emitter<'a> {
                 let sanitized = sanitize_label_key(&k);
                 // Record the key so `emit_citation` knows it's defined.
                 self.bibliography_keys.insert(sanitized.clone());
+                self.bib_anchor_keys.insert(sanitized.clone());
                 self.pending_bibitem_key = Some(sanitized);
                 if consumed_end > node.end_byte() {
                     self.skip_until = self.skip_until.max(consumed_end);

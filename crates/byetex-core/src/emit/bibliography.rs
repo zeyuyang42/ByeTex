@@ -194,13 +194,29 @@ impl<'a> Emitter<'a> {
         // assume the user provided the right keys and preserve the
         // old behaviour.
         let mut missing: Vec<&str> = Vec::new();
+        let mut undefined: Vec<&str> = Vec::new();
         let mut typst_parts: Vec<String> = Vec::new();
         let last_idx = keys.len() - 1;
         for (i, raw_key) in keys.iter().enumerate() {
             let sanitized = sanitize_label_key(raw_key);
+            // Two separate ways a `@key` can abort the whole Typst compile with
+            // `label <key> does not exist`, and only the first was checked:
+            //   1. the key is nowhere at all — a typo, or a `.bib` we never saw;
+            //   2. the key exists in a `.bib` on disk, but NOTHING in the emitted
+            //      document defines it, because no `#bibliography(...)` renders
+            //      and no `\bibitem` anchor was written.
+            // (2) is what `gh-maurovm-thesis-template` hits: the oxengthesis
+            // class calls `\listofreferences`, which ByeTex does not support, so
+            // the bibliography is dropped while `references.bib` still harvests
+            // and every `\cite` sails through validation.
+            let will_be_defined =
+                self.bib_will_render || self.bib_anchor_keys.contains(&sanitized);
             if !self.bibliography_keys.is_empty() && !self.bibliography_keys.contains(&sanitized) {
                 missing.push(raw_key.as_str());
                 typst_parts.push(format!("[cite: missing key `{}`]", raw_key));
+            } else if !self.bibliography_keys.is_empty() && !will_be_defined {
+                undefined.push(raw_key.as_str());
+                typst_parts.push(format!("[cite: {}]", raw_key));
             } else if let Some(cmd) = command.as_deref() {
                 // Supplement only on the last key.
                 let supp = if i == last_idx {
@@ -228,10 +244,30 @@ impl<'a> Emitter<'a> {
                 suggested_skill: None,
             });
         }
+        for key in &undefined {
+            self.warnings.push(Warning {
+                range: range_of(node),
+                category: Category::NeedsManualReview {
+                    reason: format!(
+                        "\\cite{{{}}}: no bibliography is rendered, so the reference cannot resolve",
+                        key
+                    ),
+                },
+                severity: Severity::Warning,
+                message: format!(
+                    "cite key `{}` exists in a `.bib` but NO `#bibliography(...)` is emitted \
+                     (the document's bibliography command is unsupported or was dropped), so \
+                     `@{}` would abort the Typst compile — emitting plain text instead",
+                    key, key
+                ),
+                snippet: self.src[node.start_byte()..node.end_byte()].to_string(),
+                suggested_skill: None,
+            });
+        }
         let mut typst = typst_parts.join(" ");
         // `\citeyearpar` renders the year form wrapped in parentheses.
         if let Some(cmd) = command.as_deref() {
-            if missing.is_empty() {
+            if missing.is_empty() && undefined.is_empty() {
                 if normalize_cite_command(cmd) == "\\citeyearpar" {
                     typst = format!("({})", typst);
                 }
@@ -787,6 +823,7 @@ pub(in crate::emit) fn extract_bib_paths(node: Node<'_>, src: &str) -> Vec<Strin
 pub(in crate::emit) fn harvest_bib_keys_from_dir(
     base: &Path,
     out: &mut std::collections::HashSet<String>,
+    anchors: &mut std::collections::HashSet<String>,
 ) {
     let entries = match std::fs::read_dir(base) {
         Ok(e) => e,
@@ -808,7 +845,14 @@ pub(in crate::emit) fn harvest_bib_keys_from_dir(
             Some(e) if e.eq_ignore_ascii_case("bbl") => {
                 if let Ok(content) = std::fs::read_to_string(&path) {
                     for key in extract_bbl_bibitem_keys(&content) {
-                        out.insert(sanitize_label_key(&key));
+                        let k = sanitize_label_key(&key);
+                        out.insert(k.clone());
+                        // A `.bbl` is INLINED as `#figure ... <key>` entries, so
+                        // its keys get real anchors and `@key` resolves without
+                        // any `#bibliography(...)`. `.bib` keys above do not:
+                        // they exist on disk but are only defined in the output
+                        // if a real `#bibliography` renders.
+                        anchors.insert(k);
                     }
                 }
             }

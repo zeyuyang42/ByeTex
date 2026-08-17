@@ -197,3 +197,86 @@ fn unicode_cite_key_is_preserved_not_sanitized() {
         out.typst
     );
 }
+
+// ── a key that EXISTS but will never be DEFINED in the output ───────────────
+//
+// The validation above asks "is this key in a `.bib` on disk?" when the question
+// that decides whether Typst compiles is "will this key be DEFINED in the
+// document we emit?". Those come apart whenever the bibliography command is one
+// ByeTex does not support: `refs.bib` harvests fine, so `\cite{k}` validates and
+// emits `@k` — but no `#bibliography()` is ever written, so nothing defines
+// `<k>` and Typst aborts the WHOLE compile.
+//
+// Real corpus case: `gh-maurovm-thesis-template` uses the oxengthesis class's
+// `\listofreferences`, an unsupported command. `references.bib` sits right there
+// in the source dir, so every `\cite` passed validation and the conversion has
+// never compiled:
+//     error: label `<prior1977physical>` does not exist in the document
+
+#[test]
+fn cite_without_a_rendering_bibliography_degrades_to_placeholder() {
+    let dir = tmpdir("nobib-render");
+    fs::write(
+        dir.join("references.bib"),
+        "@book{prior1977physical, author={Prior}, year={1977}}\n",
+    )
+    .unwrap();
+    // `\listofreferences` stands in for any bibliography command ByeTex does not
+    // support: the key resolves on disk, but nothing emits an anchor for it.
+    fs::write(
+        dir.join("thesis.tex"),
+        "\\documentclass{article}\\begin{document}\
+         Vital signs \\cite{prior1977physical}.\\listofreferences\\end{document}\n",
+    )
+    .unwrap();
+    let opts = ConvertOptions {
+        source_name: Some("thesis.tex".into()),
+        base_dir: Some(dir.clone()),
+    };
+    let out = convert(&fs::read_to_string(dir.join("thesis.tex")).unwrap(), &opts);
+    assert!(
+        !out.typst.contains("@prior1977physical"),
+        "emitted a dangling `@key` with no `#bibliography` to define it — this \
+         aborts the entire Typst compile; got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("prior1977physical"),
+        "the key should survive as readable text, not vanish; got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.warnings
+            .iter()
+            .any(|w| matches!(&w.category, Category::NeedsManualReview { .. })),
+        "a dropped citation must be warned about, not silently degraded"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn cite_with_thebibliography_still_emits_at_form() {
+    // The control that stops the fix over-reaching: no `#bibliography()` renders
+    // here either, but `\bibitem` DOES emit a `<key>` anchor, so `@key` resolves
+    // and must be preserved.
+    let dir = tmpdir("thebib-anchor");
+    fs::write(
+        dir.join("paper.tex"),
+        "\\documentclass{article}\\begin{document}\
+         See \\cite{Knuth1984}.\
+         \\begin{thebibliography}{9}\\bibitem{Knuth1984} D. Knuth.\\end{thebibliography}\
+         \\end{document}\n",
+    )
+    .unwrap();
+    let opts = ConvertOptions {
+        source_name: Some("paper.tex".into()),
+        base_dir: Some(dir.clone()),
+    };
+    let out = convert(&fs::read_to_string(dir.join("paper.tex")).unwrap(), &opts);
+    assert!(
+        out.typst.contains("@Knuth1984"),
+        "a \\bibitem anchor DOES define the key — `@key` must be kept; got:\n{}",
+        out.typst
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
