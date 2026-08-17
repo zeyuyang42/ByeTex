@@ -1,0 +1,256 @@
+{
+  "_comment": "Measured noise floors for the layout tier (scripts/layout_loop.py floors). FROZEN: change only by explicit PR, never as a side effect of a run. An auto-updating floor tracks the regression and is worse than no floor. `corpus_*` fields describe the WORKLOAD and must never be adopted as thresholds.",
+  "legit_per_variant": {
+    "bib_style": {
+      "layout_body_font_ratio": 0.0,
+      "layout_fontsize_tier_emd": 0.0013,
+      "layout_ink_ratio": 0.0005,
+      "layout_leading_ratio": 0.0,
+      "layout_left_margin_ratio": 0.0,
+      "layout_lines_per_page_ratio": 0.0,
+      "layout_page_trim_ratio": 0.0,
+      "layout_right_margin_ratio": 0.0,
+      "layout_small_tier_share_delta": 0.0012,
+      "layout_text_width_ratio": 0.0,
+      "layout_top_margin_ratio": 0.0
+    },
+    "font_fam": {
+      "layout_body_font_ratio": 0.0,
+      "layout_fontsize_tier_emd": 0.0002,
+      "layout_ink_ratio": 0.1201,
+      "layout_leading_ratio": 0.0458,
+      "layout_left_margin_ratio": 0.0,
+      "layout_lines_per_page_ratio": 0.0455,
+      "layout_page_trim_ratio": 0.0,
+      "layout_right_margin_ratio": 0.0014,
+      "layout_small_tier_share_delta": 0.0001,
+      "layout_text_width_ratio": 0.0002,
+      "layout_top_margin_ratio": 0.0319
+    },
+    "hyphenate_off": {
+      "layout_body_font_ratio": 0.0,
+      "layout_fontsize_tier_emd": 0.0,
+      "layout_ink_ratio": 0.0,
+      "layout_leading_ratio": 0.0,
+      "layout_left_margin_ratio": 0.0,
+      "layout_lines_per_page_ratio": 0.0,
+      "layout_page_trim_ratio": 0.0,
+      "layout_right_margin_ratio": 0.0,
+      "layout_small_tier_share_delta": 0.0,
+      "layout_text_width_ratio": 0.0,
+      "layout_top_margin_ratio": 0.0
+    },
+    "just": {
+      "layout_body_font_ratio": 0.0,
+      "layout_fontsize_tier_emd": 0.0,
+      "layout_ink_ratio": 0.0,
+      "layout_leading_ratio": 0.0,
+      "layout_left_margin_ratio": 0.0,
+      "layout_lines_per_page_ratio": 0.0,
+      "layout_page_trim_ratio": 0.0,
+      "layout_right_margin_ratio": 0.0,
+      "layout_small_tier_share_delta": 0.0,
+      "layout_text_width_ratio": 0.0,
+      "layout_top_margin_ratio": 0.0
+    },
+    "size1pt": {
+      "layout_body_font_ratio": 0.05,
+      "layout_fontsize_tier_emd": 0.4032,
+      "layout_ink_ratio": 0.0485,
+      "layout_leading_ratio": 0.0458,
+      "layout_left_margin_ratio": 0.0,
+      "layout_lines_per_page_ratio": 0.0455,
+      "layout_page_trim_ratio": 0.0,
+      "layout_right_margin_ratio": 0.0202,
+      "layout_small_tier_share_delta": 0.0,
+      "layout_text_width_ratio": 0.003,
+      "layout_top_margin_ratio": 0.0026
+    }
+  },
+  "legit_variants": 5,
+  "properties": {
+    "layout_body_font_ratio": {
+      "corpus": {
+        "mad": 0.0,
+        "n": 65,
+        "n_undefined": 6,
+        "p05": 0.0,
+        "p50": 0.0,
+        "p95": 0.0909
+      },
+      "corpus_fail_at_threshold": 11,
+      "legit_floor": 0.05,
+      "promotable": false,
+      "proposed_threshold": 0.075,
+      "repeat_floor": 0.0,
+      "threshold_source": "measured"
+    },
+    "layout_fontsize_tier_emd": {
+      "corpus": {
+        "mad": 0.1867,
+        "n": 65,
+        "n_undefined": 6,
+        "p05": 0.0637,
+        "p50": 0.2886,
+        "p95": 1.0285
+      },
+      "corpus_fail_at_threshold": 13,
+      "legit_floor": 0.40323,
+      "promotable": false,
+      "proposed_threshold": 0.60484,
+      "repeat_floor": 0.0,
+      "threshold_source": "measured"
+    },
+    "layout_ink_ratio": {
+      "corpus": {
+        "mad": 0.0931,
+        "n": 65,
+        "n_undefined": 6,
+        "p05": 0.014,
+        "p50": 0.1421,
+        "p95": 0.6233
+      },
+      "corpus_fail_at_threshold": 27,
+      "legit_floor": 0.12008,
+      "promotable": false,
+      "proposed_threshold": 0.18012,
+      "repeat_floor": 0.0,
+      "threshold_source": "measured"
+    },
+    "layout_leading_ratio": {
+      "corpus": {
+        "mad": 0.0825,
+        "n": 65,
+        "n_undefined": 6,
+        "p05": 0.0215,
+        "p50": 0.1782,
+        "p95": 0.5312
+      },
+      "corpus_fail_at_threshold": 56,
+      "legit_floor": 0.0458,
+      "promotable": false,
+      "proposed_threshold": 0.0687,
+      "repeat_floor": 0.0,
+      "threshold_source": "measured"
+    },
+    "layout_left_margin_ratio": {
+      "corpus": {
+        "mad": 0.1548,
+        "n": 65,
+        "n_undefined": 6,
+        "p05": 0.0,
+        "p50": 0.1755,
+        "p95": 0.4657
+      },
+      "corpus_fail_at_threshold": 56,
+      "legit_floor": 0.0,
+      "promotable": false,
+      "proposed_threshold": 0.005,
+      "repeat_floor": 0.0,
+      "threshold_source": "resolution_floor"
+    },
+    "layout_lines_per_page_ratio": {
+      "corpus": {
+        "mad": 0.0878,
+        "n": 65,
+        "n_undefined": 6,
+        "p05": 0.0227,
+        "p50": 0.2658,
+        "p95": 0.5374
+      },
+      "corpus_fail_at_threshold": 60,
+      "legit_floor": 0.04545,
+      "promotable": false,
+      "proposed_threshold": 0.06818,
+      "repeat_floor": 0.0,
+      "threshold_source": "measured"
+    },
+    "layout_page_trim_ratio": {
+      "corpus": {
+        "mad": 0.0,
+        "n": 65,
+        "n_undefined": 6,
+        "p05": 0.0,
+        "p50": 0.0,
+        "p95": 0.3852
+      },
+      "corpus_fail_at_threshold": 8,
+      "legit_floor": 0.0,
+      "promotable": true,
+      "proposed_threshold": 0.005,
+      "repeat_floor": 0.0,
+      "threshold_source": "resolution_floor"
+    },
+    "layout_right_margin_ratio": {
+      "corpus": {
+        "mad": 0.1359,
+        "n": 65,
+        "n_undefined": 6,
+        "p05": 0.0129,
+        "p50": 0.2217,
+        "p95": 0.5283
+      },
+      "corpus_fail_at_threshold": 58,
+      "legit_floor": 0.02019,
+      "promotable": false,
+      "proposed_threshold": 0.03029,
+      "repeat_floor": 0.0,
+      "threshold_source": "measured"
+    },
+    "layout_small_tier_share_delta": {
+      "corpus": {
+        "mad": 0.0806,
+        "n": 65,
+        "n_undefined": 6,
+        "p05": 0.0045,
+        "p50": 0.0973,
+        "p95": 0.38
+      },
+      "corpus_fail_at_threshold": 60,
+      "legit_floor": 0.00116,
+      "promotable": false,
+      "proposed_threshold": 0.005,
+      "repeat_floor": 0.0,
+      "threshold_source": "resolution_floor"
+    },
+    "layout_text_width_ratio": {
+      "corpus": {
+        "mad": 0.0385,
+        "n": 65,
+        "n_undefined": 6,
+        "p05": 0.0063,
+        "p50": 0.0449,
+        "p95": 0.276
+      },
+      "corpus_fail_at_threshold": 62,
+      "legit_floor": 0.00305,
+      "promotable": false,
+      "proposed_threshold": 0.005,
+      "repeat_floor": 0.0,
+      "threshold_source": "resolution_floor"
+    },
+    "layout_top_margin_ratio": {
+      "corpus": {
+        "mad": 0.0966,
+        "n": 65,
+        "n_undefined": 6,
+        "p05": 0.0119,
+        "p50": 0.1311,
+        "p95": 0.9553
+      },
+      "corpus_fail_at_threshold": 51,
+      "legit_floor": 0.03188,
+      "promotable": false,
+      "proposed_threshold": 0.04782,
+      "repeat_floor": 0.0,
+      "threshold_source": "measured"
+    }
+  },
+  "pymupdf_version": "pymupdf PyMuPDF 1.28.2: Python bindings for the MuPDF 1.28.2 library.\nPython 3.11 running on darwin (64-bit).",
+  "repeat_floor_measured": true,
+  "repeat_floor_papers": 8,
+  "safety_factor": 1.5,
+  "self_floor_ok": true,
+  "self_floor_papers": 65,
+  "typst_version": "typst 0.14.2 (unknown hash)"
+}

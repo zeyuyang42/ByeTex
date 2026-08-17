@@ -572,7 +572,7 @@ def compare_profiles(truth: list[dict | None], out: list[dict | None]) -> dict:
                                            [area(p) for p in t_full])
     for name, field in (("left_margin", "left"), ("right_margin", "right"),
                         ("top_margin", "top"), ("text_width", "text_width"),
-                        ("body_font", "body_font"), ("leading", "leading"),
+                        ("leading", "leading"),
                         ("lines_per_page", "lines"), ("ink", "ink")):
         res[f"layout_{name}_ratio"] = _ratio(col(o_full, field), col(t_full, field))
 
@@ -593,6 +593,38 @@ def compare_profiles(truth: list[dict | None], out: list[dict | None]) -> dict:
             for sz, n in p["fsize_hist"].items():
                 dst[sz] = dst.get(sz, 0) + n
     res["layout_fontsize_tier_emd"] = _emd(th, oh)
+
+    # Body font is compared as a FRACTION OF THE PAGE, from the DOCUMENT's modal
+    # size — not as a mean of per-page modal sizes in absolute points. The naive
+    # version was confounded twice over, and manually checking the 10 papers it
+    # flagged is what exposed both (the floors doc's promotion criterion (d)):
+    #
+    #   * Absolute points double-count a page-size change. The four slide decks
+    #     read ratio ~2.0 "wrong body size" — but their Typst pages are 2x the
+    #     canvas (page_trim 3.4-4.8), so the type is roughly proportional.
+    #     Normalising by the page diagonal drops them to 0.88-1.31. The page-size
+    #     drift is real and layout_page_trim_ratio already reports it; reporting
+    #     it a second time as a font bug sends the fix to the wrong place.
+    #
+    #   * A mean of per-page modal sizes is not the body size. Six papers read
+    #     1.08-1.19 while their document modal was identical (10.0 -> 10.0),
+    #     because pages of different composition pull the mean.
+    #
+    # On documents of equal page size the diagonal cancels and this is exactly
+    # the absolute comparison, so nothing is lost for the common case.
+    def _doc_modal(hist: dict[float, int]) -> float | None:
+        return max(hist.items(), key=lambda kv: (kv[1], -kv[0]))[0] if hist else None
+
+    def _page_scale(pages: list[dict]) -> float | None:
+        vals = [(p["page_w"] ** 2 + p["page_h"] ** 2) ** 0.5 for p in pages]
+        return _mean(vals)
+
+    t_modal, o_modal = _doc_modal(th), _doc_modal(oh)
+    t_scale, o_scale = _page_scale(t_full), _page_scale(o_full)
+    if None in (t_modal, o_modal, t_scale, o_scale) or 0 in (t_scale, o_scale, t_modal):
+        res["layout_body_font_ratio"] = None
+    else:
+        res["layout_body_font_ratio"] = (o_modal / o_scale) / (t_modal / t_scale)
 
     def small_share(h: dict[float, int]) -> float | None:
         tot = sum(h.values())
