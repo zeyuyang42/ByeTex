@@ -131,6 +131,31 @@ uv run --with requests --with Pillow python scripts/visual_test.py --skip-existi
 Output goes into `tests/visual/` (gitignored). After the script finishes, read
 each `composite.png` and write findings to `tests/visual/report.md`.
 
+### The layout tier and pymupdf
+
+`layout_metrics.py` adds three tiers on top of the word/heading metrics: T0
+`anchor_recall` (`\label{}` keys vs `<key>` anchors — needs no truth PDF, so it
+is the only layout-adjacent signal for papers whose truth render fails), T2
+`ordered_recall`/`ordered_precision` (the text stream compared IN ORDER, which a
+`set()`-based recall cannot do), and T1 — the geometric profile of margins,
+columns, font tiers, leading and ink.
+
+**T1 needs `pymupdf`, which is deliberately NOT in `requirements.txt`.** It is
+AGPL-licensed and must never enter the shipped Rust binary or become a runtime
+dependency of ByeTex; it is a measurement tool for this harness only. Enable it
+per-run:
+
+```bash
+uv run --with requests --with Pillow --with numpy --with scikit-image \
+       --with pymupdf python scripts/visual_test.py --all
+```
+
+Without it every `layout_*` property is `None` on every paper — which looks
+exactly like a corpus with no drift. `fidelity_check.py` prints
+`LAYOUT: not computed on N/M papers` for precisely that reason. `layout_metrics`
+imports `fitz` lazily inside one function, so the module itself stays importable
+(and its unit tests runnable) under bare `python3`.
+
 ---
 
 ## corpus_sweep.sh

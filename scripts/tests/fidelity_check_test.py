@@ -146,19 +146,19 @@ check(fc.covers_whole_corpus(partial, BASELINE) is False
 # at a time, each with measured floors behind it.
 LB = {"papers": {
     "a": {**paper(0.95), "anchor_recall": 0.90, "ordered_recall": 0.90,
-          "layout_column_mismatch_frac": 0.0},
+          "layout_text_width_ratio": 1.00},
 }}
 LC = {"papers": {
     "a": {**paper(0.95), "anchor_recall": 0.40, "ordered_recall": 0.40,
-          "layout_column_mismatch_frac": 1.0},
+          "layout_text_width_ratio": 1.42},
 }}
 regs, notices, imps = fc.evaluate_layout(LC, LB, gated=set(), tols=fc.LAYOUT_TOLERANCES)
 check(regs == [], f"with nothing gated, a collapsed layout metric CANNOT fail the build, got {regs}")
 check(len(notices) >= 3, f"...but every breach is still REPORTED, got {notices}")
 
 regs, notices, imps = fc.evaluate_layout(
-    LC, LB, gated={"layout_column_mismatch_frac"}, tols=fc.LAYOUT_TOLERANCES)
-check(any("layout_column_mismatch_frac" in r for r in regs),
+    LC, LB, gated={"layout_text_width_ratio"}, tols=fc.LAYOUT_TOLERANCES)
+check(any("layout_text_width_ratio" in r for r in regs),
       f"a PROMOTED property does fail the build, got {regs}")
 check(not any("anchor_recall" in r for r in regs),
       "promoting one property does not promote the others (per-property, not a global switch)")
@@ -182,6 +182,16 @@ cur_over = {"papers": {"a": {**paper(0.95), "layout_text_width_ratio": 0.55}}}
 _, notices, _ = fc.evaluate_layout(cur_over, base_w, gated=set(), tols=fc.LAYOUT_TOLERANCES)
 check(any("layout_text_width_ratio" in n for n in notices),
       "overshooting past 1.0 into the opposite error is still drift, not a win")
+
+# A property whose DETECTOR is known-broken must not be reportable or gateable.
+# The column detector reads 6 columns on single-column pages of real papers and
+# fired on 58/65 of the corpus — one broken detector, not 58 broken papers.
+# Reporting it would bury the trustworthy properties under noise.
+check("layout_column_mismatch_frac" not in fc.LAYOUT_TOLERANCES,
+      "the column detector is excluded until it distinguishes a gutter from a sparse page")
+check("layout_column_mismatch_frac" in fc.BASELINE_FIELDS_LEGACY
+      or "layout_column_mismatch_frac" not in fc.REPORTED_FIELDS,
+      "...and is therefore not in REPORTED_FIELDS")
 
 check(set(fc.GATED_FIELDS) <= set(fc.BASELINE_FIELDS)
       and "anchor_recall" in fc.BASELINE_FIELDS,
