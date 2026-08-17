@@ -272,7 +272,7 @@ def ensure_bin() -> Path:
     if not bin_path.exists():
         print("Building byetex (release) ...", file=sys.stderr)
         subprocess.run(
-            ["cargo", "build", "--release", "-p", "byetex-cli"],
+            ["cargo", "build", "--release", "-p", "byetex"],
             cwd=REPO_ROOT, check=True,
         )
     return bin_path

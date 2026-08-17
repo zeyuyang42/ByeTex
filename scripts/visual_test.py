@@ -206,7 +206,7 @@ def ensure_byetex(profile: str) -> Path:
     bin_path = REPO_ROOT / "target" / profile / "byetex"
     if not bin_path.exists():
         flag = "--release" if profile == "release" else ""
-        cmd = ["cargo", "build", "-p", "byetex-cli"] + ([flag] if flag else [])
+        cmd = ["cargo", "build", "-p", "byetex"] + ([flag] if flag else [])
         print(f"  Building byetex ({profile}) — this may take a minute ...", flush=True)
         subprocess.run(cmd, cwd=REPO_ROOT, check=True)
     return bin_path

@@ -21,17 +21,32 @@ mkdir -p "$CORPUS" "$BIN"
 # Behavior is driven by directives in the source .tex so each paper is
 # self-describing: `typst=fail` makes our generated output un-compilable;
 # `doctor=input_broken` makes the oracle blame the input.
+# Args are matched by SHAPE (the *.tex operand, the value after --project-out)
+# rather than by position. Positional fakes silently rot the moment a flag is
+# added to the real invocation: this one read `$3` as the toplevel and wrote to
+# `<stem>.typst-project`, so once corpus_sweep.sh started passing
+# `--project-out`, every paper produced "no main.typ" and the whole test drifted
+# to PASS: 0 without anyone noticing.
 cat > "$BIN/byetex" <<'FAKE'
 #!/bin/sh
-case "$1" in
+cmd="$1"; shift
+top=""; out=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --project-out) out="$2"; shift 2 ;;
+    *.tex) top="$1"; shift ;;
+    *) shift ;;
+  esac
+done
+case "$cmd" in
   convert)
-    top="$3"; stem="${top%.tex}"; proj="${stem}.typst-project"
-    mkdir -p "$proj"
-    if grep -q 'typst=fail' "$top"; then printf 'BREAK\n' > "$proj/main.typ"
-    else printf '= ok\n' > "$proj/main.typ"; fi
+    [ -n "$out" ] || out="${top%.tex}.typst-project"
+    mkdir -p "$out"
+    if grep -q 'typst=fail' "$top"; then printf 'BREAK\n' > "$out/main.typ"
+    else printf '= ok\n' > "$out/main.typ"; fi
     ;;
   doctor)
-    top="$2"; stem="${top%.tex}"
+    stem="${top%.tex}"
     if grep -q 'doctor=input_broken' "$top"; then v=input_broken
     elif grep -q 'doctor=unavailable' "$top"; then v=tectonic_unavailable
     else v=ok; fi
@@ -43,12 +58,24 @@ FAKE
 chmod +x "$BIN/byetex"
 
 # ── fake typst: errors when the generated .typ contains the BREAK marker ─────
+# Same shape-matching rule: the real call is
+# `typst compile --no-pdf-tags main.typ main.pdf`, so a fake that reads `$2` as
+# the input greps a FLAG, never sees the BREAK marker, and truncates the source
+# instead of writing the PDF.
 cat > "$BIN/typst" <<'FAKE'
 #!/bin/sh
-if [ "$1" = "compile" ]; then
-  if grep -q BREAK "$2"; then echo "error: simulated typst failure"; exit 1; fi
-  : > "$3"; exit 0
+[ "$1" = "compile" ] || exit 0
+inp=""; outp=""
+for a in "$@"; do
+  case "$a" in
+    *.typ) inp="$a" ;;
+    *.pdf) outp="$a" ;;
+  esac
+done
+if [ -n "$inp" ] && grep -q BREAK "$inp"; then
+  echo "error: simulated typst failure"; exit 1
 fi
+[ -n "$outp" ] && : > "$outp"
 exit 0
 FAKE
 chmod +x "$BIN/typst"
@@ -91,6 +118,14 @@ plain_out=$(run_sweep --summary)
 echo "--- default output ---"; echo "$plain_out"; echo "----------------------"
 check "$plain_out" "PASS: 1" "1 PASS (default mode unchanged)"
 check "$plain_out" "FAIL: 3" "3 FAIL collapsed (no attribution without --with-oracle)"
+
+# ── the generated tree is not a paper ────────────────────────────────────────
+# The first sweep above created `$CORPUS/_out/`, so this second sweep is the
+# only place the bug is reachable: `for paper_dir in "$CORPUS"/*/` matched it,
+# found no source/00README.json, and counted it as a SKIPPED PAPER. Every real
+# corpus summary was reporting SKIP and TOTAL one too high.
+check "$plain_out" "SKIP: 0"  "the generated _out/ tree is not counted as a skipped paper"
+check "$plain_out" "TOTAL: 4" "TOTAL counts the 4 synthetic papers, not _out/"
 
 if [[ $fail -ne 0 ]]; then echo "TEST FAILED"; exit 1; fi
 echo "TEST PASSED"

@@ -62,7 +62,7 @@ You have three options. Pick **one** — you don't need all three.
 ```bash
 cd ~/Workspace/tools/ByeTex          # adjust path
 git fetch && git checkout v0.2.0     # ensure you're on the tagged commit
-cargo build --release -p byetex-cli
+cargo build --release -p byetex
 ```
 
 **Expected**: `target/release/byetex` exists, ~7 MB.
@@ -113,7 +113,7 @@ byetex --version
 ### A3. `cargo install` from the GitHub repo
 
 ```bash
-cargo install --git https://github.com/zeyuyang42/ByeTex --tag v0.2.0 byetex-cli
+cargo install --git https://github.com/zeyuyang42/ByeTex --tag v0.2.0 byetex
 which byetex
 byetex --version
 ```
