@@ -69,6 +69,38 @@ FLOOR_PROPERTIES = tuple(
     if p.startswith("layout_") and p != "layout_column_mismatch_frac"
 )
 
+# Where a drift_class most likely comes from. This table is what makes a loop
+# tick ACTIONABLE: without it the backlog is a column of numbers, and "leading is
+# 21% off on 50 papers" tells nobody which file to open. It is the deterministic
+# analogue of the dogfood routing rubric — a starting point for the search, not a
+# diagnosis, which is why each entry names a reason rather than just a path.
+DRIFT_CLASS_ROUTES = {
+    "page_trim": ("emit/preamble.rs, style_profile.rs",
+                  "page size comes from the class options and the neutral preamble"),
+    "margin": ("style_profile.rs, emit/preamble.rs",
+               "margins are set per DocClass in the generated `#set page(...)`"),
+    "text_width": ("style_profile.rs, emit/preamble.rs",
+                   "text measure follows from page size minus margins; check both"),
+    "font_size": ("class_map.rs, style_profile.rs",
+                  "the `10pt`/`11pt`/`12pt` class option resolves to the body size"),
+    "type_scale": ("style_profile.rs, emit/typography.rs",
+                   "heading and body sizes are emitted as a scale, not independently"),
+    "small_tier": ("emit/typography.rs",
+                   "\\small / \\footnotesize / \\scriptsize size switches"),
+    "leading": ("emit/preamble.rs",
+                "`#set par(leading:)` in the neutral preamble vs the class's baselineskip"),
+    "density": ("emit/preamble.rs, style_profile.rs",
+                "lines per page follows leading and margins; fix those first"),
+    "columns": ("emit/preamble.rs, style_profile.rs",
+                "`#set page(columns: 2)` and the spanning-title float"),
+    "ink": ("emit/figures.rs, emit/tables.rs",
+            "ink density is dominated by floats and tables being dropped or resized"),
+    "anchors": ("ir.rs, emit/sections.rs",
+                "\\label keys are normalised pre-parse and emitted as `<key>` anchors"),
+    "ordering": ("emit.rs, emit/macros.rs",
+                 "dropped or duplicated content — check \\input handling and unsupported commands"),
+}
+
 SAFETY_FACTOR = 1.5  # applied to max(repeat_floor, legit_floor)
 
 # Floor of last resort. Several properties have a legit_floor of EXACTLY zero —
@@ -345,6 +377,142 @@ def cmd_floors(args) -> int:
     return 0
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# rank / record / triage — the loop surface
+# ═══════════════════════════════════════════════════════════════════════════
+
+def rank_layout_offenders(papers: dict, floors: dict | None = None) -> list[dict]:
+    """Papers ordered by how far past their floors they sit. PURE.
+
+    One deliberate departure from `dogfood.rank_candidates`: a paper whose tier
+    DID NOT RUN is emitted with `severity: None` and `reason: "unmeasured"`
+    rather than dropped. Dropping them would hide exactly the papers most likely
+    to be badly laid out — the books and theses whose truth render fails carry
+    the corpus's worst geometry, and a ranking that silently omits them reports a
+    healthier corpus than exists.
+    """
+    tols = {}
+    for name, info in (floors or {}).get("properties", {}).items():
+        thr = info.get("proposed_threshold")
+        if thr is not None:
+            tols[name] = thr
+
+    prop_class = {p: cls for cls, props in lm.DRIFT_CLASSES.items() for p in props}
+    out = []
+    for pid, v in sorted(papers.items()):
+        fired = []
+        measured = False
+        for name, thr in sorted(tols.items()):
+            val = v.get(name)
+            if val is None:
+                continue
+            measured = True
+            dev = lm.property_deviation(name, val)
+            if thr and dev > thr:
+                fired.append({"name": name, "value": val, "deviation": dev,
+                              "threshold": thr, "excess": dev / thr,
+                              "drift_class": prop_class.get(name, "unknown")})
+        if not measured:
+            out.append({"paper_id": pid, "severity": None, "worst_property": None,
+                        "drift_class": None, "reason": "unmeasured",
+                        "properties_out_of_floor": []})
+            continue
+        fired.sort(key=lambda d: -d["excess"])
+        sev = fired[0]["excess"] if fired else 0.0
+        out.append({
+            "paper_id": pid,
+            "severity": round(sev, 3),
+            "worst_property": fired[0]["name"] if fired else None,
+            "drift_class": fired[0]["drift_class"] if fired else None,
+            "reason": (f"{len(fired)} propert{'y' if len(fired) == 1 else 'ies'} "
+                       f"beyond floor" if fired else "within floor"),
+            "properties_out_of_floor": fired,
+        })
+    # Unmeasured papers sort LAST but are never dropped; measured papers by
+    # severity descending.
+    return sorted(out, key=lambda d: (d["severity"] is None, -(d["severity"] or 0)))
+
+
+def _load_floors(path: str | None) -> dict:
+    fp = Path(path) if path else REPO_ROOT / "scripts" / "layout_floors.json"
+    if not fp.is_absolute():
+        fp = REPO_ROOT / fp
+    return json.loads(fp.read_text()) if fp.exists() else {}
+
+
+def cmd_rank(args) -> int:
+    index = Path(args.index) if args.index else REPO_ROOT / "tests" / "visual" / "index.json"
+    papers = json.loads(index.read_text()).get("papers", {})
+    rows = rank_layout_offenders(papers, _load_floors(args.floors))
+    if args.n:
+        rows = rows[:args.n]
+    if args.json:
+        print(json.dumps(rows, indent=2))
+        return 0
+    for r in rows:
+        sev = "—" if r["severity"] is None else f"{r['severity']:.2f}"
+        print(f"{r['paper_id']}\t{sev}\t{r['worst_property'] or '—'}\t{r['reason']}")
+    return 0
+
+
+def cmd_record(args) -> int:
+    """Recompute the tier for ONE paper from artifacts already on disk.
+
+    A fast recheck after an emitter fix, without a corpus run.
+    """
+    out_dir = Path(args.out) if args.out else REPO_ROOT / "tests" / "visual" / args.paper_id
+    truth, typ = out_dir / "truth.pdf", out_dir / "typst.pdf"
+    rec = {"paper_id": args.paper_id, "metrics": {}}
+    if truth.exists() and typ.exists():
+        rec["metrics"] = lm.layout_compare(truth, typ)
+    else:
+        rec["skipped"] = f"need both {truth.name} and {typ.name} in {out_dir}"
+    floors = _load_floors(args.floors)
+    ranked = rank_layout_offenders({args.paper_id: rec["metrics"]}, floors)[0]
+    rec.update({k: ranked[k] for k in
+                ("severity", "worst_property", "drift_class", "reason",
+                 "properties_out_of_floor")})
+    if rec.get("drift_class") in DRIFT_CLASS_ROUTES:
+        site, why = DRIFT_CLASS_ROUTES[rec["drift_class"]]
+        rec["suspected_site"] = site
+        rec["routing_reason"] = why
+    dest = out_dir / "layout.json"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(json.dumps(rec, indent=2, sort_keys=True) + "\n")
+    print(dest)  # bare path as the last line — mirrors `dogfood.py prepare`
+    return 0
+
+
+BACKLOG = REPO_ROOT / "docs" / "layout-backlog.jsonl"
+
+
+def cmd_triage(args) -> int:
+    rec = json.loads(Path(args.record).read_text())
+    verdict = "DRIFT" if (rec.get("properties_out_of_floor") or []) else "WITHIN_FLOOR"
+    floors = _load_floors(args.floors)
+    entry = {
+        "run_ts": args.run_ts or "unset",
+        "schema": 1,
+        "paper_id": rec.get("paper_id"),
+        "verdict": verdict,
+        "source": "layout_loop.triage",
+        "severity": rec.get("severity"),
+        "worst_property": rec.get("worst_property"),
+        "drift_class": rec.get("drift_class"),
+        "suspected_site": rec.get("suspected_site"),
+        "routing_reason": rec.get("routing_reason"),
+        "properties_out_of_floor": rec.get("properties_out_of_floor", []),
+        "typst_version": floors.get("typst_version"),
+        "pymupdf_version": floors.get("pymupdf_version"),
+        "note": args.note,
+    }
+    BACKLOG.parent.mkdir(parents=True, exist_ok=True)
+    with BACKLOG.open("a") as fh:
+        fh.write(json.dumps(entry, sort_keys=True) + "\n")
+    print(verdict)  # bare verdict word — mirrors `dogfood.py score`
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -357,6 +525,29 @@ def main(argv=None) -> int:
                    help="also measure legit_floor from the synthetic fixtures")
     f.add_argument("--emit", metavar="PATH", help="write the measured floors as JSON")
     f.set_defaults(func=cmd_floors)
+
+    r = sub.add_parser("rank", help="papers ordered by how far past their floors they sit")
+    r.add_argument("--n", type=int, default=0, metavar="N", help="show only the top N")
+    r.add_argument("--json", action="store_true", help="emit a JSON array")
+    r.add_argument("--index")
+    r.add_argument("--floors")
+    r.set_defaults(func=cmd_rank)
+
+    rc = sub.add_parser("record", help="recompute the tier for ONE paper from disk")
+    rc.add_argument("paper_id")
+    rc.add_argument("--index")
+    rc.add_argument("--out", help="paper artifact dir (default tests/visual/<id>)")
+    rc.add_argument("--floors")
+    rc.set_defaults(func=cmd_record)
+
+    t = sub.add_parser("triage", help="append a routed verdict to docs/layout-backlog.jsonl")
+    t.add_argument("paper_id")
+    t.add_argument("--record", required=True, help="layout.json written by `record`")
+    t.add_argument("--note")
+    t.add_argument("--floors")
+    t.add_argument("--run-ts", help="timestamp to stamp on the record")
+    t.set_defaults(func=cmd_triage)
+
     args = ap.parse_args(argv)
     return args.func(args)
 
