@@ -325,6 +325,16 @@ def evaluate(current, baseline, score_tol, recall_tol):
         cur = cur_papers.get(pid)
         if cur is None:
             continue  # absent this run; skip (gitignored corpus payload)
+        # A truth render that failed THIS run cannot be a byetex regression: the
+        # truth PDF is tectonic on the original LaTeX, with no byetex output
+        # involved. It means the local environment lost the render (unprovisioned
+        # biber/fonts — see scripts/setup_truth_deps.sh), which collapses
+        # word_recall to None and structure_ok to false. Reporting that as
+        # "structure_ok true→false" turns a missing dependency into a red fidelity
+        # gate and buries any real regression beside it. Name it as lost coverage.
+        if (cur.get("status") == "truth_render_failed"
+                and base.get("status") != "truth_render_failed"):
+            continue  # reported by `truth_render_lost`
         if base.get("structure_ok") and not cur.get("structure_ok"):
             regressions.append(f"{pid}: structure_ok true→false")
         bw, cw = base.get("word_recall"), cur.get("word_recall")
@@ -337,6 +347,21 @@ def evaluate(current, baseline, score_tol, recall_tol):
             elif cw > bw + recall_tol:
                 improvements.append(f"{pid}: word_recall {cw:.3f} > baseline {bw:.3f}")
     return regressions, improvements
+
+
+def truth_render_lost(current, baseline):
+    """Papers measurable in the baseline whose TRUTH render failed this run.
+
+    Lost coverage, not a regression — see the skip in `evaluate`. Reported so a
+    gate that has gone blind to a paper never passes for looking quiet.
+    """
+    cur_papers = current.get("papers", {})
+    return sorted(
+        pid
+        for pid, base in baseline.get("papers", {}).items()
+        if (cur_papers.get(pid) or {}).get("status") == "truth_render_failed"
+        and base.get("status") != "truth_render_failed"
+    )
 
 
 def main(argv=None):
@@ -421,6 +446,15 @@ def main(argv=None):
         else:
             continue
         unmeasured.setdefault(reason, []).append(pid)
+    lost = truth_render_lost(current, baseline)
+    if lost:
+        print(f"  TRUTH RENDER LOST this run ({len(lost)}) — NOT a byetex regression: the "
+              "truth PDF is\n  tectonic on the original LaTeX, so a failure here is a local "
+              "dependency, not\n  output drift. These papers WERE measurable in the baseline, "
+              "so the gate is now\n  blind to them — run scripts/setup_truth_deps.sh to "
+              "restore coverage:")
+        for pid in lost:
+            print(f"    ! {pid}")
     if unmeasured:
         total = sum(len(v) for v in unmeasured.values())
         print(f"  UNMEASURED (not gated, {total}):")
@@ -512,6 +546,19 @@ def main(argv=None):
             print(f"    ~ {n}")
         if len(l_notices) > args.max_notices:
             print(f"    … {len(l_notices) - args.max_notices} more")
+            # An absolute floor reports every CURRENT breach, not just what moved
+            # since the baseline, so the list is a census and the first N of it are
+            # simply the alphabetically-first papers. Summarise by property so the
+            # shape is visible — which properties are broadly out of tolerance is
+            # the actionable signal, and it is the one a truncated list hides.
+            per_prop: dict[str, int] = {}
+            for n in l_notices:
+                field = n.split(": ", 1)[1].split(" ", 1)[0] if ": " in n else "?"
+                per_prop[field] = per_prop.get(field, 0) + 1
+            n_papers = len({n.split(":", 1)[0] for n in l_notices})
+            print(f"    by property, over {n_papers} paper(s):")
+            for field, count in sorted(per_prop.items(), key=lambda kv: (-kv[1], kv[0])):
+                print(f"      {count:4d}  {field}")
     if l_imps:
         print(f"  LAYOUT IMPROVED ({len(l_imps)}; consider `--update-baseline`):")
         for i in l_imps[:args.max_notices]:
