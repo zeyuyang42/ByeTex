@@ -71,16 +71,16 @@
   "properties": {
     "layout_body_font_ratio": {
       "corpus": {
-        "mad": 0.0024,
+        "mad": 0.0,
         "n": 65,
         "n_undefined": 6,
         "p05": 0.0,
-        "p50": 0.0024,
-        "p95": 0.2503
+        "p50": 0.0,
+        "p95": 0.0909
       },
-      "corpus_fail_at_threshold": 10,
+      "corpus_fail_at_threshold": 11,
       "legit_floor": 0.05,
-      "promotable": true,
+      "promotable": false,
       "proposed_threshold": 0.075,
       "repeat_floor": 0.0,
       "threshold_source": "measured"
@@ -247,6 +247,7 @@
     }
   },
   "pymupdf_version": "pymupdf PyMuPDF 1.28.2: Python bindings for the MuPDF 1.28.2 library.\nPython 3.11 running on darwin (64-bit).",
+  "repeat_floor_measured": true,
   "repeat_floor_papers": 8,
   "safety_factor": 1.5,
   "self_floor_ok": true,

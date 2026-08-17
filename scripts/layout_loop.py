@@ -258,9 +258,18 @@ def cmd_floors(args) -> int:
 
     print(f"\n── repeat_floor (same .typ compiled twice, up to {args.repeat} papers) ──")
     rep = measure_repeat_floor(paper_dirs, args.repeat)
-    print(f"   {rep['n']} papers recompiled; "
-          + ("identical on every property ✓" if not rep["offenders"]
-             else f"differs on {rep['offenders']}"))
+    # n == 0 must NOT read as a pass. An empty measurement printing "identical on
+    # every property ✓" is exactly the vacuous control this project has been bitten
+    # by twice; it happened here the moment corpus/_out was not reachable.
+    if rep["n"] == 0:
+        print("   NOT MEASURED — no generated corpus/_out/<id>/main.typ found. "
+              "repeat_floor is UNKNOWN, not zero.", file=sys.stderr)
+        rep["worst"] = {}
+        rep["unmeasured"] = True
+    else:
+        print(f"   {rep['n']} papers recompiled; "
+              + ("identical on every property ✓" if not rep["offenders"]
+                 else f"differs on {rep['offenders']}"))
 
     legit = {"n": 0, "worst": {}}
     if args.synthetic:
@@ -323,6 +332,7 @@ def cmd_floors(args) -> int:
             "self_floor_ok": self_ok,
             "self_floor_papers": self_f["n"],
             "repeat_floor_papers": rep["n"],
+            "repeat_floor_measured": not rep.get("unmeasured", False),
             "legit_variants": legit.get("n", 0),
             "legit_per_variant": legit.get("per_variant", {}),
             "properties": {

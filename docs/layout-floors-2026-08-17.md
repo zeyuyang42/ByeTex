@@ -77,7 +77,7 @@ to get a gate switched off.
 | property | repeat | legit | **proposed** | corpus p50 | fail @ thr |
 |---|---:|---:|---:|---:|---:|
 | `layout_page_trim_ratio` | 0.0000 | 0.0000 | **0.0050**\* | 0.0000 | **8** ✅ |
-| `layout_body_font_ratio` | 0.0000 | 0.0500 | **0.0750** | 0.0024 | **10** ✅ |
+| `layout_body_font_ratio` | 0.0000 | 0.0500 | **0.0750** | 0.0000 | **11** ⚠ |
 | `layout_fontsize_tier_emd` | 0.0000 | 0.4032 | 0.6048 | 0.2886 | 13 |
 | `layout_ink_ratio` | 0.0000 | 0.1201 | 0.1801 | 0.1421 | 27 |
 | `layout_top_margin_ratio` | 0.0000 | 0.0319 | 0.0478 | 0.1311 | 51 |
@@ -102,12 +102,13 @@ floor for the detector's noise rather than the converter's drift.
 
 ## What this says
 
-**Two properties are promotable now** — at most ~10 papers fail, which is a
-backlog rather than a wall:
+**Two properties are near-promotable** — a backlog rather than a wall:
 
-- `layout_body_font_ratio` — 10 papers, and its threshold is **fully measured**
-  (legit floor 0.05 from the half-point size-drift variant, ×1.5). The strongest
-  candidate: the number rests on evidence rather than on the resolution floor.
+- `layout_body_font_ratio` — 11 papers, threshold **fully measured** (legit floor
+  0.05 from the half-point size-drift variant, ×1.5). The strongest candidate:
+  the number rests on evidence rather than the resolution floor, and 7 of the 11
+  are unambiguously confirmable (see "Criterion (d)" below). Just over the ~10
+  bar, so it needs a `KNOWNBAD` exclusion list rather than a bare threshold.
 - `layout_page_trim_ratio` — 8 papers, but its threshold is the resolution floor.
   Defensible (page size genuinely should not change) yet weaker as a precedent.
 
@@ -124,6 +125,56 @@ to gate. The plan's original choice and its obvious replacement were both wrong,
 and only measurement said so.
 
 ---
+
+## Criterion (d), worked — and it changed the metric
+
+Checking the 10 papers that failed `layout_body_font_ratio` by hand is what this
+step is for, and none of them were confirmable. The metric was confounded twice:
+
+**Absolute points double-count a page-size change.** The four slide decks read
+ratio ~2.0 — "body font twice too big". Their Typst pages are ~2× the canvas
+(`page_trim` 3.4–4.8), so the type is roughly proportional. Normalising by the
+page diagonal drops them to 0.88–1.31. The page-size drift is real, and
+`layout_page_trim_ratio` already reports it; reporting it a second time as a font
+bug sends the fix to the wrong place.
+
+**A mean of per-page modal sizes is not the body size.** Six papers read
+1.08–1.19 while their document modal was identical (10.0 → 10.0) — pages of
+different composition pulling the mean.
+
+`layout_body_font_ratio` is now the document's modal size as a **fraction of the
+page**. On documents of equal page size the diagonal cancels, so nothing changes
+for the common case. The effect on the previously-flagged papers:
+
+```
+beamer-demo       2.000 -> 0.979      2605.31597   1.194 -> 1.000
+gh-mtheme-demo    1.956 -> 0.914      2605.22738   0.868 -> 1.000
+gh-bard-metropolis 1.944 -> 0.914     2605.22746   1.111 -> 1.000
+gh-klb2-beamer    1.727 -> 0.979      2605.31598   1.084 -> 1.000
+2605.31564        0.750 -> 0.909      2605.22549   1.100 -> 1.100
+```
+
+The artifacts collapse to **exactly 1.000**; the one real case (`2605.22549`,
+truth 10pt vs output 11pt) is untouched. Corpus p50 went 0.0024 → **0.0000**: the
+median paper now matches exactly, and the metric is bimodal — either right or
+genuinely wrong, which is what a trustworthy property looks like.
+
+### What it now finds
+
+Seven papers share the truth's page size and still differ in body point size.
+These are unambiguous and actionable — the converter resolves the class size
+option wrongly:
+
+| paper | truth | output |
+|---|---|---|
+| `2605.31563`, `2605.31564`, `2605.31584`, `2605.31586`, `2606.12397` | 11pt | **10pt** |
+| `2605.22549` | 10pt | **11pt** |
+| `2605.31394` | 11pt | **12pt** |
+
+Four more (`2605.22281`, `2605.22557`, `gh-bard-metropolis`, `gh-mtheme-demo`)
+differ in page size too, so their residual 0.87–0.91 is plausible but not
+cleanly confirmable. **11 papers fail in total — just over the ~10 bar**, so
+promotion needs a `KNOWNBAD` exclusion list rather than a bare threshold.
 
 ## Promotion checklist
 
