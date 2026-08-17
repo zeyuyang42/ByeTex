@@ -176,6 +176,38 @@ ps = lm.page_profile(two_col_span, W, H)
 check(ps["ncol"] == 2,
       f"a spanning float over part of the height does not collapse a real gutter, got {ps['ncol']}")
 
+# ── a SPARSE page must not shatter into columns (the corpus failure) ────────
+# The first detector treated "empty band" as sufficient. A page holding one
+# figure and a two-line caption is empty almost everywhere, so nearly every
+# x-slice qualified and real papers read as 6 columns:
+#   2605.22507  truth [1,1,1,1,1,1,1,2,1,1]  out [1,1,1,1,2,1,2,1,6,1]
+# A gutter must be FLANKED by filled columns, and a page with too few lines
+# cannot evidence a split at all.
+sparse_page = [span(72.0, 700.0, 200.0, 710.0), span(260.0, 700.0, 523.0, 710.0),
+               span(72.0, 715.0, 180.0, 725.0)]
+check(lm.page_profile(sparse_page, W, H)["ncol"] == 1,
+      f"a sparse page (3 lines, big gaps) is 1 column, not shattered — got "
+      f"{lm.page_profile(sparse_page, W, H)['ncol']}")
+
+# ── a gutter with an EMPTY side is not a gutter ─────────────────────────────
+# Text on the left only, nothing on the right: the band between them is empty,
+# but it separates a column from nothing.
+one_sided = lines(72.0, 200.0, 72.0, 30)
+check(lm.page_profile(one_sided, W, H)["ncol"] == 1,
+      f"a band with text on ONE side only is a margin, not a gutter — got "
+      f"{lm.page_profile(one_sided, W, H)['ncol']}")
+
+# ── an implausible band count means the heuristic lost, so report 1 ─────────
+shredded = []
+for i in range(30):
+    y = 72.0 + i * 12.0
+    for x0 in (72.0, 150.0, 230.0, 310.0, 390.0, 470.0):
+        shredded.append(span(x0, y, x0 + 40.0, y + 8.0))
+check(lm.page_profile(shredded, W, H)["ncol"] <= lm.MAX_PLAUSIBLE_COLUMNS,
+      f"a page that defeats the heuristic reports at most "
+      f"{lm.MAX_PLAUSIBLE_COLUMNS}, never a fabricated count — got "
+      f"{lm.page_profile(shredded, W, H)['ncol']}")
+
 # ── ragged-right must not read as a gutter (the LEGIT negative control) ─────
 import random  # noqa: E402
 

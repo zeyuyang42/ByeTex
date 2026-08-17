@@ -66,6 +66,9 @@ from pathlib import Path
 
 GUTTER_MIN_WIDTH_FRAC = 0.015  # a column gutter is ≥1.5% of page width (~9pt A4)
 GUTTER_MAX_FILL = 0.40         # ...and is ≤40%-filled over the page's text height
+GUTTER_MIN_FLANK_FILL = 0.50   # ...and BOTH sides of it carry ≥50% of that height
+MIN_LINES_FOR_COLUMNS = 10     # below this a page cannot evidence a column split
+MAX_PLAUSIBLE_COLUMNS = 4      # no academic layout has more; more means noise
 FSIZE_BIN = 0.5                # font sizes are quantized to 0.5pt before binning
 SMALL_TIER_DROP = 0.75         # "small" = ≥0.75pt below the doc's OWN modal size
 LEADING_MIN, LEADING_MAX = 2.0, 40.0  # plausible baseline deltas (pt)
@@ -287,6 +290,26 @@ def _column_bands(spans: list[dict], page_w: float) -> list[tuple[float, float]]
     survives; and inter-cell gaps, which carry the full prose column above and
     below, do not qualify.
 
+    An empty band is NECESSARY but not SUFFICIENT, and assuming otherwise is how
+    the first version of this failed. Validated against synthetic fixtures it was
+    perfect; against the corpus it read SIX columns on single-column pages:
+
+        2605.22507  truth [1,1,1,1,1,1,1,2,1,1]   out [1,1,1,1,2,1,2,1,6,1]
+
+    firing on 58 of 65 papers. The synthetic pages are dense prose; real pages
+    are not. A page holding one figure and a two-line caption is empty almost
+    everywhere, so almost every x-slice qualifies as "gutter-like" and the
+    detector shatters it into columns.
+
+    So a gutter must also be FLANKED: the regions either side of it have to carry
+    at least `GUTTER_MIN_FLANK_FILL` of the page's text height, because a column
+    gutter by definition separates two columns of text. On a sparse page neither
+    side is filled and nothing is detected; on a real two-column page each side
+    carries ~65% and the gutter survives. Two cheap guards back that up — a page
+    with fewer than `MIN_LINES_FOR_COLUMNS` lines cannot evidence a split at all,
+    and more than `MAX_PLAUSIBLE_COLUMNS` bands means the page defeated the
+    heuristic, so report one column rather than a fabricated number.
+
     Fill is accumulated with a difference array over x — O(spans + width), no
     rasterization, so this stays cheap enough for the whole corpus.
 
@@ -315,11 +338,23 @@ def _column_bands(spans: list[dict], page_w: float) -> list[tuple[float, float]]
     min_gap = max(1, int(GUTTER_MIN_WIDTH_FRAC * page_w))
     lo, hi = int(x_lo), min(int(x_hi) + 1, width - 1)
 
-    cuts: list[tuple[int, int]] = []  # (gutter_start, gutter_end) in x
-    run, acc = 0, 0.0
-    for x in range(lo, hi + 1):
+    # Per-x coverage height, materialized so flanking regions can be inspected.
+    fill = [0.0] * (width + 1)
+    acc = 0.0
+    for x in range(0, width):
         acc += diff[x]
-        if acc <= GUTTER_MAX_FILL * text_h:
+        fill[x] = acc
+
+    # A page with too few lines cannot evidence a column split; guessing from
+    # three lines of caption is what produced the six-column readings.
+    n_lines = len({round(s["bbox"][3], 1) for s in spans})
+    if n_lines < MIN_LINES_FOR_COLUMNS:
+        return [(x_lo, x_hi)]
+
+    cuts: list[tuple[int, int]] = []  # (gutter_start, gutter_end) in x
+    run = 0
+    for x in range(lo, hi + 1):
+        if fill[x] <= GUTTER_MAX_FILL * text_h:
             run += 1
         else:
             # An interior run only — a run touching either edge of the text
@@ -329,6 +364,18 @@ def _column_bands(spans: list[dict], page_w: float) -> list[tuple[float, float]]
                 cuts.append((x - run, x))
             run = 0
     # a trailing run reaches x_hi, so it is by definition NOT interior
+
+    # Flank test: a gutter separates two COLUMNS, so both sides must actually
+    # carry text. Without this, an empty page is all gutter.
+    def flanked(g0: int, g1: int) -> bool:
+        left = max(fill[lo:g0], default=0.0)
+        right = max(fill[g1:hi + 1], default=0.0)
+        need = GUTTER_MIN_FLANK_FILL * text_h
+        return left >= need and right >= need
+
+    cuts = [c for c in cuts if flanked(*c)]
+    if len(cuts) + 1 > MAX_PLAUSIBLE_COLUMNS:
+        return [(x_lo, x_hi)]
 
     bands, start = [], x_lo
     for g0, g1 in cuts:
