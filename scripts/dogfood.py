@@ -240,6 +240,27 @@ def fidelity_of(typ_path: Path, truth_pdf: Path | None, source_tex: str | None,
     )
     ssim = vt.page_image_similarity(truth_pngs, typst_pngs)
     m["mean_ssim"] = ssim.get("mean_ssim")
+
+    # The layout tier, added HERE as well as in visual_test.process_paper.
+    # `fidelity_of` calls vt.pdf_structure_compare / vt.page_image_similarity
+    # DIRECTLY rather than going through process_paper, so anything wired into
+    # the corpus pipeline is invisible to Loop B unless it is also wired here.
+    # Without this, docs/agent-surface-backlog.jsonl would silently carry a
+    # null column for every new metric and nobody would notice, because a
+    # missing key reads exactly like a metric that had nothing to report.
+    #
+    # T0 + T2 only: both are cheap and stdlib-only. T1 needs pymupdf (an
+    # AGPL, dev-only dependency), so it stays behind an opt-in rather than
+    # becoming an implicit requirement of the dogfood harness.
+    m.update(vt.lm.ordered_stream_compare(
+        vt.extract_pdf_text_reading_order(truth_pdf),
+        vt.extract_pdf_text_reading_order(pdf),
+    ))
+    if source_tex is not None:
+        m.update(vt.lm.anchor_recall(
+            vt.lm.tex_labels(source_tex),
+            vt.lm.typ_anchors(typ_path.read_text(encoding="utf-8", errors="replace")),
+        ))
     m["compiled"] = True
     m["typst_error_count"] = 0
     # Single-paper blend, identical weights to the corpus fidelity_score.
@@ -250,7 +271,12 @@ def fidelity_of(typ_path: Path, truth_pdf: Path | None, source_tex: str | None,
 def _slim(m: dict) -> dict:
     """The subset of a fidelity dict worth persisting in the backlog record."""
     keys = ("compiled", "fidelity_score", "word_recall", "heading_recall",
-            "page_ratio", "mean_ssim", "structure_ok", "typst_error_count")
+            "page_ratio", "mean_ssim", "structure_ok", "typst_error_count",
+            # Layout tier — must be listed here too, or fidelity_of computes
+            # them and _slim drops them on the floor before they reach the
+            # backlog record.
+            "anchor_recall", "anchor_labels_total", "anchor_matched",
+            "ordered_recall", "ordered_precision")
     return {k: m.get(k) for k in keys if k in m}
 
 
