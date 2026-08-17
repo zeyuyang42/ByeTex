@@ -75,3 +75,6 @@ dist_build.log
 
 # Truth-render dependencies provisioned by scripts/setup_truth_deps.sh
 /.truth-deps/
+
+# Holding area for scripts/cleanup — reviewed and emptied by hand, never committed.
+/.cleanup-trash/
