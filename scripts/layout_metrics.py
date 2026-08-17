@@ -70,7 +70,7 @@ FSIZE_BIN = 0.5                # font sizes are quantized to 0.5pt before binnin
 SMALL_TIER_DROP = 0.75         # "small" = ≥0.75pt below the doc's OWN modal size
 LEADING_MIN, LEADING_MAX = 2.0, 40.0  # plausible baseline deltas (pt)
 MARGIN_TRIM_PCT = 2.0          # ignore the outer 2% of span edges (stray marginalia)
-DROP_LAST_PAGE_ABOVE = 2       # short/ragged final pages skew per-page aggregates
+FULL_PAGE_LINE_FRAC = 0.5      # a "full" page carries ≥50% of the doc's busiest page
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -267,8 +267,9 @@ def _pct(values: list[float], q: float) -> float:
     return s[lo] + (s[hi] - s[lo]) * (pos - lo)
 
 
-def _column_count(spans: list[dict], page_w: float) -> int:
-    """Number of text columns, from VERTICAL whitespace bands.
+def _column_bands(spans: list[dict], page_w: float) -> list[tuple[float, float]]:
+    """The page's text columns as `[(x_lo, x_hi), ...]`, from VERTICAL whitespace
+    bands. A 1-column page returns a single band.
 
     The prototype gap-scanned a 1-D x-projection of span coverage. That method
     has two failure modes that matter, in opposite directions:
@@ -288,16 +289,19 @@ def _column_count(spans: list[dict], page_w: float) -> int:
 
     Fill is accumulated with a difference array over x — O(spans + width), no
     rasterization, so this stays cheap enough for the whole corpus.
+
+    Returning the BANDS rather than just a count is what lets leading and line
+    count be measured per column; see `page_profile`.
     """
     if not spans or page_w <= 0:
-        return 1
+        return [(0.0, page_w)]
     x_lo = min(s["bbox"][0] for s in spans)
     x_hi = max(s["bbox"][2] for s in spans)
     y_lo = min(s["bbox"][1] for s in spans)
     y_hi = max(s["bbox"][3] for s in spans)
     text_h = y_hi - y_lo
     if text_h <= 0 or x_hi - x_lo <= 0:
-        return 1
+        return [(x_lo, x_hi)]
 
     width = int(page_w) + 2
     diff = [0.0] * (width + 1)
@@ -311,7 +315,8 @@ def _column_count(spans: list[dict], page_w: float) -> int:
     min_gap = max(1, int(GUTTER_MIN_WIDTH_FRAC * page_w))
     lo, hi = int(x_lo), min(int(x_hi) + 1, width - 1)
 
-    gutters, run, acc = 0, 0, 0.0
+    cuts: list[tuple[int, int]] = []  # (gutter_start, gutter_end) in x
+    run, acc = 0, 0.0
     for x in range(lo, hi + 1):
         acc += diff[x]
         if acc <= GUTTER_MAX_FILL * text_h:
@@ -321,10 +326,16 @@ def _column_count(spans: list[dict], page_w: float) -> int:
             # block is a ragged margin (ragged-right prose leaves exactly such a
             # low-fill band), not a gutter.
             if run >= min_gap and (x - run) > lo:
-                gutters += 1
+                cuts.append((x - run, x))
             run = 0
     # a trailing run reaches x_hi, so it is by definition NOT interior
-    return 1 + gutters
+
+    bands, start = [], x_lo
+    for g0, g1 in cuts:
+        bands.append((start, float(g0)))
+        start = float(g1)
+    bands.append((start, x_hi))
+    return bands
 
 
 def page_profile(spans: list[dict], page_w: float, page_h: float) -> dict | None:
@@ -344,13 +355,30 @@ def page_profile(spans: list[dict], page_w: float, page_h: float) -> dict | None
     top = min(s["bbox"][1] for s in spans)
     bottom_edge = max(s["bbox"][3] for s in spans)
 
-    # baselines → leading. Undefined (None) on a single-line page: returning 0
-    # there is how the prototype fabricated a ~100% delta, because every ratio
+    # Leading and line count are measured PER COLUMN and then combined.
+    #
+    # Measuring them from one globally-sorted baseline list is wrong on any
+    # multi-column page: the two columns' baselines interleave, so consecutive
+    # entries come from *different* columns and the deltas between them are
+    # sub-line noise rather than the leading. The synthetic `twocol` fixture
+    # showed this as a spurious 11% leading change on a variant whose leading is
+    # by construction identical — a false positive on the single most common
+    # real-world layout in the corpus.
+    #
+    # Undefined (None) rather than 0 when no column has two baselines: returning
+    # 0 is how the prototype fabricated a ~100% delta, because every ratio
     # downstream guards with max(lead, 1).
-    baselines = sorted({round(s["bbox"][3], 1) for s in spans})
-    deltas = [b - a for a, b in zip(baselines, baselines[1:])
-              if LEADING_MIN < b - a < LEADING_MAX]
-    leading = st.median(deltas) if deltas else None
+    bands = _column_bands(spans, page_w)
+    col_leads: list[float] = []
+    n_lines = 0
+    for x_lo, x_hi in bands:
+        mid = lambda s: (s["bbox"][0] + s["bbox"][2]) / 2  # noqa: E731
+        col = sorted({round(s["bbox"][3], 1) for s in spans if x_lo <= mid(s) <= x_hi})
+        n_lines += len(col)
+        deltas = [b - a for a, b in zip(col, col[1:]) if LEADING_MIN < b - a < LEADING_MAX]
+        if deltas:
+            col_leads.append(st.median(deltas))
+    leading = st.median(col_leads) if col_leads else None
 
     # font-size histogram, weighted by CHARACTERS not spans: one 40-char body
     # span and one 2-char superscript are not equal evidence of "the body size".
@@ -372,12 +400,12 @@ def page_profile(spans: list[dict], page_w: float, page_h: float) -> dict | None
         "top": top / page_h,
         "bottom": 1.0 - bottom_edge / page_h,
         "text_width": (right_edge - left) / page_w,
-        "ncol": _column_count(spans, page_w),
+        "ncol": len(bands),
         "body_font": body_font,
         "fsize_hist": hist,
         "small_tier_share": (small_chars / total_chars) if total_chars else 0.0,
         "leading": leading,
-        "lines": len(baselines),
+        "lines": n_lines,
         # ink is span-bbox AREA over page area. The prototype called a 1-D
         # x-projection "ink"; since pearson(ink, ssim) = -0.913 is the headline
         # finding, the quantity behind that name has to be the real one.
@@ -428,6 +456,28 @@ def _ratio(out_vals: list[float], truth_vals: list[float]) -> float | None:
     return a / b
 
 
+def _full_pages(profiles: list[dict | None]) -> list[dict]:
+    """The pages worth measuring geometry on: those carrying at least
+    `FULL_PAGE_LINE_FRAC` of the busiest page's line count.
+
+    A document's LAST page is typically a stub — in the synthetic fixture, 4
+    lines against 44. Its right edge sits wherever the final short line happens
+    to end, so its `right` margin reads 0.32 where the body pages read 0.12, and
+    including it swamps every aggregate. Selecting by CONTENT rather than by
+    position also removes the pairing problem entirely: two documents that
+    paginate differently still contribute the same *kind* of page.
+
+    This replaces "drop the final page when there are more than two", which did
+    nothing at all for a 2-page document — and 2-page documents are exactly
+    where one stub page is half the evidence.
+    """
+    ps = [p for p in profiles if p is not None]
+    if not ps:
+        return []
+    top = max(p["lines"] for p in ps)
+    return [p for p in ps if p["lines"] >= FULL_PAGE_LINE_FRAC * top] or ps[:1]
+
+
 def compare_profiles(truth: list[dict | None], out: list[dict | None]) -> dict:
     """Truth-vs-output geometry as NAMED PROPERTIES. PURE — no PDFs.
 
@@ -436,58 +486,64 @@ def compare_profiles(truth: list[dict | None], out: list[dict | None]) -> dict:
     shrinking — two-sided, the Gecko model. A one-sided threshold lets a fix
     overshoot into the opposite error without ever being noticed.
 
-    Pages are paired by index and the FINAL page is dropped on documents long
-    enough to spare it: a short or ragged last page skews every per-page
-    aggregate, and it is the page most likely to differ in length legitimately.
+    Aggregation is deliberately split three ways by what each property IS:
+
+      * geometry (margins, widths, leading, ink) is summarized over each side's
+        own FULL pages independently, then divided. Index-pairing these would
+        make any pagination difference — a duplicated paragraph, a dropped
+        figure — read as a margin change, because page 2 of one document is
+        then compared against unrelated content in page 2 of the other.
+      * type tiers are aggregated over the WHOLE document, because a font tier
+        is a document property. Computing them per page makes the small-tier
+        share move whenever content reflows onto a different page.
+      * column count is genuinely per-page and RELATIONAL, so it alone is
+        index-paired.
+
     Page COUNT is a separate signal (`page_ratio`, already in the harness), kept
     separate on purpose — folding it in here is the mistake that destroyed SSIM,
     which resizes both pages to a common size and then pairs page i to page i.
     """
-    pairs = [(t, o) for t, o in zip(truth, out) if t is not None and o is not None]
-    if len(pairs) > DROP_LAST_PAGE_ABOVE:
-        pairs = pairs[:-1]
+    t_full, o_full = _full_pages(truth), _full_pages(out)
+    t_all = [p for p in truth if p is not None]
+    o_all = [p for p in out if p is not None]
 
-    res: dict = {"layout_pages_compared": len(pairs)}
+    res: dict = {"layout_pages_compared": min(len(t_full), len(o_full))}
     keys = ("page_trim", "left_margin", "right_margin", "top_margin", "text_width",
             "body_font", "leading", "lines_per_page", "ink")
-    if not pairs:
+    if not t_full or not o_full:
         res.update({f"layout_{k}_ratio": None for k in keys})
         res.update({"layout_column_mismatch_frac": None,
                     "layout_small_tier_share_delta": None,
                     "layout_fontsize_tier_emd": None})
         return res
 
-    def col(side: int, field: str, scale=None):
-        vals = []
-        for pair in pairs:
-            v = pair[side][field]
-            if v is None:
-                continue
-            vals.append(v * scale(pair[side]) if scale else v)
-        return vals
+    def col(pages: list[dict], field: str) -> list[float]:
+        return [p[field] for p in pages if p[field] is not None]
 
     area = lambda p: p["page_w"] * p["page_h"]  # noqa: E731
-    res["layout_page_trim_ratio"] = _ratio([area(o) for _, o in pairs],
-                                           [area(t) for t, _ in pairs])
+    res["layout_page_trim_ratio"] = _ratio([area(p) for p in o_full],
+                                           [area(p) for p in t_full])
     for name, field in (("left_margin", "left"), ("right_margin", "right"),
                         ("top_margin", "top"), ("text_width", "text_width"),
                         ("body_font", "body_font"), ("leading", "leading"),
                         ("lines_per_page", "lines"), ("ink", "ink")):
-        res[f"layout_{name}_ratio"] = _ratio(col(1, field), col(0, field))
+        res[f"layout_{name}_ratio"] = _ratio(col(o_full, field), col(t_full, field))
 
     # Column count is RELATIONAL and CATEGORICAL — "same or not", no epsilon to
     # pick. That is what makes it the one property gateable without first
     # measuring a tolerance, and so the first slated for promotion.
-    res["layout_column_mismatch_frac"] = sum(t["ncol"] != o["ncol"] for t, o in pairs) / len(pairs)
+    pairs = list(zip(t_full, o_full))
+    res["layout_column_mismatch_frac"] = (
+        sum(t["ncol"] != o["ncol"] for t, o in pairs) / len(pairs) if pairs else None)
 
     # Font tiers are aggregated to DOCUMENT level before the small-tier share is
     # taken, so "small" is relative to the document's own modal size. An absolute
     # 8.5pt cut would misjudge any document whose body genuinely is 8.5pt.
     th: dict[float, int] = {}
     oh: dict[float, int] = {}
-    for t, o in pairs:
-        for src, dst in ((t["fsize_hist"], th), (o["fsize_hist"], oh)):
-            for sz, n in src.items():
+    for pages, dst in ((t_all, th), (o_all, oh)):
+        for p in pages:
+            for sz, n in p["fsize_hist"].items():
                 dst[sz] = dst.get(sz, 0) + n
     res["layout_fontsize_tier_emd"] = _emd(th, oh)
 
@@ -512,6 +568,145 @@ def layout_compare(truth_pdf, out_pdf) -> dict:
         res["layout_skipped"] = "install pymupdf for the layout profile"
         return res
     return compare_profiles(tp, op)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# drift classes, floors, severity
+# ═══════════════════════════════════════════════════════════════════════════
+
+# A `drift_class` is the unit the loop routes on: it names WHAT went wrong in
+# words a fix can be aimed at, which a bare property name does not. Several
+# properties can evidence one class (a font-tier change shows up in both the
+# share delta and the EMD), so the class is the reporting unit and the property
+# is the evidence.
+DRIFT_CLASSES: dict[str, tuple[str, ...]] = {
+    "page_trim":  ("layout_page_trim_ratio",),
+    "margin":     ("layout_left_margin_ratio", "layout_right_margin_ratio",
+                   "layout_top_margin_ratio"),
+    "text_width": ("layout_text_width_ratio",),
+    "font_size":  ("layout_body_font_ratio",),
+    # Split apart deliberately: the EMD says "the type scale as a whole moved"
+    # and the share delta says "a specific tier was lost". Both fire when
+    # \small is flattened into the body size, but they route to different fixes,
+    # and a class that fires for two unrelated reasons routes to neither.
+    "type_scale": ("layout_fontsize_tier_emd",),
+    "small_tier": ("layout_small_tier_share_delta",),
+    "leading":    ("layout_leading_ratio",),
+    # lines-per-page is kept OUT of `leading`: a 2-column page legitimately
+    # carries ~2x the lines at identical leading, so folding them together makes
+    # every multi-column document look like a leading regression.
+    "density":    ("layout_lines_per_page_ratio",),
+    "columns":    ("layout_column_mismatch_frac",),
+    "ink":        ("layout_ink_ratio",),
+    "anchors":    ("anchor_recall",),
+    "ordering":   ("ordered_recall", "ordered_precision"),
+}
+
+# Classes measured from PAGE GEOMETRY. The rest (`anchors`, `ordering`) are
+# content tiers: a document with different words but identical layout must move
+# those two and nothing else, which is the orthogonality control.
+LAYOUT_CLASSES = tuple(k for k in DRIFT_CLASSES if k not in ("anchors", "ordering"))
+
+# PROVISIONAL floors — replaced by measured values in scripts/layout_floors.json.
+#
+# These are deliberately WIDE. They are not "how close is close enough"; they
+# are "past here it is definitely not measurement noise". The real floors come
+# from three measured sources (instrument repeat noise, self-comparison, and the
+# synthetic legitimate-variation set), never from a corpus percentile — 58/64
+# corpus papers already drift on leading, so a corpus percentile would encode
+# that bug as normal and gate nothing.
+DEFAULT_FLOORS: dict[str, float] = {
+    "layout_page_trim_ratio":        0.02,
+    "layout_left_margin_ratio":      0.08,
+    "layout_right_margin_ratio":     0.10,
+    "layout_top_margin_ratio":       0.08,
+    "layout_text_width_ratio":       0.05,
+    "layout_body_font_ratio":        0.06,
+    "layout_leading_ratio":          0.10,
+    "layout_lines_per_page_ratio":   0.15,
+    "layout_column_mismatch_frac":   0.001,  # categorical: ANY mismatch is drift
+    "layout_ink_ratio":              0.15,
+    "layout_small_tier_share_delta": 0.03,
+    "layout_fontsize_tier_emd":      0.60,
+    "anchor_recall":                 0.05,
+    "ordered_recall":                0.05,
+    "ordered_precision":             0.05,
+}
+
+
+def property_deviation(name: str, value) -> float | None:
+    """How far a property sits from "no drift", in its own units.
+
+    The convention is carried by the property's NAME suffix so a new property
+    cannot be added without declaring how it is read:
+      `_ratio`     → |v - 1|, two-sided. An overshoot is drift in the same way
+                     an undershoot is; a one-sided check lets a fix sail past
+                     the target and never be noticed (the Gecko rule).
+      `_delta`     → |v|
+      `_frac`/`_emd` → v (already a distance from zero)
+      `recall`/`precision` → 1 - v
+    """
+    if value is None:
+        return None
+    if name.endswith("_ratio"):
+        return abs(value - 1.0)
+    if name.endswith("_delta"):
+        return abs(value)
+    if name.endswith(("_frac", "_emd")):
+        return abs(value)
+    if name.endswith(("recall", "precision")):
+        return max(0.0, 1.0 - value)
+    return abs(value)
+
+
+def fired_properties(metrics: dict, floors: dict | None = None) -> list[dict]:
+    """Properties beyond their floor, worst first.
+
+    A property that is None on either side is SKIPPED, never counted as passing.
+    """
+    floors = floors or DEFAULT_FLOORS
+    out = []
+    for cls, props in DRIFT_CLASSES.items():
+        for name in props:
+            if name not in metrics:
+                continue
+            dev = property_deviation(name, metrics.get(name))
+            floor = floors.get(name)
+            if dev is None or not floor:
+                continue
+            if dev > floor:
+                out.append({"name": name, "drift_class": cls, "value": metrics[name],
+                            "deviation": dev, "floor": floor, "excess": dev / floor})
+    return sorted(out, key=lambda d: -d["excess"])
+
+
+def fired_classes(metrics: dict, floors: dict | None = None) -> set[str]:
+    """The `drift_class` set a comparison lands in."""
+    return {p["drift_class"] for p in fired_properties(metrics, floors)}
+
+
+def layout_severity(metrics: dict, floors: dict | None = None) -> float | None:
+    """A single number for RANKING ONLY — never for gating.
+
+    Deliberately the MAX excess across properties, not the mean: one badly wrong
+    property is a real problem, and averaging it against nine healthy ones is
+    precisely how the composite fidelity score hid a paper with a +43% text
+    column behind a 0.923 word_recall.
+
+    It is not clipped at the floor, so a value below 1.0 still says how much of
+    the floor a legitimate variation consumed. That is what makes the separating
+    margin between legitimate and real drift measurable, and a SHRINKING margin
+    visible before it inverts.
+    """
+    floors = floors or DEFAULT_FLOORS
+    vals = []
+    for props in DRIFT_CLASSES.values():
+        for name in props:
+            dev = property_deviation(name, metrics.get(name))
+            floor = floors.get(name)
+            if dev is not None and floor:
+                vals.append(dev / floor)
+    return max(vals) if vals else None
 
 
 # ═══════════════════════════════════════════════════════════════════════════
