@@ -48,7 +48,7 @@ fi
 BYETEX="${BYETEX_BIN:-$REPO_ROOT/target/release/byetex}"
 if [[ -z "${BYETEX_BIN:-}" && ! -x "$BYETEX" ]]; then
   echo "Building byetex (release)…" >&2
-  cargo build --release -p byetex-cli --manifest-path "$REPO_ROOT/Cargo.toml" >&2
+  cargo build --release -p byetex --manifest-path "$REPO_ROOT/Cargo.toml" >&2
 fi
 
 # ── 1. Stage-0 oracle (best-effort attribution) ──────────────────────────────

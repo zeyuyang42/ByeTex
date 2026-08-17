@@ -49,7 +49,7 @@ if [[ -z "${BYETEX_BIN:-}" ]]; then
   fi
   if $needs_build; then
     echo "Building byetex (release)…" >&2
-    cargo build --release -p byetex-cli --manifest-path "$REPO_ROOT/Cargo.toml" >&2
+    cargo build --release -p byetex --manifest-path "$REPO_ROOT/Cargo.toml" >&2
   fi
 fi
 
@@ -83,6 +83,12 @@ for paper_dir in "$CORPUS"/*/; do
   # Skip non-directories (e.g. manifest.json appears as a glob match on some shells)
   [[ -d "$paper_dir" ]] || continue
   paper_id=$(basename "$paper_dir")
+  # `_out/` is the sibling GENERATED tree (corpus/_out/<id>/), written by this
+  # very loop — not a paper. Having no source/00README.json, it fell through to
+  # the skip branch below and was counted as a SKIPPED PAPER, inflating both
+  # SKIP and TOTAL by one in every summary this script has printed.
+  # corpus_clean.sh already guards it; this loop did not.
+  [[ "$paper_id" == "_out" ]] && continue
   [[ -n "$FILTER" && "$paper_id" != "$FILTER" ]] && continue
 
   src_dir="$paper_dir/source"
