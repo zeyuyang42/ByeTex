@@ -1,160 +1,180 @@
 {
-  "_comment": "Fidelity baseline for scripts/fidelity_check.py. Per-paper render metrics + corpus fidelity_score from scripts/visual_test.py. Regenerate with `./scripts/fidelity_gate.sh --update-baseline` (or fidelity_check.py --emit-baseline). 2026-07-25: corrected `2605.22779` word_recall 0.93 -> 0.872. The recorded value was not reproducible at ANY commit \u2014 measured 0.872 identically on 14aaaf8, on 147fd0c, and on 5d80876 (before PR #464) \u2014 while page_ratio (1.25), heading_recall (1.0) and mean_ssim (0.398 -> 0.394) all still match, which points at a changed arXiv truth PDF rather than a converter regression. The stale entry failed the gate on every run that included the paper.",
-  "fidelity_score": 0.827,
+  "_comment": "Fidelity baseline for scripts/fidelity_check.py. Per-paper render metrics + corpus fidelity_score from scripts/visual_test.py. Regenerate with `./scripts/fidelity_gate.sh --update-baseline` (or fidelity_check.py --emit-baseline).",
+  "fidelity_score": 0.84,
   "papers": {
     "2605.22159": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.54,
-      "page_ratio": 1.083,
+      "mean_ssim": 0.539,
+      "page_ratio": 1.042,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.871
+      "word_recall": 0.875
     },
     "2605.22281": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.482,
-      "page_ratio": 0.84,
+      "mean_ssim": 0.495,
+      "page_ratio": 0.88,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.882
+      "word_recall": 0.881
     },
     "2605.22312": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.615,
+      "mean_ssim": 0.624,
       "page_ratio": 0.8,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.957
+      "word_recall": 0.96
     },
     "2605.22315": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.562,
+      "mean_ssim": 0.559,
       "page_ratio": 0.75,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.923
+      "word_recall": 0.924
     },
     "2605.22485": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 0.765,
-      "mean_ssim": 0.612,
+      "mean_ssim": 0.61,
       "page_ratio": 0.962,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.921
+      "word_recall": 0.917
     },
     "2605.22507": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.551,
+      "mean_ssim": 0.554,
       "page_ratio": 1.034,
       "status": "ok",
       "structure_ok": true,
       "word_recall": 0.841
     },
     "2605.22549": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 0.952,
-      "mean_ssim": 0.548,
+      "mean_ssim": 0.55,
       "page_ratio": 1.154,
       "status": "ok",
       "structure_ok": true,
       "word_recall": 0.886
     },
     "2605.22557": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 0.938,
-      "mean_ssim": 0.524,
-      "page_ratio": 0.889,
+      "mean_ssim": 0.519,
+      "page_ratio": 0.852,
       "status": "ok",
       "structure_ok": true,
       "word_recall": 0.894
     },
     "2605.22579": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 0.975,
-      "mean_ssim": 0.48,
+      "mean_ssim": 0.477,
       "page_ratio": 1.08,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.871
+      "word_recall": 0.872
     },
     "2605.22584": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.553,
+      "mean_ssim": 0.554,
       "page_ratio": 1.0,
       "status": "ok",
       "structure_ok": true,
       "word_recall": 0.884
     },
     "2605.22724": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.582,
-      "page_ratio": 1.109,
+      "mean_ssim": 0.58,
+      "page_ratio": 1.087,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.848
+      "word_recall": 0.845
     },
     "2605.22728": {
-      "heading_recall": 0.375,
-      "mean_ssim": 0.598,
-      "page_ratio": 1.273,
+      "byetex_version": "byetex 0.7.4",
+      "heading_recall": 0.875,
+      "mean_ssim": 0.599,
+      "page_ratio": 1.318,
       "status": "structure_failed",
       "structure_ok": false,
-      "word_recall": 0.898
+      "word_recall": 0.897
     },
     "2605.22736": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.548,
-      "page_ratio": 0.962,
+      "mean_ssim": 0.564,
+      "page_ratio": 1.077,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.899
+      "word_recall": 0.895
     },
     "2605.22738": {
-      "heading_recall": 0.925,
-      "mean_ssim": 0.624,
+      "byetex_version": "byetex 0.7.4",
+      "heading_recall": 0.9,
+      "mean_ssim": 0.625,
       "page_ratio": 1.056,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.85
+      "word_recall": 0.849
     },
     "2605.22746": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.591,
+      "mean_ssim": 0.593,
       "page_ratio": 1.167,
       "status": "ok",
       "structure_ok": true,
       "word_recall": 0.902
     },
     "2605.22765": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 0.95,
-      "mean_ssim": 0.623,
+      "mean_ssim": 0.624,
       "page_ratio": 0.979,
       "status": "ok",
       "structure_ok": true,
       "word_recall": 0.728
     },
     "2605.22776": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.575,
+      "mean_ssim": 0.574,
       "page_ratio": 0.846,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.953
+      "word_recall": 0.95
     },
     "2605.22779": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.394,
+      "mean_ssim": 0.397,
       "page_ratio": 1.25,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.872
+      "word_recall": 0.931
     },
     "2605.22786": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 0.974,
-      "mean_ssim": 0.574,
+      "mean_ssim": 0.573,
       "page_ratio": 1.231,
       "status": "ok",
       "structure_ok": true,
       "word_recall": 0.726
     },
     "2605.22794": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
       "mean_ssim": 0.507,
       "page_ratio": 0.917,
@@ -163,22 +183,25 @@
       "word_recall": 0.882
     },
     "2605.22795": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.687,
-      "page_ratio": 1.043,
+      "mean_ssim": 0.684,
+      "page_ratio": 1.022,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.891
+      "word_recall": 0.886
     },
     "2605.22800": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 0.9,
-      "mean_ssim": 0.595,
-      "page_ratio": 0.983,
+      "mean_ssim": 0.596,
+      "page_ratio": 0.966,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.913
+      "word_recall": 0.914
     },
     "2605.22814": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 0.789,
       "mean_ssim": 0.521,
       "page_ratio": 1.062,
@@ -187,6 +210,7 @@
       "word_recall": 0.966
     },
     "2605.22817": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
       "mean_ssim": 0.551,
       "page_ratio": 1.0,
@@ -195,38 +219,43 @@
       "word_recall": 0.862
     },
     "2605.22820": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.572,
+      "mean_ssim": 0.571,
       "page_ratio": 0.955,
       "status": "ok",
       "structure_ok": true,
       "word_recall": 0.868
     },
     "2605.22821": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.583,
+      "mean_ssim": 0.58,
       "page_ratio": 1.269,
       "status": "ok",
       "structure_ok": true,
       "word_recall": 0.745
     },
     "2605.30609": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 0.917,
-      "mean_ssim": 0.607,
-      "page_ratio": 0.75,
+      "mean_ssim": 0.602,
+      "page_ratio": 0.725,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.833
+      "word_recall": 0.835
     },
     "2605.30718": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 0.946,
-      "mean_ssim": 0.598,
+      "mean_ssim": 0.601,
       "page_ratio": 1.061,
       "status": "ok",
       "structure_ok": true,
       "word_recall": 0.951
     },
     "2605.30843": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 0.85,
       "mean_ssim": 0.602,
       "page_ratio": 0.741,
@@ -235,22 +264,25 @@
       "word_recall": 0.883
     },
     "2605.31009": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.491,
-      "page_ratio": 1.233,
+      "mean_ssim": 0.485,
+      "page_ratio": 1.2,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.946
+      "word_recall": 0.951
     },
     "2605.31011": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.499,
+      "mean_ssim": 0.502,
       "page_ratio": 1.087,
       "status": "ok",
       "structure_ok": true,
       "word_recall": 0.961
     },
     "2605.31063": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 0.625,
       "mean_ssim": 0.649,
       "page_ratio": 1.075,
@@ -259,126 +291,142 @@
       "word_recall": 0.953
     },
     "2605.31072": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.583,
-      "page_ratio": 0.772,
+      "mean_ssim": 0.595,
+      "page_ratio": 0.861,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.913
+      "word_recall": 0.923
     },
     "2605.31203": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 0.714,
-      "mean_ssim": 0.481,
-      "page_ratio": 1.071,
+      "mean_ssim": 0.48,
+      "page_ratio": 1.143,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.748
+      "word_recall": 0.848
     },
     "2605.31244": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.476,
+      "mean_ssim": 0.48,
       "page_ratio": 0.9,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.883
+      "word_recall": 0.881
     },
     "2605.31306": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 0.952,
-      "mean_ssim": 0.631,
+      "mean_ssim": 0.63,
       "page_ratio": 0.944,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.865
+      "word_recall": 0.864
     },
     "2605.31345": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 0.944,
-      "mean_ssim": 0.57,
-      "page_ratio": 1.26,
+      "mean_ssim": 0.567,
+      "page_ratio": 1.22,
       "status": "ok",
       "structure_ok": true,
       "word_recall": 0.912
     },
     "2605.31394": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.558,
+      "mean_ssim": 0.559,
       "page_ratio": 0.971,
       "status": "ok",
       "structure_ok": true,
       "word_recall": 0.884
     },
     "2605.31440": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.617,
-      "page_ratio": 1.0,
+      "mean_ssim": 0.611,
+      "page_ratio": 0.968,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.933
+      "word_recall": 0.935
     },
     "2605.31443": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 0.8,
-      "mean_ssim": 0.507,
+      "mean_ssim": 0.508,
       "page_ratio": 0.8,
       "status": "ok",
       "structure_ok": true,
       "word_recall": 0.891
     },
     "2605.31499": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.407,
-      "page_ratio": 1.333,
-      "status": "structure_failed",
-      "structure_ok": false,
-      "word_recall": 0.899
+      "mean_ssim": 0.404,
+      "page_ratio": 1.167,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.928
     },
     "2605.31510": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.431,
+      "mean_ssim": 0.432,
       "page_ratio": 1.0,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.846
+      "word_recall": 0.847
     },
     "2605.31526": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.454,
+      "mean_ssim": 0.455,
       "page_ratio": 1.0,
       "status": "ok",
       "structure_ok": true,
       "word_recall": 0.912
     },
     "2605.31549": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.443,
+      "mean_ssim": 0.439,
       "page_ratio": 1.2,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.927
+      "word_recall": 0.926
     },
     "2605.31561": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.582,
+      "mean_ssim": 0.58,
       "page_ratio": 1.056,
       "status": "ok",
       "structure_ok": true,
       "word_recall": 0.931
     },
     "2605.31563": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.506,
+      "mean_ssim": 0.503,
       "page_ratio": 1.062,
       "status": "ok",
       "structure_ok": true,
       "word_recall": 0.871
     },
     "2605.31564": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.5,
+      "mean_ssim": 0.501,
       "page_ratio": 1.053,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.769
+      "word_recall": 0.767
     },
     "2605.31567": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 0.923,
       "mean_ssim": 0.55,
       "page_ratio": 1.176,
@@ -387,86 +435,97 @@
       "word_recall": 0.963
     },
     "2605.31579": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 0.967,
-      "mean_ssim": 0.57,
+      "mean_ssim": 0.569,
       "page_ratio": 0.771,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.857
+      "word_recall": 0.861
     },
     "2605.31584": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.565,
+      "mean_ssim": 0.566,
       "page_ratio": 0.952,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.847
+      "word_recall": 0.848
     },
     "2605.31586": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.501,
-      "page_ratio": 1.056,
+      "mean_ssim": 0.498,
+      "page_ratio": 1.111,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.737
+      "word_recall": 0.759
     },
     "2605.31596": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.462,
-      "page_ratio": 0.842,
+      "mean_ssim": 0.465,
+      "page_ratio": 0.895,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.755
+      "word_recall": 0.757
     },
     "2605.31597": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.596,
+      "mean_ssim": 0.594,
       "page_ratio": 0.789,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.786
+      "word_recall": 0.785
     },
     "2605.31598": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.572,
-      "page_ratio": 0.788,
+      "mean_ssim": 0.576,
+      "page_ratio": 0.818,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.906
+      "word_recall": 0.905
     },
     "2605.31603": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.54,
-      "page_ratio": 0.912,
+      "mean_ssim": 0.538,
+      "page_ratio": 0.941,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.737
+      "word_recall": 0.746
     },
     "2605.31604": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.536,
+      "mean_ssim": 0.526,
       "page_ratio": 1.0,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.673
+      "word_recall": 0.7
     },
     "2606.12397": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 0.87,
-      "mean_ssim": 0.521,
-      "page_ratio": 0.929,
+      "mean_ssim": 0.53,
+      "page_ratio": 1.0,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.723
+      "word_recall": 0.756
     },
     "2606.12406": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
       "mean_ssim": 0.55,
       "page_ratio": 1.182,
       "status": "ok",
       "structure_ok": true,
-      "word_recall": 0.935
+      "word_recall": 0.934
     },
     "2606.12411": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 0.95,
       "mean_ssim": 0.503,
       "page_ratio": 1.091,
@@ -475,6 +534,7 @@
       "word_recall": 0.873
     },
     "beamer-demo": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
       "mean_ssim": 0.79,
       "page_ratio": 1.125,
@@ -483,30 +543,34 @@
       "word_recall": 0.929
     },
     "ctan-memoir": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": null,
       "mean_ssim": null,
       "page_ratio": null,
-      "status": "truth_render_failed",
+      "status": "typst_compile_failed",
       "structure_ok": false,
       "word_recall": null
     },
     "gh-amberj-latex-book-template": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.775,
-      "page_ratio": 0.312,
+      "mean_ssim": 0.808,
+      "page_ratio": 0.375,
       "status": "structure_failed",
       "structure_ok": false,
-      "word_recall": 0.917
+      "word_recall": 0.92
     },
     "gh-bard-metropolis": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.803,
+      "mean_ssim": 0.802,
       "page_ratio": 0.962,
       "status": "ok",
       "structure_ok": true,
       "word_recall": 0.897
     },
     "gh-calpolycsc-thesis": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": null,
       "mean_ssim": null,
       "page_ratio": null,
@@ -515,14 +579,16 @@
       "word_recall": null
     },
     "gh-dzwaneveld-tudelft-thesis": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
-      "mean_ssim": 0.759,
-      "page_ratio": 0.5,
-      "status": "structure_failed",
-      "structure_ok": false,
-      "word_recall": 0.962
+      "mean_ssim": 0.832,
+      "page_ratio": 0.833,
+      "status": "ok",
+      "structure_ok": true,
+      "word_recall": 0.966
     },
     "gh-fmarotta-kaobook": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": null,
       "mean_ssim": null,
       "page_ratio": null,
@@ -531,6 +597,7 @@
       "word_recall": null
     },
     "gh-klb2-beamer": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
       "mean_ssim": 0.784,
       "page_ratio": 1.0,
@@ -539,14 +606,16 @@
       "word_recall": 0.986
     },
     "gh-maurovm-thesis-template": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": null,
       "mean_ssim": null,
       "page_ratio": null,
-      "status": "truth_render_failed",
+      "status": "typst_compile_failed",
       "structure_ok": false,
       "word_recall": null
     },
     "gh-mtheme-demo": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": 1.0,
       "mean_ssim": 0.779,
       "page_ratio": 1.0,
@@ -555,6 +624,7 @@
       "word_recall": 0.93
     },
     "gh-pelegs-maths-book": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": null,
       "mean_ssim": null,
       "page_ratio": null,
@@ -563,6 +633,7 @@
       "word_recall": null
     },
     "gh-sikatikenmogne-report": {
+      "byetex_version": "byetex 0.7.4",
       "heading_recall": null,
       "mean_ssim": null,
       "page_ratio": null,
