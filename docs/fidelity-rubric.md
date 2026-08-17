@@ -3,7 +3,7 @@
 The canonical map of **rendering-fidelity dimensions**: what "faithful to the LaTeX truth" means
 for each, how to spot a gap in a truth↔typst image pair, where ByeTex stands today, and a severity
 anchor for grading. This doc is **both** the oracle for the visual-grading loop
-(`skills/byetex-visual-grading.md`) **and** the discovery scaffold for new fidelity work.
+(`skills/byetex-visual-grading/SKILL.md`) **and** the discovery scaffold for new fidelity work.
 
 It is deliberately separate from *compilation* (does the `.typ` parse?) and from *conversion-gap
 warnings* (`warnings.json`: unsupported command/env/macro). Those are tracked elsewhere. Fidelity
