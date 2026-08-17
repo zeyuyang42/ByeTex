@@ -8,7 +8,13 @@
 #
 # Compile-rate is gated by scripts/acceptance.sh; this gates RENDER fidelity
 # (the DRIVER) — run it before a release. Extra args pass through to
-# visual_test.py (e.g. `--papers <id> ...`, `--truth-source tectonic`).
+# visual_test.py (e.g. `--all`, `--papers <id> ...`, `--truth-source tectonic`).
+#
+# COVERAGE: pass `--all` for a release gate. Without it visual_test.py measures
+# only the 5 PINNED papers — 7% of a 71-paper baseline — and fidelity_check then
+# SKIPS the corpus-score comparison, because a mean over 5 papers is not
+# comparable to a mean over 71. The bare command is a quick check, not a gate;
+# it prints a PARTIAL RUN warning naming every paper it did not measure.
 #
 # Env:
 #   FIDELITY_BASELINE  baseline JSON (default scripts/fidelity_baseline.json)

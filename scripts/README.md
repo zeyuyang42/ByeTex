@@ -114,11 +114,16 @@ Runs the visual regression pipeline: for each arXiv paper in `corpus/`,
 runs `byetex convert` → `typst compile` → rasterizes both PDFs → builds a
 side-by-side composite PNG for agent visual grading.
 
-The default paper set is the 5 pinned IDs from `corpus/manifest.json`.
-Run `corpus_harvest.py --pinned` first to ensure the payloads are present.
+The default paper set is the 5 pinned IDs from `corpus/manifest.json` — a
+handful for quick iteration, **not** the corpus. `--all` selects every corpus
+paper (71), which is what a release gate needs: the corpus `fidelity_score` is a
+mean over the papers measured, so it is only comparable against the baseline
+when the run covers the same population. Run `corpus_harvest.py --pinned` first
+to ensure the payloads are present.
 
 ```bash
-uv run --with requests --with Pillow python scripts/visual_test.py
+uv run --with requests --with Pillow python scripts/visual_test.py            # 5 pinned
+uv run --with requests --with Pillow python scripts/visual_test.py --all      # all 71
 uv run --with requests --with Pillow python scripts/visual_test.py --papers 2605.22507
 uv run --with requests --with Pillow python scripts/visual_test.py --skip-existing
 ```

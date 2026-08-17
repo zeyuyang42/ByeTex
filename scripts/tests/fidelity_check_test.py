@@ -102,6 +102,24 @@ check(
     "unmeasured baseline papers don't make a full run look partial",
 )
 
+# ── a PARTIAL run must NAME the baseline papers it did not measure ───────────
+# The gate's default is the 5 pinned papers while the baseline holds 71, so the
+# documented pre-release command checks 5/71 and skips the corpus-score
+# comparison entirely (covers_whole_corpus is false). That is defensible only if
+# it is IMPOSSIBLE to miss: a gate that silently covers 7% of the corpus reads
+# exactly like a gate that covers all of it.
+unchecked = fc.unchecked_papers(partial, BASELINE)
+check(unchecked == ["a", "b"],
+      f"a partial run names the baseline papers it did NOT measure, got {unchecked}")
+check(fc.unchecked_papers(full_good, BASELINE) == [],
+      "a full run has nothing unchecked")
+check(fc.unchecked_papers(full_bad, baseline_with_unmeasured) == [],
+      "a paper with no truth render is not counted as 'unchecked' — it is unmeasurable, "
+      "which the UNMEASURED block reports separately")
+check(fc.covers_whole_corpus(partial, BASELINE) is False
+      and fc.covers_whole_corpus(full_good, BASELINE) is True,
+      "covers_whole_corpus stays consistent with unchecked_papers")
+
 print()
 if fails:
     print(f"{len(fails)} FAILED")
