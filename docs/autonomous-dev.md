@@ -250,7 +250,14 @@ uv run --with pymupdf python scripts/layout_loop.py triage <paper_id> --record "
 ```
 
 `record` recomputes the tier for one paper from artifacts already on disk — a fast
-recheck after an emitter fix, with no corpus run. `triage` appends a routed record
+recheck after an emitter fix, with no corpus run.
+
+There are three layout tiers, not four. A fourth — anchor drift via SyncTeX, i.e.
+where a `\label`ed element *lands* — was measured and rejected: tectonic 0.16.9
+emits **one** SyncTeX box for a document with three labels, and 88% of its file
+entries are unnamed, so essentially every label is unattributable. See
+`docs/layout-t3-synctex-not-viable.md`, including the content-anchored design that
+would work instead. `triage` appends a routed record
 to `docs/layout-backlog.jsonl` and prints a bare `DRIFT` | `WITHIN_FLOOR`.
 
 The record carries `drift_class`, `suspected_site` and `routing_reason`. Treat the
