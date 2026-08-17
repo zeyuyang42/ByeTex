@@ -119,6 +119,24 @@ check(fc.unchecked_papers(full_bad, baseline_with_unmeasured) == [],
 check(fc.covers_whole_corpus(partial, BASELINE) is False
       and fc.covers_whole_corpus(full_good, BASELINE) is True,
       "covers_whole_corpus stays consistent with unchecked_papers")
+# ── the baseline's VINTAGE must be visible ───────────────────────────────────
+# index.json accumulates and the gate measures 5 papers by default, so a
+# committed baseline mixes measurements taken at different code versions. That
+# is how two papers sat in the baseline as `truth_render_failed` while both had
+# in fact been failing to COMPILE since before the baseline file was written.
+mixed = {"papers": {
+    "a": {"byetex_version": "byetex 0.7.3"},
+    "b": {"byetex_version": "byetex 0.7.3"},
+    "c": {"byetex_version": "byetex 0.6.1"},
+    "d": {},  # predates stamping
+}}
+v = fc.baseline_vintages(mixed)
+check(len(v) == 3, f"baseline_vintages counts the distinct versions present, got {list(v)}")
+check(v.get("byetex 0.7.3") == ["a", "b"], f"...and names the papers per version, got {v}")
+check(any("pre-dates" in k for k in v),
+      f"an unstamped entry is reported as unknown vintage, not silently grouped, got {list(v)}")
+check(len(fc.baseline_vintages({"papers": {"a": {"byetex_version": "x"}}})) == 1,
+      "a single-vintage baseline reports exactly one version (no false alarm)")
 
 print()
 if fails:

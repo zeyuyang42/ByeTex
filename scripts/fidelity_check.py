@@ -39,6 +39,12 @@ BASELINE_FIELDS = (
     "heading_recall",
     "page_ratio",
     "mean_ssim",
+    # Vintage, not a gated metric. index.json ACCUMULATES across runs and the
+    # gate's default measures 5 papers, so a committed baseline is a PATCHWORK
+    # of measurements taken at different code versions rather than a snapshot of
+    # one. Carrying the version makes that visible; `null` means the entry
+    # predates this field and its true vintage is unknown.
+    "byetex_version",
 )
 
 
@@ -97,6 +103,15 @@ def unchecked_papers(current, baseline):
 def covers_whole_corpus(current, baseline):
     """True when `current` measured every paper the baseline has metrics for."""
     return not unchecked_papers(current, baseline)
+
+
+def baseline_vintages(baseline):
+    """{version: [paper_ids]} over the baseline — how many code versions it mixes."""
+    out = {}
+    for pid, base in baseline.get("papers", {}).items():
+        out.setdefault(base.get("byetex_version") or "unknown (pre-dates stamping)",
+                       []).append(pid)
+    return {v: sorted(ids) for v, ids in sorted(out.items())}
 
 
 def evaluate(current, baseline, score_tol, recall_tol):
@@ -206,6 +221,15 @@ def main(argv=None):
         print(f"  UNMEASURED (not gated — no truth render, {len(unmeasured)}):")
         for pid in unmeasured:
             print(f"    ? {pid}")
+
+    vintages = baseline_vintages(baseline)
+    if len(vintages) > 1:
+        print(f"  ⚠ MIXED-VINTAGE BASELINE — entries come from {len(vintages)} different "
+              "byetex versions, so 'regression vs baseline' compares against an "
+              "inconsistent reference:")
+        for ver, ids in vintages.items():
+            print(f"    {ver}: {len(ids)} paper(s)")
+        print("    Fix with a single whole-corpus `--all` run, then --update-baseline.")
 
     if improvements:
         print("  IMPROVED (consider `--update-baseline`):")
