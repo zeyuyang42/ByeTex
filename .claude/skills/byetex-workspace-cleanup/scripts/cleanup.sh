@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
-# ByeTex post-session workspace cleanup — audit by default, delete only on --apply.
+# ByeTex post-session workspace cleanup — audit by default; --apply MOVES to trash.
 #
-# Reclaims build/render artifacts that accumulate during a long dev session. Every
-# category here either regenerates on the next harness run, rebuilds from source,
-# or is re-downloadable. Nothing irreplaceable is ever a candidate.
+# Nothing here ever deletes. `--apply` moves candidates into
+# `.cleanup-trash/<timestamp>/`, preserving their relative paths, and then
+# verifies that everything it moved actually arrived. Emptying that folder is a
+# human decision, made after looking at it — which is the whole point: a mistake
+# is recoverable right up until you run the `rm` yourself.
 #
-#   ./cleanup.sh                 # audit: sizes + safety checks, deletes NOTHING
-#   ./cleanup.sh --apply         # delete, after the caller has confirmed
+#   ./cleanup.sh                 # audit: sizes + safety checks, moves NOTHING
+#   ./cleanup.sh --apply         # move to trash, after the caller has confirmed
 #   ./cleanup.sh --only a,b      # restrict to categories
-#   ./cleanup.sh --verify        # post-cleanup integrity check only
+#   ./cleanup.sh --verify        # integrity check only
+#   ./cleanup.sh --restore <ts>  # put a trash batch back where it came from
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && git rev-parse --show-toplevel 2>/dev/null)"
@@ -16,12 +19,14 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && git rev-parse --show-topleve
 cd "$REPO_ROOT" || exit 1
 [[ -f corpus/manifest.json ]] || { echo "error: $REPO_ROOT is not the ByeTex repo" >&2; exit 1; }
 
-APPLY=false; ONLY=""; VERIFY_ONLY=false
+TRASH_ROOT="$REPO_ROOT/.cleanup-trash"
+APPLY=false; ONLY=""; VERIFY_ONLY=false; RESTORE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --apply)  APPLY=true; shift ;;
-    --only)   ONLY="$2"; shift 2 ;;
-    --verify) VERIFY_ONLY=true; shift ;;
+    --apply)   APPLY=true; shift ;;
+    --only)    ONLY="$2"; shift 2 ;;
+    --verify)  VERIFY_ONLY=true; shift ;;
+    --restore) RESTORE="$2"; shift 2 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
@@ -30,18 +35,17 @@ wants() { [[ -z "$ONLY" ]] || [[ ",$ONLY," == *",$1,"* ]]; }
 sz()    { du -sh "$@" 2>/dev/null | tail -1 | cut -f1; }
 tot()   { du -shc "$@" 2>/dev/null | tail -1 | cut -f1; }
 
-# ── things that must never be deleted ───────────────────────────────────────
-# corpus/<id>/source  pristine inputs; some papers are `"source": "local"`,
-#                     hand-authored and NOT re-downloadable (see beamer-demo)
-# tests/visual/*/truth.pdf  tectonic+biber renders, expensive and reused as the
-#                     comparison truth on every run
-# .truth-deps         pinned biber 2.17 + fonts that produce those renders
-# .git                obviously
-NEVER=(corpus/*/source "tests/visual/*/truth.pdf" .truth-deps .git)
+# ── things that are never candidates ────────────────────────────────────────
+# corpus/<id>/source        pristine inputs; some papers are `"source": "local"`,
+#                           hand-authored and NOT re-downloadable
+# tests/visual/*/truth.pdf  tectonic+biber renders, expensive, reused as the
+#                           comparison truth on every fidelity run
+# .truth-deps               pinned biber 2.17 + fonts that produce those renders
+# .git                      obviously
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Integrity check — run before AND after; a cleanup that changes these numbers
-# has destroyed something it should not have.
+# Integrity — the same numbers before and after. If they move, something left
+# that should not have.
 # ═══════════════════════════════════════════════════════════════════════════
 integrity() {
   local truth corpus_dirs missing
@@ -65,21 +69,54 @@ PY
   echo "$truth:$corpus_dirs:$missing"
 }
 
-if $VERIFY_ONLY; then
-  echo "── integrity ──"; integrity >/dev/null; integrity | head -4
-  echo "── harness ──"
-  [[ -x target/release/byetex ]] && ./target/release/byetex --version || echo "  no release binary (rebuild with cargo build --release)"
+show_trash() {
+  [[ -d "$TRASH_ROOT" ]] || return 0
+  local batches; batches=$(find "$TRASH_ROOT" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort)
+  [[ -z "$batches" ]] && return 0
+  echo "── trash awaiting YOUR review (nothing here has been deleted) ──"
+  while IFS= read -r b; do
+    printf "  %-24s %-8s %s item(s)\n" "$(basename "$b")" "$(sz "$b")" \
+      "$(wc -l < "$b/MANIFEST.txt" 2>/dev/null | tr -d ' ')"
+  done <<< "$batches"
+  printf "  total held: %s\n" "$(sz "$TRASH_ROOT")"
+}
+
+# ── restore ─────────────────────────────────────────────────────────────────
+if [[ -n "$RESTORE" ]]; then
+  B="$TRASH_ROOT/$RESTORE"
+  [[ -d "$B" ]] || { echo "no such trash batch: $B" >&2; exit 1; }
+  n=0
+  while IFS=$'\t' read -r rel orig; do
+    [[ -z "$rel" ]] && continue
+    src="$B/$rel"
+    # Fall back to a repo-relative path for batches written before origins were
+    # recorded, so an older trash batch is still restorable.
+    dest="${orig:-$REPO_ROOT/$rel}"
+    [[ -e "$src" ]] || continue
+    mkdir -p "$(dirname "$dest")"
+    if mv "$src" "$dest"; then echo "  restored $dest"; n=$((n+1)); fi
+  done < "$B/MANIFEST.txt"
+  echo "restored $n item(s) from $RESTORE"
+  echo "note: worktrees come back as plain directories — re-register with \`git worktree add\`."
   exit 0
 fi
 
-echo "════ ByeTex workspace cleanup — $($APPLY && echo 'APPLY (deleting)' || echo 'AUDIT (no deletions)') ════"
+if $VERIFY_ONLY; then
+  echo "── integrity ──"; integrity | head -4
+  echo "── harness ──"
+  [[ -x target/release/byetex ]] && ./target/release/byetex --version || echo "  no release binary (cargo build --release)"
+  echo; show_trash
+  exit 0
+fi
+
+echo "════ ByeTex workspace cleanup — $($APPLY && echo 'APPLY (moving to trash)' || echo 'AUDIT (nothing moved)') ════"
 echo "repo: $REPO_ROOT   total: $(sz .)"
 echo
 echo "── integrity BEFORE ──"
 BEFORE="$(integrity | tail -1)"; integrity | head -4
 echo
 
-CANDIDATES=()   # paths to remove
+CANDIDATES=()
 plan() {        # <category> <label> <paths...>
   local cat="$1" label="$2"; shift 2
   wants "$cat" || return 0
@@ -91,8 +128,8 @@ plan() {        # <category> <label> <paths...>
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 1. WORKTREES — the biggest win (22G in the session that motivated this skill),
-#    and the only category that can lose work, so it is gated hardest.
+# 1. WORKTREES — the biggest win, and the only category that can hold unsaved
+#    work, so it is gated hardest.
 # ═══════════════════════════════════════════════════════════════════════════
 WORKTREE_SAFE=(); WORKTREE_BLOCKED=()
 if wants worktrees; then
@@ -107,9 +144,8 @@ if wants worktrees; then
     [[ "$dirty" != 0 ]] && reason="$dirty uncommitted change(s)"
     [[ "$untracked" != 0 ]] && reason="${reason:+$reason; }$untracked untracked file(s)"
     if [[ -z "$reason" && "$br" != "HEAD" ]]; then
-      # Merged? Either the tip is an ancestor of main, or (squash-merged) the
-      # files it touched are byte-identical in main. A squash merge rewrites the
-      # commit, so ancestry alone would wrongly flag it as unmerged.
+      # A squash merge rewrites the commit, so the branch tip is NOT an ancestor
+      # of main even though the work landed. Fall back to comparing content.
       if ! git merge-base --is-ancestor "$br" origin/main 2>/dev/null; then
         files=$(git diff --name-only "origin/main...$br" 2>/dev/null)
         if [[ -n "$files" ]] && [[ -n "$(git diff origin/main "$br" -- $files 2>/dev/null)" ]]; then
@@ -127,26 +163,21 @@ if [[ ${#WORKTREE_SAFE[@]} -gt 0 ]]; then
   printf "  %-16s %-8s %s\n" "worktrees" "$(tot "${WORKTREE_SAFE[@]}")" "${#WORKTREE_SAFE[@]} merged worktree(s), no uncommitted work"
 fi
 
-# 2. Rasters/composites/converted PDFs — visual_test.py rewrites all of these on
-#    every run. truth.pdf is deliberately excluded (see NEVER).
+# visual_test.py rewrites all of these on every run. truth.pdf is excluded.
 plan visual-renders "page rasters, composites, converted PDFs (truth.pdf KEPT)" \
   tests/visual/*/pages tests/visual/*/composite.png tests/visual/*/typst.pdf
-# 3. Build artifacts. target/release stays — the harness shells out to it.
+# target/release stays — the harness shells out to that binary.
 plan target-debug "cargo test debug artifacts" target/debug
 plan target-cross "cross-compile targets (release-time only)" \
   target/aarch64-apple-darwin target/x86_64-apple-darwin \
   target/x86_64-pc-windows-gnu target/aarch64-unknown-linux-musl \
   target/x86_64-unknown-linux-musl
-# 4. Scratch that accumulates and is never read again.
 plan repo-tmp     "repo scratch dir" tmp
 plan corpus-out   "generated conversion output" corpus/_out
 plan claude-scratch "stale review/grading scratch" .claude/review .claude/review-* .claude/scratch_*
-# macOS drops these into any directory Finder touches; they are pure noise and
-# regenerate on their own, so there is never a reason to keep one.
 DS_FILES=()
-while IFS= read -r f; do DS_FILES+=("$f"); done < <(find . -name .DS_Store -not -path './.git/*' 2>/dev/null)
-plan ds-store "macOS .DS_Store files" ${DS_FILES[@]+"${DS_FILES[@]}"}
-# 5. Local copies of published release binaries.
+while IFS= read -r f; do DS_FILES+=("$f"); done < <(find . -name .DS_Store -not -path './.git/*' -not -path './.cleanup-trash/*' 2>/dev/null)
+plan ds-store     "macOS .DS_Store files" ${DS_FILES[@]+"${DS_FILES[@]}"}
 plan dist         "built release binaries (re-downloadable from GitHub releases)" dist
 
 if [[ ${#CANDIDATES[@]} -eq 0 && ${#WORKTREE_SAFE[@]} -eq 0 ]]; then
@@ -159,48 +190,98 @@ if [[ ${#WORKTREE_BLOCKED[@]} -gt 0 ]]; then
   for b in "${WORKTREE_BLOCKED[@]}"; do echo "  ! $b"; done
 fi
 
+echo
+show_trash
+
 if ! $APPLY; then
   echo
-  echo "AUDIT ONLY — nothing deleted. Re-run with --apply once the user has confirmed."
+  echo "AUDIT ONLY — nothing moved. Re-run with --apply once the user has confirmed."
   exit 0
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════
-# APPLY
+# APPLY — move, never delete
 # ═══════════════════════════════════════════════════════════════════════════
+STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+TRASH="$TRASH_ROOT/$STAMP"
+mkdir -p "$TRASH" || { echo "cannot create $TRASH" >&2; exit 1; }
+: > "$TRASH/MANIFEST.txt"
+MOVED=0; FAILED=0
+
+stash() {  # <path> [rel-override]
+  local src="$1" rel="${2:-}" dest orig
+  [[ -e "$src" || -L "$src" ]] || return 0
+  [[ -z "$rel" ]] && rel="${src#./}"
+  # Record where it CAME FROM, not just where it landed. Worktrees live outside
+  # the repo, so a trash-relative path alone would restore them into the repo
+  # instead of back to their sibling directory.
+  orig="$(cd "$(dirname "$src")" 2>/dev/null && pwd)/$(basename "$src")"
+  dest="$TRASH/$rel"
+  mkdir -p "$(dirname "$dest")"
+  if mv "$src" "$dest" 2>/dev/null; then
+    printf '%s\t%s\n' "$rel" "$orig" >> "$TRASH/MANIFEST.txt"; MOVED=$((MOVED+1))
+  else
+    echo "  FAILED to move $src" >&2; FAILED=$((FAILED+1))
+  fi
+}
+
 echo
-echo "── applying ──"
-# Worktrees first, and their symlinks BEFORE the worktree itself: this repo's
-# worktree workflow symlinks corpus/ and tests/visual/ INTO the main checkout, so
-# the links point at the only copies of the corpus sources and truth renders.
-# Unlinking explicitly makes that safe by construction rather than by trusting
-# how a given rm implementation treats symlinks during recursion.
+echo "── moving to $TRASH ──"
+# Worktrees first. Their symlinks point INTO this checkout — at the only copies
+# of the corpus sources and truth renders — so unlink them before the directory
+# moves. A relative symlink that travels to a new depth would otherwise resolve
+# somewhere unintended.
 for wt in ${WORKTREE_SAFE[@]+"${WORKTREE_SAFE[@]}"}; do
   n=$(find "$wt" -type l 2>/dev/null | wc -l | tr -d ' ')
   [[ "$n" != 0 ]] && { find "$wt" -type l -delete 2>/dev/null; echo "  unlinked $n symlink(s) in $(basename "$wt")"; }
-  git worktree remove --force "$wt" 2>/dev/null && echo "  removed worktree $(basename "$wt")" \
-    || echo "  FAILED to remove $(basename "$wt")"
+  stash "$wt" "_worktrees/$(basename "$wt")"
 done
-[[ ${#WORKTREE_SAFE[@]} -gt 0 ]] && git worktree prune
+if [[ ${#WORKTREE_SAFE[@]} -gt 0 ]]; then
+  git worktree prune   # their directories are gone from the registered location
+fi
 
-for p in ${CANDIDATES[@]+"${CANDIDATES[@]}"}; do rm -rf "$p"; done
-[[ ${#CANDIDATES[@]} -gt 0 ]] && echo "  removed ${#CANDIDATES[@]} artifact path(s)"
+for p in ${CANDIDATES[@]+"${CANDIDATES[@]}"}; do stash "$p"; done
 
 if wants git-refs; then
   git fetch --prune -q origin 2>/dev/null
   for b in $(git branch --merged origin/main --format='%(refname:short)' 2>/dev/null | grep -v '^main$'); do
-    git branch -d "$b" >/dev/null 2>&1 && echo "  deleted merged branch $b"
+    git branch -d "$b" >/dev/null 2>&1 && echo "  deleted merged branch $b (recoverable via reflog / origin)"
   done
+fi
+
+echo "  moved $MOVED item(s)$([[ $FAILED != 0 ]] && echo ", $FAILED FAILED")"
+
+# ── did everything actually arrive? ─────────────────────────────────────────
+echo
+echo "── verifying the move ──"
+LOST=0
+while IFS=$'\t' read -r rel _orig; do
+  [[ -z "$rel" ]] && continue
+  [[ -e "$TRASH/$rel" ]] || { echo "  MISSING FROM TRASH: $rel" >&2; LOST=$((LOST+1)); }
+done < "$TRASH/MANIFEST.txt"
+if [[ "$LOST" == 0 ]]; then
+  echo "  all $MOVED item(s) present in the trash batch — nothing was deleted"
+else
+  echo "  $LOST item(s) recorded but NOT found in trash — investigate before continuing" >&2
 fi
 
 echo
 echo "── integrity AFTER ──"
 AFTER="$(integrity | tail -1)"; integrity | head -4
 echo
-if [[ "$BEFORE" == "$AFTER" ]]; then
-  echo "OK: irreplaceable data unchanged. total now $(sz .)"
-else
-  echo "STOP: integrity numbers CHANGED ($BEFORE -> $AFTER). Something was destroyed;" >&2
-  echo "      investigate before running anything else." >&2
+if [[ "$BEFORE" != "$AFTER" ]]; then
+  echo "STOP: integrity numbers CHANGED ($BEFORE -> $AFTER). Restore with:" >&2
+  echo "      $0 --restore $STAMP" >&2
   exit 1
 fi
+if [[ "$LOST" != 0 || "$FAILED" != 0 ]]; then exit 1; fi
+
+echo "OK: irreplaceable data unchanged."
+echo
+echo "════ NOTHING WAS DELETED ════"
+echo "  held in: $TRASH  ($(sz "$TRASH"))"
+echo "  repo now: $(sz .)   (space is reclaimed only once you empty the trash)"
+echo
+echo "  Review it, then delete it YOURSELF when you are satisfied:"
+echo "      rm -rf '$TRASH'"
+echo "  Changed your mind?  $0 --restore $STAMP"

@@ -1,6 +1,6 @@
 ---
 name: byetex-workspace-cleanup
-description: Reclaim disk in the ByeTex repo by removing build and render artifacts left over from a dev session — git worktrees, target/debug, cross-compile targets, tests/visual rasters and composites, corpus/_out, tmp/, stale review scratch, dist/, and merged branches. Use this whenever the user asks to clean up, free disk, tidy the workspace, remove worktrees, or says a session is finished and wants the leftovers gone — and proactively at the end of a long session that created worktrees or ran corpus/fidelity sweeps, since those routinely leave 20G+ behind. Always presents an audit and waits for explicit confirmation before deleting anything.
+description: Reclaim disk in the ByeTex repo by clearing out build and render artifacts left over from a dev session — git worktrees, target/debug, cross-compile targets, tests/visual rasters and composites, corpus/_out, tmp/, stale review scratch, dist/, and merged branches. Use this whenever the user asks to clean up, free disk, tidy the workspace, remove worktrees, or says a session is finished and wants the leftovers gone — and proactively at the end of a long session that created worktrees or ran corpus/fidelity sweeps, since those routinely leave 20G+ behind. Never deletes: it moves candidates to a .cleanup-trash/ folder and asks the user to empty it themselves. Always presents an audit and waits for explicit confirmation first.
 ---
 
 # ByeTex workspace cleanup
@@ -24,25 +24,43 @@ be regenerated**. Two things in this repo look like caches and are not:
 Everything else in the candidate list either regenerates on the next harness run,
 rebuilds from source, or is re-downloadable.
 
-## How to run it
+## Nothing here deletes
 
-The bundled script audits by default and deletes only with `--apply`:
+`--apply` **moves** candidates into `.cleanup-trash/<timestamp>/` and then verifies
+that every item it moved actually arrived. It never runs `rm`. Emptying the trash
+is the user's own action, taken after they have looked at it.
+
+That is deliberate. A cleanup script that deletes is one bad glob away from
+destroying something irreplaceable — which is exactly how `corpus/beamer-demo/`
+was lost, and it was recoverable only by luck. Moving instead makes every mistake
+reversible right up until a human types `rm` themselves.
 
 ```bash
 .claude/skills/byetex-workspace-cleanup/scripts/cleanup.sh              # audit
-.claude/skills/byetex-workspace-cleanup/scripts/cleanup.sh --apply      # delete
+.claude/skills/byetex-workspace-cleanup/scripts/cleanup.sh --apply      # move to trash
 .claude/skills/byetex-workspace-cleanup/scripts/cleanup.sh --only worktrees,target-debug
-.claude/skills/byetex-workspace-cleanup/scripts/cleanup.sh --verify     # integrity only
+.claude/skills/byetex-workspace-cleanup/scripts/cleanup.sh --verify     # integrity + trash status
+.claude/skills/byetex-workspace-cleanup/scripts/cleanup.sh --restore <timestamp>
 ```
 
-**Always show the audit and get explicit confirmation before `--apply`.** The user
-asked for this specifically, and it is the right default anyway: the audit is where
-you find out that a worktree has uncommitted work, or that a category is bigger or
-smaller than expected. Present the categories with their sizes, say what each one
-costs to regenerate, and let the user pick — they may well want `target/debug` gone
-but the cross-compile targets kept, or vice versa.
+The manifest records where each item came from, so `--restore` puts things back at
+their original paths — including worktrees, which live outside the repo.
 
-Report what came back. "9.4G → 943M" tells the user more than "cleaned up".
+## The routine
+
+1. **Audit first, always.** Show the categories with their sizes and say what each
+   costs to regenerate. This is where you find out a worktree has uncommitted work
+   or a category is far bigger than expected. Let the user choose — they may want
+   `target/debug` gone but the cross-compile targets kept.
+2. **Get explicit confirmation**, then run `--apply`.
+3. **Report the verification**: items moved, all present in trash, integrity
+   numbers unchanged.
+4. **Ask the user to empty the trash themselves.** Give them the exact path and
+   command; do not run it for them, and do not offer to. Space is only reclaimed
+   at that point, so say so plainly rather than reporting a saving that has not
+   happened yet: "48M held in trash, freed once you delete it."
+
+Report real numbers. "9.4G → 943M" tells the user more than "cleaned up".
 
 ## Categories
 
@@ -69,7 +87,8 @@ workflow makes them unusually dangerous to delete casually:
 - **Symlinks point inward.** Worktrees symlink `corpus/` and `tests/visual/` into
   the main checkout, so a worktree directory contains links to the only copies of
   the corpus sources and truth renders. The script unlinks them explicitly before
-  removing the worktree rather than trusting how `rm` treats symlinks mid-recursion.
+  the directory moves — a relative symlink that travels to a new depth would
+  otherwise resolve somewhere unintended once it is sitting in the trash.
 - **A squash-merged branch is not an ancestor of main.** Checking ancestry alone
   reports it as unmerged. The script falls back to comparing the files the branch
   touched against `origin/main`; identical content means the work landed.
@@ -87,8 +106,9 @@ from disk (must be 0). Beyond that, confirm the harness still works:
 ./target/release/byetex --version   # binary intact
 ```
 
-If `--apply` reports changed integrity numbers, stop and investigate before running
-anything else — something irreplaceable was removed.
+If `--apply` reports changed integrity numbers it exits non-zero and prints the
+`--restore` command. Nothing is gone at that point — put the batch back, then work
+out which pattern was too broad before running it again.
 
 ## Related maintenance
 
