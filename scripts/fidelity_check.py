@@ -32,7 +32,48 @@ import sys
 
 # Fields kept in the committed baseline: enough to gate + promote, and NO
 # machine-specific absolute paths (the index.json `composite` field is dropped).
-BASELINE_FIELDS = (
+# ── the gated set: what a regression here FAILS the build ───────────────────
+GATED_FIELDS = (
+    "status",
+    "structure_ok",
+    "word_recall",
+    "heading_recall",
+    "page_ratio",
+    "mean_ssim",
+)
+
+# ── the layout tier: measured, baselined, REPORTED — not gated ──────────────
+#
+# "Driver first, gate later." A tier that can fail a build on day one gets
+# `|| true`-d within a week — Chromium demoted its layout-tree dumps for exactly
+# that reason. So `--gate-layout` is EMPTY by default and properties are promoted
+# one at a time, each with measured floors behind it.
+#
+# direction:
+#   "down"       a drop is drift            (recalls)
+#   "up"         any rise is drift          (relational/categorical counts)
+#   "toward_one" |x - 1| growing is drift   (ratios, two-sided)
+#
+# `toward_one` is the Gecko rule and it matters: a one-sided threshold lets a fix
+# overshoot past the target into the opposite error and never be noticed, and it
+# hides the improvement that should force a re-baseline.
+LAYOUT_TOLERANCES = {
+    "anchor_recall":                 ("down",       0.05),
+    "ordered_recall":                ("down",       0.05),
+    "ordered_precision":             ("down",       0.05),
+    "layout_column_mismatch_frac":   ("up",         0.00),   # relational — no epsilon
+    "layout_text_width_ratio":       ("toward_one", 0.05),
+    "layout_leading_ratio":          ("toward_one", 0.10),
+    "layout_left_margin_ratio":      ("toward_one", 0.08),
+    "layout_top_margin_ratio":       ("toward_one", 0.08),
+    "layout_body_font_ratio":        ("toward_one", 0.06),
+    "layout_page_trim_ratio":        ("toward_one", 0.02),
+    "layout_small_tier_share_delta": ("up",         0.03),
+    "layout_ink_ratio":              ("toward_one", 0.15),
+}
+REPORTED_FIELDS = tuple(LAYOUT_TOLERANCES)
+
+BASELINE_FIELDS_LEGACY = (
     "status",
     "structure_ok",
     "word_recall",
@@ -46,6 +87,52 @@ BASELINE_FIELDS = (
     # predates this field and its true vintage is unknown.
     "byetex_version",
 )
+
+# Persistence set: the gated metrics, the reported tier, and vintage.
+BASELINE_FIELDS = tuple(dict.fromkeys(BASELINE_FIELDS_LEGACY + REPORTED_FIELDS))
+
+
+def _deviation(field, value):
+    """Distance from "no drift", per the field's declared direction."""
+    direction, _ = LAYOUT_TOLERANCES[field]
+    if direction == "toward_one":
+        return abs(value - 1.0)
+    if direction == "down":
+        return max(0.0, 1.0 - value)
+    return abs(value)  # "up"
+
+
+def evaluate_layout(current, baseline, gated, tols):
+    """-> (regressions, notices, improvements).
+
+    Only fields named in `gated` can produce a REGRESSION; everything else is a
+    NOTICE. That is the whole design: promotion is per-property and one PR at a
+    time, not a global switch, so a gate is green on the day it is turned on and
+    fires only on NEW breakage.
+
+    A field that is None on either side is SKIPPED — never counted as passing and
+    never as failing. Until a baseline is re-emitted, every field here is absent
+    on the baseline side, and reporting that as a mass regression would bury the
+    tier before it said anything true.
+    """
+    regressions, notices, improvements = [], [], []
+    cur_papers = current.get("papers", {})
+    for pid, base in sorted(baseline.get("papers", {}).items()):
+        cur = cur_papers.get(pid)
+        if cur is None:
+            continue
+        for field, (direction, tol) in sorted(tols.items()):
+            b, c = base.get(field), cur.get(field)
+            if b is None or c is None:
+                continue
+            db, dc = _deviation(field, b), _deviation(field, c)
+            if dc > db + tol:
+                msg = (f"{pid}: {field} {c:.3f} vs baseline {b:.3f} "
+                       f"({direction}, tol {tol})")
+                (regressions if field in gated else notices).append(msg)
+            elif dc < db - tol:
+                improvements.append(f"{pid}: {field} {c:.3f} vs baseline {b:.3f} (improved)")
+    return regressions, notices, improvements
 
 
 def load(path):
@@ -169,6 +256,14 @@ def main(argv=None):
         metavar="PATH",
         help="instead of gating, write a trimmed baseline from --current to PATH",
     )
+    ap.add_argument(
+        "--gate-layout", default="", metavar="FIELD[,FIELD...]",
+        help="layout-tier properties that may FAIL the build. Default: EMPTY — the "
+             "tier reports only. `all` promotes everything (escape hatch). Promote "
+             "one property per PR, each backed by measured floors.",
+    )
+    ap.add_argument("--max-notices", type=int, default=10, metavar="N",
+                    help="cap on reported layout notices (default 10)")
     ap.add_argument("--score-tol", type=float, default=0.02)
     ap.add_argument("--recall-tol", type=float, default=0.05)
     args = ap.parse_args(argv)
@@ -235,8 +330,41 @@ def main(argv=None):
         print("  IMPROVED (consider `--update-baseline`):")
         for i in improvements:
             print(f"    + {i}")
-    if regressions:
+    # ── layout tier ─────────────────────────────────────────────────────────
+    gated = (set(LAYOUT_TOLERANCES) if args.gate_layout.strip() == "all"
+             else {f.strip() for f in args.gate_layout.split(",") if f.strip()})
+    unknown = gated - set(LAYOUT_TOLERANCES)
+    if unknown:
+        ap.error(f"--gate-layout: unknown field(s) {sorted(unknown)}; "
+                 f"choose from {sorted(LAYOUT_TOLERANCES)} or `all`")
+    l_regs, l_notices, l_imps = evaluate_layout(current, baseline, gated, LAYOUT_TOLERANCES)
+
+    measured = sum(1 for p in current.get("papers", {}).values()
+                   if p.get("anchor_recall") is not None or p.get("ordered_recall") is not None)
+    n_cur = len(current.get("papers", {}))
+    if n_cur and measured * 2 < n_cur:
+        # A blind tier must be LOUD about being blind. Silently returning None on
+        # every paper is indistinguishable from "nothing to report".
+        print(f"  LAYOUT: not computed on {n_cur - measured}/{n_cur} papers "
+              "— re-run visual_test.py (and `uv run --with pymupdf` for the "
+              "geometric profile).")
+    if l_notices or l_regs:
+        label = ("LAYOUT DRIFT (report-only — promote with --gate-layout)"
+                 if not gated else f"LAYOUT DRIFT (gated: {', '.join(sorted(gated))})")
+        print(f"  {label}:")
+        for n in l_notices[:args.max_notices]:
+            print(f"    ~ {n}")
+        if len(l_notices) > args.max_notices:
+            print(f"    … {len(l_notices) - args.max_notices} more")
+    if l_imps:
+        print(f"  LAYOUT IMPROVED ({len(l_imps)}; consider `--update-baseline`):")
+        for i in l_imps[:args.max_notices]:
+            print(f"    + {i}")
+
+    if regressions or l_regs:
         print("  REGRESSION:", file=sys.stderr)
+        for r in l_regs:
+            print(f"    - {r}", file=sys.stderr)
         for r in regressions:
             print(f"    - {r}", file=sys.stderr)
         print("FAIL: render fidelity regression.", file=sys.stderr)

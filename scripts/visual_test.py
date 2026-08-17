@@ -36,6 +36,9 @@ from pathlib import Path
 import requests
 from PIL import Image, ImageDraw
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import layout_metrics as lm  # noqa: E402  (stdlib-only at import time)
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Paths & defaults
 # ─────────────────────────────────────────────────────────────────────────────
@@ -429,6 +432,28 @@ def extract_pdf_text(pdf: Path) -> str:
         return result.stdout
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
         print(f"  [warn] pdftotext failed on {pdf.name}: {e}", file=sys.stderr)
+        return ""
+
+
+def extract_pdf_text_reading_order(pdf: Path) -> str:
+    """Text via `pdftotext` WITHOUT `-layout` — reading order, not physical order.
+
+    `extract_pdf_text` passes `-layout`, which reproduces the page geometry. On a
+    multi-column page that emits "left col line 1, right col line 1, left col
+    line 2, ..." and the reading order is destroyed. `word_recall` is a set() and
+    cannot notice; any ORDER-aware metric built on that output is garbage on
+    every 2-column paper, which is a large share of the corpus:
+
+        base vs a 2-column variant, ordered_recall
+          pdftotext -layout    0.073
+          pdftotext (default)  0.997
+    """
+    try:
+        return subprocess.run(
+            ["pdftotext", str(pdf), "-"], check=True, capture_output=True, text=True
+        ).stdout
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        print(f"  [warn] pdftotext (reading order) failed on {pdf.name}: {e}", file=sys.stderr)
         return ""
 
 
@@ -1430,6 +1455,28 @@ def process_paper(
     if warn_path:
         shutil.copy2(warn_path, out_dir / "typst.warnings.json")
 
+    # T0 anchor recall: \label{} keys in the SOURCE vs <key> anchors in the .typ.
+    #
+    # Deliberately here and NOT in the structural block below. Everything down
+    # there is inside `if not args.no_structure_check and truth_available:`, and
+    # T0 needs no truth PDF at all — it compares LaTeX source against our own
+    # output. For the papers whose truth render fails (books and theses whose
+    # class packages tectonic cannot fetch — the corpus's WORST layouts, with
+    # page_ratio as low as 0.31) this is the only layout-adjacent signal that
+    # exists. Putting it in the truth block would make the tier blind exactly
+    # where the harness is already blind.
+    #
+    # `collect_project_source` walks the \input-reachable file set. NOT
+    # rglob("*.tex"): corpus papers keep unused drafts beside the real sources,
+    # and globbing them in invents labels the converter was never asked to emit.
+    try:
+        summary["anchors"] = lm.anchor_recall(
+            lm.tex_labels(collect_project_source(toplevel)),
+            lm.typ_anchors(typ_path.read_text(encoding="utf-8", errors="replace")),
+        )
+    except OSError as exc:  # unreadable .typ — record, never abort the run
+        summary["anchors"] = {"anchor_recall": None, "anchor_error": str(exc)}
+
     # 4. Compile with typst
     typst_pdf = out_dir / "typst.pdf"
     print(f"  typst compile ...", flush=True)
@@ -1479,6 +1526,24 @@ def process_paper(
         structure["mean_ssim"] = ssim_res["mean_ssim"]
         structure["per_page_ssim"] = ssim_res["per_page_ssim"]
         structure["ssim_pages_compared"] = ssim_res["pages_compared"]
+
+        # T2 ordered recall/precision: the text stream compared IN ORDER.
+        #
+        # `word_recall` above is a set() of [A-Za-z]{3,}: every digit and all
+        # ordering is discarded before anything is compared, so a fully REVERSED
+        # bibliography scores 1.000. An LCS sees it.
+        #
+        # Reading-order extraction, NOT `-layout`. Same binary as
+        # extract_pdf_text (so ligature handling is identical and a gain can
+        # never be an extraction artifact), but `-layout` reproduces the
+        # physical page, which on a 2-column paper interleaves the columns line
+        # by line and destroys the stream — measured ordered_recall 0.073 vs
+        # 0.997 on the same document. A set-based metric cannot notice; an
+        # order-aware one is ruined by it.
+        structure.update(lm.ordered_stream_compare(
+            extract_pdf_text_reading_order(truth_dest),
+            extract_pdf_text_reading_order(typst_pdf),
+        ))
         mean_ssim = ssim_res["mean_ssim"]
         if (
             args.min_mean_ssim > 0
@@ -1717,6 +1782,12 @@ def main() -> None:
             "truth_tables": structure.get("truth_tables"),
             "typst_tables": structure.get("typst_tables"),
             "mean_ssim": structure.get("mean_ssim"),
+            # Layout tier. Reported, not gated (see fidelity_check --gate-layout).
+            "anchor_recall": (summary.get("anchors") or {}).get("anchor_recall"),
+            "anchor_labels_total": (summary.get("anchors") or {}).get("anchor_labels_total"),
+            "anchor_matched": (summary.get("anchors") or {}).get("anchor_matched"),
+            "ordered_recall": structure.get("ordered_recall"),
+            "ordered_precision": structure.get("ordered_precision"),
             "composite": str(out / arxiv_id.replace("/", "_") / "composite.png")
                 if summary.get("typst_ok") else None,
             # Vintage. Without these, a paper measured a year ago is

@@ -102,23 +102,6 @@ check(
     "unmeasured baseline papers don't make a full run look partial",
 )
 
-# ── a PARTIAL run must NAME the baseline papers it did not measure ───────────
-# The gate's default is the 5 pinned papers while the baseline holds 71, so the
-# documented pre-release command checks 5/71 and skips the corpus-score
-# comparison entirely (covers_whole_corpus is false). That is defensible only if
-# it is IMPOSSIBLE to miss: a gate that silently covers 7% of the corpus reads
-# exactly like a gate that covers all of it.
-unchecked = fc.unchecked_papers(partial, BASELINE)
-check(unchecked == ["a", "b"],
-      f"a partial run names the baseline papers it did NOT measure, got {unchecked}")
-check(fc.unchecked_papers(full_good, BASELINE) == [],
-      "a full run has nothing unchecked")
-check(fc.unchecked_papers(full_bad, baseline_with_unmeasured) == [],
-      "a paper with no truth render is not counted as 'unchecked' — it is unmeasurable, "
-      "which the UNMEASURED block reports separately")
-check(fc.covers_whole_corpus(partial, BASELINE) is False
-      and fc.covers_whole_corpus(full_good, BASELINE) is True,
-      "covers_whole_corpus stays consistent with unchecked_papers")
 # ── the baseline's VINTAGE must be visible ───────────────────────────────────
 # index.json accumulates and the gate measures 5 papers by default, so a
 # committed baseline mixes measurements taken at different code versions. That
@@ -137,6 +120,72 @@ check(any("pre-dates" in k for k in v),
       f"an unstamped entry is reported as unknown vintage, not silently grouped, got {list(v)}")
 check(len(fc.baseline_vintages({"papers": {"a": {"byetex_version": "x"}}})) == 1,
       "a single-vintage baseline reports exactly one version (no false alarm)")
+
+# ── a PARTIAL run must NAME the baseline papers it did not measure ───────────
+# The gate's default is the 5 pinned papers while the baseline holds 71, so the
+# documented pre-release command checks 5/71 and skips the corpus-score
+# comparison entirely (covers_whole_corpus is false). That is defensible only if
+# it is IMPOSSIBLE to miss: a gate that silently covers 7% of the corpus reads
+# exactly like a gate that covers all of it.
+unchecked = fc.unchecked_papers(partial, BASELINE)
+check(unchecked == ["a", "b"],
+      f"a partial run names the baseline papers it did NOT measure, got {unchecked}")
+check(fc.unchecked_papers(full_good, BASELINE) == [],
+      "a full run has nothing unchecked")
+check(fc.unchecked_papers(full_bad, baseline_with_unmeasured) == [],
+      "a paper with no truth render is not counted as 'unchecked' — it is unmeasurable, "
+      "which the UNMEASURED block reports separately")
+check(fc.covers_whole_corpus(partial, BASELINE) is False
+      and fc.covers_whole_corpus(full_good, BASELINE) is True,
+      "covers_whole_corpus stays consistent with unchecked_papers")
+
+# ── the layout tier reports, it does not gate (until told to) ────────────────
+# "Driver first, gate later": a new tier that can fail a build on day one gets
+# `|| true`-d within a week (Chromium's documented layout-dump failure). So
+# nothing new can fail anything until a property is named in --gate-layout, one
+# at a time, each with measured floors behind it.
+LB = {"papers": {
+    "a": {**paper(0.95), "anchor_recall": 0.90, "ordered_recall": 0.90,
+          "layout_column_mismatch_frac": 0.0},
+}}
+LC = {"papers": {
+    "a": {**paper(0.95), "anchor_recall": 0.40, "ordered_recall": 0.40,
+          "layout_column_mismatch_frac": 1.0},
+}}
+regs, notices, imps = fc.evaluate_layout(LC, LB, gated=set(), tols=fc.LAYOUT_TOLERANCES)
+check(regs == [], f"with nothing gated, a collapsed layout metric CANNOT fail the build, got {regs}")
+check(len(notices) >= 3, f"...but every breach is still REPORTED, got {notices}")
+
+regs, notices, imps = fc.evaluate_layout(
+    LC, LB, gated={"layout_column_mismatch_frac"}, tols=fc.LAYOUT_TOLERANCES)
+check(any("layout_column_mismatch_frac" in r for r in regs),
+      f"a PROMOTED property does fail the build, got {regs}")
+check(not any("anchor_recall" in r for r in regs),
+      "promoting one property does not promote the others (per-property, not a global switch)")
+check(any("anchor_recall" in n for n in notices),
+      "an un-promoted property stays a notice")
+
+# None-safety: until a baseline is re-emitted every new field is absent.
+old_style = {"papers": {"a": paper(0.95)}}
+regs, notices, imps = fc.evaluate_layout(LC, old_style, gated=set(fc.LAYOUT_TOLERANCES),
+                                         tols=fc.LAYOUT_TOLERANCES)
+check(regs == [] and notices == [],
+      f"a baseline predating the tier is SKIPPED, not reported as a mass regression, got {regs or notices}")
+
+# `toward_one`: an improvement is |x-1| shrinking, so an overshoot is still drift.
+base_w = {"papers": {"a": {**paper(0.95), "layout_text_width_ratio": 1.40}}}
+cur_ok = {"papers": {"a": {**paper(0.95), "layout_text_width_ratio": 1.01}}}
+_, _, imps = fc.evaluate_layout(cur_ok, base_w, gated=set(), tols=fc.LAYOUT_TOLERANCES)
+check(any("layout_text_width_ratio" in i for i in imps),
+      f"moving a ratio TOWARD 1.0 is an improvement, got {imps}")
+cur_over = {"papers": {"a": {**paper(0.95), "layout_text_width_ratio": 0.55}}}
+_, notices, _ = fc.evaluate_layout(cur_over, base_w, gated=set(), tols=fc.LAYOUT_TOLERANCES)
+check(any("layout_text_width_ratio" in n for n in notices),
+      "overshooting past 1.0 into the opposite error is still drift, not a win")
+
+check(set(fc.GATED_FIELDS) <= set(fc.BASELINE_FIELDS)
+      and "anchor_recall" in fc.BASELINE_FIELDS,
+      "BASELINE_FIELDS persists both the gated set and the reported tier")
 
 print()
 if fails:
