@@ -550,13 +550,35 @@ impl<'a> Emitter<'a> {
         // `\label`s in this included file attaches the alias that some other
         // file `\ref`s (see pick_label_to_attach).
         sub.referenced_labels = self.referenced_labels.clone();
+        // The harvested key sets. The child runs no prepass of its own, so
+        // without these its `bibliography_keys` is EMPTY — and an empty set
+        // short-circuits cite validation entirely, which is why a `\cite` in an
+        // `\input`ed file sailed through as a bare `@key` no matter what did or
+        // did not define it. That is the real shape of the bug this PR set out
+        // to fix: `gh-maurovm-thesis-template`'s citations are in an `\input`ed
+        // chapter, not in the entry file, so the top-level-only check never saw
+        // them and the conversion still aborted with
+        // `label <prior1977physical> does not exist`.
+        //
+        // Safe to forward now only because the "exists but undefined" verdict is
+        // deferred to `finish()`: the child cannot mis-degrade a key that a
+        // later-emitted `#bibliography` turns out to define.
+        sub.bibliography_keys = self.bibliography_keys.clone();
+        sub.bib_anchor_keys = self.bib_anchor_keys.clone();
+        // Mirror the root prepass for the child's OWN `\bibitem`s, which are
+        // otherwise only registered as they are emitted — after any `\cite`
+        // above them in the same file, which would then look "missing".
+        for key in super::bibliography::extract_bbl_bibitem_keys(&source) {
+            let k = super::sanitize_label_key(&key);
+            sub.bibliography_keys.insert(k.clone());
+            sub.bib_anchor_keys.insert(k);
+        }
         // Forward the citation mode set by a natbib/biblatex option in the main
         // preamble so a `\bibliography{}` that lives in THIS \input'ed file
         // resolves the right style (the `.or()` merge-back below handles the
         // reverse case — the option in the include, `\bibliography` at top).
-        // NOTE: `bib_will_render` is deliberately NOT forwarded here — this
-        // sub-emitter does not clone `bibliography_keys`, so enabling `#cite`
-        // forms without that validation set could emit `#cite(<undefined>)`
+        // NOTE: `bib_will_render` is deliberately NOT forwarded here — enabling
+        // `#cite` forms in an included file could emit `#cite(<undefined>)`
         // against the real bib and abort the compile. \input'ed citations stay
         // `@key` (Unit 3's deliberate, conservative design).
         sub.natbib_mode = self.natbib_mode;
@@ -585,6 +607,12 @@ impl<'a> Emitter<'a> {
             self.out.push('\n');
         }
         self.out.push_str(&sub.out);
+        // Anchors the include wrote (`\bibitem`, an inlined `.bbl`) DEFINE keys
+        // the parent may have deferred, so they have to reach the parent's set
+        // before `resolve_deferred_cites` reads it.
+        self.bibliography_keys
+            .extend(sub.bibliography_keys.drain());
+        self.bib_anchor_keys.extend(sub.bib_anchor_keys.drain());
         // Sentinels in the included body are resolved by the ROOT's `finish()`,
         // so the records that resolve them must travel with the text.
         self.deferred_cites.append(&mut sub.deferred_cites);

@@ -223,7 +223,7 @@ impl<'a> Emitter<'a> {
                 typst_parts.push(format!("[cite: missing key `{}`]", raw_key));
             } else if !self.bibliography_keys.is_empty() && !definitely_defined {
                 typst_parts.push(format!(
-                    "{0}{1}{0}",
+                    "{}@{}",
                     super::DEFERRED_CITE_SENTINEL, sanitized
                 ));
                 self.deferred_cites.push(super::DeferredCite {
@@ -548,6 +548,13 @@ impl<'a> Emitter<'a> {
             .iter()
             .map(|d| (d.sanitized.as_str(), d.raw.as_str()))
             .collect();
+        // The marker has no terminator, so the key's extent is recovered by
+        // matching the keys we actually deferred — longest first, so `@foo` can
+        // never be mistaken for the start of `@foobar`. Guessing an extent from
+        // a "label character" class instead would mis-cut the unicode keys
+        // `sanitize_label_key` deliberately preserves.
+        let mut keys: Vec<&str> = raw_of.keys().copied().collect();
+        keys.sort_by(|a, b| b.len().cmp(&a.len()).then(a.cmp(b)));
         let sent = super::DEFERRED_CITE_SENTINEL;
         let src = std::mem::take(&mut self.out);
         let mut out = String::with_capacity(src.len());
@@ -555,22 +562,26 @@ impl<'a> Emitter<'a> {
         while let Some(open) = rest.find(sent) {
             out.push_str(&rest[..open]);
             let after = &rest[open + sent.len_utf8()..];
-            let Some(close) = after.find(sent) else {
-                // Unterminated marker: drop it rather than ship a control
-                // character into the .typ. Unreachable — both halves are written
-                // by the same `format!` — but the fallback must not be a leak.
-                out.push_str(after);
-                rest = "";
-                break;
+            // `@` + one of the deferred keys is what the emit site wrote.
+            let matched = after.strip_prefix('@').and_then(|body| {
+                keys.iter()
+                    .find(|k| body.starts_with(**k))
+                    .map(|k| (*k, &body[k.len()..]))
+            });
+            let Some((key, tail)) = matched else {
+                // Unreachable: the marker and the token are written by one
+                // `format!`. If it ever happens, drop the marker rather than
+                // ship a control character into the .typ.
+                rest = after;
+                continue;
             };
-            let key = &after[..close];
             if bib_rendered || self.bib_anchor_keys.contains(key) {
                 out.push('@');
                 out.push_str(key);
             } else {
                 let _ = write!(out, "[cite: {}]", raw_of.get(key).copied().unwrap_or(key));
             }
-            rest = &after[close + sent.len_utf8()..];
+            rest = tail;
         }
         out.push_str(rest);
         self.out = out;

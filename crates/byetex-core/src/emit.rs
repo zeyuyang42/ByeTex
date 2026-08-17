@@ -97,6 +97,17 @@ pub(in crate::emit) const BOX_SENTINEL: char = '\u{1e}';
 /// Marks a `\cite` whose `@key`-vs-placeholder rendering could not be decided
 /// when it was emitted, so the decision can be made at finish() time. See
 /// [`Emitter::resolve_deferred_cites`].
+///
+/// Written immediately BEFORE the `@key` it defers, never around it. The
+/// placement is the whole design: emit-time scans that look at the tail of a
+/// rendered span — `ends_with_open_ref`, which picks `#emph[…]` over `_…_`
+/// precisely when the content ends in a reference — must see the same `@key`
+/// they would see without deferral. A sentinel *wrapping* the token hid that
+/// tail and reintroduced the `unclosed delimiter` bug the guard exists for
+/// (gh-dzwaneveld-tudelft-thesis, caught by the corpus sweep). With the marker
+/// in front, the token reads as a live reference during emit; if it later
+/// resolves to a plain-text placeholder instead, those decisions were merely
+/// conservative (`#emph[…]` is always valid), never wrong.
 pub(in crate::emit) const DEFERRED_CITE_SENTINEL: char = '\u{1c}';
 
 /// Import + show rule that makes a multi-line equation number PER LINE, the way

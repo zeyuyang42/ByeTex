@@ -377,6 +377,49 @@ fn no_deferred_cite_sentinel_survives_into_the_output() {
 }
 
 #[test]
+fn deferred_cite_at_the_end_of_emphasis_keeps_the_function_form() {
+    // `_… @key_` is invalid Typst: the closing `_` is absorbed into the label
+    // name, so the emphasis never closes (`unclosed delimiter`). The emitter
+    // guards this by falling back to `#emph[…]` when the content ends in a
+    // reference — a guard that reads the ALREADY-EMITTED text. Deferring the
+    // citation must therefore not hide the `@key` from it.
+    //
+    // Caught on gh-dzwaneveld-tudelft-thesis: an earlier sentinel that WRAPPED
+    // the token flipped this back to `_… @example-article_` and the paper stopped
+    // compiling — while the acceptance gate stayed green, because it filed the
+    // failure as INPUT_BROKEN.
+    let dir = tmpdir("emph-tail");
+    fs::write(
+        dir.join("refs.bib"),
+        "@article{example-article, author={A}, year={2024}}\n",
+    )
+    .unwrap();
+    // No bibliography command at all, so the cite is deferred and then degrades.
+    fs::write(
+        dir.join("paper.tex"),
+        "\\documentclass{article}\\begin{document}\
+         \\textit{An introduction \\cite{example-article}}\\end{document}\n",
+    )
+    .unwrap();
+    let opts = ConvertOptions {
+        source_name: Some("paper.tex".into()),
+        base_dir: Some(dir.clone()),
+    };
+    let out = convert(&fs::read_to_string(dir.join("paper.tex")).unwrap(), &opts);
+    assert!(
+        !out.typst.contains("_An introduction"),
+        "emphasis ending in a (deferred) reference must use `#emph[…]`, not `_…_`; got:\n{}",
+        out.typst
+    );
+    assert!(
+        out.typst.contains("#emph["),
+        "expected the function form; got:\n{}",
+        out.typst
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn cite_with_thebibliography_still_emits_at_form() {
     // The control that stops the fix over-reaching: no `#bibliography()` renders
     // here either, but `\bibitem` DOES emit a `<key>` anchor, so `@key` resolves
