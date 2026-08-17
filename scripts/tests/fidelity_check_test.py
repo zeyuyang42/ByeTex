@@ -221,10 +221,29 @@ BAD = {"papers": {
     "old2": {**paper(0.95), "layout_body_font_ratio": 0.80},   # already broken
     "fresh": {**paper(0.95), "layout_body_font_ratio": 1.00},  # currently fine
 }}
-# Same values as the baseline: nothing changed, so nothing may fire.
+# Day one: old1/old2 sit past the ABSOLUTE floor, so the only thing keeping the
+# gate green is the known_bad list.
 regs, _, _ = fc.evaluate_layout(BAD, BAD, gated={"layout_body_font_ratio"}, tols=tol,
                                 known_bad=FLOORS["known_bad"])
 check(regs == [], f"the gate is GREEN on day one — known-bad papers do not fail it, got {regs}")
+
+# ...and THIS is the control that makes the assertion above mean anything. It used
+# to pass with `known_bad={}` as well: the tolerance was applied as a delta, so
+# with baseline == current no branch could fire and the test never exercised the
+# exclusion it named. Drop the amnesty and the same call must go RED.
+regs_no_amnesty, _, _ = fc.evaluate_layout(BAD, BAD, gated={"layout_body_font_ratio"},
+                                           tols=tol, known_bad={})
+check(sorted(r.split(":")[0] for r in regs_no_amnesty) == ["old1", "old2"],
+      "without known_bad those same papers DO fail — the exclusion is what makes "
+      f"day one green, got {regs_no_amnesty}")
+
+# The absolute floor also has to fire on a paper that never moves: parked just
+# past the threshold forever is still drift, and a delta rule could never see it.
+PARKED = {"papers": {"parked": {**paper(0.95), "layout_body_font_ratio": 1.20}}}
+regs_parked, _, _ = fc.evaluate_layout(PARKED, PARKED, gated={"layout_body_font_ratio"},
+                                       tols=tol, known_bad={})
+check(any("parked" in r for r in regs_parked),
+      f"a paper parked past the floor fires even when it did not change, got {regs_parked}")
 
 # A NEW paper breaking the same property must fail.
 BROKE = json.loads(json.dumps(BAD))

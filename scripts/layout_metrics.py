@@ -74,6 +74,9 @@ SMALL_TIER_DROP = 0.75         # "small" = ≥0.75pt below the doc's OWN modal s
 LEADING_MIN, LEADING_MAX = 2.0, 40.0  # plausible baseline deltas (pt)
 MARGIN_TRIM_PCT = 2.0          # ignore the outer 2% of span edges (stray marginalia)
 FULL_PAGE_LINE_FRAC = 0.5      # a "full" page carries ≥50% of the doc's busiest page
+# Divisor of last resort for `excess` when a property's floor is exactly 0.0 (a
+# legitimate, strictest-possible floor). Ranking only — never a tolerance.
+EXCESS_RESOLUTION = 1e-4
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -129,8 +132,14 @@ def _norm_key(k: str) -> str:
     `sec-intro`; PR #452 substitutes `_` through a sentinel). Comparing raw
     strings would score every such rewrite as a LOST label, which is a
     measurement artifact rather than a fidelity loss.
+
+    Separator runs collapse to a single `-` — they are NOT deleted. Deleting them
+    also merged keys that are genuinely different: `eq:a_b` and `eq:ab` both
+    became `eqab`, as did `fig:x-1` and `figx1`. Two source labels collapsing to
+    one key shrinks the `want` denominator, which inflates `anchor_recall` — the
+    one direction a fidelity metric must never round in.
     """
-    return re.sub(r"[^a-z0-9]", "", k.lower())
+    return re.sub(r"[^a-z0-9]+", "-", k.lower()).strip("-")
 
 
 def anchor_recall(labels: set[str], anchors: set[str]) -> dict:
@@ -415,13 +424,36 @@ def page_profile(spans: list[dict], page_w: float, page_h: float) -> dict | None
     # Undefined (None) rather than 0 when no column has two baselines: returning
     # 0 is how the prototype fabricated a ~100% delta, because every ratio
     # downstream guards with max(lead, 1).
+    # Bands are assigned by OVERLAP, not by midpoint. A midpoint test silently
+    # drops every span that crosses the gutter — a full-width table row or display
+    # equation has its midpoint IN the gutter, so it matched no band at all and
+    # disappeared from the line count entirely. That is precisely the
+    # spanning-float case `_column_bands` was hardened for, and it understated
+    # `lines_per_page` on the most figure-heavy pages.
+    #
+    # A row is counted once per band it belongs to, so two columns each carrying a
+    # line at the same height are two lines (a union over y would call them one),
+    # while a single row spanning both bands is one line, not two.
     bands = _column_bands(spans, page_w)
+    band_rows: list[set[float]] = [set() for _ in bands]
+    spanning_rows: set[float] = set()
+    for s in spans:
+        y = round(s["bbox"][3], 1)
+        hits = [i for i, (lo, hi) in enumerate(bands)
+                if s["bbox"][0] <= hi and s["bbox"][2] >= lo]
+        if len(hits) == 1:
+            band_rows[hits[0]].add(y)
+        elif hits:
+            spanning_rows.add(y)
+    n_lines = sum(len(rows) for rows in band_rows) + len(spanning_rows)
+
+    # Leading is deliberately measured from per-column rows ONLY. A spanning row
+    # sits BETWEEN two column baselines, so folding it in yields deltas that are
+    # fractions of a line rather than the leading — the same interleaving error,
+    # one level down. Excluding it is what keeps the twocol fixture honest.
     col_leads: list[float] = []
-    n_lines = 0
-    for x_lo, x_hi in bands:
-        mid = lambda s: (s["bbox"][0] + s["bbox"][2]) / 2  # noqa: E731
-        col = sorted({round(s["bbox"][3], 1) for s in spans if x_lo <= mid(s) <= x_hi})
-        n_lines += len(col)
+    for rows in band_rows:
+        col = sorted(rows)
         deltas = [b - a for a, b in zip(col, col[1:]) if LEADING_MIN < b - a < LEADING_MAX]
         if deltas:
             col_leads.append(st.median(deltas))
@@ -751,11 +783,22 @@ def fired_properties(metrics: dict, floors: dict | None = None) -> list[dict]:
                 continue
             dev = property_deviation(name, metrics.get(name))
             floor = floors.get(name)
-            if dev is None or not floor:
+            # `not floor` also swallowed a floor of exactly 0.0, turning the
+            # STRICTEST possible floor into no check at all — and
+            # layout_floors.json records `legit_floor: 0.0` for five properties,
+            # so a threshold taken straight from a measured floor would silently
+            # stop gating. `is None` means "no floor declared"; 0.0 means "any
+            # deviation counts".
+            if dev is None or floor is None:
                 continue
             if dev > floor:
                 out.append({"name": name, "drift_class": cls, "value": metrics[name],
-                            "deviation": dev, "floor": floor, "excess": dev / floor})
+                            "deviation": dev, "floor": floor,
+                            # `excess` is a ranking key, so it has to stay finite
+                            # and JSON-serializable (`Infinity` is not valid JSON).
+                            # A zero floor divides by the coordinate resolution
+                            # instead, which keeps excess monotone in deviation.
+                            "excess": dev / max(floor, EXCESS_RESOLUTION)})
     return sorted(out, key=lambda d: -d["excess"])
 
 
