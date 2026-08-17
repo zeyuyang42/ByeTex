@@ -141,6 +141,11 @@ plan target-cross "cross-compile targets (release-time only)" \
 plan repo-tmp     "repo scratch dir" tmp
 plan corpus-out   "generated conversion output" corpus/_out
 plan claude-scratch "stale review/grading scratch" .claude/review .claude/review-* .claude/scratch_*
+# macOS drops these into any directory Finder touches; they are pure noise and
+# regenerate on their own, so there is never a reason to keep one.
+DS_FILES=()
+while IFS= read -r f; do DS_FILES+=("$f"); done < <(find . -name .DS_Store -not -path './.git/*' 2>/dev/null)
+plan ds-store "macOS .DS_Store files" ${DS_FILES[@]+"${DS_FILES[@]}"}
 # 5. Local copies of published release binaries.
 plan dist         "built release binaries (re-downloadable from GitHub releases)" dist
 
