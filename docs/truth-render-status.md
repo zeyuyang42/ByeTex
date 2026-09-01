@@ -3,7 +3,15 @@
 The fidelity DRIVER needs a *truth* PDF — the paper's original LaTeX rendered with tectonic.
 Run `scripts/setup_truth_deps.sh` first (pinned biber + fonts). This file records the papers
 whose truth does **not** render even with deps provisioned, so they're never mistaken for a
-silent unmeasured "pass". Updated 2026-06-23 (health-check Phase 0a).
+silent unmeasured "pass". Updated 2026-09-01.
+
+Since 2026-09-01 the harness reports these reasons *itself*:
+`truth_render.summarize_tectonic_failure` reads the cause off tectonic's `error:` lines,
+skipping its warnings and its wrapper lines. It used to scan all of stderr for a
+font/package keyword, which matched warnings just as readily — so three of the rows below
+were reported as a Carlito font-path notice, an `algorithm.sty` UTF-8 notice and a
+`kpfonts` notice, none of which was the cause. The table was right; the harness was not,
+and a misattributed failure is one nobody fixes.
 
 ## Now rendering (promoted unmeasured → measured)
 - **gh-dzwaneveld-tudelft-thesis** — was `truth_render_failed` (needed Roboto Slab + biber).
@@ -14,14 +22,21 @@ silent unmeasured "pass". Updated 2026-06-23 (health-check Phase 0a).
 | Paper | Reason (tectonic, deps present) | Class |
 |---|---|---|
 | ctan-memoir | needs a pre-built `trims-example.pdf` (the memoir *manual*, not a normal doc) | input |
-| gh-calpolycsc-thesis | `main.tex:204: Undefined control sequence` (source macro gap) | input |
+| gh-calpolycsc-thesis | **changed 2026-09-01:** now `Found biblatex control file version 3.8, expected version 3.11` — the biber pinned by `setup_truth_deps.sh` has drifted out of sync with the biblatex in tectonic's current bundle. Was `main.tex:204: Undefined control sequence`. | deps |
 | gh-fmarotta-kaobook | `kaobook.cls not found` (class file not vendored in source) | ingestion |
 | gh-maurovm-thesis-template | font chain: Carlito ✓ then `Latin Modern Math cannot be found` | font |
 | gh-pelegs-maths-book | `svg` package needs inkscape-built `tapir_svg-tex.pdf` | input |
 | gh-sikatikenmogne-report | `subcaption` can't co-exist with `subfig` (source bug) | input |
 
 `gh-maurovm` is the only remaining *font*-class failure (add the math font to
-`setup_truth_deps.sh` to recover it); the rest are source/ingestion issues.
+`setup_truth_deps.sh` to recover it). `gh-calpolycsc-thesis` is now a **deps** failure and
+should be recoverable by re-pinning biber to match the bundle's biblatex — both are harness
+work, not source bugs. The rest are source/ingestion issues.
+
+**`gh-dzwaneveld-tudelft-thesis` renders, but flakily.** It was reported
+`truth_render_failed` in the 2026-09-01 gate run and renders fine standalone (10.7s) with a
+valid cached `truth.pdf` on disk. The run had concurrent tectonic invocations; treat a lone
+failure on this paper as contention, not drift, and re-check before recording it.
 
 ## Ingestion gate (Phase 0b)
 `scripts/corpus_add_local.py` now renders the truth BEFORE accepting a paper and records
