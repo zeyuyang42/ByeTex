@@ -6,6 +6,31 @@ Notable changes to ByeTex. Format loosely follows
 ## [0.7.4] — unreleased
 
 ### Fixed
+- **Beamer decks rendered at roughly twice their real physical size.** touying's
+  `aspect-ratio:` only selects a Typst presentation *preset* —
+  `presentation-4-3` is 280x210mm and `presentation-16-9` is 297x167mm, against
+  the 128x96mm and 160x90mm slides beamer actually produces — so every deck came
+  out 1.9-2.2x oversize in each dimension, and the metropolis theme's 20pt body
+  text with it. That is not merely cosmetic: an absolute length keeps its value
+  while the page around it grows, so a `\includegraphics[width=6cm]` that covers
+  47% of a real slide covered 21% of ours. `aspectratio=1610` and `=149` were
+  additionally mapped onto `presentation-16-9`, giving the wrong *shape* as well
+  as the wrong size. Decks now pin `config-page(width:, height:)` to beamer's own
+  slide size — measured from a tectonic render of each `aspectratio=` option, not
+  derived from the ratio digits, since beamer's 14:9 is 140x90mm and its "1:1.41"
+  is 148.5x105mm — and restate beamer's body size (11pt default, or the class
+  option; beamer accepts 8-20pt where the standard classes take 10/11/12pt). The
+  body size is what rescales the deck as a whole, because the theme's margins,
+  header, footer and chrome are all em-derived. All eight of beamer's tabled
+  sizes are covered, including `aspectratio=2013` (140x91mm, which follows no
+  rule), and an unlisted value now takes beamer's computed fallback — height
+  fixed at 96mm, width scaled by the digits split down the middle — instead of
+  silently becoming 4:3. `aspectratio = 169` with spaces around the `=` is
+  honoured too. Across the corpus's 4 decks the page-area ratio against truth
+  goes 4.79/4.79/3.45/3.45 to 1.00, the body-font ratio 2.00/1.84 to 1.00, and
+  leading 1.44/1.53 to 0.96/0.98; `gh-bard-metropolis` and `gh-mtheme-demo` are
+  promoted out of `known_bad` for `layout_body_font_ratio` in
+  `scripts/layout_floors.json` accordingly.
 - **LaTeX spacing commands inside `\text{}` rendered as visible backslashes.**
   `\ `, `\,`, `\;`, `\quad` are spacing in LaTeX but literal characters inside a
   Typst string, so `\text{ a.e.\ in }\Omega` rendered `a.e.\ inΩ` — a stray

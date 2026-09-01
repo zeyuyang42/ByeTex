@@ -191,6 +191,49 @@ pub(crate) struct Layout {
     /// Page margins from the `geometry` package (`\usepackage[...]{geometry}`
     /// and `\geometry{...}`). All `None` → the neutral default margin.
     pub margin: Margin,
+    /// beamer's slide geometry from `\documentclass[aspectratio=N]{beamer}`.
+    /// `None` on every non-beamer class, and on a beamer deck that passes no
+    /// `aspectratio=` (the caller substitutes [`BEAMER_DEFAULT_SLIDE`], 4:3).
+    pub beamer_slide: Option<SlideGeometry>,
+    /// Base font size from a beamer size option. Separate from `font_size`
+    /// because beamer's accepted set is wider (8-20pt) and its default is 11pt.
+    pub beamer_font_size: Option<&'static str>,
+}
+
+/// beamer's slide page size, plus the touying `aspect-ratio` string that matches
+/// it. Beamer sets a *physical* slide size, which Typst's presentation presets do
+/// not reproduce: `presentation-4-3` is 280x210mm against beamer's 128x96mm and
+/// `presentation-16-9` is 297x167mm against beamer's 160x90mm. The difference is
+/// visible wherever the source uses an absolute length — a
+/// `\includegraphics[width=6cm]` covers 47% of a real 128mm slide but only 21% of
+/// a 280mm one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SlideGeometry {
+    /// Page width, as a Typst length literal (e.g. `"128mm"`).
+    pub width: String,
+    /// Page height, as a Typst length literal (e.g. `"96mm"`).
+    pub height: String,
+    /// touying's `aspect-ratio: "W-H"` string for this shape. It is *inert* in
+    /// the emitted preamble — the `config-page(width:, height:)` that follows it
+    /// always wins — and is kept only so a human editing the `.typ` sees the
+    /// shape named. Anything that changes the size must change both.
+    pub aspect: String,
+}
+
+impl SlideGeometry {
+    fn new(width: &str, height: &str, aspect: &str) -> Self {
+        Self {
+            width: width.to_string(),
+            height: height.to_string(),
+            aspect: aspect.to_string(),
+        }
+    }
+}
+
+/// beamer's default slide when `\documentclass{beamer}` carries no
+/// `aspectratio=` option: 4:3, 128x96mm.
+pub(crate) fn beamer_default_slide() -> SlideGeometry {
+    SlideGeometry::new("128mm", "96mm", "4-3")
 }
 
 /// Page margins parsed from `geometry` keys. Each side may be set individually;
@@ -253,15 +296,23 @@ impl Layout {
         for opt in opts {
             if let Some(p) = map_paper_option(opt) {
                 layout.paper = Some(p);
-            } else if let Some(p) = map_beamer_aspectratio(opt) {
-                // beamer `[aspectratio=…]` selects the slide page shape.
-                layout.paper = Some(p);
+            } else if let Some(g) = map_beamer_aspectratio(opt) {
+                // beamer `[aspectratio=…]` selects the slide page shape. It is kept
+                // out of `paper`, which stays a4/letter/… for the paper classes.
+                layout.beamer_slide = Some(g);
             } else if let Some(s) = map_font_size_option(opt) {
                 layout.font_size = Some(s);
             } else if opt == "twocolumn" {
                 layout.two_column = Some(true);
             } else if opt == "onecolumn" {
                 layout.two_column = Some(false);
+            }
+            // Independent of the chain above: beamer accepts 8/9/14/17/20pt as
+            // well, which the standard classes reject. Kept in its own field so
+            // `[14pt]{article}` still resolves the way LaTeX resolves it (ignored,
+            // class default) rather than to 14pt. Only the beamer emitter reads it.
+            if let Some(s) = map_beamer_font_size(opt) {
+                layout.beamer_font_size = Some(s);
             }
         }
         layout
@@ -384,15 +435,82 @@ fn map_paper_option(opt: &str) -> Option<&'static str> {
     })
 }
 
-/// Map a beamer `aspectratio=<N>` class option to a Typst presentation paper.
-/// Widescreen ratios (16:9, 16:10, 14:9) → `presentation-16-9`; everything else
-/// (4:3, 5:4, 3:2, …) → `presentation-4-3` (beamer's default shape). `None` if `opt`
-/// isn't an `aspectratio=` option at all.
-fn map_beamer_aspectratio(opt: &str) -> Option<&'static str> {
-    let val = opt.trim().strip_prefix("aspectratio=")?.trim();
-    Some(match val {
-        "169" | "1610" | "149" => "presentation-16-9",
-        _ => "presentation-4-3",
+/// Map a beamer `aspectratio=<N>` class option to its slide geometry. `None` if
+/// `opt` isn't an `aspectratio=` option at all.
+///
+/// beamer hard-codes eight sizes and *computes* the rest, so this does the same.
+/// The eight were measured from a tectonic render of
+/// `\documentclass[aspectratio=N]{beamer}` rather than derived from the ratio
+/// name, because they do not follow from the digits: 14:9 is 140x90mm, 20:13 is
+/// 140x91mm, and "1:1.41" is 148.5x105mm.
+fn map_beamer_aspectratio(opt: &str) -> Option<SlideGeometry> {
+    let (key, val) = opt.split_once('=')?;
+    if key.trim() != "aspectratio" {
+        return None;
+    }
+    // LaTeX key-value options tolerate spaces around `=`.
+    let val = val.trim();
+    let listed = match val {
+        "1610" => Some(("160mm", "100mm", "16-10")),
+        "169" => Some(("160mm", "90mm", "16-9")),
+        "149" => Some(("140mm", "90mm", "14-9")),
+        "141" => Some(("148.5mm", "105mm", "297-210")),
+        "54" => Some(("125mm", "100mm", "5-4")),
+        "43" => Some(("128mm", "96mm", "4-3")),
+        "32" => Some(("135mm", "90mm", "3-2")),
+        "2013" => Some(("140mm", "91mm", "20-13")),
+        _ => None,
+    };
+    if let Some((w, h, a)) = listed {
+        return Some(SlideGeometry::new(w, h, a));
+    }
+    Some(computed_beamer_slide(val).unwrap_or_else(beamer_default_slide))
+}
+
+/// beamer's fallback for an `aspectratio=` value outside its table of eight: fix
+/// the height at 96mm and scale the width by the ratio.
+///
+/// The digits split down the middle, rounding the width up on an odd length —
+/// `53` is 5:3, `118` is 11:8, `1210` is 12:10 — which render at 160x96, 132x96
+/// and 115.2x96mm under tectonic, matching this rule.
+///
+/// `None` when the value isn't a usable digit pair, which sends the caller to
+/// beamer's 4:3 default.
+fn computed_beamer_slide(val: &str) -> Option<SlideGeometry> {
+    if val.len() < 2 || !val.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let (w, h) = val.split_at(val.len().div_ceil(2));
+    let (w, h): (f64, f64) = (w.parse().ok()?, h.parse().ok()?);
+    if h == 0.0 {
+        return None;
+    }
+    const HEIGHT_MM: f64 = 96.0;
+    // Trim the trailing zeros a whole number of millimetres would carry, so the
+    // common cases read `132mm` rather than `132.0000mm`.
+    let width = format!("{:.4}", w / h * HEIGHT_MM);
+    let width = width.trim_end_matches('0').trim_end_matches('.');
+    Some(SlideGeometry::new(
+        &format!("{width}mm"),
+        "96mm",
+        &format!("{}-{}", w as u32, h as u32),
+    ))
+}
+
+/// Map a beamer base font-size class option to a Typst `text(size: ...)` value.
+/// beamer accepts sizes the standard classes do not (8-20pt), and defaults to
+/// 11pt rather than 10pt.
+fn map_beamer_font_size(opt: &str) -> Option<&'static str> {
+    Some(match opt.trim() {
+        "8pt" => "8pt",
+        "9pt" => "9pt",
+        "10pt" => "10pt",
+        "11pt" => "11pt",
+        "12pt" => "12pt",
+        "14pt" => "14pt",
+        "17pt" => "17pt",
+        "20pt" => "20pt",
+        _ => return None,
     })
 }
 

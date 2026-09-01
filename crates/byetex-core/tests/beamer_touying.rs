@@ -132,3 +132,134 @@ fn no_neutral_preamble_page_set_for_beamer() {
         "no #set heading(numbering) — touying numbers slides itself; got:\n{t}"
     );
 }
+
+// --- Slide geometry -------------------------------------------------------
+//
+// touying's `aspect-ratio:` only picks a Typst *presentation preset*
+// (`presentation-4-3` = 280x210mm, `presentation-16-9` = 297x167mm), which is
+// 1.9-2.2x larger in each dimension than the slide beamer actually produces.
+// The physical size matters: a `\includegraphics[width=6cm]` fills 47% of a real
+// 128mm slide but only 21% of a 280mm one. Each expected size below was measured
+// from a tectonic render of `\documentclass[aspectratio=N]{beamer}`.
+
+fn deck_with(opts: &str) -> String {
+    typ(&format!(
+        "\\documentclass{opts}{{beamer}}\\title{{T}}\\begin{{document}}\
+         \\begin{{frame}}{{S}}x\\end{{frame}}\\end{{document}}"
+    ))
+}
+
+#[test]
+fn default_slide_is_beamers_128x96mm() {
+    let t = deck_with("");
+    assert!(
+        t.contains("config-page(width: 128mm, height: 96mm)"),
+        "beamer's default slide is 128x96mm, not Typst's 280x210mm preset; got:\n{t}"
+    );
+}
+
+#[test]
+fn aspectratio_169_slide_is_160x90mm() {
+    let t = deck_with("[aspectratio=169]");
+    assert!(
+        t.contains("config-page(width: 160mm, height: 90mm)"),
+        "aspectratio=169 is 160x90mm, not Typst's 297x167mm preset; got:\n{t}"
+    );
+}
+
+#[test]
+fn aspectratio_1610_is_16_10_not_16_9() {
+    // Regression: 1610 and 149 were both mapped onto `presentation-16-9`, so the
+    // deck came out at the wrong *shape*, not merely the wrong size.
+    let t = deck_with("[aspectratio=1610]");
+    assert!(
+        t.contains("config-page(width: 160mm, height: 100mm)"),
+        "aspectratio=1610 is 16:10 (160x100mm), not 16:9; got:\n{t}"
+    );
+    let t = deck_with("[aspectratio=149]");
+    assert!(
+        t.contains("config-page(width: 140mm, height: 90mm)"),
+        "aspectratio=149 is 14:9 (140x90mm), not 16:9; got:\n{t}"
+    );
+}
+
+#[test]
+fn body_font_defaults_to_beamers_11pt() {
+    // The theme hard-codes `set text(size: 20pt)` for its 297mm-wide preset. On a
+    // real 160mm slide that is ~2x too large, so the deck must restate beamer's
+    // own body size; every em-derived length in the theme (margins, header,
+    // footer) follows it.
+    let t = deck_with("[aspectratio=169]");
+    assert!(
+        t.contains("#set text(size: 11pt)"),
+        "beamer's default body size is 11pt; got:\n{t}"
+    );
+}
+
+#[test]
+fn body_font_honors_the_class_option() {
+    let t = deck_with("[10pt]");
+    assert!(
+        t.contains("#set text(size: 10pt)"),
+        "`[10pt]` sets beamer's body size; got:\n{t}"
+    );
+    // beamer accepts sizes the article classes do not.
+    let t = deck_with("[aspectratio=169,14pt]");
+    assert!(
+        t.contains("#set text(size: 14pt)"),
+        "beamer accepts 14pt; got:\n{t}"
+    );
+}
+
+#[test]
+fn aspectratio_2013_is_beamers_140x91mm() {
+    // beamer.cls special-cases 20:13 at 140x91mm — it does NOT fall out of the
+    // computed rule below (which would give 147.7x96mm).
+    let t = deck_with("[aspectratio=2013]");
+    assert!(
+        t.contains("config-page(width: 140mm, height: 91mm)"),
+        "aspectratio=2013 is 140x91mm; got:\n{t}"
+    );
+}
+
+#[test]
+fn unlisted_aspectratio_uses_beamers_computed_size() {
+    // Outside its table of eight, beamer fixes the height at 96mm and scales the
+    // width by the ratio, splitting the digits down the middle. Every expectation
+    // below was measured from a tectonic render, and every one differs from the
+    // 4:3 default — a case like `1612` (which computes back to 128x96mm) would
+    // pass just as well without the computed path, so it is not used here.
+    for (opt, expected) in [
+        ("[aspectratio=53]", "config-page(width: 160mm, height: 96mm)"),
+        ("[aspectratio=118]", "config-page(width: 132mm, height: 96mm)"),
+        ("[aspectratio=1210]", "config-page(width: 115.2mm, height: 96mm)"),
+    ] {
+        let t = deck_with(opt);
+        assert!(t.contains(expected), "{opt} → {expected}; got:\n{t}");
+    }
+}
+
+#[test]
+fn aspectratio_tolerates_spaces_around_equals() {
+    // LaTeX key-value class options allow `key = value`; the deck must not
+    // silently fall back to 4:3.
+    let t = deck_with("[aspectratio = 169]");
+    assert!(
+        t.contains("config-page(width: 160mm, height: 90mm)"),
+        "`aspectratio = 169` (spaced) is still 160x90mm; got:\n{t}"
+    );
+}
+
+#[test]
+fn a_nonsense_aspectratio_falls_back_to_4_3() {
+    // Not a digit pair (and `160` would divide by a zero height), so neither the
+    // table nor the computed rule applies — take beamer's own default rather than
+    // emitting a degenerate page.
+    for opt in ["[aspectratio=abc]", "[aspectratio=]", "[aspectratio=160]"] {
+        let t = deck_with(opt);
+        assert!(
+            t.contains("config-page(width: 128mm, height: 96mm)"),
+            "{opt} → beamer's 4:3 default; got:\n{t}"
+        );
+    }
+}
