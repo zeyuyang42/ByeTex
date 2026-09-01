@@ -632,6 +632,11 @@ impl<'a> Emitter<'a> {
         // parent's `finish()` to add the `@preview/subpar` import, so flow the
         // flag back (mirrors the numbering flags above; corpus 2605.31063).
         self.used_subpar |= sub.used_subpar;
+        // Same for a `byetex-fit(...)` emitted in the included file — its `#let`
+        // is written by the parent's `finish()`, so without this the include's
+        // tables call a helper that was never defined (corpus 2605.31603:
+        // `unknown variable: byetex-fit`).
+        self.used_fit_width |= sub.used_fit_width;
         // Merge the included file's metadata into the parent, parent
         // taking priority for fields it already owns.
         self.metadata.merge_from(&mut sub.metadata);

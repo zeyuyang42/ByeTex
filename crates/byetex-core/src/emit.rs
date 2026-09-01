@@ -583,6 +583,8 @@ pub(crate) struct Emitter<'a> {
     /// Set when a `#subpar.grid(...)` is emitted; triggers the conditional
     /// `#import "@preview/subpar:0.2.2"` at the top of the document in `finish()`.
     used_subpar: bool,
+    /// A `\resizebox` resolved to a width, so the `byetex-fit` helper is needed.
+    used_fit_width: bool,
     /// True when a `\bibliography{...}` (`bibtex_include`) command is present,
     /// detected in the prepass.
     has_bibtex_include: bool,
@@ -761,6 +763,170 @@ fn si_unit_symbol(name: &str) -> Option<&'static str> {
     })
 }
 
+/// `#byetex-fit(<width>)[<body>]` — scale `body` so it is exactly `width` wide,
+/// which is what `\resizebox{<width>}{!}{…}` does in LaTeX. `width` is either a
+/// ratio (of the enclosing measure, so it tracks a two-column layout) or an
+/// absolute length. Emitted only when a `\resizebox` actually resolved to a
+/// width, so an untouched document keeps a clean preamble.
+///
+/// `layout` supplies the available width and `measure` the body's natural width;
+/// `reflow: true` makes the surrounding content account for the scaled size
+/// rather than overlapping it.
+///
+/// Shrink ONLY, though LaTeX also scales up. `scale` yields a single unbreakable
+/// block, so a table that is taller than the page loses every row past the first
+/// break — silently, with no error. Content already narrower than the measure is
+/// therefore left untouched and stays breakable; the case `\resizebox` actually
+/// exists for (a wide table squeezed into the column) is the one that scales.
+const FIT_WIDTH_PREAMBLE: &str = "#let byetex-fit(width, body) = layout(size => context {\n\
+  \x20 let target = if type(width) == ratio { size.width * width } else { width }\n\
+  \x20 let natural = measure(body).width\n\
+  \x20 if natural > target and natural > 0pt {\n\
+  \x20   scale(x: target / natural * 100%, y: target / natural * 100%, reflow: true, body)\n\
+  \x20 } else { body }\n\
+})\n";
+
+/// The `\resizebox` width fitting the content that starts at byte `start`, or
+/// `None` when nothing wraps it.
+///
+/// Needed because tree-sitter does not nest a multi-line environment inside a
+/// command's brace group. Papers write
+///
+/// ```tex
+/// \resizebox{\linewidth}{!}{
+/// \begin{tabular}{lc}
+/// ```
+///
+/// and the `tabular` then parses as a SIBLING of `\resizebox`, not a child — so a
+/// wrapper keyed on the command's own arguments fires on NONE of the corpus's 110
+/// occurrences. The float emitter has the tabular's offset, so the wrapper is
+/// recovered by scanning backwards from it instead.
+///
+/// Only a directly-wrapped node counts: everything between the resizebox's third
+/// `{` and `start` must be whitespace or a `%` comment. A `\resizebox` that wraps
+/// something else and closes before `start` therefore does not capture it.
+pub(in crate::emit) fn resizebox_wrapping(src: &str, start: usize) -> Option<String> {
+    let head = src.get(..start)?;
+    let bytes = src.as_bytes();
+    // Commenting the wrapper out is how authors disable scaling, and a disabled
+    // `%\resizebox{...}{...}{` leaves exactly the whitespace-only gap the check
+    // below accepts — so a commented-out wrapper would still scale the table.
+    // Walk back over candidates until one is live.
+    let mut search = head;
+    let cmd = loop {
+        let at = search.rfind("\\resizebox")?;
+        if !is_commented_out(src, at) {
+            break at;
+        }
+        search = &head[..at];
+    };
+    // `{width}` then `{height}`, then the `{` that opens the content.
+    let mut i = cmd + "\\resizebox".len();
+    let mut width: Option<(usize, usize)> = None;
+    for arg in 0..2 {
+        while bytes.get(i).is_some_and(|b| b.is_ascii_whitespace()) {
+            i += 1;
+        }
+        let end = crate::emit::node_utils::brace_balanced_end(bytes, i)?;
+        if arg == 0 {
+            width = Some((i + 1, end - 1));
+        }
+        i = end;
+    }
+    while bytes.get(i).is_some_and(|b| b.is_ascii_whitespace()) {
+        i += 1;
+    }
+    if bytes.get(i) != Some(&b'{') {
+        return None;
+    }
+    // Between that brace and `start`: whitespace and `%` comments only.
+    let mut rest = src.get(i + 1..start)?;
+    loop {
+        let trimmed = rest.trim_start();
+        match trimmed.strip_prefix('%') {
+            Some(after) => rest = after.split_once('\n').map(|(_, r)| r).unwrap_or(""),
+            None => {
+                if !trimmed.is_empty() {
+                    return None;
+                }
+                break;
+            }
+        }
+    }
+    // The gap check proves the node is the FIRST thing inside the group; this
+    // proves the group still encloses it, so a resizebox cannot capture a node
+    // that begins after its content brace has already closed.
+    let content_end = crate::emit::node_utils::brace_balanced_end(bytes, i)?;
+    if content_end <= start {
+        return None;
+    }
+    let (a, b) = width?;
+    resizebox_target_width(src.get(a..b)?)
+}
+
+/// Whether the byte at `at` sits after an unescaped `%` on its own line — i.e.
+/// inside a LaTeX comment, and so not really part of the document.
+fn is_commented_out(src: &str, at: usize) -> bool {
+    let line_start = src.get(..at).and_then(|h| h.rfind('\n')).map_or(0, |n| n + 1);
+    let Some(prefix) = src.get(line_start..at) else {
+        return false;
+    };
+    let b = prefix.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        match b[i] {
+            b'\\' => i += 2, // `\%` is a literal percent, not a comment
+            b'%' => return true,
+            _ => i += 1,
+        }
+    }
+    false
+}
+
+/// The Typst target for a `\resizebox` width argument, or `None` when it does not
+/// resolve to one.
+///
+/// `\textwidth`/`\columnwidth`/`\linewidth` (optionally scaled by a leading
+/// factor) become a RATIO, not a fixed length, so the result still tracks the
+/// measure it is placed in — a table inside a two-column layout must fit the
+/// column, not the page. A bare LaTeX length passes through as-is. Anything else
+/// — `!`, a macro, an unknown unit — returns `None`, and the caller falls back to
+/// emitting the content unscaled rather than inventing a size.
+fn resizebox_target_width(raw: &str) -> Option<String> {
+    let w = raw.trim();
+    if w.is_empty() || w == "!" {
+        return None;
+    }
+    for measure in ["\\textwidth", "\\columnwidth", "\\linewidth", "\\hsize"] {
+        if let Some(factor) = w.strip_suffix(measure) {
+            let factor = factor.trim();
+            let pct = if factor.is_empty() {
+                100.0
+            } else {
+                // A leading `0.5`, `.8`, or `2` scales the measure. A zero,
+                // negative or absurd factor is not a size — `0\textwidth` would
+                // render the table as nothing and `-0.5\textwidth` would mirror
+                // it, both silently — so fall back to unscaled content.
+                let f = factor.parse::<f64>().ok()?;
+                if !(f.is_finite() && f > 0.0 && f <= 10.0) {
+                    return None;
+                }
+                f * 100.0
+            };
+            // Trim the trailing zeros a whole percentage would carry, so the
+            // common cases read `100%` / `50%` rather than `100.0000%`.
+            let pct = format!("{pct:.4}");
+            let pct = pct.trim_end_matches('0').trim_end_matches('.');
+            return Some(format!("{pct}%"));
+        }
+    }
+    // An absolute length: a number plus a unit Typst also understands.
+    let split = w.find(|c: char| c.is_ascii_alphabetic())?;
+    let (num, unit) = w.split_at(split);
+    num.trim().parse::<f64>().ok()?;
+    matches!(unit.trim(), "cm" | "mm" | "in" | "pt" | "em").then(|| w.replace(' ', ""))
+}
+
 impl<'a> Emitter<'a> {
     // ─── Construction & lifecycle ──────────────────────────────────────────────
 
@@ -861,6 +1027,7 @@ impl<'a> Emitter<'a> {
             equate_active: false,
             in_per_line_env: false,
             used_subpar: false,
+            used_fit_width: false,
             has_bibtex_include: false,
             had_bib_file: false,
             bib_will_render: false,
@@ -1285,6 +1452,12 @@ impl<'a> Emitter<'a> {
                 self.equate_active = false;
             }
             self.used_equate = false;
+            if self.used_fit_width {
+                self.out.push_str(FIT_WIDTH_PREAMBLE);
+                // Emitted here; clear so the fragment-preamble block below
+                // (which runs unconditionally) doesn't prepend it a second time.
+                self.used_fit_width = false;
+            }
             if self.used_subpar {
                 self.out.push_str("#import \"@preview/subpar:0.2.2\"\n");
                 // Emitted here; clear so the fragment-preamble block below
@@ -1374,6 +1547,9 @@ impl<'a> Emitter<'a> {
             preamble.push_str(EQUATE_PREAMBLE);
         } else if self.used_equate {
             self.equate_active = false;
+        }
+        if self.used_fit_width {
+            preamble.push_str(FIT_WIDTH_PREAMBLE);
         }
         if self.used_subpar {
             preamble.push_str("#import \"@preview/subpar:0.2.2\"\n");
@@ -1665,6 +1841,7 @@ impl<'a> Emitter<'a> {
         self.used_equate |= sub.used_equate;
         self.equate_active |= sub.equate_active;
         self.used_subpar |= sub.used_subpar;
+        self.used_fit_width |= sub.used_fit_width;
         self.visited_includes = std::mem::take(&mut sub.visited_includes);
         for (k, v) in sub.macros.drain() {
             self.macros.entry(k).or_insert(v);
@@ -4615,8 +4792,39 @@ impl<'a> Emitter<'a> {
             // with the size args (corpus: 21 papers use
             // `\resizebox{\textwidth}{!}{…}` to fit a table to the text width).
             // Emit the last group's content; drop the size/transform args.
-            Some("\\resizebox") | Some("\\scalebox") | Some("\\rotatebox")
-            | Some("\\reflectbox") => {
+            // `\resizebox{<w>}{<h>}{X}` scales X to <w>. When <w> resolves, emit
+            // the fit wrapper; otherwise keep the pre-existing passthrough rather
+            // than inventing a size.
+            Some("\\resizebox") => {
+                let mut cursor = node.walk();
+                let groups: Vec<Node<'_>> = node
+                    .children(&mut cursor)
+                    .filter(|c| c.kind().starts_with("curly_group"))
+                    .collect();
+                let Some(content) = groups.last() else {
+                    return node.end_byte();
+                };
+                let rendered = self.render_curly_group_content(*content);
+                let target = (groups.len() >= 3)
+                    .then(|| {
+                        self.src
+                            .get(groups[0].start_byte() + 1..groups[0].end_byte().saturating_sub(1))
+                            .and_then(resizebox_target_width)
+                    })
+                    .flatten();
+                match target {
+                    Some(t) => {
+                        self.used_fit_width = true;
+                        let _ = write!(self.out, "#byetex-fit({t})[{rendered}]");
+                    }
+                    None => self.out.push_str(&rendered),
+                }
+                node.end_byte()
+            }
+            // `\scalebox{f}{X}` takes a FACTOR rather than a width, and the
+            // rotate/reflect pair are transforms — none has a target width to fit
+            // to, so their content passes through unscaled as before.
+            Some("\\scalebox") | Some("\\rotatebox") | Some("\\reflectbox") => {
                 let mut cursor = node.walk();
                 let content = node
                     .children(&mut cursor)
