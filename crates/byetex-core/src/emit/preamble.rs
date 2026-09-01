@@ -306,13 +306,15 @@ impl<'a> Emitter<'a> {
     ///
     /// Must run after `materialize_authors()` so author names are populated.
     pub(in crate::emit) fn build_beamer_touying_preamble(&self) -> String {
-        // `layout.paper` is "presentation-16-9" (16:9/16:10/14:9 ratios) or
-        // "presentation-4-3" (everything else / default). Map to touying's
-        // aspect-ratio string. Default to 4-3 (beamer's default).
-        let aspect = match self.layout.paper {
-            Some(p) if p.starts_with("presentation-16") => "16-9",
-            _ => "4-3",
-        };
+        // beamer's own slide geometry, from `[aspectratio=…]` or its 4:3 default.
+        // The `config-page` width/height are what actually pin the page: touying's
+        // `aspect-ratio` only selects a Typst presentation *preset*, and those are
+        // 1.9-2.2x larger in each dimension than the slide beamer produces.
+        let slide = self
+            .layout
+            .beamer_slide
+            .clone()
+            .unwrap_or_else(crate::class_map::beamer_default_slide);
 
         let mut info = String::new();
         if let Some(title) = &self.metadata.title {
@@ -367,13 +369,23 @@ impl<'a> Emitter<'a> {
             .map(|c| format!("  config-colors(primary: {c}),\n"))
             .unwrap_or_default();
 
+        // The metropolis theme hard-codes `set text(size: 20pt)`, sized for its
+        // 297mm-wide preset; on a real 160mm slide that is ~2x too large. Restating
+        // beamer's own body size rescales the deck as a whole, because every other
+        // length in the theme — page margins, header, footer, the `0.8em` chrome —
+        // is em-derived and follows it.
+        let body_size = self.layout.beamer_font_size.unwrap_or("11pt");
+        let (w, h, aspect) = (&slide.width, &slide.height, &slide.aspect);
+
         format!(
             "#import \"@preview/touying:0.7.3\": *\n\
              #import themes.metropolis: *\n\n\
              #show: metropolis-theme.with(\n\
-             \x20 aspect-ratio: \"{aspect}\",\n{colors}\
+             \x20 aspect-ratio: \"{aspect}\",\n\
+             \x20 config-page(width: {w}, height: {h}),\n{colors}\
              \x20 config-info(\n{info}  ),\n\
-             )\n\n"
+             )\n\
+             #set text(size: {body_size})\n\n"
         )
     }
 
@@ -427,27 +439,9 @@ pub(in crate::emit) fn build_neutral_preamble(
     let profile = crate::style_profile::StyleProfile::for_class(class);
     let body_font = profile.body_font;
     let [h1, h2, h3] = profile.heading_sizes;
-    // Beamer renders as slides: a landscape slide page, a large slide font, tight
-    // margins, ragged-right (no justify) and no paragraph indent. Frame titles are
-    // emitted as bold `#text` by the frame handlers, so keep the heading rules for
-    // any in-body `\section`.
-    if matches!(class, crate::class_map::DocClass::Beamer) {
-        // beamer's default slide is 4:3; `[aspectratio=169]` (etc.) sets the paper in
-        // `from_class_options`. Honor it, else default to 4:3.
-        let slide_paper = match layout.paper {
-            Some(p) if p.starts_with("presentation") => p,
-            _ => "presentation-4-3",
-        };
-        return format!(
-            "#set page(paper: \"{slide_paper}\", margin: (x: 2em, y: 1.5em))\n\
-             #set text(font: \"{body_font}\", size: 22pt)\n\
-             #set par(justify: false, leading: 0.65em, spacing: 0.8em)\n\
-             #show heading.where(level: 1): set text(size: {h1}, weight: \"bold\")\n\
-             #show heading.where(level: 2): set text(size: {h2}, weight: \"bold\")\n\
-             #show heading.where(level: 3): set text(size: {h3}, weight: \"bold\")\n\
-             #show heading: it => block(above: 0.8em, below: 0.5em, it)\n\n"
-        );
-    }
+    // No beamer branch here: a beamer deck never reaches this function. `finish()`
+    // routes `DocClass::Beamer` to `build_beamer_touying_preamble`, which owns the
+    // slide geometry, and calls this only in the `else`.
     // Document-level two-column: a PAGE-level `columns: 2` (the body flows in two
     // balanced columns across pages, with figures/floats handled natively). The
     // title block spans both columns via a `#place(scope: "parent", float: true)`
