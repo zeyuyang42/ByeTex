@@ -372,7 +372,7 @@ release pushes fidelity.
 coverage *breadth* (a different measure from the arXiv compile gate above):
 
 <!-- corpus-summary:start -->
-_Last updated: 2026-08-17 (commit ed9abb9)_
+_Last updated: 2026-09-01 (commit 8c449e9)_
 
 Corpus pass-rate (clean + warnings): **87%** — 431/495 files.
 
