@@ -861,7 +861,26 @@ impl<'a> Emitter<'a> {
                 })
                 .trim()
                 .to_string();
-            s.strip_prefix('#').map(|s| s.to_string()).unwrap_or(s)
+            // Track whether the `#` was actually stripped: re-adding one that was
+            // never there would corrupt any non-`#` output (an empty buffer would
+            // become `[#]`, a Typst parse error).
+            let (bare, had_hash) = match s.strip_prefix('#') {
+                Some(rest) => (rest.to_string(), true),
+                None => (s, false),
+            };
+            // `\resizebox{\linewidth}{!}{ <tabular> }` scales the table to the
+            // measure. The wrapper is found by scanning back from the tabular
+            // rather than read off the command's children — see
+            // `resizebox_wrapping` for why the parse cannot supply it.
+            match crate::emit::resizebox_wrapping(self.src, t.start_byte()) {
+                // Bare call in the figure's code context; the table needs its
+                // `#` back inside the content block — but only if it had one.
+                Some(w) if had_hash => {
+                    self.used_fit_width = true;
+                    format!("byetex-fit({w})[#{bare}]")
+                }
+                Some(_) | None => bare,
+            }
         } else if let Some(tbl) = includes
             .iter()
             .find_map(|inc| self.tabular_from_include(*inc))
