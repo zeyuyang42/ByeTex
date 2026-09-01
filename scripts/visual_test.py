@@ -235,13 +235,38 @@ def collect_project_source(toplevel: Path) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def ensure_byetex(profile: str) -> Path:
-    """Build byetex if the release binary doesn't exist yet; return its path."""
+    """Build the byetex binary and return its path.
+
+    Unconditionally. This used to be `if not bin_path.exists()`, which measured
+    an existing-but-stale binary in silence — so a gate run right after a rebase
+    compared the PRE-fix converter against the POST-fix truth and reported three
+    beamer papers as `layout_body_font_ratio` regressions. The only clue was that
+    each measured value equalled the committed baseline exactly, because the fix
+    simply was not in the binary.
+
+    Deciding staleness here is the wrong instinct, and an mtime scan over
+    `crates/**/*.rs` is wrong twice over: it misses the inputs that are not Rust
+    (`build.rs` compiles the vendored tree-sitter `parser.c`/`scanner.c`;
+    `Cargo.lock` moves on a dep bump), and it never clears, because
+    `cargo build -p byetex` does not compile `crates/**/tests/*.rs` — so after any
+    TDD tick the newest `.rs` in the tree is a test file the binary can never be
+    newer than, and the warning fires forever on a fully-built tree.
+
+    cargo already does this analysis, correctly and over the real input set, and
+    it costs ~0.1s when there is nothing to do. Let it. A broken working tree now
+    fails the gate loudly instead of quietly measuring the last good binary.
+    """
     bin_path = REPO_ROOT / "target" / profile / "byetex"
+    cmd = ["cargo", "build", "-p", "byetex"] + (["--release"] if profile == "release" else [])
+    print(f"  Building byetex ({profile}) ...", flush=True)
+    subprocess.run(cmd, cwd=REPO_ROOT, check=True)
     if not bin_path.exists():
-        flag = "--release" if profile == "release" else ""
-        cmd = ["cargo", "build", "-p", "byetex"] + ([flag] if flag else [])
-        print(f"  Building byetex ({profile}) — this may take a minute ...", flush=True)
-        subprocess.run(cmd, cwd=REPO_ROOT, check=True)
+        # cargo can succeed while writing elsewhere (CARGO_TARGET_DIR, a custom
+        # profile). Say so once, rather than letting all 71 papers fail one by one.
+        raise SystemExit(
+            f"visual_test: cargo build succeeded but {bin_path} does not exist "
+            f"(CARGO_TARGET_DIR or a custom profile?). Refusing to measure."
+        )
     return bin_path
 
 
