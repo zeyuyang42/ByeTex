@@ -20,7 +20,7 @@
       "kind": "ambiguous_math",
       "name": "",
       "papers": 18,
-      "occurrences": 1421
+      "occurrences": 582
     },
     {
       "kind": "drop_only",
@@ -240,12 +240,6 @@
     },
     {
       "kind": "unsupported_command",
-      "name": "\\ss",
-      "papers": 2,
-      "occurrences": 4
-    },
-    {
-      "kind": "unsupported_command",
       "name": "\\arraybackslash",
       "papers": 2,
       "occurrences": 4
@@ -408,27 +402,9 @@
     },
     {
       "kind": "unsupported_command",
-      "name": "\\cb",
-      "papers": 1,
-      "occurrences": 122
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\cg",
-      "papers": 1,
-      "occurrences": 122
-    },
-    {
-      "kind": "unsupported_command",
       "name": "\\IfNoValueTF",
       "papers": 1,
       "occurrences": 63
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\cy",
-      "papers": 1,
-      "occurrences": 41
     },
     {
       "kind": "unsupported_command",
@@ -858,12 +834,6 @@
     },
     {
       "kind": "unsupported_command",
-      "name": "\\o",
-      "papers": 1,
-      "occurrences": 2
-    },
-    {
-      "kind": "unsupported_command",
       "name": "\\newunicodechar",
       "papers": 1,
       "occurrences": 2
@@ -1128,19 +1098,7 @@
     },
     {
       "kind": "unsupported_command",
-      "name": "\\ae",
-      "papers": 1,
-      "occurrences": 1
-    },
-    {
-      "kind": "unsupported_command",
       "name": "\\DeclareDelimFormat",
-      "papers": 1,
-      "occurrences": 1
-    },
-    {
-      "kind": "unsupported_command",
-      "name": "\\L",
       "papers": 1,
       "occurrences": 1
     },
