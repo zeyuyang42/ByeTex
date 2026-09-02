@@ -146,8 +146,11 @@ pub fn plan_project(
     // explicit statement that the whole tree is one project, so
     // `plan_project_from_dir` still scans it all.
     let refs = harvest_referenced_labels_in_input_closure(main_tex, &base_dir);
+    // Same closure, for macros: a paper's notation usually lives in an `\input`ed
+    // `def.tex`, and an empty map here left those call sites unexpanded.
+    let preseeded = harvest_macros_in_input_closure(main_tex, &base_dir);
     // `\chapter`-usage detection is keyed on `base_dir` inside `convert_with_macros`.
-    let out = convert_with_macros(&source, &opts, HashMap::new(), refs, record_source_map);
+    let out = convert_with_macros(&source, &opts, preseeded, refs, record_source_map);
 
     let assets = out
         .asset_refs
@@ -425,6 +428,48 @@ pub(crate) fn harvest_project_referenced_labels(
         }
     }
     Ok(refs)
+}
+
+/// Harvest macro definitions from the entry file's `\input` CLOSURE.
+///
+/// The mirror of [`harvest_referenced_labels_in_input_closure`], and closure-
+/// scoped for the same reason: `plan_project` must not scan the whole directory,
+/// because flat `byetex convert paper.tex` routes through it and would then pull
+/// in a neighbouring paper's macros.
+///
+/// Without this, `plan_project` passed an EMPTY macro map, so a definition living
+/// in an `\input`ed `def.tex` reached the emitter only if the `\input` expansion
+/// happened to harvest it. `\newcommand` did; `\newcommandx` did not — and a
+/// paper whose notation lives in `def.tex` had every call site collapse to a bare
+/// identifier, losing all arguments with no warning and no compile error (818
+/// call sites on corpus 2605.22765: `\pdata`, `\fw`, `\denoiser`, ...).
+fn harvest_macros_in_input_closure(entry: &Path, base_dir: &Path) -> HashMap<String, MacroDef> {
+    let mut macros: HashMap<String, MacroDef> = HashMap::new();
+    let mut seen: HashSet<PathBuf> = HashSet::new();
+    let mut queue: Vec<PathBuf> = vec![entry.to_path_buf()];
+    while let Some(path) = queue.pop() {
+        let key = path.canonicalize().unwrap_or_else(|_| path.clone());
+        if !seen.insert(key) {
+            continue;
+        }
+        let Ok(source) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        // Later definitions win, matching `harvest_project_macros`'s
+        // "closest to use" semantics.
+        for (k, v) in crate::emit::harvest_macros_from_source(&source) {
+            macros.insert(k, v);
+        }
+        for raw in crate::emit::extract_include_paths_from_source(&source) {
+            let from_here = path.parent().unwrap_or(base_dir);
+            if let Some(p) = crate::emit::resolve_include_path(from_here, &raw)
+                .or_else(|| crate::emit::resolve_include_path(base_dir, &raw))
+            {
+                queue.push(p);
+            }
+        }
+    }
+    macros
 }
 
 /// Collect referenced labels from `entry` and every file reachable from it via

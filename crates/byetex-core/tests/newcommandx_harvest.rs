@@ -166,3 +166,84 @@ fn arity_only_no_optional() {
         cust
     );
 }
+
+// ── Definitions living in an `\input`ed file ────────────────────────────────
+//
+// Every test above defines the macro INLINE. Real papers put their notation in
+// a `def.tex` and `\input` it — 2605.22765, this file's own stated driver, does
+// exactly that. `harvest_macros_from_source` dispatches on tree-sitter's
+// `new_command_definition` node, which covers `\newcommand`/`\renewcommand`/
+// `\providecommand`/`\DeclareMathOperator` but NOT `\newcommandx` (a bare
+// generic command), so an `\input`ed `\newcommandx` was never harvested and
+// every call site collapsed to a bare identifier: `\denoiser{t}{}{x_t}[\theta]`
+// rendered `$"denoiser" [theta]$`, silently losing all arguments. ~840 sites on
+// that one paper, with no compile error and no leak to scan for.
+
+use std::fs;
+
+/// Convert a multi-file project the way every file-based entry point does:
+/// through `plan_project`, which is what both `byetex convert` and
+/// `byetex convert --project` call. Plain `convert()` never sees the sibling
+/// files, so a macro defined in an `\input` cannot be tested through it.
+fn plan(name: &str, files: &[(&str, &str)], main: &str) -> String {
+    // Per-TEST directory: cargo runs these concurrently, and a path keyed only
+    // on the pid had them deleting each other's files mid-run.
+    let dir = std::env::temp_dir().join(format!("byetex-hx-{}-{}", name, std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    for (name, body) in files {
+        fs::write(dir.join(name), body).unwrap();
+    }
+    let main_tex = dir.join("main.tex");
+    fs::write(&main_tex, main).unwrap();
+    let plan = byetex_core::project::plan_project(&main_tex, true, false).expect("plan_project");
+    let _ = fs::remove_dir_all(&dir);
+    plan.main_typst
+}
+
+#[test]
+fn a_newcommandx_defined_in_an_input_is_harvested() {
+    let typst = plan(
+        "newcommandx",
+        &[(
+            "def.tex",
+            "\\newcommandx\\dn[5][4=, 5=0]{\\hat{x}^{#4}_{#5}(\\cdot, #1)}\n",
+        )],
+        "\\documentclass{article}\\usepackage{xargs}\n\\input{def}\n\\begin{document}\n$\\dn{t}{}{y}[\\theta]$\n\\end{document}\n",
+    );
+    assert!(
+        !typst.contains("\"dn\""),
+        "an \\input'ed \\newcommandx must expand, not collapse to a bare name; got:\n{}",
+        typst
+    );
+    assert!(
+        typst.contains("hat(x)"),
+        "the macro body must reach the output; got:\n{}",
+        typst
+    );
+}
+
+#[test]
+fn an_inlined_newcommandx_still_works() {
+    // The control: the inline path already worked and must keep working.
+    let out = convert_str(
+        "\\newcommandx\\dn[5][4=, 5=0]{\\hat{x}^{#4}_{#5}(\\cdot, #1)}\n$\\dn{t}{}{y}[\\theta]$",
+    );
+    assert!(out.typst.contains("hat(x)"), "inline still expands; got:\n{}", out.typst);
+}
+
+#[test]
+fn a_plain_newcommand_in_an_input_still_works() {
+    // The other control: `\newcommand` via `\input` was never broken, so a
+    // regression there would show the closure walk was widened wrongly.
+    let typst = plan(
+        "plain",
+        &[("def.tex", "\\newcommand\\simple[2]{S_{#1}^{#2}}\n")],
+        "\\documentclass{article}\n\\input{def}\n\\begin{document}\n$\\simple{a}{b}$\n\\end{document}\n",
+    );
+    assert!(
+        typst.contains("S_(a)^(b)"),
+        "plain \\newcommand via \\input still expands; got:\n{}",
+        typst
+    );
+}
