@@ -76,6 +76,63 @@ number in the README's Status section, where it reads as a headline result.
 
 ## Open — P0 (frequent × blocking)
 
+> **Round 15 (2026-09-02, v0.7.4)** — First Loop-B round in seven ticks; two papers
+> dogfooded (`2605.22728`, `gh-amberj-latex-book-template`), both `NEEDS_FIX`
+> (fidelity 0.804→0.835 and 0.808→0.818), 18 friction items logged. Every finding
+> below is a SILENT loss: it compiles, exits 0, and neither `warnings.json` nor
+> `byetex diagnose`'s leak scan reports it. None was reachable by any metric in the
+> loop — all were found by rendering pages and comparing against the truth.
+>
+> ### R1. `\ ` in a citation supplement became a forced line break — sev 4 (major) — ROUTE: Loop A — RESOLVED (#503)
+> `\cite[Sec.\ 2]` emitted `@key[Sec.\ 2]`, and Typst reads `\ ` as a forced LINE
+> BREAK, not a space. ~46 citations on `2605.22728` were split into orphan one-word
+> lines. Fixed in `brack_inner`, the chokepoint that already mapped `~`; it covers
+> the same spacing set the text-mode emitter handles. Result: 0 stray control spaces
+> across 249 supplements, and **29 -> 27 pages** against a truth of 22 —
+> independently reproducing the agent's measurement.
+>
+> ### R2. `alignat`'s column count rendered as literal `{2}` — sev 3 — ROUTE: Loop A — RESOLVED (#504)
+> 15 equations on `2605.22728`. **The agent's root cause was wrong** — it read the
+> `{2}` as a vestigial `equate` sub-numbering directive left invalid by the
+> preamble's `sub-numbering: false`. It is actually `\begin{alignat}{2}`'s mandatory
+> column-count argument. Instrumenting the node kinds settled it in one step.
+> Treat agent *findings* as reliable and agent *attributions* as hypotheses.
+>
+> ### R3. A label-shaped run of prose is deleted silently — sev 4 (major) — ROUTE: Loop A — OPEN (2 attempts; see branch `fix/bare-angle-bracket-label`)
+> `<SOMETHING>`, `<dim>`, `<answer>` in body text parse as a Typst label, attach to
+> the preceding element and render NOTHING. 10 occurrences across 2 papers.
+> Attempt 1 (whitelist of keys the document defines) broke on four distinct roles a
+> `<key>` is emitted in. Attempt 2 (escape at `safe_copy`) fixes the real case but
+> regresses `\\<answer>`, which main handles. `<` handling spans three passes, each
+> with a documented prior incident. **The next attempt should instrument the buffer
+> before `post_process` rather than reason about which paths exist** — two attempts
+> have now been lost to reasoning.
+>
+> ### R4. `\thanks`/`\affil` author content dropped with no warning — sev 3 — ROUTE: Loop A — OPEN
+> Independently reported on BOTH papers. `2605.22728` loses a whole affiliation plus
+> both authors' footnote emails and corresponding-author markers; `gh-amberj` loses
+> an `\author{...\thanks{\url{...}}}` footnote. No `warnings.json` entry, no leak-scan
+> hit. Two papers is the widest evidence in this round.
+>
+> ### R5. `warnings.json` fragments one structural math failure into N symbol warnings — sev 3 — ROUTE: Loop B
+> A broken cases-in-align block emitted 9 unrelated `unsupported_command` entries
+> (`\nabla` x4, `\vert` x4, `\tfrac` x3), each pointing at the generic
+> `byetex-using-warnings-json`. `byetex-parse-error` has the right advice but was
+> never surfaced, because the region was never classified as a parse error.
+>
+> ### R6. `dogfood.py select` returns papers that `prepare` then rejects — sev 2 — ROUTE: Loop B
+> `ctan-memoir` was picked as hardest-1; `prepare` died with an I/O error planning
+> the project, silently costing a third of the round. `select` ranks on failure
+> severity without checking preparability.
+>
+> ### R7. Two skills have real gaps — sev 3 — ROUTE: Loop B
+> `byetex-math` assumes every math gap arrives as a red `#text(red)[...]` placeholder
+> and says nothing about the mode where content silently vanishes leaving raw
+> `\begin`/`\text`/`\smash` tokens. `byetex-book` covers `\listoffigures` but not
+> two-sided/`openright` pagination — the single largest visual gap on the book paper
+> (16 truth pages vs 6 rendered).
+
+
 > **Round 14 (2026-07-25, v0.7.1)** — Loop-A tick on table rules. The selected item
 > (spurious full-width rule under a `\cmidrule` header) shipped scoped-down; the
 > *general* fix was blocked by the finding below, which the visual grader and the diff
