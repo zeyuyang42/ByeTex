@@ -247,3 +247,21 @@ fn a_plain_newcommand_in_an_input_still_works() {
         typst
     );
 }
+
+#[test]
+fn a_mid_document_renewcommand_still_overrides_the_preseed() {
+    // A guard, not a red-first test: it passes both with and without the fix.
+    // Pre-seeding hands the emitter definitions up front, and every *merge* site
+    // in `emit` uses `or_insert` (pre-seeded wins). If the emitter's own
+    // definition handling ever did the same, a `\renewcommand` later in the body
+    // would be frozen out by the harvested first definition and silently emit the
+    // stale expansion. It does not today; this pins that.
+    let typst = plan(
+        "renew",
+        &[],
+        "\\documentclass{article}\n\\newcommand{\\foo}{FIRST}\n\\begin{document}\n$\\foo$\n\\renewcommand{\\foo}{SECOND}\n$\\foo$\n\\end{document}\n",
+    );
+    let first = typst.find("F I R S T").expect("first definition should expand");
+    let second = typst.find("S E C O N D").expect("the \\renewcommand must take effect");
+    assert!(first < second, "definitions must apply in document order; got:\n{}", typst);
+}

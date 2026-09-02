@@ -455,8 +455,10 @@ fn harvest_macros_in_input_closure(entry: &Path, base_dir: &Path) -> HashMap<Str
         let Ok(source) = std::fs::read_to_string(&path) else {
             continue;
         };
-        // Later definitions win, matching `harvest_project_macros`'s
-        // "closest to use" semantics.
+        // On a cross-file name collision the traversal order decides, which is
+        // stack order, not document order. `harvest_project_macros` has the same
+        // property (directory-walk order). Collisions are vanishingly rare, and
+        // the emitter's own in-document definitions override either way.
         for (k, v) in crate::emit::harvest_macros_from_source(&source) {
             macros.insert(k, v);
         }
