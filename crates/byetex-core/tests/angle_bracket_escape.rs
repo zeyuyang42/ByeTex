@@ -93,3 +93,69 @@ fn angle_brackets_in_math_not_escaped() {
         out.typst
     );
 }
+
+// ── A label-SHAPED run that is not a label the document defines ───────────────
+//
+// The guard above only asks whether the text between `<` and `>` *could* be a
+// label key. Source prose frequently can: `<SOMETHING>` is a placeholder, not
+// markup. Typst then parses it as a label, attaches it to the preceding element
+// and renders NOTHING — silent deletion, no error, and `typst compile` exits 0.
+// A dogfood agent lost a whole placeholder this way and neither `warnings.json`
+// nor `byetex diagnose`'s leak scan said a word.
+//
+// Shape is not enough; the key must be one this document actually emitted.
+
+#[test]
+fn a_label_shaped_placeholder_in_prose_is_escaped() {
+    let out = convert_str(r"Each unit will focus on <SOMETHING>.");
+    assert!(
+        out.typst.contains("\\<SOMETHING>"),
+        "a placeholder that is not a defined label must be escaped: {}",
+        out.typst
+    );
+}
+
+#[test]
+fn other_label_shaped_prose_runs_are_escaped_too() {
+    for word in ["<support>", "<answer>", "<dim>", "<return>"] {
+        let out = convert_str(&format!("The tag {word} is literal text."));
+        let bare = format!(" {word}");
+        assert!(
+            !out.typst.contains(&bare),
+            "{word} must not survive as a bare Typst label: {}",
+            out.typst
+        );
+    }
+}
+
+#[test]
+fn a_defined_label_is_still_passed_through() {
+    // The control: escaping every `<…>` would break real labels. A key the
+    // document DOES define must stay bare so `@sec:intro` still resolves.
+    let out = convert_str(r"\section{Introduction}\label{sec:intro} See it.");
+    assert!(
+        out.typst.contains("<sec:intro>"),
+        "an emitted label must not be escaped: {}",
+        out.typst
+    );
+    // `\<sec:intro>` CONTAINS `<sec:intro>`, so the assertion above passes either
+    // way on its own — this is the half that actually fails without the fix.
+    assert!(
+        !out.typst.contains("\\<sec:intro>"),
+        "an emitted label must not be escaped: {}",
+        out.typst
+    );
+}
+
+#[test]
+fn a_figure_label_survives_alongside_prose_angle_brackets() {
+    let out = convert_str(
+        r"\begin{figure}\includegraphics{a.png}\caption{C}\label{fig:x}\end{figure} Use <PLACEHOLDER> here.",
+    );
+    assert!(out.typst.contains("<fig:x>"), "figure label kept: {}", out.typst);
+    assert!(
+        out.typst.contains("\\<PLACEHOLDER>"),
+        "prose placeholder escaped: {}",
+        out.typst
+    );
+}

@@ -87,6 +87,11 @@ use typography::{is_operatorname_only_function, should_split_math_word};
 /// `escape_text_cell` consumes these; `strip_cell_keep_markers` is the backstop
 /// for cell paths that bypass it (e.g. `\multicolumn`, which emits a
 /// `table.cell(...)` call directly).
+/// Typst labels ByeTex emits for its OWN bookkeeping rather than from a
+/// `\label`. They never pass through `label_first_use`, so the final typography
+/// pass would otherwise escape them and break what they control.
+pub(in crate::emit) const INTERNAL_TYPST_LABELS: &[&str] = &["touying:hidden", "equate:revoke"];
+
 pub(in crate::emit) const CELL_KEEP_SENTINEL: char = '\u{1d}';
 
 /// Marks a multi-line `equation`/`multline` body as a candidate for `#box`ing,
@@ -1583,7 +1588,14 @@ impl<'a> Emitter<'a> {
         // LaTeX-style double quotes ``X'' → ASCII "X" (Typst will smart-quote).
         // Done as a final string pass so we don't have to wrangle token-level
         // detection for adjacent `-` / backtick / apostrophe runs.
-        self.out = post_process_typography(&self.out);
+        // Every source of a `<key>` ByeTex itself emits: label definitions, the
+        // dangling-reference anchors `emit_bibliography` adds for referenced-but-
+        // undefined keys, and its own internal markers.
+        let mut ours: HashSet<&str> =
+            self.emitted_labels.iter().map(String::as_str).collect();
+        ours.extend(self.referenced_labels.iter().map(String::as_str));
+        ours.extend(INTERNAL_TYPST_LABELS);
+        self.out = post_process_typography(&self.out, &ours);
         self.out = break_raw_paren_chains(&self.out);
         self.out = break_math_comment_tokens(&self.out);
         // Cheap guard: the marker is rare, and this would otherwise clone the
@@ -2370,6 +2382,14 @@ impl<'a> Emitter<'a> {
             // never reach this arm.)
             "label_definition" => {
                 if let Some((key, end)) = extract_label_name_and_end(node, self.src) {
+                    // Register like every other label site. Two things depend on
+                    // it: Typst rejects a duplicate `<key>`, and the final
+                    // typography pass decides whether a `<…>` run is OURS or is
+                    // source prose that merely looks like a label.
+                    if !self.label_first_use(&key) {
+                        self.skip_until = self.skip_until.max(end);
+                        return end;
+                    }
                     self.used_text_label_anchor = true;
                     let _ = write!(
                         self.out,
@@ -5997,7 +6017,7 @@ pub(crate) fn wrap_for_command_name(name: &str) -> Option<(&'static str, &'stati
 /// `\texttt{...}` — those wrappers are short and don't typically contain
 /// `--`/`---`/``''. We accept the small risk in v0.2 and revisit if a real
 /// template triggers it.
-fn post_process_typography(s: &str) -> String {
+fn post_process_typography(s: &str, ours: &HashSet<&str>) -> String {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();
     let mut prev: Option<char> = None;
@@ -6090,7 +6110,7 @@ fn post_process_typography(s: &str) -> String {
             // `<email@host>`, `<http://url>`).
             '<' => {
                 let mut lookahead = chars.clone();
-                let mut key_len: usize = 0;
+                let mut key = String::new();
                 let mut found_close = false;
                 'scan: loop {
                     match lookahead.next() {
@@ -6102,12 +6122,20 @@ fn post_process_typography(s: &str) -> String {
                         // alphanumerics included) so a label emitted with e.g.
                         // `ö` is recognised here as a label, not escaped.
                         Some(c) if is_typst_label_char(c) => {
-                            key_len += 1;
+                            key.push(c);
                         }
                         _ => break 'scan,
                     }
                 }
-                if found_close && key_len > 0 {
+                // Shape alone is not evidence: source prose is full of runs that
+                // COULD be a label key — `<SOMETHING>`, `<dim>`, `<answer>`. Typst
+                // parses those as a label, attaches it to the preceding element and
+                // renders nothing, so the text is deleted silently and the compile
+                // still exits 0. Pass `<` through only for a key this document
+                // actually emitted; anything else is text and gets escaped.
+                let is_emitted_label =
+                    found_close && !key.is_empty() && ours.contains(key.as_str());
+                if is_emitted_label {
                     out.push('<');
                 } else {
                     out.push_str("\\<");
