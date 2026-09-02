@@ -823,6 +823,9 @@ pub(in crate::emit) fn build_neutral_preamble(
     };
     // Reference lists are smaller than body text in most venue classes, and the
     // section is a large block — the biggest single small-tier contributor.
+    // Must come AFTER the caption-size rule: with the order reversed, Typst does
+    // not apply it and the pile-up survives (verified on corpus 2606.12411).
+    let breakable = "#show figure.where(kind: table): set block(breakable: true)\n";
     let bibliography_size = match bibliography_size {
         Some(em) => format!("#show bibliography: set text(size: {em})\n"),
         None => String::new(),
@@ -836,7 +839,7 @@ pub(in crate::emit) fn build_neutral_preamble(
          #show heading.where(level: 3): set text(size: {h3}, weight: \"bold\")\n\
          #show heading: it => block(above: if it.level == 1 {{ 1.5em }} else {{ 1.4em }}, below: if it.level == 1 {{ 1.0em }} else {{ 0.65em }}, it)\n\
          #show figure.where(kind: table): set figure.caption(position: top)\n\
-         {caption_size}{bibliography_size}{figure_supplement}{heading_align}\n"
+         {caption_size}{breakable}{bibliography_size}{figure_supplement}{heading_align}\n"
     )
 }
 

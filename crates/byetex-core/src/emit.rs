@@ -783,10 +783,24 @@ fn si_unit_symbol(name: &str) -> Option<&'static str> {
 /// break — silently, with no error. Content already narrower than the measure is
 /// therefore left untouched and stays breakable; the case `\resizebox` actually
 /// exists for (a wide table squeezed into the column) is the one that scales.
+///
+/// The same reasoning bounds the HEIGHT: if the scaled result would STILL be
+/// taller than the region, scaling buys nothing and costs everything, because a
+/// `scale` block cannot break and Typst clamps the overflow into a pile of
+/// overprinted rows. Leaving it unscaled keeps it breakable — a table that
+/// overruns the measure horizontally is readable; one whose rows are painted on
+/// top of each other is not. This guard only pays off together with the
+/// `#show figure: set block(breakable: true)` rule in the preamble: alone,
+/// either one leaves corpus 2606.12411 piling 22 words at a single position.
+///
+/// Written `size.height >= ...` rather than `... <= size.height` because a bare
+/// `<` in emitted output is escaped downstream (Typst reads `<...>` as a label),
+/// which turns `<=` into `\<=` and breaks the compile.
 const FIT_WIDTH_PREAMBLE: &str = "#let byetex-fit(width, body) = layout(size => context {\n\
   \x20 let target = if type(width) == ratio { size.width * width } else { width }\n\
-  \x20 let natural = measure(body).width\n\
-  \x20 if natural > target and natural > 0pt {\n\
+  \x20 let m = measure(body)\n\
+  \x20 let natural = m.width\n\
+  \x20 if natural > target and natural > 0pt and size.height >= m.height * (target / natural) {\n\
   \x20   scale(x: target / natural * 100%, y: target / natural * 100%, reflow: true, body)\n\
   \x20 } else { body }\n\
 })\n";
