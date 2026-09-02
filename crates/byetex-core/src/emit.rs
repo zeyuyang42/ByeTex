@@ -791,6 +791,27 @@ const FIT_WIDTH_PREAMBLE: &str = "#let byetex-fit(width, body) = layout(size => 
   \x20 } else { body }\n\
 })\n";
 
+/// The Typst `em` ratio for a LaTeX font-size name, with or without the leading
+/// backslash. Relative to `\normalsize`, from the standard 10pt size table.
+///
+/// One table so the float wrapper (`font_size_wrapping`) and the caption rule
+/// (`preamble::caption_font_size`) cannot drift apart.
+pub(in crate::emit) fn size_declaration_em(name: &str) -> Option<&'static str> {
+    Some(match name.trim().trim_start_matches('\\') {
+        "tiny" => "0.5em",
+        "scriptsize" => "0.7em",
+        "footnotesize" => "0.8em",
+        "small" => "0.9em",
+        "normalsize" => "1em",
+        "large" => "1.2em",
+        "Large" => "1.44em",
+        "LARGE" => "1.728em",
+        "huge" => "2.074em",
+        "Huge" => "2.488em",
+        _ => return None,
+    })
+}
+
 /// The LaTeX font-size DECLARATION in force for the content starting at byte
 /// `start`, as a Typst `em` ratio, or `None` when the content is at body size.
 ///
@@ -807,18 +828,17 @@ const FIT_WIDTH_PREAMBLE: &str = "#let byetex-fit(width, body) = layout(size => 
 /// Bounded by the nearest preceding `\begin{`: a switch that ended before the
 /// float began must not reach in. Last live declaration wins, matching LaTeX.
 pub(in crate::emit) fn font_size_wrapping(src: &str, start: usize) -> Option<&'static str> {
-    // Relative to `\normalsize`, from the standard 10pt size table.
-    const SIZES: &[(&str, &str)] = &[
-        ("\\tiny", "0.5em"),
-        ("\\scriptsize", "0.7em"),
-        ("\\footnotesize", "0.8em"),
-        ("\\small", "0.9em"),
-        ("\\normalsize", "1em"),
-        ("\\large", "1.2em"),
-        ("\\Large", "1.44em"),
-        ("\\LARGE", "1.728em"),
-        ("\\huge", "2.074em"),
-        ("\\Huge", "2.488em"),
+    const NAMES: &[&str] = &[
+        "\\tiny",
+        "\\scriptsize",
+        "\\footnotesize",
+        "\\small",
+        "\\normalsize",
+        "\\large",
+        "\\Large",
+        "\\LARGE",
+        "\\huge",
+        "\\Huge",
     ];
     let head = src.get(..start)?;
     // Only look inside the innermost environment that opened before `start`.
@@ -826,7 +846,8 @@ pub(in crate::emit) fn font_size_wrapping(src: &str, start: usize) -> Option<&'s
     let scope = head.get(floor..)?;
 
     let mut best: Option<(usize, &'static str)> = None;
-    for (cmd, em) in SIZES {
+    for cmd in NAMES {
+        let em = size_declaration_em(cmd)?;
         let mut from = scope.len();
         // Walk back over candidates until one is live; a commented-out switch is
         // how an author disables it.
@@ -933,7 +954,7 @@ pub(in crate::emit) fn resizebox_wrapping(src: &str, start: usize) -> Option<Str
 
 /// Whether the byte at `at` sits after an unescaped `%` on its own line — i.e.
 /// inside a LaTeX comment, and so not really part of the document.
-fn is_commented_out(src: &str, at: usize) -> bool {
+pub(in crate::emit) fn is_commented_out(src: &str, at: usize) -> bool {
     let line_start = src.get(..at).and_then(|h| h.rfind('\n')).map_or(0, |n| n + 1);
     let Some(prefix) = src.get(line_start..at) else {
         return false;
@@ -1595,7 +1616,11 @@ impl<'a> Emitter<'a> {
                 self.out.push_str(&self.build_beamer_touying_preamble());
             } else {
                 self.out
-                    .push_str(&build_neutral_preamble(&self.layout, &self.detected_class));
+                    .push_str(&build_neutral_preamble(
+                        &self.layout,
+                        &self.detected_class,
+                        crate::emit::preamble::caption_font_size(self.src, self.base_dir.as_deref()),
+                    ));
                 self.out.push_str(&self.heading_numbering_decl());
             }
             if self.used_text_label_anchor {
