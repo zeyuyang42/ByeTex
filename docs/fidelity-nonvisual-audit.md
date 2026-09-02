@@ -35,13 +35,13 @@ of loss.
 | `p/m/b column widths` | 7 | 13 |
 | `\colorbox/\fcolorbox` | 3 | 39 |
 
-## Warnings aggregated (top 40 of 286; full list in the .json)
+## Warnings aggregated (top 40 of 279; full list in the .json)
 
 | kind | name | papers | occurrences |
 | --- | --- | --: | --: |
 | needs_manual_review | `` | 27 | 101 |
 | drop_only | `\newpage` | 27 | 50 |
-| ambiguous_math | `` | 18 | 1421 |
+| ambiguous_math | `` | 18 | 582 |
 | drop_only | `\clearpage` | 16 | 31 |
 | unsupported_command | `usepackage:latexsym` | 9 | 9 |
 | unsupported_command | `\` | 7 | 60 |
@@ -78,4 +78,4 @@ of loss.
 | unsupported_command | `\linewidth` | 2 | 27 |
 | unsupported_command | `\looseness` | 2 | 15 |
 | drop_only | `\pagebreak` | 2 | 5 |
-| unsupported_command | `\ss` | 2 | 4 |
+| unsupported_command | `\arraybackslash` | 2 | 4 |

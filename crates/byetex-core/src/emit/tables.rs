@@ -270,7 +270,7 @@ impl<'a> Emitter<'a> {
         let col_spec = spec_node
             .map(|g| self.src[g.start_byte() + 1..g.end_byte() - 1].to_string())
             .unwrap_or_default();
-        let (count, aligns, widths) = parse_column_spec(&col_spec);
+        let (count, aligns, widths, col_styles) = parse_column_spec(&col_spec);
 
         // Collect body children (everything between begin and end). Skip only
         // the LEADING column-spec curly_group (and the preceding `{width}` group
@@ -441,6 +441,10 @@ impl<'a> Emitter<'a> {
 
         for (row_idx, row_cells) in rows_2d.iter().enumerate() {
             let mut row_output: Vec<String> = Vec::new();
+            // `row_output` skips columns covered by an active rowspan, so its
+            // index is NOT the column index — a decorator would style the wrong
+            // column without this.
+            let mut row_output_cols: Vec<usize> = Vec::new();
             let mut src = row_cells.iter();
             let mut col = 0usize;
 
@@ -460,6 +464,7 @@ impl<'a> Emitter<'a> {
                         }
                     }
                     row_output.push(cell.clone());
+                    row_output_cols.push(col);
                     col += cs;
                 } else {
                     break;
@@ -486,6 +491,7 @@ impl<'a> Emitter<'a> {
                         rowspan_cols[col] -= 1;
                     } else {
                         row_output.push(String::new());
+                        row_output_cols.push(row_output_cols.last().map_or(0, |c| c + 1));
                     }
                     col += 1;
                 }
@@ -499,7 +505,21 @@ impl<'a> Emitter<'a> {
                     if cell.starts_with("table.cell(") {
                         self.out.push_str(cell);
                     } else {
-                        let _ = write!(self.out, "[{}]", escape_text_cell(cell));
+                        let body = escape_text_cell(cell);
+                        match row_output_cols
+                            .get(i)
+                            .and_then(|c| col_styles.get(*c))
+                            .copied()
+                            .flatten()
+                            .filter(|_| !body.is_empty())
+                        {
+                            Some(wrap) => {
+                                let _ = write!(self.out, "[#{wrap}[{body}]]");
+                            }
+                            None => {
+                                let _ = write!(self.out, "[{body}]");
+                            }
+                        }
                     }
                 }
                 self.out.push_str(",\n");
@@ -611,9 +631,15 @@ fn normalize_table_width(raw: &str) -> String {
 /// Parse a LaTeX tabular column spec like `lcr` or `p{3cm}c` into a count, a
 /// vector of Typst alignment names (`"left"`/`"center"`/`"right"`), and a
 /// parallel vector of Typst column widths (`"auto"` or e.g. `"3cm"`/`"30%"`).
-fn parse_column_spec(spec: &str) -> (usize, Vec<String>, Vec<String>) {
+fn parse_column_spec(spec: &str) -> (usize, Vec<String>, Vec<String>, Vec<Option<&'static str>>) {
     let mut aligns: Vec<String> = Vec::new();
     let mut widths: Vec<String> = Vec::new();
+    // A `>{…}` whose body is a FONT declaration rather than an alignment one
+    // styles every cell of the column that follows. Dropping it silently lost a
+    // whole column's bold/italic (verified: `{>{\bfseries}l c}` produced output
+    // byte-identical to plain `{l c}`).
+    let mut styles: Vec<Option<&'static str>> = Vec::new();
+    let mut pending_style: Option<&'static str> = None;
     // An array-package `>{…}` decorator applies to the column that FOLLOWS it; an
     // alignment verb in it (`\centering` / `\raggedleft` / `\raggedright`)
     // overrides that column's default alignment. Held here until the next column.
@@ -625,16 +651,19 @@ fn parse_column_spec(spec: &str) -> (usize, Vec<String>, Vec<String>) {
             'l' | 'L' => {
                 aligns.push(resolve_col_align("left", &mut pending_align));
                 widths.push("auto".to_string());
+                styles.push(pending_style.take());
                 i += 1;
             }
             'c' | 'C' => {
                 aligns.push(resolve_col_align("center", &mut pending_align));
                 widths.push("auto".to_string());
+                styles.push(pending_style.take());
                 i += 1;
             }
             'r' | 'R' => {
                 aligns.push(resolve_col_align("right", &mut pending_align));
                 widths.push("auto".to_string());
+                styles.push(pending_style.take());
                 i += 1;
             }
             // Paragraph/width columns carry a fixed `{width}` (p/m/b → width
@@ -642,6 +671,7 @@ fn parse_column_spec(spec: &str) -> (usize, Vec<String>, Vec<String>) {
             'p' | 'm' | 'b' | 'w' | 'W' => {
                 let is_w = matches!(bytes[i], b'w' | b'W');
                 aligns.push(resolve_col_align("left", &mut pending_align));
+                styles.push(pending_style.take());
                 i += 1;
                 let mut width = "auto".to_string();
                 if bytes.get(i) == Some(&b'{') {
@@ -686,7 +716,7 @@ fn parse_column_spec(spec: &str) -> (usize, Vec<String>, Vec<String>) {
                     let close = skip_balanced_braces(spec, i);
                     let inner = &spec[i + 1..close.saturating_sub(1)];
                     i = close;
-                    let (_, inner_aligns, inner_widths) = parse_column_spec(inner);
+                    let (_, inner_aligns, inner_widths, _) = parse_column_spec(inner);
                     let first_idx = aligns.len();
                     for _ in 0..count {
                         aligns.extend(inner_aligns.iter().cloned());
@@ -713,6 +743,9 @@ fn parse_column_spec(spec: &str) -> (usize, Vec<String>, Vec<String>) {
                     if let Some(a) = decorator_align(content) {
                         pending_align = Some(a);
                     }
+                    if let Some(st) = decorator_style(content) {
+                        pending_style = Some(st);
+                    }
                     i = close;
                 }
             }
@@ -730,7 +763,7 @@ fn parse_column_spec(spec: &str) -> (usize, Vec<String>, Vec<String>) {
             }
         }
     }
-    (aligns.len(), aligns, widths)
+    (aligns.len(), aligns, widths, styles)
 }
 
 /// A column's alignment is its spec default unless a preceding `>{…}` decorator
@@ -742,6 +775,31 @@ fn resolve_col_align(default: &str, pending: &mut Option<String>) -> String {
 /// Map an array `>{…}` decorator body to a Typst column alignment, if it carries
 /// an alignment verb. Handles plain LaTeX (`\centering`, `\raggedright`,
 /// `\raggedleft`) and ragged2e's capitalised variants; case-insensitive.
+/// The Typst wrapper for a `>{…}` decorator whose body is a FONT declaration.
+///
+/// `>{\bfseries}` prepends the switch to every cell of the following column, so
+/// the effect is per-cell styling rather than a table-level setting. Only the
+/// unambiguous weight/shape switches are honoured; anything else (colour,
+/// `\setlength`, `\columncolor`) is left alone rather than guessed at.
+fn decorator_style(content: &str) -> Option<&'static str> {
+    // `\arraybackslash` accompanies the alignment verbs and is not a font switch.
+    for (needle, wrap) in [
+        ("\\bfseries", "strong"),
+        ("\\bf", "strong"),
+        ("\\itshape", "emph"),
+        ("\\em", "emph"),
+    ] {
+        if let Some(p) = content.find(needle) {
+            // `\bf` must not match inside `\bfseries`; `\em` not inside `\emph`.
+            let after = content.as_bytes().get(p + needle.len());
+            if after.is_none_or(|c| !c.is_ascii_alphabetic()) {
+                return Some(wrap);
+            }
+        }
+    }
+    None
+}
+
 fn decorator_align(content: &str) -> Option<String> {
     let lc = content.to_lowercase();
     if lc.contains("centering") {
