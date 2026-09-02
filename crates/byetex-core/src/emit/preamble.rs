@@ -477,13 +477,21 @@ impl<'a> Emitter<'a> {
 /// is what the author actually wrote. A `[float-type]` optional argument is
 /// accepted — scoping the rule per float kind is not worth the divergence, and
 /// ignoring the declaration outright is strictly worse than applying it.
-pub(in crate::emit) fn caption_font_size(src: &str, base_dir: Option<&std::path::Path>) -> Option<&'static str> {
-    // The document's own declaration wins; a bundled class/style file is the
-    // fallback. Only 3 of 67 corpus papers put `\captionsetup` in the entry file
-    // — the rest carry it in an `\input`ed preamble or the class they ship, so
-    // scanning `src` alone reaches almost nobody.
-    if let Some(em) = caption_font_size_in(src) {
-        return Some(em);
+/// Run `probe` over the document, then the files it `\input`s, then any bundled
+/// `.cls`/`.sty`, returning the first hit.
+///
+/// The order encodes precedence: the document's own statement beats a preamble it
+/// includes, which beats the class it ships with. Scanning only `src` reaches
+/// almost nobody — of 67 corpus papers just 3 put `\captionsetup` in the entry
+/// file; the rest carry these declarations in an `\input`ed preamble or the
+/// class/style bundled beside it.
+fn scan_project_sources<T>(
+    src: &str,
+    base_dir: Option<&std::path::Path>,
+    probe: impl Fn(&str) -> Option<T>,
+) -> Option<T> {
+    if let Some(hit) = probe(src) {
+        return Some(hit);
     }
     let dir = base_dir?;
     let mut files: Vec<std::path::PathBuf> = Vec::new();
@@ -492,27 +500,128 @@ pub(in crate::emit) fn caption_font_size(src: &str, base_dir: Option<&std::path:
             files.push(p);
         }
     }
-    // Bundled `.cls`/`.sty` last: a class default must not beat the document.
     if let Ok(entries) = std::fs::read_dir(dir) {
         let mut local: Vec<_> = entries
             .flatten()
             .map(|e| e.path())
-            .filter(|p| {
-                p.extension()
-                    .is_some_and(|e| e == "sty" || e == "cls")
-            })
+            .filter(|p| p.extension().is_some_and(|e| e == "sty" || e == "cls"))
             .collect();
         local.sort();
         files.extend(local);
     }
     for f in files {
         if let Ok(text) = std::fs::read_to_string(&f) {
-            if let Some(em) = caption_font_size_in(&text) {
-                return Some(em);
+            if let Some(hit) = probe(&text) {
+                return Some(hit);
             }
         }
     }
     None
+}
+
+/// The bibliography font size the document asks for, as a Typst `em` ratio.
+///
+/// Reference lists are set smaller than body text by most venue classes, and the
+/// section is a large dense block: on 2605.31604 the last three pages of the
+/// LaTeX truth are 100% small-tier while ours were 0%. Comparing the small-tier
+/// share of the LAST pages of truth vs ours across the corpus, 19 papers show a
+/// large gap, several at 1.00 vs 0.00 — the single biggest remaining contributor
+/// to `layout_small_tier_share_delta`.
+pub(in crate::emit) fn bibliography_font_size(
+    src: &str,
+    base_dir: Option<&std::path::Path>,
+) -> Option<&'static str> {
+    // natbib's documented hook is the more specific statement, so it is probed
+    // across ALL sources before falling back to a `thebibliography` definition.
+    scan_project_sources(src, base_dir, bibfont_hook_in)
+        .or_else(|| scan_project_sources(src, base_dir, thebibliography_size_in))
+        .filter(|em| *em != "1em")
+}
+
+/// `\def\bibfont{\small}` / `\renewcommand{\bibfont}{\small}`.
+fn bibfont_hook_in(src: &str) -> Option<&'static str> {
+    let mut from = 0;
+    while let Some(rel) = src.get(from..)?.find("bibfont") {
+        let at = from + rel;
+        from = at + "bibfont".len();
+        if crate::emit::is_commented_out(src, at) {
+            continue;
+        }
+        // The size lives in the brace group that follows the name.
+        let bytes = src.as_bytes();
+        let mut i = from;
+        while bytes.get(i).is_some_and(|b| b.is_ascii_whitespace() || *b == b'}') {
+            i += 1;
+        }
+        if bytes.get(i) != Some(&b'{') {
+            continue;
+        }
+        let Some(end) = crate::emit::node_utils::brace_balanced_end(bytes, i) else {
+            continue;
+        };
+        let body = src.get(i + 1..end.saturating_sub(1)).unwrap_or("");
+        if let Some(em) = crate::emit::size_declaration_em(body.trim()) {
+            return Some(em);
+        }
+    }
+    None
+}
+
+/// A size switch inside a class's `thebibliography` definition.
+fn thebibliography_size_in(src: &str) -> Option<&'static str> {
+    let mut from = 0;
+    while let Some(rel) = src.get(from..)?.find("thebibliography") {
+        let at = from + rel;
+        from = at + "thebibliography".len();
+        if crate::emit::is_commented_out(src, at) {
+            continue;
+        }
+        // Only a DEFINITION carries the styling; a `\begin{thebibliography}` in a
+        // document body (or a `.bbl`) is a use, and scanning that would pick up
+        // whatever size happened to be in force nearby.
+        let head = &src[..at];
+        if !head.trim_end().ends_with("newenvironment{")
+            && !head.trim_end().ends_with("renewenvironment{")
+            && !head.trim_end().ends_with("\\def\\")
+        {
+            continue;
+        }
+        let bytes = src.as_bytes();
+        // Skip to the first brace group of the definition body.
+        let mut i = from;
+        while i < bytes.len() && bytes[i] != b'{' {
+            // `[1]` arity, `}` closing the env name, whitespace — but stop at a
+            // newline-newline gap so a runaway scan cannot leave the definition.
+            if bytes[i] == b'\n' && bytes.get(i + 1) == Some(&b'\n') {
+                break;
+            }
+            i += 1;
+        }
+        let Some(end) = crate::emit::node_utils::brace_balanced_end(bytes, i) else {
+            continue;
+        };
+        let body = src.get(i..end).unwrap_or("");
+        for name in [
+            "\\tiny",
+            "\\scriptsize",
+            "\\footnotesize",
+            "\\small",
+            "\\normalsize",
+        ] {
+            if let Some(p) = body.find(name) {
+                let after = body.as_bytes().get(p + name.len());
+                if after.is_some_and(|c| c.is_ascii_alphabetic()) {
+                    continue;
+                }
+                return crate::emit::size_declaration_em(name);
+            }
+        }
+    }
+    None
+}
+
+pub(in crate::emit) fn caption_font_size(src: &str, base_dir: Option<&std::path::Path>) -> Option<&'static str> {
+    scan_project_sources(src, base_dir, caption_font_size_in)
 }
 
 fn caption_font_size_in(src: &str) -> Option<&'static str> {
@@ -583,6 +692,7 @@ pub(in crate::emit) fn build_neutral_preamble(
     layout: &crate::class_map::Layout,
     class: &crate::class_map::DocClass,
     caption_size: Option<&str>,
+    bibliography_size: Option<&str>,
 ) -> String {
     let paper = layout.paper.unwrap_or("us-letter");
     // LaTeX's default body size for `\documentclass{article}` (no size option)
@@ -645,6 +755,12 @@ pub(in crate::emit) fn build_neutral_preamble(
         Some(em) => format!("#show figure.caption: set text(size: {em})\n"),
         None => String::new(),
     };
+    // Reference lists are smaller than body text in most venue classes, and the
+    // section is a large block — the biggest single small-tier contributor.
+    let bibliography_size = match bibliography_size {
+        Some(em) => format!("#show bibliography: set text(size: {em})\n"),
+        None => String::new(),
+    };
     format!(
         "#set page(paper: \"{paper}\", margin: {margin}{columns}, numbering: \"1\")\n\
          #set text(font: \"{body_font}\", size: {font_size})\n\
@@ -654,7 +770,7 @@ pub(in crate::emit) fn build_neutral_preamble(
          #show heading.where(level: 3): set text(size: {h3}, weight: \"bold\")\n\
          #show heading: it => block(above: if it.level == 1 {{ 1.5em }} else {{ 1.4em }}, below: if it.level == 1 {{ 1.0em }} else {{ 0.65em }}, it)\n\
          #show figure.where(kind: table): set figure.caption(position: top)\n\
-         {caption_size}{figure_supplement}{heading_align}\n"
+         {caption_size}{bibliography_size}{figure_supplement}{heading_align}\n"
     )
 }
 

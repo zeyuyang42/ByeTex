@@ -1620,6 +1620,10 @@ impl<'a> Emitter<'a> {
                         &self.layout,
                         &self.detected_class,
                         crate::emit::preamble::caption_font_size(self.src, self.base_dir.as_deref()),
+                        crate::emit::preamble::bibliography_font_size(
+                            self.src,
+                            self.base_dir.as_deref(),
+                        ),
                     ));
                 self.out.push_str(&self.heading_numbering_decl());
             }
