@@ -423,7 +423,7 @@ fn sanitize_length(v: &str) -> Option<String> {
 }
 
 /// Map a LaTeX paper-size class option to its Typst `page(paper: ...)` name.
-fn map_paper_option(opt: &str) -> Option<&'static str> {
+pub(crate) fn map_paper_option(opt: &str) -> Option<&'static str> {
     Some(match opt {
         "a4paper" => "a4",
         "a5paper" => "a5",

@@ -519,6 +519,65 @@ fn scan_project_sources<T>(
     None
 }
 
+/// The paper size a BUNDLED class declares, when the document itself did not.
+///
+/// `a4paper` in `\documentclass[...]` was already honoured, but a class can set
+/// it for you: corpus 2605.31009's `iopjournal.cls` does `\LoadClass[a4paper]`,
+/// and a thesis class passes it to `geometry`. We emitted us-letter (612x792)
+/// where the truth renders A4 (595x842) — and page size is a first-order layout
+/// property, so every margin and lines-per-page comparison inherits the error.
+///
+/// The name must appear in an OPTION LIST, not in prose: a class that merely
+/// mentions `a4paper` in a comment must not resize the page.
+pub(in crate::emit) fn paper_from_project(
+    src: &str,
+    base_dir: Option<&std::path::Path>,
+) -> Option<&'static str> {
+    scan_project_sources(src, base_dir, paper_in)
+}
+
+fn paper_in(src: &str) -> Option<&'static str> {
+    // `\geometry{a4paper, ...}` is the COMMAND form of the same declaration —
+    // gh-dzwaneveld-tudelft-thesis uses it, and its truth renders A4.
+    for (at, _) in src.match_indices("\\geometry{") {
+        if crate::emit::is_commented_out(src, at) {
+            continue;
+        }
+        let start = at + "\\geometry{".len();
+        let Some(close) = src.get(start..).and_then(|r| r.find('}')) else {
+            continue;
+        };
+        for opt in src[start..start + close].split(',') {
+            if let Some(paper) = crate::class_map::map_paper_option(opt.trim()) {
+                return Some(paper);
+            }
+        }
+    }
+    for (at, _) in src.match_indices('[') {
+        if crate::emit::is_commented_out(src, at) {
+            continue;
+        }
+        // Only an option list attached to a class/package directive counts.
+        let head = &src[..at];
+        let trimmed = head.trim_end();
+        if !(trimmed.ends_with("\\LoadClass")
+            || trimmed.ends_with("\\LoadClassWithOptions")
+            || trimmed.ends_with("\\usepackage")
+            || trimmed.ends_with("\\RequirePackage"))
+        {
+            continue;
+        }
+        let Some(close) = src[at..].find(']') else { continue };
+        let opts = &src[at + 1..at + close];
+        for opt in opts.split(',') {
+            if let Some(paper) = crate::class_map::map_paper_option(opt.trim()) {
+                return Some(paper);
+            }
+        }
+    }
+    None
+}
+
 /// The `fancyhdr` running head, as a Typst `header:` value.
 ///
 /// 12 corpus papers render a running header in the LaTeX truth while we emit
@@ -905,11 +964,13 @@ fn caption_font_size_in(src: &str) -> Option<f64> {
 pub(in crate::emit) fn build_neutral_preamble(
     layout: &crate::class_map::Layout,
     class: &crate::class_map::DocClass,
+    detected_paper: Option<&'static str>,
     caption_size: Option<&str>,
     bibliography_size: Option<&str>,
     running_header: Option<&str>,
 ) -> String {
-    let paper = layout.paper.unwrap_or("us-letter");
+    // The document's own `\documentclass` option outranks a class default.
+    let paper = layout.paper.or(detected_paper).unwrap_or("us-letter");
     // LaTeX's default body size for `\documentclass{article}` (no size option)
     // is 10pt; byetex previously defaulted to 11pt, inflating page count ~10%.
     let font_size = layout.font_size.unwrap_or("10pt");
