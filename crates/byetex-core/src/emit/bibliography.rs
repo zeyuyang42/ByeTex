@@ -848,13 +848,88 @@ fn normalize_cite_command(command: &str) -> &str {
 }
 
 /// Inner text of a named `brack_group` field (`prenote`/`postnote`) on a
-/// `citation` node, with `~` (non-breaking space) rendered as a normal space.
-/// Returns `None` when the field is absent.
+/// `citation` node, with `~` and LaTeX's spacing commands rendered as ordinary
+/// spaces. Returns `None` when the field is absent.
 fn brack_inner(node: Node<'_>, field: &str, src: &str) -> Option<String> {
     let g = node.child_by_field_name(field)?;
     // `brack_group` spans the `[` … `]`; take the inner slice.
     let inner = &src[g.start_byte() + 1..g.end_byte() - 1];
-    Some(inner.replace('~', " "))
+    Some(normalize_supplement_spacing(&inner.replace('~', " ")))
+}
+
+/// LaTeX spacing commands → a single ordinary space.
+///
+/// `\cite[Sec.\ 2]{k}` uses a control space, which is just an interword space
+/// in LaTeX. Copied verbatim into a Typst supplement it becomes `\ `, and Typst
+/// reads that as a FORCED LINE BREAK — `Sec.\ 2` renders "Sec." then a newline
+/// then "2". It compiles cleanly and matches no leaked-`\command` pattern, so
+/// nothing in the warnings or the leak scan reports it; one corpus paper had ~46
+/// citations broken into orphan one-word lines this way.
+fn normalize_supplement_spacing(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut it = s.char_indices().peekable();
+    while let Some((i, c)) = it.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        let rest = &s[i + 1..];
+        // An escaped backslash is literal text, and its SECOND `\` must not
+        // then be read as the start of `\ `: that would turn `a\\ b` into a
+        // backslash immediately followed by a space — exactly the forced line
+        // break this function exists to remove.
+        if rest.starts_with('\\') {
+            out.push_str("\\\\");
+            it.next();
+            continue;
+        }
+        // The same spacing commands the text-mode emitter handles (the
+        // `\kern`/`\quad`/… arm in emit.rs); anything omitted here is copied
+        // into the supplement verbatim and renders as its literal name.
+        let consumed = match rest.chars().next() {
+            Some(' ') | Some(',') | Some(';') | Some(':') => Some((1, true)),
+            // `\!` is a NEGATIVE thin space — it closes a gap, so it maps to
+            // nothing rather than to a space.
+            Some('!') => Some((1, false)),
+            _ if starts_with_word(rest, "qquad") => Some((5, true)),
+            _ if starts_with_word(rest, "quad") => Some((4, true)),
+            _ if starts_with_word(rest, "thinspace") => Some((9, true)),
+            _ if starts_with_word(rest, "linebreak") => Some((9, true)),
+            _ if starts_with_word(rest, "enspace") => Some((7, true)),
+            _ if starts_with_word(rest, "kern") => Some((4, true)),
+            _ => None,
+        };
+        match consumed {
+            Some((len, emit_space)) => {
+                // Consecutive spacing commands collapse to one gap:
+                // `\quad\quad` is a single space, not two.
+                if emit_space && !out.ends_with(' ') {
+                    out.push(' ');
+                }
+                for _ in 0..len {
+                    it.next();
+                }
+                // `\quad 3` already carries a space of its own; swallow it so
+                // the result is one space, not two. Only when a space was
+                // emitted — `\!` must not eat the real interword space after it.
+                if emit_space {
+                    while it.peek().is_some_and(|(_, c)| *c == ' ') {
+                        it.next();
+                    }
+                }
+            }
+            // Not a spacing command — leave it for the normal escaping path.
+            None => out.push(c),
+        }
+    }
+    out
+}
+
+/// `rest` begins with `word` and the word is not a prefix of a longer command
+/// (`\quadrature` must not match `\quad`).
+fn starts_with_word(rest: &str, word: &str) -> bool {
+    rest.strip_prefix(word)
+        .is_some_and(|after| !after.starts_with(|c: char| c.is_ascii_alphabetic()))
 }
 
 /// Extract the path argument from a `bibtex_include` (`\bibliography{x}`) or
