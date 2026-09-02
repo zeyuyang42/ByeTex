@@ -519,6 +519,112 @@ fn scan_project_sources<T>(
     None
 }
 
+/// The `fancyhdr` running head, as a Typst `header:` value.
+///
+/// 12 corpus papers render a running header in the LaTeX truth while we emit
+/// none (8053 characters over their first 12 pages alone); `fancyhdr` is the
+/// most common detectable declaration, and what most reports and theses use.
+///
+/// Deliberately conservative: a slot whose body is not plain text is SKIPPED.
+/// A header repeats on EVERY page, so leaking raw LaTeX there is worse than
+/// having no header at all — `\fancyhead[C]{\small\bf\@icmltitlerunning}` names a
+/// class-internal macro we cannot resolve here, and dropping it is the right
+/// answer until it can be expanded properly.
+pub(in crate::emit) fn fancy_header(
+    src: &str,
+    base_dir: Option<&std::path::Path>,
+) -> Option<String> {
+    let slots = scan_project_sources(src, base_dir, fancy_header_slots)?;
+    let [l, c, r] = slots;
+    if l.is_empty() && c.is_empty() && r.is_empty() {
+        return None;
+    }
+    // A single centred field is the common case and needs no grid.
+    if l.is_empty() && r.is_empty() {
+        return Some(format!("align(center)[{c}]"));
+    }
+    Some(format!(
+        "grid(columns: (1fr, 1fr, 1fr), align: (left, center, right), [{l}], [{c}], [{r}])"
+    ))
+}
+
+/// The L/C/R fields declared by `\fancyhead` in one file, or `None` if it
+/// declares none. `\fancyhf{}` clears every field, matching the package.
+fn fancy_header_slots(src: &str) -> Option<[String; 3]> {
+    let mut slots = [String::new(), String::new(), String::new()];
+    let mut saw = false;
+    let bytes = src.as_bytes();
+    // Scan by SEARCHING rather than walking bytes: `&src[i..]` on a byte index
+    // that lands mid-character panics, and a paper with an accented name in its
+    // running head is exactly where this code runs (corpus 2605.31009).
+    let mut events: Vec<(usize, bool)> = Vec::new();
+    events.extend(src.match_indices("\\fancyhf").map(|(at, _)| (at, true)));
+    events.extend(src.match_indices("\\fancyhead").map(|(at, _)| (at, false)));
+    events.sort_unstable();
+    for (at, is_reset) in events {
+        if crate::emit::is_commented_out(src, at) {
+            continue;
+        }
+        if is_reset {
+            // `\fancyhf{}` clears every field; a non-empty body sets head AND
+            // foot, which is beyond what this reads, so treat it as a reset too.
+            slots = [String::new(), String::new(), String::new()];
+            continue;
+        }
+        let mut i = at + "\\fancyhead".len();
+        // Optional `[L]` / `[C]` / `[R]`; a bare `\fancyhead{...}` reads as centred.
+        let mut which = 'C';
+        if bytes.get(i) == Some(&b'[') {
+            let Some(close) = src[i..].find(']') else { continue };
+            which = src[i + 1..i + close]
+                .chars()
+                .find(|ch| matches!(ch, 'L' | 'C' | 'R'))
+                .unwrap_or('C');
+            i += close + 1;
+        }
+        if bytes.get(i) != Some(&b'{') {
+            continue;
+        }
+        let Some(end) = crate::emit::node_utils::brace_balanced_end(bytes, i) else {
+            continue;
+        };
+        let body = src.get(i + 1..end.saturating_sub(1)).unwrap_or("").trim();
+        saw = true;
+        if let Some(text) = plain_header_text(body) {
+            let idx = match which {
+                'L' => 0,
+                'R' => 2,
+                _ => 1,
+            };
+            slots[idx] = text;
+        }
+    }
+    if saw { Some(slots) } else { None }
+}
+
+/// A header body reduced to plain text, or `None` when it contains anything this
+/// cannot render — a control sequence, a brace group, or Typst-significant
+/// punctuation. Silence beats a leak that repeats on every page.
+fn plain_header_text(body: &str) -> Option<String> {
+    if body.is_empty() {
+        return Some(String::new());
+    }
+    // `%` starts a comment, so the real content continues on a line this does not
+    // read; a newline means the body spans lines for the same reason. Corpus
+    // 2605.31604 declares `\fancyhead[R]{% Other content ...}` and the comment
+    // text itself was lifted into the header of a paper whose truth has none.
+    if body.contains('%') || body.contains('\n') {
+        return None;
+    }
+    if body
+        .chars()
+        .any(|ch| matches!(ch, '\\' | '{' | '}' | '#' | '$' | '@' | '[' | ']' | '<' | '>' | '*' | '_'))
+    {
+        return None;
+    }
+    Some(body.to_string())
+}
+
 /// The bibliography font size the document asks for, as a Typst `em` ratio.
 ///
 /// Reference lists are set smaller than body text by most venue classes, and the
@@ -759,6 +865,7 @@ pub(in crate::emit) fn build_neutral_preamble(
     class: &crate::class_map::DocClass,
     caption_size: Option<&str>,
     bibliography_size: Option<&str>,
+    running_header: Option<&str>,
 ) -> String {
     let paper = layout.paper.unwrap_or("us-letter");
     // LaTeX's default body size for `\documentclass{article}` (no size option)
@@ -815,6 +922,11 @@ pub(in crate::emit) fn build_neutral_preamble(
         (false, true) => "#show heading.where(level: 1): it => upper(it)\n",
         (false, false) => "",
     };
+    // A `fancyhdr` running head, when the document declares one we can render.
+    let header = match running_header {
+        Some(h) => format!(", header: {h}"),
+        None => String::new(),
+    };
     // Captions are smaller than body text in essentially every LaTeX class; the
     // size is taken from the document's own `\captionsetup`, not assumed.
     let caption_size = match caption_size {
@@ -831,7 +943,7 @@ pub(in crate::emit) fn build_neutral_preamble(
         None => String::new(),
     };
     format!(
-        "#set page(paper: \"{paper}\", margin: {margin}{columns}, numbering: \"1\")\n\
+        "#set page(paper: \"{paper}\", margin: {margin}{columns}, numbering: \"1\"{header})\n\
          #set text(font: \"{body_font}\", size: {font_size})\n\
          #set par(justify: true, leading: 0.65em, spacing: 0.65em, first-line-indent: 1.2em)\n\
          #show heading.where(level: 1): set text(size: {h1}, weight: \"bold\")\n\

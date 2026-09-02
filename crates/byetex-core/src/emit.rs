@@ -1677,6 +1677,11 @@ impl<'a> Emitter<'a> {
                             crate::emit::base_font_pt(&self.layout),
                         )
                         .as_deref(),
+                        crate::emit::preamble::fancy_header(
+                            self.src,
+                            self.base_dir.as_deref(),
+                        )
+                        .as_deref(),
                     ));
                 self.out.push_str(&self.heading_numbering_decl());
             }
