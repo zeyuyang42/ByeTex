@@ -156,3 +156,39 @@ fn a_running_title_with_markup_is_skipped() {
     let t = typ(&doc("\\icmltitlerunning{A \\textbf{Bold} Claim}"));
     assert!(!t.contains("textbf"), "no raw LaTeX in the header; got:\n{t}");
 }
+
+#[test]
+#[ignore = "open: \\ps@headings is class-redefined; see the comment"]
+fn pagestyle_headings_is_not_safe_to_map_to_the_section_name() {
+    // OPEN. LaTeX's built-in `headings` style runs the current section name in
+    // the head, and Typst expresses that exactly:
+    //
+    //   context { let h = query(selector(heading).before(here()))
+    //             if h.len() > 0 { align(right, emph(h.last().body)) } }
+    //
+    // Verified working in isolation (p2/p3 show "First Section", p4 "Second
+    // Section"). It is NOT shipped, because on the corpus the mapping is wrong
+    // more often than it is right. Of the four papers whose effective page style
+    // is `headings`:
+    //
+    //   2605.22159  truth header "1 INTRODUCTION 4"        — section name, correct
+    //   2605.22312  truth header "Pierre-Henri Cocquet..." — AUTHOR list
+    //   2605.22315  truth header "Martin J. Gander..."     — AUTHOR list
+    //   2605.31499  truth has no running head at all       — would be fabricated
+    //
+    // Their classes redefine `\ps@headings` to run authors, or suppress it. A
+    // header repeats on EVERY page, so emitting the wrong one on three papers to
+    // gain one is the wrong trade — the same rule that made #527 skip slots it
+    // could not render.
+    //
+    // Two things a future attempt still needs, both already paid for here:
+    //   * `\pagestyle` is a SWITCH — the last live declaration wins. 2605.22312
+    //     and 2605.22315 each declare `empty` AND `headings`.
+    //   * a header band of 6% of page height MISSES these headers, which sit at
+    //     y=78 on a 792pt page (9.8%). Measuring "papers with no header" with too
+    //     tight a band reports papers that have one.
+    let _ = ();
+}
+
+
+
