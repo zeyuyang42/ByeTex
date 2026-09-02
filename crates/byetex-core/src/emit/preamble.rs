@@ -536,6 +536,97 @@ pub(in crate::emit) fn paper_from_project(
     scan_project_sources(src, base_dir, paper_in)
 }
 
+/// Explicit page DIMENSIONS a class option sets, as a Typst `width:`/`height:`
+/// fragment.
+///
+/// `siamart*.cls` ships `\ExecuteOptions{printtrim,...}` and declares
+/// `\DeclareOption{printtrim}{\setlength\paperheight{10in}
+/// \setlength\paperwidth{6.75in}}`, giving 6.75in x 10in — exactly the truth
+/// page for corpus 2605.22281 and 2605.22557, where we emitted us-letter. The
+/// dimensions never appear beside the option list, so the option NAME has to be
+/// resolved against its declaration body.
+pub(in crate::emit) fn paper_dims_from_project(
+    src: &str,
+    base_dir: Option<&std::path::Path>,
+) -> Option<String> {
+    // Options the document passes outrank the class's own defaults.
+    let requested: Vec<String> = class_option_names(src);
+    scan_project_sources(src, base_dir, |cls| paper_dims_in(cls, &requested))
+}
+
+/// The option names in this document's `\documentclass[...]`.
+fn class_option_names(src: &str) -> Vec<String> {
+    let Some(at) = src.find("\\documentclass[") else {
+        return Vec::new();
+    };
+    let start = at + "\\documentclass[".len();
+    let Some(close) = src.get(start..).and_then(|r| r.find(']')) else {
+        return Vec::new();
+    };
+    src[start..start + close]
+        .split(',')
+        .map(|o| o.trim().to_string())
+        .filter(|o| !o.is_empty())
+        .collect()
+}
+
+fn paper_dims_in(cls: &str, requested: &[String]) -> Option<String> {
+    // Which option names are actually in force: the ones the document asked for,
+    // then the class's own `\ExecuteOptions` defaults.
+    let mut names: Vec<String> = requested.to_vec();
+    if let Some(at) = cls.find("\\ExecuteOptions{") {
+        let start = at + "\\ExecuteOptions{".len();
+        if let Some(close) = cls.get(start..).and_then(|r| r.find('}')) {
+            names.extend(cls[start..start + close].split(',').map(|o| o.trim().to_string()));
+        }
+    }
+    for name in names {
+        let needle = format!("\\DeclareOption{{{name}}}");
+        let Some(at) = cls.find(&needle) else { continue };
+        if crate::emit::is_commented_out(cls, at) {
+            continue;
+        }
+        let bytes = cls.as_bytes();
+        let mut i = at + needle.len();
+        while bytes.get(i).is_some_and(|b| b.is_ascii_whitespace()) {
+            i += 1;
+        }
+        if bytes.get(i) != Some(&b'{') {
+            continue;
+        }
+        let Some(end) = crate::emit::node_utils::brace_balanced_end(bytes, i) else {
+            continue;
+        };
+        let body = &cls[i..end];
+        let w = setlength_dim(body, "paperwidth");
+        let h = setlength_dim(body, "paperheight");
+        if let (Some(w), Some(h)) = (w, h) {
+            return Some(format!("width: {w}, height: {h}"));
+        }
+    }
+    None
+}
+
+/// The value of `\setlength\<name>{<dim>}`, when it is a plain Typst length.
+fn setlength_dim(body: &str, name: &str) -> Option<String> {
+    let needle = format!("\\{name}");
+    let at = body.find(&needle)?;
+    let rest = &body[at + needle.len()..];
+    let open = rest.find('{')?;
+    // Only whitespace may sit between the length name and its value.
+    if !rest[..open].trim().is_empty() {
+        return None;
+    }
+    let close = rest[open..].find('}')?;
+    let dim = rest[open + 1..open + close].trim();
+    let unit_at = dim.find(|c: char| c.is_ascii_alphabetic())?;
+    let (num, unit) = dim.split_at(unit_at);
+    if num.trim().parse::<f64>().is_err() {
+        return None;
+    }
+    matches!(unit, "in" | "mm" | "cm" | "pt" | "em").then(|| dim.to_string())
+}
+
 fn paper_in(src: &str) -> Option<&'static str> {
     // `\geometry{a4paper, ...}` is the COMMAND form of the same declaration —
     // gh-dzwaneveld-tudelft-thesis uses it, and its truth renders A4.
@@ -965,12 +1056,19 @@ pub(in crate::emit) fn build_neutral_preamble(
     layout: &crate::class_map::Layout,
     class: &crate::class_map::DocClass,
     detected_paper: Option<&'static str>,
+    detected_dims: Option<&str>,
     caption_size: Option<&str>,
     bibliography_size: Option<&str>,
     running_header: Option<&str>,
 ) -> String {
     // The document's own `\documentclass` option outranks a class default.
-    let paper = layout.paper.or(detected_paper).unwrap_or("us-letter");
+    // The document's own `\documentclass` option outranks a class default.
+    let paper = match (layout.paper, detected_paper, detected_dims) {
+        (Some(p), _, _) => format!("paper: \"{p}\""),
+        (None, Some(p), _) => format!("paper: \"{p}\""),
+        (None, None, Some(d)) => d.to_string(),
+        _ => "paper: \"us-letter\"".to_string(),
+    };
     // LaTeX's default body size for `\documentclass{article}` (no size option)
     // is 10pt; byetex previously defaulted to 11pt, inflating page count ~10%.
     let font_size = layout.font_size.unwrap_or("10pt");
@@ -1046,7 +1144,7 @@ pub(in crate::emit) fn build_neutral_preamble(
         None => String::new(),
     };
     format!(
-        "#set page(paper: \"{paper}\", margin: {margin}{columns}, numbering: \"1\"{header})\n\
+        "#set page({paper}, margin: {margin}{columns}, numbering: \"1\"{header})\n\
          #set text(font: \"{body_font}\", size: {font_size})\n\
          #set par(justify: true, leading: 0.65em, spacing: 0.65em, first-line-indent: 1.2em)\n\
          #show heading.where(level: 1): set text(size: {h1}, weight: \"bold\")\n\
