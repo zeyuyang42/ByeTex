@@ -124,6 +124,7 @@ fn m2_misc_full_article() {
     #show heading.where(level: 3): set text(size: 1em, weight: "bold")
     #show heading: it => block(above: if it.level == 1 { 1.5em } else { 1.4em }, below: if it.level == 1 { 1.0em } else { 0.65em }, it)
     #show figure.where(kind: table): set figure.caption(position: top)
+    #show figure.where(kind: table): set block(breakable: true)
 
     #set heading(numbering: "1.")
 
