@@ -87,10 +87,14 @@ use typography::{is_operatorname_only_function, should_split_math_word};
 /// `escape_text_cell` consumes these; `strip_cell_keep_markers` is the backstop
 /// for cell paths that bypass it (e.g. `\multicolumn`, which emits a
 /// `table.cell(...)` call directly).
-/// Typst labels ByeTex emits for its OWN bookkeeping rather than from a
-/// `\label`. They never pass through `label_first_use`, so the final typography
-/// pass would otherwise escape them and break what they control.
-pub(in crate::emit) const INTERNAL_TYPST_LABELS: &[&str] = &["touying:hidden", "equate:revoke"];
+/// Marks a `<` that came from the SOURCE, so the final typography pass escapes
+/// it instead of reading it as the start of a Typst label.
+///
+/// A backslash cannot carry this: `\\` is also what LaTeX's line break emits, so
+/// `A \\ <x>` puts an emitted linebreak backslash immediately before an escaping
+/// one and no amount of counting tells the two apart. Same reasoning, and same
+/// mechanism, as [`CELL_KEEP_SENTINEL`].
+pub(in crate::emit) const SOURCE_ANGLE_SENTINEL: char = '\u{1b}';
 
 pub(in crate::emit) const CELL_KEEP_SENTINEL: char = '\u{1d}';
 
@@ -1588,14 +1592,7 @@ impl<'a> Emitter<'a> {
         // LaTeX-style double quotes ``X'' → ASCII "X" (Typst will smart-quote).
         // Done as a final string pass so we don't have to wrangle token-level
         // detection for adjacent `-` / backtick / apostrophe runs.
-        // Every source of a `<key>` ByeTex itself emits: label definitions, the
-        // dangling-reference anchors `emit_bibliography` adds for referenced-but-
-        // undefined keys, and its own internal markers.
-        let mut ours: HashSet<&str> =
-            self.emitted_labels.iter().map(String::as_str).collect();
-        ours.extend(self.referenced_labels.iter().map(String::as_str));
-        ours.extend(INTERNAL_TYPST_LABELS);
-        self.out = post_process_typography(&self.out, &ours);
+        self.out = post_process_typography(&self.out);
         self.out = break_raw_paren_chains(&self.out);
         self.out = break_math_comment_tokens(&self.out);
         // Cheap guard: the marker is rare, and this would otherwise clone the
@@ -1687,7 +1684,21 @@ impl<'a> Emitter<'a> {
         // expression). Already-escaped '\#' is preserved as-is.
         let mut prev_backslash = false;
         for ch in text.chars() {
-            if ch == '#' && !prev_backslash {
+            // `#` starts a Typst code expression, and `<` starts a LABEL. A
+            // label-shaped run of source prose (`<SOMETHING>`, `<dim>`) is valid
+            // Typst: it attaches to the preceding element and renders NOTHING, so
+            // the text vanishes with no error and a zero exit code. Escaping here
+            // — where the text is known to come from the source — is what keeps
+            // the `<key>` tokens ByeTex emits itself untouched.
+            //
+            // `#` skips an already-escaped `\#`. `<` is marked UNCONDITIONALLY —
+            // LaTeX has no `\<` form, so a backslash before `<` in the source is
+            // a literal backslash, not an escape — and it is MARKED rather than
+            // escaped here so the later pass can tell it from a `<` ByeTex itself
+            // emitted, even when an emitted linebreak backslash precedes it.
+            if ch == '<' {
+                self.out.push(SOURCE_ANGLE_SENTINEL);
+            } else if ch == '#' && !prev_backslash {
                 self.out.push('\\');
             }
             self.out.push(ch);
@@ -6017,7 +6028,7 @@ pub(crate) fn wrap_for_command_name(name: &str) -> Option<(&'static str, &'stati
 /// `\texttt{...}` — those wrappers are short and don't typically contain
 /// `--`/`---`/``''. We accept the small risk in v0.2 and revisit if a real
 /// template triggers it.
-fn post_process_typography(s: &str, ours: &HashSet<&str>) -> String {
+fn post_process_typography(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();
     let mut prev: Option<char> = None;
@@ -6108,6 +6119,15 @@ fn post_process_typography(s: &str, ours: &HashSet<&str>) -> String {
             // chars (`[a-zA-Z0-9_:.-]`). Otherwise escape as `\<` to
             // prevent Typst from misidentifying it as a label (e.g.
             // `<email@host>`, `<http://url>`).
+            // `safe_copy` marked this `<` as source text: escape it and consume
+            // the `<` it introduces, so the label scan below never sees it.
+            c if c == SOURCE_ANGLE_SENTINEL => {
+                if chars.peek() == Some(&'<') {
+                    chars.next();
+                    out.push_str("\\<");
+                    prev = Some('<');
+                }
+            }
             '<' => {
                 let mut lookahead = chars.clone();
                 let mut key = String::new();
@@ -6127,15 +6147,7 @@ fn post_process_typography(s: &str, ours: &HashSet<&str>) -> String {
                         _ => break 'scan,
                     }
                 }
-                // Shape alone is not evidence: source prose is full of runs that
-                // COULD be a label key — `<SOMETHING>`, `<dim>`, `<answer>`. Typst
-                // parses those as a label, attaches it to the preceding element and
-                // renders nothing, so the text is deleted silently and the compile
-                // still exits 0. Pass `<` through only for a key this document
-                // actually emitted; anything else is text and gets escaped.
-                let is_emitted_label =
-                    found_close && !key.is_empty() && ours.contains(key.as_str());
-                if is_emitted_label {
+                if found_close && !key.is_empty() {
                     out.push('<');
                 } else {
                     out.push_str("\\<");
