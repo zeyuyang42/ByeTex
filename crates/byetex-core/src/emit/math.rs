@@ -12,6 +12,56 @@ use super::{
     BracelessArg, Emitter, BOX_SENTINEL, MATH_WORD_BOUNDARY,
 };
 
+
+/// Drop the mandatory column-count argument of the `alignat` family.
+///
+/// `\begin{alignat}{2}` requires the number of column PAIRS, and the grammar
+/// hands it over as a leading `curly_group`. Typst aligns on `&` and has no use
+/// for the count, so copied through it renders as a literal `{2}` at the head of
+/// the equation — 15 of them on corpus 2605.22728.
+///
+/// `alignedat` is the *aligned* variant, normally written inside an `equation`,
+/// so it arrives via the nested-math branch; both callers share this helper for
+/// that reason. `xalignat`/`xxalignat` take the same argument.
+///
+/// The group must read as a small integer. Without that check an `alignat`
+/// missing its (mandatory) argument would have its first real brace group eaten
+/// as if it were the count — silently losing mathematics, which is worse than a
+/// stray `{2}`.
+fn drop_column_count_arg(env_name: &str, src: &str, body: &mut Vec<Node<'_>>) {
+    if !matches!(
+        env_name,
+        "alignat"
+            | "alignat*"
+            | "alignedat"
+            | "alignedat*"
+            | "xalignat"
+            | "xalignat*"
+            | "xxalignat"
+            | "xxalignat*"
+    ) {
+        return;
+    }
+    // A comment or blank run may sit between `\begin{alignat}` and the count.
+    let Some(idx) = body
+        .iter()
+        .position(|c| !matches!(c.kind(), "line_comment" | "comment") && !src.get(c.start_byte()..c.end_byte()).unwrap_or("").trim().is_empty())
+    else {
+        return;
+    };
+    let node = body[idx];
+    if node.kind() != "curly_group" {
+        return;
+    }
+    let inner = src
+        .get(node.start_byte() + 1..node.end_byte().saturating_sub(1))
+        .unwrap_or("")
+        .trim();
+    if inner.parse::<u8>().is_ok() {
+        body.drain(..=idx);
+    }
+}
+
 impl<'a> Emitter<'a> {
     // ─── Math primitives & letter-boundary helpers ────────────────────────────
 
@@ -256,10 +306,14 @@ impl<'a> Emitter<'a> {
             // body can collect its own `\label{...}` calls.
             let prev_labels = std::mem::take(&mut self.pending_math_labels);
             let mut cursor = node.walk();
-            let body: Vec<Node<'_>> = node
+            let mut body: Vec<Node<'_>> = node
                 .children(&mut cursor)
                 .filter(|c| !matches!(c.kind(), "begin" | "end"))
                 .collect();
+            // `alignedat` is the *aligned* variant and so is normally written
+            // INSIDE an equation — it reaches this branch, not the one below, and
+            // would leak its column count unconditionally without this.
+            drop_column_count_arg(&environment_name(node, self.src).unwrap_or_default(), self.src, &mut body);
             if !body.is_empty() {
                 let mut last = body[0].start_byte();
                 for child in &body {
@@ -308,10 +362,11 @@ impl<'a> Emitter<'a> {
         // here — the body emission may push more labels, and the close
         // flush emits the full set.
         let mut cursor = node.walk();
-        let body: Vec<Node<'_>> = node
+        let mut body: Vec<Node<'_>> = node
             .children(&mut cursor)
             .filter(|c| !matches!(c.kind(), "begin" | "end"))
             .collect();
+        drop_column_count_arg(&env_name, self.src, &mut body);
 
         if !body.is_empty() {
             let mut last = body[0].start_byte();
