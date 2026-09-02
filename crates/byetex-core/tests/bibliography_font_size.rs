@@ -89,3 +89,45 @@ fn a_size_elsewhere_in_the_preamble_is_not_mistaken_for_it() {
     let r = rule(&conv(&doc("\\newcommand{\\note}[1]{{\\small #1}}")));
     assert_eq!(r, "<no bibliography rule>", "unrelated \\small; got: {r}");
 }
+
+#[test]
+#[ignore = "open question: no discriminator found — see the comment"]
+fn the_bibliography_rule_overshoots_on_2605_22557() {
+    // OPEN. corpus 2605.22557 renders its references at BODY size in the LaTeX
+    // truth (pages 23-26, 10.0pt), but our `thebibliography` probe finds
+    // `\footnotesize` in its class and shrinks them to 0.8em — 15220 characters
+    // of 8pt text the truth does not have. It is the only corpus paper where we
+    // emit MORE small text than truth (layout_small_tier_share_delta +0.197).
+    //
+    // What makes it unresolved: 2605.22281 and 2605.22736 ship a BYTE-IDENTICAL
+    // `thebibliography` definition (same siamart class family, same two
+    // `\footnotesize` occurrences — one inside `\begin{center}` styling the
+    // "REFERENCES" heading, one inside `\list`'s parameter group) and their
+    // truths DO render references at 8pt. So the class text cannot be the
+    // discriminator, and every structural rule tried here either keeps the
+    // overshoot or drops those two verified true positives:
+    //
+    //   * ignore switches inside closed `\begin{X}...\end{X}` groups
+    //     -> changes nothing (the `\list`-arg occurrence still matches)
+    //   * only accept switches BEFORE the `\list` that opens the entries
+    //     -> fixes 22557 but loses 22281 and 22736
+    //
+    // Both truths are cached renders of the same vintage (Jun 18), so this is not
+    // a stale-truth artifact. The difference is presumably document-level, not
+    // class-level. Fixing it needs that cause, not another heuristic.
+    let _ = ();
+}
+
+#[test]
+fn a_size_before_the_list_still_styles_the_entries() {
+    // The control for the fix above: the common form, where the switch is in the
+    // definition's own scope and DOES reach the entries, must keep working.
+    let src = "\\documentclass{article}\n\
+        \\renewenvironment{thebibliography}[1]{\\section*{References}\\small\\list{}{}}{\\endlist}\n\
+        \\begin{document}\nText \\cite{k}.\n\\bibliography{refs}\n\\end{document}";
+    let out = convert(src, &ConvertOptions::default()).typst;
+    assert!(
+        out.contains("show bibliography: set text(size: 0.9em)"),
+        "a switch in the definition's own scope must still fire; got:\n{out}"
+    );
+}
