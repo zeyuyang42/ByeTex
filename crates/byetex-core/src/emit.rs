@@ -3296,9 +3296,18 @@ impl<'a> Emitter<'a> {
                 if self.src.as_bytes().get(end) == Some(&b'*') {
                     end += 1;
                 }
-                if self.src.as_bytes().get(end) == Some(&b'[') {
-                    if let Some(rel) = self.src[end..].find(']') {
-                        end += rel + 1;
+                // TeX skips spaces before an optional argument, so `\\ [1ex]` is
+                // the row break's length just as much as `\\[1ex]` — the spaced
+                // form was leaking `\[1ex\]` into the next cell. The math `\\`
+                // arm already skips here; this is the same rule for text mode,
+                // which is what `tabular` and `minipage` go through.
+                let mut probe = end;
+                while self.src.as_bytes().get(probe).is_some_and(u8::is_ascii_whitespace) {
+                    probe += 1;
+                }
+                if self.src.as_bytes().get(probe) == Some(&b'[') {
+                    if let Some(rel) = self.src[probe..].find(']') {
+                        end = probe + rel + 1;
                     }
                 }
                 if end != node.end_byte() {
