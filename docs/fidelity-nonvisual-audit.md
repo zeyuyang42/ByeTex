@@ -17,7 +17,6 @@ of loss.
 
 | gap | cluster | papers | occurrences |
 | --- | --- | --: | --: |
-| `\resizebox` | float-sizing/tables | 21 | 112 |
 | `>{}/<{}/@{} col decorators` | float-sizing/tables | 18 | 116 |
 
 ### Already handled (probe round-trips; not work items)
@@ -28,6 +27,7 @@ of loss.
 | `\definecolor` | 28 | 189 |
 | `\textcolor` | 23 | 310 |
 | `\cmidrule` | 23 | 224 |
+| `\resizebox` | 21 | 112 |
 | `theorem-env [Note]` | 20 | 409 |
 | `\item[custom-label]` | 16 | 268 |
 | `\smallskip/\medskip/\bigskip` | 15 | 75 |
