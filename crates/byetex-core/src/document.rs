@@ -90,6 +90,12 @@ pub(crate) struct Author {
     pub affiliation: Option<Affiliation>,
     pub orcid: Option<String>,
     pub equal_contribution: bool,
+    /// authblk's `\author[2,3]{…}` index list, verbatim. Carried on the RECORD
+    /// rather than in a vector parallel to the raw `\author` strings: one raw
+    /// string expands to N authors (`\and`, top-level commas, `\quad`), so a
+    /// positional side-table desynchronises and hands an author someone else's
+    /// affiliation.
+    pub affil_ref: Option<String>,
 }
 
 #[derive(Debug, Default, Clone)]

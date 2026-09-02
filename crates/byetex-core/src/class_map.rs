@@ -529,40 +529,66 @@ fn map_font_size_option(opt: &str) -> Option<&'static str> {
 /// handles the common shape (single-author, `\and`-separated authors,
 /// embedded `\email{}` / `\affiliation{}` / `\thanks{}`); per-class
 /// hints rewrite IEEE / NeurIPS-style author blocks first.
+#[cfg(test)]
 pub(crate) fn parse_authors(raw: &[String], class: &DocClass) -> Vec<Author> {
+    parse_authors_with_refs(raw, &[], class)
+}
+
+/// As [`parse_authors`], but stamping each produced author with the
+/// `\author[…]` index list that its RAW string carried.
+///
+/// One raw string can expand into several authors (`\and`, top-level commas,
+/// `\quad`), so the ref is applied to every author that came out of `raw[i]` —
+/// which is what makes it safe, unlike indexing the finished author list by
+/// position.
+pub(crate) fn parse_authors_with_refs(
+    raw: &[String],
+    refs: &[Option<String>],
+    class: &DocClass,
+) -> Vec<Author> {
     let mut out = Vec::new();
-    for s_raw in raw {
-        // The NeurIPS multi-`\textbf{Name}$^{n}$ \quad …` pattern must be detected on
-        // the RAW string: `sanitize_author_block` unwraps `\textbf` and drops `\quad`,
-        // destroying the author boundaries before the line-based parser can see them.
-        // ACL Anthology papers use the same multi-`\textbf{Name\textsuperscript{n}}` + `\quad`
-        // author row + `\textsuperscript{n} Institution` legend as NeurIPS, so share the parser.
-        if matches!(class, DocClass::Neurips | DocClass::Icml | DocClass::Iclr | DocClass::Acl) {
-            if let Some(authors) = parse_neurips_textbf_authors(s_raw) {
-                out.extend(authors);
-                continue;
+    for (i, s_raw) in raw.iter().enumerate() {
+        let before = out.len();
+        parse_one_raw_author(s_raw, class, &mut out);
+        if let Some(Some(r)) = refs.get(i) {
+            for a in out[before..].iter_mut() {
+                a.affil_ref.get_or_insert_with(|| r.clone());
             }
-        }
-        // IEEEtran inline `\IEEEauthorrefmark{n}` form (names + a refmark legend)
-        // must be parsed on the RAW string: `sanitize_author_block` mangles the
-        // refmark markers and `\\` row breaks this parser keys on.
-        if matches!(class, DocClass::IeeeTran { .. }) {
-            if let Some(authors) = parse_ieee_refmark_authors(s_raw) {
-                out.extend(authors);
-                continue;
-            }
-        }
-        let s = sanitize_author_block(s_raw);
-        let s = s.as_str();
-        match class {
-            DocClass::IeeeTran { .. } => out.extend(parse_ieee_block(s)),
-            DocClass::Neurips | DocClass::Icml | DocClass::Iclr | DocClass::Acl => {
-                out.extend(parse_neurips_block(s))
-            }
-            _ => out.extend(parse_generic_block(s)),
         }
     }
     out
+}
+
+fn parse_one_raw_author(s_raw: &str, class: &DocClass, out: &mut Vec<Author>) {
+    // The NeurIPS multi-`\textbf{Name}$^{n}$ \quad …` pattern must be detected on
+    // the RAW string: `sanitize_author_block` unwraps `\textbf` and drops `\quad`,
+    // destroying the author boundaries before the line-based parser can see them.
+    // ACL Anthology papers use the same multi-`\textbf{Name\textsuperscript{n}}` + `\quad`
+    // author row + `\textsuperscript{n} Institution` legend as NeurIPS, so share the parser.
+    if matches!(class, DocClass::Neurips | DocClass::Icml | DocClass::Iclr | DocClass::Acl) {
+        if let Some(authors) = parse_neurips_textbf_authors(s_raw) {
+            out.extend(authors);
+            return;
+        }
+    }
+    // IEEEtran inline `\IEEEauthorrefmark{n}` form (names + a refmark legend)
+    // must be parsed on the RAW string: `sanitize_author_block` mangles the
+    // refmark markers and `\\` row breaks this parser keys on.
+    if matches!(class, DocClass::IeeeTran { .. }) {
+        if let Some(authors) = parse_ieee_refmark_authors(s_raw) {
+            out.extend(authors);
+            return;
+        }
+    }
+    let s = sanitize_author_block(s_raw);
+    let s = s.as_str();
+    match class {
+        DocClass::IeeeTran { .. } => out.extend(parse_ieee_block(s)),
+        DocClass::Neurips | DocClass::Icml | DocClass::Iclr | DocClass::Acl => {
+            out.extend(parse_neurips_block(s))
+        }
+    _ => out.extend(parse_generic_block(s)),
+}
 }
 
 /// Generic `\author{Alice \and Bob}` parser. Splits on `\and` (and the
@@ -865,6 +891,9 @@ fn parse_one_author(chunk: &str) -> Author {
         }),
         orcid,
         equal_contribution: equal,
+        // Filled in by `parse_authors` from the `\author[…]` optional argument;
+        // `parse_one_author` only ever sees the braced body.
+        affil_ref: None,
     }
 }
 

@@ -632,6 +632,20 @@ impl<'a> Emitter<'a> {
         // parent's `finish()` to add the `@preview/subpar` import, so flow the
         // flag back (mirrors the numbering flags above; corpus 2605.31063).
         self.used_subpar |= sub.used_subpar;
+        // The numbered-affiliation state must come back too: the `\affil[n]`
+        // path never touches `raw_authors`, so without this an included preamble
+        // loses every affiliation it declared.
+        // Repeats APPEND, matching the in-file policy — a preamble may start an
+        // affiliation in an included file and continue it in the parent.
+        for (n, text) in sub.numbered_affils.iter() {
+            self.numbered_affils
+                .entry(*n)
+                .and_modify(|prev| {
+                    prev.push(' ');
+                    prev.push_str(text);
+                })
+                .or_insert_with(|| text.clone());
+        }
         // Same for a `byetex-fit(...)` emitted in the included file — its `#let`
         // is written by the parent's `finish()`, so without this the include's
         // tables call a helper that was never defined (corpus 2605.31603:
@@ -641,7 +655,13 @@ impl<'a> Emitter<'a> {
         // taking priority for fields it already owns.
         self.metadata.merge_from(&mut sub.metadata);
         if self.raw_authors.is_empty() {
+            // The refs are positionally parallel to `raw_authors`, so they must
+            // move under the SAME condition. Extending them independently let a
+            // dropped include-author's ref shift every later author onto the
+            // wrong institution.
             self.raw_authors.append(&mut sub.raw_authors);
+            self.author_affil_refs
+                .append(&mut sub.author_affil_refs);
         }
         if matches!(self.detected_class, DocClass::Unknown) {
             self.detected_class = std::mem::replace(&mut sub.detected_class, DocClass::Unknown);
