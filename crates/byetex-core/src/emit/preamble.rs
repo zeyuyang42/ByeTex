@@ -534,8 +534,17 @@ pub(in crate::emit) fn fancy_header(
     src: &str,
     base_dir: Option<&std::path::Path>,
 ) -> Option<String> {
-    let slots = scan_project_sources(src, base_dir, fancy_header_slots)?;
-    let [l, c, r] = slots;
+    let slots = scan_project_sources(src, base_dir, fancy_header_slots)
+        .unwrap_or([String::new(), String::new(), String::new()]);
+    let [l, mut c, r] = slots;
+    if l.is_empty() && c.is_empty() && r.is_empty() {
+        // No renderable `\fancyhead` field. ICML-family classes route the running
+        // head through `\fancyhead[C]{\small\bf\@icmltitlerunning}` — a
+        // class-internal macro that cannot be resolved here — so read the
+        // author's own `\icmltitlerunning` declaration instead. Verified against
+        // the LaTeX truth on all four corpus papers that use it.
+        c = scan_project_sources(src, base_dir, running_title)?;
+    }
     if l.is_empty() && c.is_empty() && r.is_empty() {
         return None;
     }
@@ -600,6 +609,35 @@ fn fancy_header_slots(src: &str) -> Option<[String; 3]> {
         }
     }
     if saw { Some(slots) } else { None }
+}
+
+/// The document's declared running title, if it is renderable as plain text.
+///
+/// The LAST live declaration wins: corpus 2605.31244 comments out an earlier
+/// `\icmltitlerunning` and declares the real one on the next line, so taking the
+/// first match emits a header that does not match the truth.
+fn running_title(src: &str) -> Option<String> {
+    let bytes = src.as_bytes();
+    let mut found: Option<String> = None;
+    for (at, _) in src.match_indices("\\icmltitlerunning") {
+        if crate::emit::is_commented_out(src, at) {
+            continue;
+        }
+        let i = at + "\\icmltitlerunning".len();
+        if bytes.get(i) != Some(&b'{') {
+            continue;
+        }
+        let Some(end) = crate::emit::node_utils::brace_balanced_end(bytes, i) else {
+            continue;
+        };
+        let body = src.get(i + 1..end.saturating_sub(1)).unwrap_or("").trim();
+        if let Some(text) = plain_header_text(body) {
+            if !text.is_empty() {
+                found = Some(text);
+            }
+        }
+    }
+    found
 }
 
 /// A header body reduced to plain text, or `None` when it contains anything this
