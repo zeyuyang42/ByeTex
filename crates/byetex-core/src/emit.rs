@@ -1665,6 +1665,10 @@ impl<'a> Emitter<'a> {
                     .push_str(&build_neutral_preamble(
                         &self.layout,
                         &self.detected_class,
+                        crate::emit::preamble::paper_from_project(
+                            self.src,
+                            self.base_dir.as_deref(),
+                        ),
                         crate::emit::preamble::caption_font_size(
                             self.src,
                             self.base_dir.as_deref(),
