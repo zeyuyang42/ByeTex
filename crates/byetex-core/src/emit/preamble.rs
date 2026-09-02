@@ -466,9 +466,123 @@ impl<'a> Emitter<'a> {
 /// otherwise the neutral defaults (us-letter, 11pt) are kept. Heading
 /// *numbering* is set by `finish()`, not here, so there is a single
 /// `#set heading(numbering)` site.
+/// The caption font size requested by `\captionsetup`, as a Typst `em` ratio.
+///
+/// LaTeX classes almost always set captions smaller than body text. The emitter
+/// set caption POSITION but never SIZE, so captions rendered at full body size —
+/// a large share of the corpus-wide small-text deficit
+/// (`layout_small_tier_share_delta` negative on 46 of 64 papers, mean -0.106).
+///
+/// Read from the source rather than baked in per class: `\captionsetup{font=...}`
+/// is what the author actually wrote. A `[float-type]` optional argument is
+/// accepted — scoping the rule per float kind is not worth the divergence, and
+/// ignoring the declaration outright is strictly worse than applying it.
+pub(in crate::emit) fn caption_font_size(src: &str, base_dir: Option<&std::path::Path>) -> Option<&'static str> {
+    // The document's own declaration wins; a bundled class/style file is the
+    // fallback. Only 3 of 67 corpus papers put `\captionsetup` in the entry file
+    // — the rest carry it in an `\input`ed preamble or the class they ship, so
+    // scanning `src` alone reaches almost nobody.
+    if let Some(em) = caption_font_size_in(src) {
+        return Some(em);
+    }
+    let dir = base_dir?;
+    let mut files: Vec<std::path::PathBuf> = Vec::new();
+    for raw in crate::emit::extract_include_paths_from_source(src) {
+        if let Some(p) = crate::emit::resolve_include_path(dir, &raw) {
+            files.push(p);
+        }
+    }
+    // Bundled `.cls`/`.sty` last: a class default must not beat the document.
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        let mut local: Vec<_> = entries
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| {
+                p.extension()
+                    .is_some_and(|e| e == "sty" || e == "cls")
+            })
+            .collect();
+        local.sort();
+        files.extend(local);
+    }
+    for f in files {
+        if let Ok(text) = std::fs::read_to_string(&f) {
+            if let Some(em) = caption_font_size_in(&text) {
+                return Some(em);
+            }
+        }
+    }
+    None
+}
+
+fn caption_font_size_in(src: &str) -> Option<&'static str> {
+    let mut found = None;
+    let mut from = 0;
+    while let Some(rel) = src.get(from..)?.find("\\captionsetup") {
+        let at = from + rel;
+        from = at + "\\captionsetup".len();
+        if crate::emit::is_commented_out(src, at) {
+            continue;
+        }
+        let bytes = src.as_bytes();
+        let mut i = from;
+        // Skip an optional `[table]` / `[figure]` float-type selector.
+        while bytes.get(i).is_some_and(|b| b.is_ascii_whitespace()) {
+            i += 1;
+        }
+        if bytes.get(i) == Some(&b'[') {
+            match src[i..].find(']') {
+                Some(off) => i += off + 1,
+                None => continue,
+            }
+        }
+        while bytes.get(i).is_some_and(|b| b.is_ascii_whitespace()) {
+            i += 1;
+        }
+        let Some(end) = crate::emit::node_utils::brace_balanced_end(bytes, i) else {
+            continue;
+        };
+        let opts = src.get(i + 1..end.saturating_sub(1)).unwrap_or("");
+        // `font=small`, `font={small,it}`, `font={it,small}` — only the `font`
+        // key sets the whole caption; `labelfont`/`textfont` style only a part,
+        // so a `font`-suffixed key must not match.
+        //
+        // Read ONLY the value belonging to this `font=`, so a size appearing in a
+        // neighbouring key cannot be mistaken for the caption size — `labelfont`
+        // styles the "Figure 1:" label alone, not the caption text.
+        for key in ["font=", "font ="] {
+            let mut k = 0;
+            while let Some(r) = opts[k..].find(key) {
+                let at = k + r;
+                k = at + key.len();
+                let before = opts[..at].chars().last();
+                if before.is_some_and(|c| c.is_ascii_alphabetic()) {
+                    continue; // `labelfont=` / `textfont=`
+                }
+                let rest = opts[k..].trim_start();
+                let value = match rest.strip_prefix('{') {
+                    // Braced list: every piece inside THIS group, nothing beyond.
+                    Some(inner) => &inner[..inner.find('}').unwrap_or(inner.len())],
+                    // Bare: a single token, ending at the next key separator.
+                    None => &rest[..rest.find(',').unwrap_or(rest.len())],
+                };
+                for piece in value.split(',') {
+                    if let Some(em) = crate::emit::size_declaration_em(piece.trim()) {
+                        found = Some(em);
+                    }
+                }
+            }
+        }
+    }
+    // An explicit reset to body size is a real declaration, but emitting
+    // `size: 1em` is a no-op that only adds noise.
+    found.filter(|em| *em != "1em")
+}
+
 pub(in crate::emit) fn build_neutral_preamble(
     layout: &crate::class_map::Layout,
     class: &crate::class_map::DocClass,
+    caption_size: Option<&str>,
 ) -> String {
     let paper = layout.paper.unwrap_or("us-letter");
     // LaTeX's default body size for `\documentclass{article}` (no size option)
@@ -525,6 +639,12 @@ pub(in crate::emit) fn build_neutral_preamble(
         (false, true) => "#show heading.where(level: 1): it => upper(it)\n",
         (false, false) => "",
     };
+    // Captions are smaller than body text in essentially every LaTeX class; the
+    // size is taken from the document's own `\captionsetup`, not assumed.
+    let caption_size = match caption_size {
+        Some(em) => format!("#show figure.caption: set text(size: {em})\n"),
+        None => String::new(),
+    };
     format!(
         "#set page(paper: \"{paper}\", margin: {margin}{columns}, numbering: \"1\")\n\
          #set text(font: \"{body_font}\", size: {font_size})\n\
@@ -534,7 +654,7 @@ pub(in crate::emit) fn build_neutral_preamble(
          #show heading.where(level: 3): set text(size: {h3}, weight: \"bold\")\n\
          #show heading: it => block(above: if it.level == 1 {{ 1.5em }} else {{ 1.4em }}, below: if it.level == 1 {{ 1.0em }} else {{ 0.65em }}, it)\n\
          #show figure.where(kind: table): set figure.caption(position: top)\n\
-         {figure_supplement}{heading_align}\n"
+         {caption_size}{figure_supplement}{heading_align}\n"
     )
 }
 
