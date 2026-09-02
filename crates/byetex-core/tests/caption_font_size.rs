@@ -38,7 +38,7 @@ fn doc(preamble: &str) -> String {
 fn captionsetup_font_small_sizes_the_caption() {
     let out = conv(&doc("\\usepackage{caption}\n\\captionsetup{font=small}"));
     assert!(
-        out.contains("show figure.caption: set text(size: 0.9em)"),
+        out.contains("show figure.caption: set text(size: 9pt)"),
         "font=small must size captions; got:\n{out}"
     );
 }
@@ -48,7 +48,7 @@ fn a_braced_font_list_is_read() {
     // `font={small,it}` is the common multi-key form.
     let out = conv(&doc("\\captionsetup{font={small,it}}"));
     assert!(
-        out.contains("size: 0.9em"),
+        out.contains("size: 9pt"),
         "font={{small,it}} must still yield the size; got:\n{out}"
     );
 }
@@ -56,7 +56,7 @@ fn a_braced_font_list_is_read() {
 #[test]
 fn footnotesize_captions_use_their_own_ratio() {
     let out = conv(&doc("\\captionsetup{font=footnotesize}"));
-    assert!(out.contains("size: 0.8em"), "footnotesize=0.8em; got:\n{out}");
+    assert!(out.contains("size: 8pt"), "footnotesize=0.8em; got:\n{out}");
 }
 
 #[test]
@@ -64,13 +64,13 @@ fn a_float_type_specific_captionsetup_is_honoured() {
     // `\captionsetup[table]{...}` scopes to tables; we take it as the caption
     // size rather than ignoring the declaration entirely.
     let out = conv(&doc("\\captionsetup[table]{font=small}"));
-    assert!(out.contains("size: 0.9em"), "the optional arg must not defeat it; got:\n{out}");
+    assert!(out.contains("size: 9pt"), "the optional arg must not defeat it; got:\n{out}");
 }
 
 #[test]
 fn font_normalsize_does_not_emit_a_rule() {
     // An explicit reset to body size is a real declaration, but emitting
-    // `size: 1em` is a no-op that only adds noise.
+    // `size: 10pt` is a no-op that only adds noise.
     let out = conv(&doc("\\captionsetup{font=normalsize}"));
     assert!(
         !out.contains("figure.caption: set text"),
@@ -130,7 +130,7 @@ fn a_declaration_in_a_bundled_style_file_is_found() {
     .typst;
     let _ = fs::remove_dir_all(&dir);
     assert!(
-        out.contains("size: 0.8em"),
+        out.contains("size: 8pt"),
         "a bundled .sty declaration must be found; got:\n{out}"
     );
 }
@@ -154,8 +154,8 @@ fn the_document_beats_a_bundled_class_default() {
     )
     .typst;
     let _ = fs::remove_dir_all(&dir);
-    assert!(out.contains("size: 0.9em"), "the document's own \\captionsetup wins; got:\n{out}");
-    assert!(!out.contains("0.8em"), "the class default must not win; got:\n{out}");
+    assert!(out.contains("size: 9pt"), "the document's own \\captionsetup wins; got:\n{out}");
+    assert!(!out.contains("8pt"), "the class default must not win; got:\n{out}");
 }
 
 #[test]
@@ -164,9 +164,9 @@ fn a_neighbouring_key_value_is_not_read_as_the_caption_size() {
     // actually distinguishes a precise parser is `a_size_only_in_labelfont_...`
     // below, where `font=` carries NO size.
     let rule = caption_rule(&conv(&doc("\\captionsetup{font=small,labelfont=\\Large}")));
-    assert!(rule.contains("size: 0.9em"), "font= is small; got: {rule}");
+    assert!(rule.contains("size: 9pt"), "font= is small; got: {rule}");
     assert!(
-        !rule.contains("1.44em"),
+        !rule.contains("14.4pt"),
         "labelfont's value must not become the caption size; got: {rule}"
     );
 }
@@ -183,8 +183,8 @@ fn a_size_only_in_labelfont_does_not_size_the_whole_caption() {
 #[test]
 fn only_the_braced_group_of_font_is_read() {
     let rule = caption_rule(&conv(&doc("\\captionsetup{font={small,it},labelfont={\\huge}}")));
-    assert!(rule.contains("size: 0.9em"), "font={{small,it}} is small; got: {rule}");
-    assert!(!rule.contains("2.074em"), "labelfont must not leak in; got: {rule}");
+    assert!(rule.contains("size: 9pt"), "font={{small,it}} is small; got: {rule}");
+    assert!(!rule.contains("20.7pt"), "labelfont must not leak in; got: {rule}");
 }
 
 #[test]
@@ -215,7 +215,7 @@ fn a_size_in_a_makecaption_definition_is_read() {
     .typst;
     let _ = fs::remove_dir_all(&dir);
     assert!(
-        caption_rule(&out).contains("size: 0.9em"),
+        caption_rule(&out).contains("size: 9pt"),
         "\\@makecaption's \\small must size captions; got: {}",
         caption_rule(&out)
     );
@@ -227,7 +227,7 @@ fn captionsetup_wins_over_makecaption() {
     // `\@makecaption` is the fallback.
     let out = conv(&doc("\\captionsetup{font=footnotesize}\n\\long\\def\\@makecaption#1#2{\\small #1: #2}"));
     assert!(
-        caption_rule(&out).contains("size: 0.8em"),
+        caption_rule(&out).contains("size: 8pt"),
         "captionsetup wins; got: {}",
         caption_rule(&out)
     );

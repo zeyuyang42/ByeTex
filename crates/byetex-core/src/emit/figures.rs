@@ -884,7 +884,11 @@ impl<'a> Emitter<'a> {
             // A `\small` / `\footnotesize` switch declared inside the float. Applied
             // OUTSIDE any `byetex-fit` wrapper so the fit measures the text at the
             // size it will actually render at, not at body size.
-            match crate::emit::font_size_wrapping(self.src, t.start_byte()) {
+            match crate::emit::font_size_wrapping(
+                self.src,
+                t.start_byte(),
+                crate::emit::base_font_pt(&self.layout),
+            ) {
                 Some(em) if had_hash => format!("text(size: {em})[#{scaled}]"),
                 Some(_) | None => scaled,
             }

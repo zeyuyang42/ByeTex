@@ -796,20 +796,49 @@ const FIT_WIDTH_PREAMBLE: &str = "#let byetex-fit(width, body) = layout(size => 
 ///
 /// One table so the float wrapper (`font_size_wrapping`) and the caption rule
 /// (`preamble::caption_font_size`) cannot drift apart.
-pub(in crate::emit) fn size_declaration_em(name: &str) -> Option<&'static str> {
+pub(in crate::emit) fn size_declaration_ratio(name: &str) -> Option<f64> {
     Some(match name.trim().trim_start_matches('\\') {
-        "tiny" => "0.5em",
-        "scriptsize" => "0.7em",
-        "footnotesize" => "0.8em",
-        "small" => "0.9em",
-        "normalsize" => "1em",
-        "large" => "1.2em",
-        "Large" => "1.44em",
-        "LARGE" => "1.728em",
-        "huge" => "2.074em",
-        "Huge" => "2.488em",
+        "tiny" => 0.5,
+        "scriptsize" => 0.7,
+        "footnotesize" => 0.8,
+        "small" => 0.9,
+        "normalsize" => 1.0,
+        "large" => 1.2,
+        "Large" => 1.44,
+        "LARGE" => 1.728,
+        "huge" => 2.074,
+        "Huge" => 2.488,
         _ => return None,
     })
+}
+
+/// A LaTeX size declaration as an ABSOLUTE Typst length, e.g. `9pt`.
+///
+/// These declarations select a size outright — `\small` is 9pt in a 10pt
+/// document whatever is in force around it — so they must not be emitted as `em`.
+/// An `em` pair MULTIPLIES: a `\small` caption inside a `\footnotesize` table
+/// became 0.9 x 0.8 = 0.72em = 7.2pt, a size neither declaration asked for.
+/// Corpus 2606.12411 ended up with text at 4.5pt this way.
+///
+/// The ratio is applied to the document's own base size, so an 11pt class scales
+/// with it rather than being assumed to be 10pt.
+pub(in crate::emit) fn size_declaration_abs(name: &str, base_pt: f64) -> Option<String> {
+    let pt = size_declaration_ratio(name)? * base_pt;
+    // Trim a trailing `.0` so the common case reads `9pt`, not `9.0pt`.
+    let rounded = (pt * 10.0).round() / 10.0;
+    Some(if (rounded - rounded.round()).abs() < f64::EPSILON {
+        format!("{}pt", rounded.round() as i64)
+    } else {
+        format!("{rounded}pt")
+    })
+}
+
+/// The document's base font size in points, defaulting to LaTeX's 10pt.
+pub(in crate::emit) fn base_font_pt(layout: &crate::class_map::Layout) -> f64 {
+    layout
+        .font_size
+        .and_then(|s| s.trim_end_matches("pt").parse::<f64>().ok())
+        .unwrap_or(10.0)
 }
 
 /// The LaTeX font-size DECLARATION in force for the content starting at byte
@@ -827,7 +856,7 @@ pub(in crate::emit) fn size_declaration_em(name: &str) -> Option<&'static str> {
 ///
 /// Bounded by the nearest preceding `\begin{`: a switch that ended before the
 /// float began must not reach in. Last live declaration wins, matching LaTeX.
-pub(in crate::emit) fn font_size_wrapping(src: &str, start: usize) -> Option<&'static str> {
+pub(in crate::emit) fn font_size_wrapping(src: &str, start: usize, base_pt: f64) -> Option<String> {
     const NAMES: &[&str] = &[
         "\\tiny",
         "\\scriptsize",
@@ -845,9 +874,9 @@ pub(in crate::emit) fn font_size_wrapping(src: &str, start: usize) -> Option<&'s
     let floor = head.rfind("\\begin{").map_or(0, |b| b + 1);
     let scope = head.get(floor..)?;
 
-    let mut best: Option<(usize, &'static str)> = None;
+    let mut best: Option<(usize, String)> = None;
     for cmd in NAMES {
-        let em = size_declaration_em(cmd)?;
+        let em = size_declaration_abs(cmd, base_pt)?;
         let mut from = scope.len();
         // Walk back over candidates until one is live; a commented-out switch is
         // how an author disables it.
@@ -862,8 +891,8 @@ pub(in crate::emit) fn font_size_wrapping(src: &str, start: usize) -> Option<&'s
                 continue;
             }
             if !is_commented_out(src, floor + rel) {
-                if best.is_none_or(|(at, _)| rel > at) {
-                    best = Some((rel, em));
+                if best.as_ref().is_none_or(|(at, _)| rel > *at) {
+                    best = Some((rel, em.clone()));
                 }
                 break;
             }
@@ -871,7 +900,10 @@ pub(in crate::emit) fn font_size_wrapping(src: &str, start: usize) -> Option<&'s
     }
     // `\normalsize` is a real declaration that resets to body size; honouring it
     // as "no wrapper" is both correct and avoids a redundant `#text(size: 1em)`.
-    best.filter(|(_, em)| *em != "1em").map(|(_, em)| em)
+    // `\normalsize` is a real declaration that resets to body size; honouring it
+    // as "no wrapper" is both correct and avoids a redundant same-size wrapper.
+    let normal = size_declaration_abs("normalsize", base_pt)?;
+    best.filter(|(_, em)| *em != normal).map(|(_, em)| em)
 }
 
 /// The `\resizebox` width fitting the content that starts at byte `start`, or
@@ -1619,11 +1651,18 @@ impl<'a> Emitter<'a> {
                     .push_str(&build_neutral_preamble(
                         &self.layout,
                         &self.detected_class,
-                        crate::emit::preamble::caption_font_size(self.src, self.base_dir.as_deref()),
+                        crate::emit::preamble::caption_font_size(
+                            self.src,
+                            self.base_dir.as_deref(),
+                            crate::emit::base_font_pt(&self.layout),
+                        )
+                        .as_deref(),
                         crate::emit::preamble::bibliography_font_size(
                             self.src,
                             self.base_dir.as_deref(),
-                        ),
+                            crate::emit::base_font_pt(&self.layout),
+                        )
+                        .as_deref(),
                     ));
                 self.out.push_str(&self.heading_numbering_decl());
             }

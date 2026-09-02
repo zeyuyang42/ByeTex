@@ -25,7 +25,7 @@ fn small_in_a_table_float_scales_the_table() {
         "\\begin{{table}}[t]\n\\centering\n\\small\n\\caption{{C}}\n{TABLE}\n\\end{{table}}"
     ));
     assert!(
-        out.contains("text(size: 0.9em)"),
+        out.contains("text(size: 9pt)"),
         "\\small must scale the table; got:\n{out}"
     );
 }
@@ -35,11 +35,11 @@ fn footnotesize_and_scriptsize_use_their_own_ratios() {
     let foot = conv(&format!(
         "\\begin{{table}}\n\\footnotesize\n{TABLE}\n\\end{{table}}"
     ));
-    assert!(foot.contains("text(size: 0.8em)"), "footnotesize=0.8em; got:\n{foot}");
+    assert!(foot.contains("text(size: 8pt)"), "footnotesize=0.8em; got:\n{foot}");
     let script = conv(&format!(
         "\\begin{{table}}\n\\scriptsize\n{TABLE}\n\\end{{table}}"
     ));
-    assert!(script.contains("text(size: 0.7em)"), "scriptsize=0.7em; got:\n{script}");
+    assert!(script.contains("text(size: 7pt)"), "scriptsize=0.7em; got:\n{script}");
 }
 
 #[test]
@@ -48,8 +48,8 @@ fn the_last_declaration_wins() {
     let out = conv(&format!(
         "\\begin{{table}}\n\\scriptsize\n\\small\n{TABLE}\n\\end{{table}}"
     ));
-    assert!(out.contains("text(size: 0.9em)"), "later \\small wins; got:\n{out}");
-    assert!(!out.contains("0.7em"), "the superseded \\scriptsize must not survive; got:\n{out}");
+    assert!(out.contains("text(size: 9pt)"), "later \\small wins; got:\n{out}");
+    assert!(!out.contains("7pt"), "the superseded \\scriptsize must not survive; got:\n{out}");
 }
 
 #[test]
