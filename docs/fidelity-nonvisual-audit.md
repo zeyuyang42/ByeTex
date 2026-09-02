@@ -17,7 +17,7 @@ of loss.
 
 | gap | cluster | papers | occurrences |
 | --- | --- | --: | --: |
-| `>{}/<{}/@{} col decorators` | float-sizing/tables | 18 | 116 |
+| _(none — every tracked gap round-trips)_ | | | |
 
 ### Already handled (probe round-trips; not work items)
 
@@ -29,6 +29,7 @@ of loss.
 | `\cmidrule` | 23 | 224 |
 | `\resizebox` | 21 | 112 |
 | `theorem-env [Note]` | 20 | 409 |
+| `>{}/<{}/@{} col decorators` | 18 | 116 |
 | `\item[custom-label]` | 16 | 268 |
 | `\smallskip/\medskip/\bigskip` | 15 | 75 |
 | `enumerate[style] (enumitem)` | 15 | 59 |
