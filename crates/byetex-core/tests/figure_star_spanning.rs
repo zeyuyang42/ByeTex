@@ -72,3 +72,40 @@ fn table_star_spans_in_two_column() {
         "table* must span in two-column; got:\n{t}"
     );
 }
+
+#[test]
+#[ignore = "open: no discriminator between a float Typst places fine and one it clamps"]
+fn an_oversized_spanning_float_is_still_clamped_on_2605_31586() {
+    // OPEN. `table*` in a two-column class becomes `place(..., float: true)`, and
+    // a FLOATED placement cannot break across pages. So a spanning table taller
+    // than the column is clamped into a pile of overprinted rows — the one case
+    // the table-figure breakable rule (#523) cannot reach, because the float sits
+    // outside it. 2605.31586 stacks 13 words at a single position.
+    //
+    // A `byetex-float` helper that drops the float when the body does not fit DOES
+    // clear it (corpus pile-ups 1 -> 0, verified). It was withheld because the
+    // fidelity gate rejected it: 2605.31584 went `structure_ok true->false`,
+    // page_ratio 0.952 -> 0.619 (20 pages -> 13, truth 21). No content was lost
+    // there (word_recall 0.848 unchanged, word_count_ratio 0.995) — floats spread
+    // content across pages, and un-floating packs it back together.
+    //
+    // Three fit tests were tried and all three un-float 31584:
+    //   * `measure(block(width: size.width, ...)).height >= size.height`
+    //     — and note a BARE `measure(body)` lays out at infinite width, so no row
+    //       wraps and the table reports 227pt against a 700pt container; the check
+    //       then never fires at all and the helper silently does nothing.
+    //   * width doubled to approximate the spanning width — still un-floats.
+    //   * a fixed 600pt page-height threshold — still un-floats.
+    //
+    // The real obstacle: `size.height` inside `layout()` is the REMAINING space,
+    // not the page height, and more importantly an oversized float does NOT always
+    // clamp — Typst often moves it to its own page, which is what 31584 relies on.
+    // Height alone cannot separate the two cases, so any fix needs a signal for
+    // "this float will actually be clamped", not "this float is tall".
+    //
+    // Also required, whatever the eventual fix: mark the helper used in the PARENT
+    // emitter (`used_spanning_float |= sub.used_spanning_float`, as `used_fit_width`
+    // and `used_subpar` already do), or a float inside an `\input`ed file emits a
+    // call to an undefined name — that regressed 3 papers and acceptance caught it.
+    let _ = ();
+}
