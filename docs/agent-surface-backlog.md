@@ -76,6 +76,52 @@ number in the README's Status section, where it reads as a headline result.
 
 ## Open — P0 (frequent × blocking)
 
+> **Round 16 (2026-09-02, v0.7.4) — VERIFICATION.** Both round-15 evidence papers
+> re-dogfooded by fresh agents after #503/#504/#507/#508. The manual's anti-thrash
+> rule asks for two runs before an item is Resolved; these are the second runs.
+>
+> | item | previous rounds | this round |
+> |---|---|---|
+> | R1 `\ ` in a citation supplement | reported on 2605.22728 | **absent** |
+> | R2 `alignat` count as literal `{2}` | reported on 2605.22728 | **absent** |
+> | R4 `\thanks`/`\affil` dropped | reported on BOTH papers | **absent on both** |
+> | R3 label-shaped prose deleted | reported | still present (open by design) |
+>
+> R1, R2 and R4 are **RESOLVED**, each confirmed by an agent that never saw the
+> earlier report. gh-amberj's `fidelity_after` 0.818 -> 0.868; 2605.22728 stuck
+> points 5 -> 2 across the session.
+>
+> R3 recurring is the expected outcome, not a surprise: the fix is withheld on
+> `fix/bare-angle-bracket-label` after two attempts that were each worse than main
+> in some case. Notably a SECOND agent independently asked for the same thing — the
+> leak scan should flag body text colliding with Typst's own reserved syntax (bare
+> `<…>` as a label, bare `@name` as a reference). Two independent requests for the
+> class-level fix is the strongest argument yet that it should not be done
+> per-character.
+>
+> ### R8. Leak scan cannot distinguish a cosmetic leak from CONTENT LOSS — sev 4 (major) — ROUTE: Loop B
+> Two math regions on 2605.22728 had `\operatorname{div}`, `\tfrac`, `\nabla`,
+> `\alpha`, `\delta` entirely absent from the emitted `.typ` — dropped, not merely
+> untranslated. Both surface with the same "possible leaked LaTeX command" message
+> as a harmless wrapper leak, so an agent cannot tell severity without diffing the
+> LaTeX source. Worse, `byetex-using-warnings-json` says to "translate or delete the
+> leaked fragment"; followed literally in a content-loss region that silently
+> discards real mathematics and yields a compiling-but-wrong document.
+>
+> ### R9. Leak scan misses a double-backslash command inside a Typst string — sev 3 — ROUTE: Loop B
+> `\\hspace{-0.125mm}` embedded in a quoted math string rendered as visible
+> garbage and was never reported; found only by a manual regex sweep. The scanner
+> matches single-backslash `\command` only.
+>
+> ### R10. `\\ [0.5ex]` row-spacing hints glued into table cells — sev 3 — ROUTE: Loop A
+> booktabs vertical-space hints emitted as literal `[\[0.5ex\]` text inside cells
+> (gh-amberj). New this round.
+>
+> ### R11. `byetex-book` does not mention openright/twoside pagination — sev 3 (major skill note) — ROUTE: Loop B
+> The single largest page-count gap on the book paper (9 rendered vs 16 truth) is
+> book-class blank-verso insertion, and no skill says whether it is in scope.
+
+
 > **Round 15 (2026-09-02, v0.7.4)** — First Loop-B round in seven ticks; two papers
 > dogfooded (`2605.22728`, `gh-amberj-latex-book-template`), both `NEEDS_FIX`
 > (fidelity 0.804→0.835 and 0.808→0.818), 18 friction items logged. Every finding
@@ -83,7 +129,7 @@ number in the README's Status section, where it reads as a headline result.
 > `byetex diagnose`'s leak scan reports it. None was reachable by any metric in the
 > loop — all were found by rendering pages and comparing against the truth.
 >
-> ### R1. `\ ` in a citation supplement became a forced line break — sev 4 (major) — ROUTE: Loop A — RESOLVED (#503)
+> ### R1. `\ ` in a citation supplement became a forced line break — sev 4 (major) — ROUTE: Loop A — RESOLVED (#503), VERIFIED round 16
 > `\cite[Sec.\ 2]` emitted `@key[Sec.\ 2]`, and Typst reads `\ ` as a forced LINE
 > BREAK, not a space. ~46 citations on `2605.22728` were split into orphan one-word
 > lines. Fixed in `brack_inner`, the chokepoint that already mapped `~`; it covers
@@ -91,7 +137,7 @@ number in the README's Status section, where it reads as a headline result.
 > across 249 supplements, and **29 -> 27 pages** against a truth of 22 —
 > independently reproducing the agent's measurement.
 >
-> ### R2. `alignat`'s column count rendered as literal `{2}` — sev 3 — ROUTE: Loop A — RESOLVED (#504)
+> ### R2. `alignat`'s column count rendered as literal `{2}` — sev 3 — ROUTE: Loop A — RESOLVED (#504), VERIFIED round 16
 > 15 equations on `2605.22728`. **The agent's root cause was wrong** — it read the
 > `{2}` as a vestigial `equate` sub-numbering directive left invalid by the
 > preamble's `sub-numbering: false`. It is actually `\begin{alignat}{2}`'s mandatory
@@ -108,7 +154,7 @@ number in the README's Status section, where it reads as a headline result.
 > before `post_process` rather than reason about which paths exist** — two attempts
 > have now been lost to reasoning.
 >
-> ### R4. `\thanks`/`\affil` author content dropped with no warning — sev 3 — ROUTE: Loop A — OPEN
+> ### R4. `\thanks`/`\affil` author content dropped with no warning — sev 3 — ROUTE: Loop A — RESOLVED (#508), VERIFIED round 16 on both papers
 > Independently reported on BOTH papers. `2605.22728` loses a whole affiliation plus
 > both authors' footnote emails and corresponding-author markers; `gh-amberj` loses
 > an `\author{...\thanks{\url{...}}}` footnote. No `warnings.json` entry, no leak-scan
