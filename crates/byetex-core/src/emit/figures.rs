@@ -872,7 +872,7 @@ impl<'a> Emitter<'a> {
             // measure. The wrapper is found by scanning back from the tabular
             // rather than read off the command's children — see
             // `resizebox_wrapping` for why the parse cannot supply it.
-            match crate::emit::resizebox_wrapping(self.src, t.start_byte()) {
+            let scaled = match crate::emit::resizebox_wrapping(self.src, t.start_byte()) {
                 // Bare call in the figure's code context; the table needs its
                 // `#` back inside the content block — but only if it had one.
                 Some(w) if had_hash => {
@@ -880,6 +880,13 @@ impl<'a> Emitter<'a> {
                     format!("byetex-fit({w})[#{bare}]")
                 }
                 Some(_) | None => bare,
+            };
+            // A `\small` / `\footnotesize` switch declared inside the float. Applied
+            // OUTSIDE any `byetex-fit` wrapper so the fit measures the text at the
+            // size it will actually render at, not at body size.
+            match crate::emit::font_size_wrapping(self.src, t.start_byte()) {
+                Some(em) if had_hash => format!("text(size: {em})[#{scaled}]"),
+                Some(_) | None => scaled,
             }
         } else if let Some(tbl) = includes
             .iter()

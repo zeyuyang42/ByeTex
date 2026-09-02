@@ -791,6 +791,68 @@ const FIT_WIDTH_PREAMBLE: &str = "#let byetex-fit(width, body) = layout(size => 
   \x20 } else { body }\n\
 })\n";
 
+/// The LaTeX font-size DECLARATION in force for the content starting at byte
+/// `start`, as a Typst `em` ratio, or `None` when the content is at body size.
+///
+/// `\small` and friends are switches, not commands: they apply from the point of
+/// declaration to the end of the enclosing group/environment, so they are bare
+/// siblings of the `tabular` rather than its parent. They were dropped entirely,
+/// which is worse than a cosmetic loss — a table the author shrank to fit renders
+/// at full size, and when it no longer fits, Typst CLAMPS the overflow rather than
+/// breaking it (see `FIT_WIDTH_PREAMBLE`, which documents the same failure mode
+/// for `scale`). Every excess row is then painted at the same y as an illegible
+/// pile-up, while the text layer stays complete — so `word_recall` reads 100% and
+/// no existing gate sees it. Corpus 2605.31604 stacks 12 row labels this way.
+///
+/// Bounded by the nearest preceding `\begin{`: a switch that ended before the
+/// float began must not reach in. Last live declaration wins, matching LaTeX.
+pub(in crate::emit) fn font_size_wrapping(src: &str, start: usize) -> Option<&'static str> {
+    // Relative to `\normalsize`, from the standard 10pt size table.
+    const SIZES: &[(&str, &str)] = &[
+        ("\\tiny", "0.5em"),
+        ("\\scriptsize", "0.7em"),
+        ("\\footnotesize", "0.8em"),
+        ("\\small", "0.9em"),
+        ("\\normalsize", "1em"),
+        ("\\large", "1.2em"),
+        ("\\Large", "1.44em"),
+        ("\\LARGE", "1.728em"),
+        ("\\huge", "2.074em"),
+        ("\\Huge", "2.488em"),
+    ];
+    let head = src.get(..start)?;
+    // Only look inside the innermost environment that opened before `start`.
+    let floor = head.rfind("\\begin{").map_or(0, |b| b + 1);
+    let scope = head.get(floor..)?;
+
+    let mut best: Option<(usize, &'static str)> = None;
+    for (cmd, em) in SIZES {
+        let mut from = scope.len();
+        // Walk back over candidates until one is live; a commented-out switch is
+        // how an author disables it.
+        while let Some(rel) = scope.get(..from).and_then(|h| h.rfind(cmd)) {
+            from = rel;
+            // `\Large` is a prefix of nothing, but `\large` is a suffix-collision
+            // risk (`\Large` contains `large` only at a capital, so the leading
+            // backslash already disambiguates). Guard the TRAILING side so
+            // `\smallskip` is never read as `\small`.
+            let after = scope.as_bytes().get(rel + cmd.len());
+            if after.is_some_and(|c| c.is_ascii_alphabetic()) {
+                continue;
+            }
+            if !is_commented_out(src, floor + rel) {
+                if best.is_none_or(|(at, _)| rel > at) {
+                    best = Some((rel, em));
+                }
+                break;
+            }
+        }
+    }
+    // `\normalsize` is a real declaration that resets to body size; honouring it
+    // as "no wrapper" is both correct and avoids a redundant `#text(size: 1em)`.
+    best.filter(|(_, em)| *em != "1em").map(|(_, em)| em)
+}
+
 /// The `\resizebox` width fitting the content that starts at byte `start`, or
 /// `None` when nothing wraps it.
 ///
