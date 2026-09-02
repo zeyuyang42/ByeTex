@@ -92,9 +92,28 @@ byetex diagnose main.typ
 
 Despite the "diagnose" name, on a `.typ` input this does BOTH a `typst` compile AND a
 **leaked-LaTeX body scan** — it reports each residual `\command` / `\[..\]` fragment with
-its `.typ` line. Fix each by translating or deleting the leaked fragment, then re-run it
-to confirm the body is clean. (A clean `typst compile` does NOT imply a clean body — leaked
+its `.typ` line. (A clean `typst compile` does NOT imply a clean body — leaked
 `\section` text compiles fine but renders wrong.)
+
+### Read the leak's severity before you touch it
+
+Two different failures look alike in the body, and they need opposite responses.
+The scan says which one you have:
+
+| message says | what happened | what to do |
+| --- | --- | --- |
+| "renders literally in Typst; convert or remove it" | a **cosmetic** leak — an inline command (`\hspace`, `\textbf`) whose wrapper survived | translate it, or delete it; nothing else was lost |
+| "an environment failed to convert, so **CONTENT IS LIKELY MISSING**" | a **structural** leak (`\begin`, `\left`, `\aligned`) — the environment never converted and the recovery path usually discarded what was inside it | **rebuild the region from the LaTeX source.** Read `byetex-parse-error`, which the scan routes you to |
+| "written with a **DOUBLED backslash**" | the command sits inside a Typst string (`"\\hspace{…}"`) and renders as a literal backslash plus its name | same rule as above by severity — the message also says "structure" and "CONTENT IS LIKELY MISSING" when the doubled command is an environment marker |
+
+**Deleting a structural leak is the dangerous move.** The fragment is the visible
+corner of a hole: strip it and the document compiles, looks plausible, and is
+missing mathematics that is not recoverable from the `.typ` alone. Before editing
+one, diff the region against the `.tex` — and check `warnings.json` for a cluster
+of `unsupported_command` entries over the same span, which is what a dropped
+formula leaves behind.
+
+Then re-run the scan to confirm the body is clean.
 
 ## Rules
 
