@@ -149,6 +149,49 @@ pub fn diagnose_typ(typ_path: &Path, typst_bin: &str) -> Result<Vec<Diagnostic>>
     Ok(diags)
 }
 
+/// Whether a `#raw("…")` string is still open at the END of `line`, given whether
+/// one was already open at its start. Counts unescaped `"` after the first
+/// `#raw(`; a `\"` inside the string does not close it.
+fn raw_string_left_open(line: &str, already_open: bool) -> bool {
+    let scan_from = if already_open {
+        0
+    } else {
+        match line.find("#raw(") {
+            Some(i) => i,
+            None => return false,
+        }
+    };
+    let mut open = already_open;
+    let mut prev_escape = false;
+    for c in line[scan_from..].chars() {
+        match c {
+            '\\' if !prev_escape => prev_escape = true,
+            '"' if !prev_escape => open = !open,
+            _ => prev_escape = false,
+        }
+    }
+    open
+}
+
+/// Whether a leaked command frames a REGION — an environment marker or the sized
+/// delimiter pair around one — rather than being an inline command.
+///
+/// The distinction decides what an agent should do. `\hspace` leaking is
+/// cosmetic: remove it. `\begin`/`\left` leaking means the environment itself
+/// never converted, and the converter's error-recovery path typically discarded
+/// the mathematics inside it — so the fragment is the visible corner of a hole,
+/// and deleting it makes the document compile while quietly losing content.
+fn is_structural_leak(name: &str) -> bool {
+    // Environments and the sized delimiters that frame them. NOT `\smash` or
+    // `\substack`: those take an argument that survives beside them, so calling
+    // them content loss sends the reader off to rebuild a region that only needed
+    // its wrapper stripped — diluting the signal this distinction exists to give.
+    matches!(
+        name,
+        "\\begin" | "\\end" | "\\left" | "\\right" | "\\aligned" | "\\alignedat" | "\\cases"
+    )
+}
+
 /// Scan an already-converted `.typ` for **leaked LaTeX** — un-converted commands
 /// (`\textbf`, `\cite`, `\STATE`, …) and `\[..\]` markers that compile fine but render
 /// as literal text. These are invisible to `typst compile` (no error) yet are exactly
@@ -160,16 +203,21 @@ pub fn diagnose_typ(typ_path: &Path, typst_bin: &str) -> Result<Vec<Diagnostic>>
 /// and de-dups repeated commands per line. Each hit is a [`Diagnostic`] with no
 /// `src_fragment` (the source map is gone for an edited `.typ`).
 pub fn scan_typ_leaks(typst: &str) -> Vec<Diagnostic> {
-    let leak = |line: usize, col: usize, line_text: &str, message: String| Diagnostic {
+    let leak = |line: usize, col: usize, line_text: &str, message: String, skill: &str| Diagnostic {
         message,
         line,
         col,
         src_fragment: None,
         typ_region: line_text.to_string(),
-        skill_name: Some("byetex-using-warnings-json".to_string()),
+        skill_name: Some(skill.to_string()),
     };
     let mut out = Vec::new();
     let mut in_fence = false;
+    // A `#raw("…")` string can span lines: the block emitters newline-escape their
+    // content, but `\verb`/`\path`/`\lstinline` escape only `\` and `"`. On a
+    // continuation line `#raw(` is absent, so without this every `\\cmd` in the
+    // listing body would be reported as a leak.
+    let mut in_raw_string = false;
     for (idx, line) in typst.lines().enumerate() {
         let trimmed = line.trim_start();
         if trimmed.starts_with("```") {
@@ -181,16 +229,67 @@ pub fn scan_typ_leaks(typst: &str) -> Vec<Diagnostic> {
         }
         let bytes = line.as_bytes();
         let mut seen: Vec<String> = Vec::new();
+        let line_opens_unterminated_raw = raw_string_left_open(line, in_raw_string);
         let mut j = 0;
         while j < bytes.len() {
             if bytes[j] == b'\\' {
-                // Escaped backslash `\\` — inside a `#raw("…")` code string the emitter
-                // DOUBLES backslashes, so a LaTeX listing reads `\\textbf` etc. Those are
-                // literal, correctly-rendered code, not leaks: skip both backslashes so
-                // the following letters aren't mistaken for a leaked command. A real leak
-                // is a SINGLE backslash (`\textbf`) in ordinary markup/math.
+                // Escaped backslash `\\`. Inside a `#raw("…")` code string the
+                // emitter DOUBLES backslashes, so a LaTeX listing reads
+                // `\\textbf` — literal, correctly-rendered code, not a leak.
+                //
+                // Anywhere ELSE a `\\cmd` renders as a literal backslash followed
+                // by the command name, i.e. visible garbage. One such
+                // `\\hspace{-0.125mm}` inside a math string was invisible to this
+                // scan and found only by a manual regex sweep, so the skip is
+                // narrowed to lines that actually open a `#raw(`.
                 if bytes.get(j + 1) == Some(&b'\\') {
-                    j += 2;
+                    let in_raw = in_raw_string || line[..j].contains("#raw(");
+                    let doubled_cmd = bytes
+                        .get(j + 2)
+                        .is_some_and(|c| c.is_ascii_alphabetic())
+                        && bytes.get(j + 3).is_some_and(|c| c.is_ascii_alphabetic());
+                    if in_raw || !doubled_cmd {
+                        j += 2;
+                        continue;
+                    }
+                    let mut k = j + 2;
+                    while k < bytes.len() && bytes[k].is_ascii_alphabetic() {
+                        k += 1;
+                    }
+                    let name = line[j + 1..k].to_string();
+                    // Dedup separately from the single-backslash form: the two
+                    // share a name, so one key would let a `\\begin` earlier on
+                    // the line swallow a later `\begin` and drop its diagnostic.
+                    let key = format!("\\\\{name}");
+                    if !seen.contains(&key) {
+                        // Severity is the same question here as anywhere: a
+                        // collapsed environment inside a string is still a
+                        // collapsed environment, and telling the reader to delete
+                        // it is the exact mistake this scan exists to prevent.
+                        let (msg, skill) = if is_structural_leak(&name) {
+                            (
+                                format!(
+                                    "leaked LaTeX structure `{name}` (DOUBLED backslash, inside a \
+                                     string) — an environment failed to convert, so CONTENT IS \
+                                     LIKELY MISSING. Rebuild the region from the LaTeX source; \
+                                     only the `.typ` line is known here"
+                                ),
+                                "byetex-parse-error",
+                            )
+                        } else {
+                            (
+                                format!(
+                                    "leaked LaTeX command `{name}` written with a DOUBLED \
+                                     backslash — renders as a literal backslash plus the command \
+                                     name; convert or remove it"
+                                ),
+                                "byetex-using-warnings-json",
+                            )
+                        };
+                        seen.push(key);
+                        out.push(leak(idx + 1, j, line, msg, skill));
+                    }
+                    j = k;
                     continue;
                 }
                 // `\cmd` — backslash followed by 2+ ASCII letters.
@@ -201,12 +300,34 @@ pub fn scan_typ_leaks(typst: &str) -> Vec<Diagnostic> {
                 if k - (j + 1) >= 2 {
                     let name = line[j..k].to_string();
                     if !seen.contains(&name) {
-                        let msg = format!(
-                            "possible leaked LaTeX command `{name}` — renders literally in Typst; \
-                             convert or remove it"
-                        );
+                        // Two very different failures wear the same clothes here.
+                        // A STRUCTURAL marker means a whole environment failed to
+                        // convert, and the converter usually dropped real content
+                        // with it — deleting the fragment then silently discards
+                        // mathematics and yields a compiling-but-WRONG document.
+                        // An inline command is cosmetic and safe to remove.
+                        let (msg, skill) = if is_structural_leak(&name) {
+                            (
+                                format!(
+                                    "leaked LaTeX structure `{name}` — an environment failed to \
+                                     convert, so CONTENT IS LIKELY MISSING, not just untranslated. \
+                                     Rebuild the region from the LaTeX source; deleting the fragment \
+                                     discards whatever was dropped with it. Only the `.typ` line is \
+                                     known — this scan has no `.tex` offset"
+                                ),
+                                "byetex-parse-error",
+                            )
+                        } else {
+                            (
+                                format!(
+                                    "possible leaked LaTeX command `{name}` — renders literally in \
+                                     Typst; convert or remove it"
+                                ),
+                                "byetex-using-warnings-json",
+                            )
+                        };
                         seen.push(name);
-                        out.push(leak(idx + 1, j, line, msg));
+                        out.push(leak(idx + 1, j, line, msg, skill));
                     }
                     j = k;
                     continue;
@@ -245,6 +366,7 @@ pub fn scan_typ_leaks(typst: &str) -> Vec<Diagnostic> {
                                 line,
                                 "possible leaked LaTeX `\\[..\\]` marker — renders as literal brackets"
                                     .to_string(),
+                                "byetex-using-warnings-json",
                             ));
                         }
                     }
@@ -254,6 +376,7 @@ pub fn scan_typ_leaks(typst: &str) -> Vec<Diagnostic> {
             }
             j += 1;
         }
+        in_raw_string = line_opens_unterminated_raw;
     }
     out
 }
