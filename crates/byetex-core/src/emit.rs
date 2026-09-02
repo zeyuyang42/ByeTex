@@ -927,6 +927,30 @@ fn resizebox_target_width(raw: &str) -> Option<String> {
     matches!(unit.trim(), "cm" | "mm" | "in" | "pt" | "em").then(|| w.replace(' ', ""))
 }
 
+/// LaTeX's argument-less non-ASCII letter commands. `\i`/`\j` are the DOTLESS
+/// forms, which exist so an accent can sit on a bare base (`\'{\i}`).
+fn latex_special_letter(cmd: &str) -> Option<&'static str> {
+    Some(match cmd {
+        "\\ss" => "ß",
+        "\\o" => "ø",
+        "\\O" => "Ø",
+        "\\aa" => "å",
+        "\\AA" => "Å",
+        "\\ae" => "æ",
+        "\\AE" => "Æ",
+        "\\oe" => "œ",
+        "\\OE" => "Œ",
+        "\\l" => "ł",
+        "\\L" => "Ł",
+        "\\i" => "ı",
+        "\\j" => "ȷ",
+        // No catch-all default: returning `""` for an unlisted command would
+        // emit nothing and drop the character silently — the very bug this
+        // table exists to fix.
+        _ => return None,
+    })
+}
+
 impl<'a> Emitter<'a> {
     // ─── Construction & lifecycle ──────────────────────────────────────────────
 
@@ -3389,13 +3413,23 @@ impl<'a> Emitter<'a> {
                 self.out.push('✓');
                 node.end_byte()
             }
-            Some("\\AA") => {
-                self.out.push('Å');
-                node.end_byte()
-            }
-            Some("\\l") => {
-                self.out.push('ł');
-                node.end_byte()
+            // LaTeX's non-ASCII LETTERS are argument-less commands in their own
+            // right, not accents. Only `\AA` and `\l` were dispatched, so the
+            // other eleven were dropped and took their character with them —
+            // `Stra\ss e` rendered as `Stra e` (8 corpus papers, 26 occurrences).
+            // `!macros.contains_key` mirrors the accent arm below: a paper may
+            // `\renewcommand` a one-letter name, and single letters like `\o`
+            // and `\l` are exactly the ones that get re-purposed. The user's
+            // definition must win.
+            Some(cmd)
+                if latex_special_letter(cmd).is_some() && !self.macros.contains_key(cmd) =>
+            {
+                self.out
+                    .push_str(latex_special_letter(cmd).unwrap_or_default());
+                // A control WORD swallows the whitespace that terminates it, so
+                // `Stra\ss e` is one word — "Straße", not "Straß e" — and so is
+                // `Stra\ss` at a line wrap.
+                consume_control_word_space(self.src, node.end_byte())
             }
             // `\newline` — explicit line break outside a table.
             Some("\\newline") => {
@@ -6240,6 +6274,33 @@ fn convertible_length(s: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// Skip the whitespace that TERMINATES a control word, which TeX discards.
+///
+/// Spaces and tabs, and also the single newline of a wrapped source line — a
+/// paper writing `Stra\ss` at a line end means "Straße", not "Straß e". A BLANK
+/// line is left alone: that is a paragraph break, not a terminator.
+///
+/// Separate from [`consume_trailing_inline_space`], which the spacing commands
+/// share and which must not start eating newlines.
+fn consume_control_word_space(src: &str, pos: usize) -> usize {
+    let bytes = src.as_bytes();
+    let mut i = pos;
+    while bytes.get(i) == Some(&b' ') || bytes.get(i) == Some(&b'\t') {
+        i += 1;
+    }
+    if bytes.get(i) == Some(&b'\n') {
+        let mut j = i + 1;
+        while bytes.get(j) == Some(&b' ') || bytes.get(j) == Some(&b'\t') {
+            j += 1;
+        }
+        // Another newline → blank line → paragraph break; keep it.
+        if bytes.get(j) != Some(&b'\n') {
+            return j;
+        }
+    }
+    i
 }
 
 fn consume_trailing_inline_space(src: &str, mut pos: usize) -> usize {
