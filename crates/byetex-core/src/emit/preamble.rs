@@ -620,8 +620,58 @@ fn thebibliography_size_in(src: &str) -> Option<&'static str> {
     None
 }
 
-pub(in crate::emit) fn caption_font_size(src: &str, base_dir: Option<&std::path::Path>) -> Option<&'static str> {
+pub(in crate::emit) fn caption_font_size(
+    src: &str,
+    base_dir: Option<&std::path::Path>,
+) -> Option<&'static str> {
+    // `\captionsetup` is the document's explicit statement and wins everywhere it
+    // appears. Classes predating the `caption` package instead redefine
+    // `\@makecaption`; 8 corpus papers carry a size ONLY there, nearly as many
+    // again as the 9 the package form reaches.
     scan_project_sources(src, base_dir, caption_font_size_in)
+        .or_else(|| scan_project_sources(src, base_dir, makecaption_size_in))
+        .filter(|em| *em != "1em")
+}
+
+/// A size switch inside a `\@makecaption` redefinition.
+fn makecaption_size_in(src: &str) -> Option<&'static str> {
+    let mut from = 0;
+    while let Some(rel) = src.get(from..)?.find("@makecaption") {
+        let at = from + rel;
+        from = at + "@makecaption".len();
+        if crate::emit::is_commented_out(src, at) {
+            continue;
+        }
+        let bytes = src.as_bytes();
+        // Step over the `#1#2` parameter text to the definition body.
+        let mut i = from;
+        while i < bytes.len() && bytes[i] != b'{' {
+            i += 1;
+        }
+        let Some(end) = crate::emit::node_utils::brace_balanced_end(bytes, i) else {
+            continue;
+        };
+        let body = src.get(i..end).unwrap_or("");
+        for name in [
+            "\\tiny",
+            "\\scriptsize",
+            "\\footnotesize",
+            "\\small",
+            "\\normalsize",
+        ] {
+            let mut k = 0;
+            while let Some(r) = body[k..].find(name) {
+                let p = k + r;
+                k = p + name.len();
+                // `\small` must not match inside `\smallskip`.
+                if body.as_bytes().get(p + name.len()).is_some_and(|c| c.is_ascii_alphabetic()) {
+                    continue;
+                }
+                return crate::emit::size_declaration_em(name);
+            }
+        }
+    }
+    None
 }
 
 fn caption_font_size_in(src: &str) -> Option<&'static str> {

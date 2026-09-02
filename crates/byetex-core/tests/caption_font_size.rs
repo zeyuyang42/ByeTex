@@ -186,3 +186,59 @@ fn only_the_braced_group_of_font_is_read() {
     assert!(rule.contains("size: 0.9em"), "font={{small,it}} is small; got: {rule}");
     assert!(!rule.contains("2.074em"), "labelfont must not leak in; got: {rule}");
 }
+
+#[test]
+fn a_size_in_a_makecaption_definition_is_read() {
+    // Classes that predate the `caption` package style captions by redefining
+    // `\@makecaption` instead of calling `\captionsetup`. Measured: 8 corpus
+    // papers carry a size ONLY there, which `\captionsetup` detection cannot see
+    // — that is nearly as many again as the 9 the package form reaches.
+    use std::fs;
+    let dir = std::env::temp_dir().join(format!("byetex-cap-mk-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+        dir.join("venue.sty"),
+        "\\long\\def\\@makecaption#1#2{%\n  \\vskip\\abovecaptionskip\n  \\small\n  \\sbox\\@tempboxa{#1: #2}%\n}\n",
+    )
+    .unwrap();
+    let main = "\\documentclass{article}\n\\usepackage{venue}\n\\begin{document}\n\
+                \\begin{figure}\\caption{C}\\end{figure}\n\\end{document}";
+    fs::write(dir.join("main.tex"), main).unwrap();
+    let out = convert(
+        main,
+        &ConvertOptions {
+            source_name: Some("main.tex".into()),
+            base_dir: Some(dir.clone()),
+        },
+    )
+    .typst;
+    let _ = fs::remove_dir_all(&dir);
+    assert!(
+        caption_rule(&out).contains("size: 0.9em"),
+        "\\@makecaption's \\small must size captions; got: {}",
+        caption_rule(&out)
+    );
+}
+
+#[test]
+fn captionsetup_wins_over_makecaption() {
+    // `\captionsetup` is the document's explicit statement; a class's
+    // `\@makecaption` is the fallback.
+    let out = conv(&doc("\\captionsetup{font=footnotesize}\n\\long\\def\\@makecaption#1#2{\\small #1: #2}"));
+    assert!(
+        caption_rule(&out).contains("size: 0.8em"),
+        "captionsetup wins; got: {}",
+        caption_rule(&out)
+    );
+}
+
+#[test]
+fn a_makecaption_without_a_size_emits_no_rule() {
+    let out = conv(&doc("\\long\\def\\@makecaption#1#2{#1: #2}"));
+    assert_eq!(
+        caption_rule(&out),
+        "<no caption rule>",
+        "no size in the definition, no rule"
+    );
+}
