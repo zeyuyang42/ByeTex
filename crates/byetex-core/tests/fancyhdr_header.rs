@@ -113,3 +113,46 @@ fn a_commented_slot_body_is_not_lifted_into_the_header() {
         "with no renderable slot there must be no header at all; got:\n{t}"
     );
 }
+
+#[test]
+fn a_running_title_becomes_the_header() {
+    // ICML-family classes put `\icmltitlerunning{...}` in the running head via
+    // `\fancyhead[C]{\small\bf\@icmltitlerunning}` — a class-internal macro this
+    // cannot resolve, so the slot is skipped and the declaration is read direct.
+    // Verified against the LaTeX truth on all four corpus papers that use it.
+    let h = header_line(&typ(&doc("\\icmltitlerunning{Spectral Reach in Neural Scaling}")));
+    assert!(
+        h.contains("Spectral Reach in Neural Scaling"),
+        "the running title must reach the header; got: {h}"
+    );
+}
+
+#[test]
+fn a_commented_running_title_is_ignored() {
+    // Corpus 2605.31244 comments out an earlier `\icmltitlerunning` and declares
+    // the real one on the next line. Taking the first match emits a header that
+    // does not match the truth.
+    let h = header_line(&typ(&doc(
+        "% \\icmltitlerunning{Stale Short Title}\n\\icmltitlerunning{The Live One}",
+    )));
+    assert!(h.contains("The Live One"), "the live declaration wins; got: {h}");
+    assert!(!h.contains("Stale"), "a commented declaration must not win; got: {h}");
+}
+
+#[test]
+fn an_explicit_fancyhead_beats_the_running_title() {
+    // A document that says what its header is outranks the class convention.
+    let h = header_line(&typ(&doc(
+        "\\pagestyle{fancy}\n\\fancyhead[C]{Explicit Header}\n\\icmltitlerunning{Running Title}",
+    )));
+    assert!(h.contains("Explicit Header"), "explicit slot wins; got: {h}");
+    assert!(!h.contains("Running Title"), "running title must not override it; got: {h}");
+}
+
+#[test]
+fn a_running_title_with_markup_is_skipped() {
+    // Same rule as the fancyhdr slots: a header repeats on every page, so an
+    // unrenderable declaration yields no header rather than leaked LaTeX.
+    let t = typ(&doc("\\icmltitlerunning{A \\textbf{Bold} Claim}"));
+    assert!(!t.contains("textbf"), "no raw LaTeX in the header; got:\n{t}");
+}
