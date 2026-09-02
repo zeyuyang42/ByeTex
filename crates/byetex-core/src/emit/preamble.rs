@@ -530,16 +530,17 @@ fn scan_project_sources<T>(
 pub(in crate::emit) fn bibliography_font_size(
     src: &str,
     base_dir: Option<&std::path::Path>,
-) -> Option<&'static str> {
+    base_pt: f64,
+) -> Option<String> {
     // natbib's documented hook is the more specific statement, so it is probed
     // across ALL sources before falling back to a `thebibliography` definition.
-    scan_project_sources(src, base_dir, bibfont_hook_in)
-        .or_else(|| scan_project_sources(src, base_dir, thebibliography_size_in))
-        .filter(|em| *em != "1em")
+    let ratio = scan_project_sources(src, base_dir, bibfont_hook_in)
+        .or_else(|| scan_project_sources(src, base_dir, thebibliography_size_in))?;
+    absolute(ratio, base_pt)
 }
 
 /// `\def\bibfont{\small}` / `\renewcommand{\bibfont}{\small}`.
-fn bibfont_hook_in(src: &str) -> Option<&'static str> {
+fn bibfont_hook_in(src: &str) -> Option<f64> {
     let mut from = 0;
     while let Some(rel) = src.get(from..)?.find("bibfont") {
         let at = from + rel;
@@ -560,7 +561,7 @@ fn bibfont_hook_in(src: &str) -> Option<&'static str> {
             continue;
         };
         let body = src.get(i + 1..end.saturating_sub(1)).unwrap_or("");
-        if let Some(em) = crate::emit::size_declaration_em(body.trim()) {
+        if let Some(em) = crate::emit::size_declaration_ratio(body.trim()) {
             return Some(em);
         }
     }
@@ -568,7 +569,7 @@ fn bibfont_hook_in(src: &str) -> Option<&'static str> {
 }
 
 /// A size switch inside a class's `thebibliography` definition.
-fn thebibliography_size_in(src: &str) -> Option<&'static str> {
+fn thebibliography_size_in(src: &str) -> Option<f64> {
     let mut from = 0;
     while let Some(rel) = src.get(from..)?.find("thebibliography") {
         let at = from + rel;
@@ -613,7 +614,7 @@ fn thebibliography_size_in(src: &str) -> Option<&'static str> {
                 if after.is_some_and(|c| c.is_ascii_alphabetic()) {
                     continue;
                 }
-                return crate::emit::size_declaration_em(name);
+                return crate::emit::size_declaration_ratio(name);
             }
         }
     }
@@ -623,18 +624,33 @@ fn thebibliography_size_in(src: &str) -> Option<&'static str> {
 pub(in crate::emit) fn caption_font_size(
     src: &str,
     base_dir: Option<&std::path::Path>,
-) -> Option<&'static str> {
+    base_pt: f64,
+) -> Option<String> {
     // `\captionsetup` is the document's explicit statement and wins everywhere it
     // appears. Classes predating the `caption` package instead redefine
     // `\@makecaption`; 8 corpus papers carry a size ONLY there, nearly as many
     // again as the 9 the package form reaches.
-    scan_project_sources(src, base_dir, caption_font_size_in)
-        .or_else(|| scan_project_sources(src, base_dir, makecaption_size_in))
-        .filter(|em| *em != "1em")
+    let ratio = scan_project_sources(src, base_dir, caption_font_size_in)
+        .or_else(|| scan_project_sources(src, base_dir, makecaption_size_in))?;
+    absolute(ratio, base_pt)
+}
+
+/// A ratio against the document base as an absolute Typst length; `None` when it
+/// resolves to body size, where a rule would be a no-op.
+fn absolute(ratio: f64, base_pt: f64) -> Option<String> {
+    if (ratio - 1.0).abs() < f64::EPSILON {
+        return None;
+    }
+    let pt = (ratio * base_pt * 10.0).round() / 10.0;
+    Some(if (pt - pt.round()).abs() < f64::EPSILON {
+        format!("{}pt", pt.round() as i64)
+    } else {
+        format!("{pt}pt")
+    })
 }
 
 /// A size switch inside a `\@makecaption` redefinition.
-fn makecaption_size_in(src: &str) -> Option<&'static str> {
+fn makecaption_size_in(src: &str) -> Option<f64> {
     let mut from = 0;
     while let Some(rel) = src.get(from..)?.find("@makecaption") {
         let at = from + rel;
@@ -667,15 +683,15 @@ fn makecaption_size_in(src: &str) -> Option<&'static str> {
                 if body.as_bytes().get(p + name.len()).is_some_and(|c| c.is_ascii_alphabetic()) {
                     continue;
                 }
-                return crate::emit::size_declaration_em(name);
+                return crate::emit::size_declaration_ratio(name);
             }
         }
     }
     None
 }
 
-fn caption_font_size_in(src: &str) -> Option<&'static str> {
-    let mut found = None;
+fn caption_font_size_in(src: &str) -> Option<f64> {
+    let mut found: Option<f64> = None;
     let mut from = 0;
     while let Some(rel) = src.get(from..)?.find("\\captionsetup") {
         let at = from + rel;
@@ -726,7 +742,7 @@ fn caption_font_size_in(src: &str) -> Option<&'static str> {
                     None => &rest[..rest.find(',').unwrap_or(rest.len())],
                 };
                 for piece in value.split(',') {
-                    if let Some(em) = crate::emit::size_declaration_em(piece.trim()) {
+                    if let Some(em) = crate::emit::size_declaration_ratio(piece.trim()) {
                         found = Some(em);
                     }
                 }
@@ -735,7 +751,7 @@ fn caption_font_size_in(src: &str) -> Option<&'static str> {
     }
     // An explicit reset to body size is a real declaration, but emitting
     // `size: 1em` is a no-op that only adds noise.
-    found.filter(|em| *em != "1em")
+    found
 }
 
 pub(in crate::emit) fn build_neutral_preamble(

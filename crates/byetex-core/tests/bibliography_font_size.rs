@@ -38,13 +38,13 @@ fn doc(preamble: &str) -> String {
 #[test]
 fn def_bibfont_small_sizes_the_bibliography() {
     let r = rule(&conv(&doc("\\def\\bibfont{\\small}")));
-    assert!(r.contains("size: 0.9em"), "\\bibfont{{\\small}} must size it; got: {r}");
+    assert!(r.contains("size: 9pt"), "\\bibfont{{\\small}} must size it; got: {r}");
 }
 
 #[test]
 fn renewcommand_bibfont_is_read_too() {
     let r = rule(&conv(&doc("\\renewcommand{\\bibfont}{\\footnotesize}")));
-    assert!(r.contains("size: 0.8em"), "\\renewcommand form; got: {r}");
+    assert!(r.contains("size: 8pt"), "\\renewcommand form; got: {r}");
 }
 
 #[test]
@@ -52,7 +52,7 @@ fn a_size_in_a_thebibliography_definition_is_read() {
     let r = rule(&conv(&doc(
         "\\renewenvironment{thebibliography}[1]{\\section*{References}\\footnotesize\\begin{list}{}{}}{\\end{list}}",
     )));
-    assert!(r.contains("size: 0.8em"), "thebibliography definition; got: {r}");
+    assert!(r.contains("size: 8pt"), "thebibliography definition; got: {r}");
 }
 
 #[test]
@@ -61,7 +61,7 @@ fn bibfont_wins_over_a_thebibliography_definition() {
     let r = rule(&conv(&doc(
         "\\renewenvironment{thebibliography}[1]{\\footnotesize}{}\n\\def\\bibfont{\\small}",
     )));
-    assert!(r.contains("size: 0.9em"), "\\bibfont wins; got: {r}");
+    assert!(r.contains("size: 9pt"), "\\bibfont wins; got: {r}");
 }
 
 #[test]
@@ -127,7 +127,7 @@ fn a_size_before_the_list_still_styles_the_entries() {
         \\begin{document}\nText \\cite{k}.\n\\bibliography{refs}\n\\end{document}";
     let out = convert(src, &ConvertOptions::default()).typst;
     assert!(
-        out.contains("show bibliography: set text(size: 0.9em)"),
+        out.contains("show bibliography: set text(size: 9pt)"),
         "a switch in the definition's own scope must still fire; got:\n{out}"
     );
 }
