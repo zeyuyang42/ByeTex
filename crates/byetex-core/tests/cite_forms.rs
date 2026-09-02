@@ -267,3 +267,132 @@ fn missing_key_still_emits_placeholder_in_form_path() {
     );
     let _ = fs::remove_dir_all(&dir);
 }
+
+// ── LaTeX spacing inside a citation supplement ────────────────────────────────
+//
+// `\cite[Sec.\ 2]{k}` uses LaTeX's control space, an ordinary interword space.
+// Copied verbatim into a Typst supplement it becomes `\ `, which Typst renders
+// as a FORCED LINE BREAK — verified: `Sec.\ 2` renders "Sec." / newline / "2".
+// A dogfood agent found ~46 citations on one paper broken into orphan one-word
+// lines; removing it alone took that paper from 29 pages to 27 (truth is 22).
+// It compiles cleanly and matches no leaked-`\command` pattern, so neither
+// `warnings.json` nor `byetex diagnose` says anything.
+
+#[test]
+fn control_space_in_a_supplement_becomes_a_real_space() {
+    let (typ, dir) = convert_authoritative(
+        "ctrlspace",
+        "@article{Smith.2024, year={2024}}\n",
+        "See \\citep[Sec.\\ 2]{Smith.2024}.",
+    );
+    assert!(
+        typ.contains("@Smith.2024[Sec. 2]"),
+        "`\\ ` must become a plain space, not Typst's linebreak; got:\n{typ}"
+    );
+    assert!(
+        !typ.contains("Sec.\\ 2"),
+        "a bare `\\ ` in a supplement is a forced line break; got:\n{typ}"
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn the_other_latex_spacings_are_normalised_too() {
+    for (latex, want) in [
+        ("p.\\,60", "p. 60"),
+        ("p.\\;60", "p. 60"),
+        ("p.\\:60", "p. 60"),
+        ("Ch.\\quad 3", "Ch. 3"),
+    ] {
+        let (typ, dir) = convert_authoritative(
+            "spacings",
+            "@article{K, year={2024}}\n",
+            &format!("See \\citep[{latex}]{{K}}."),
+        );
+        assert!(
+            typ.contains(&format!("@K[{want}]")),
+            "{latex} → {want}; got:\n{typ}"
+        );
+        let _ = fs::remove_dir_all(dir);
+    }
+}
+
+#[test]
+fn supplement_text_is_otherwise_untouched() {
+    // The control: normalising must not eat ordinary content or the `~` handling
+    // that already worked.
+    let (typ, dir) = convert_authoritative(
+        "plainsupp",
+        "@article{K, year={2024}}\n",
+        "See \\citep[Rem.~4.2, pp.~60--61]{K}.",
+    );
+    // `--` becomes a real en-dash here, which is the intended LaTeX→Typst
+    // typography and not something this change touches.
+    assert!(
+        typ.contains("@K[Rem. 4.2, pp. 60\u{2013}61]"),
+        "plain supplement text and `~` are preserved; got:\n{typ}"
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
+// ── Regressions found in review ──────────────────────────────────────────────
+
+#[test]
+fn an_escaped_backslash_is_not_read_as_a_control_space() {
+    // `a\\ b` is an escaped backslash then a space. Scanning naively, the SECOND
+    // `\` starts `\ ` and emits a space — leaving `a\` + space, which is the
+    // forced line break this whole change removes.
+    let (typ, dir) = convert_authoritative(
+        "escbs",
+        "@article{K, year={2024}}\n",
+        r"See \citep[a\\ b]{K}.",
+    );
+    assert!(
+        !typ.contains("@K[a\\ b]"),
+        "an escaped backslash must not become a control space; got:\n{typ}"
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_negative_thin_space_keeps_the_real_space_after_it() {
+    // `\!` emits nothing, so the interword space following it is the author's and
+    // must survive: `Fig.\! 3` is "Fig. 3", not "Fig.3".
+    let (typ, dir) = convert_authoritative(
+        "negthin",
+        "@article{K, year={2024}}\n",
+        r"See \citep[Fig.\! 3]{K}.",
+    );
+    assert!(typ.contains("@K[Fig. 3]"), "`\\!` must not eat the space; got:\n{typ}");
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn the_wider_spacing_set_is_covered() {
+    // Anything omitted is copied verbatim and renders as its literal NAME —
+    // `p.\thinspace 5` came out as "p.thinspace 5". Match the set the text-mode
+    // emitter already handles.
+    for latex in [r"p.\thinspace 5", r"p.\enspace 5", r"p.\kern 5", r"p.\linebreak 5"] {
+        let (typ, dir) = convert_authoritative(
+            "wideset",
+            "@article{K, year={2024}}\n",
+            &format!("See \\citep[{latex}]{{K}}."),
+        );
+        assert!(
+            typ.contains("@K[p. 5]"),
+            "{latex} → `p. 5`, never a literal command name; got:\n{typ}"
+        );
+        let _ = fs::remove_dir_all(dir);
+    }
+}
+
+#[test]
+fn consecutive_spacing_commands_collapse() {
+    let (typ, dir) = convert_authoritative(
+        "collapse",
+        "@article{K, year={2024}}\n",
+        r"See \citep[Ch.\quad\quad 3]{K}.",
+    );
+    assert!(typ.contains("@K[Ch. 3]"), "one gap, not two spaces; got:\n{typ}");
+    let _ = fs::remove_dir_all(dir);
+}
