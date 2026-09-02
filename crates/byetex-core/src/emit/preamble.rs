@@ -119,9 +119,35 @@ impl<'a> Emitter<'a> {
 
             // Collect per-author affiliation text, deduplicating to assign
             // superscript indices (1-based, in order of first appearance).
+            // Two index spaces have to coexist: `\affil[n]` states its own
+            // number, while `\thanks`/`\affiliation` entries are numbered by
+            // order of appearance. Letting the numbered table REPLACE the
+            // text-derived one dropped every text affiliation while its author
+            // still printed a superscript — attributing them to someone else's
+            // institution, which is worse than dropping one.
+            let numbered = self.numbered_affils.clone();
+            let text_base = numbered.keys().copied().max().unwrap_or(0) as usize + 1;
             let aff_texts: Vec<Option<String>> = authors
                 .iter()
-                .map(|a| aff_display_text(&a.affiliation))
+                .map(|a| {
+                    // With authblk in play, an author who declared `[n]` already
+                    // has their affiliation from the numbered table; whatever
+                    // `\thanks` left behind is a footnote (an email, a
+                    // corresponding-author marker), not a second institution.
+                    // Test the SANITIZED ref, the same value the superscript is
+                    // emitted from. Keying on the raw one dropped the author's
+                    // text affiliation while giving them no superscript either,
+                    // so the content vanished entirely.
+                    if !numbered.is_empty()
+                        && a.affil_ref
+                            .as_deref()
+                            .and_then(crate::emit::sanitize_affil_ref)
+                            .is_some()
+                    {
+                        return None;
+                    }
+                    aff_display_text(&a.affiliation)
+                })
                 .collect();
             let mut deduped: Vec<String> = Vec::new();
             let aff_indices: Vec<Option<usize>> = aff_texts
@@ -147,10 +173,26 @@ impl<'a> Emitter<'a> {
                 .zip(aff_indices.iter())
                 .map(|(author, aff_idx)| {
                     let mut part = escape_text_for_typst_content(author.name.as_content());
-                    if let Some(idx) = aff_idx {
-                        if !beamer {
-                            let _ = write!(part, "#super[{}]", idx + 1);
+                    // The author's own declared ref wins; the text-dedup index
+                    // is the fallback for authors that declared none.
+                    // With no numbered table the declared ref points at nothing
+                    // the footer prints, so fall back to the text-dedup index.
+                    let declared = if numbered.is_empty() {
+                        None
+                    } else {
+                        author
+                            .affil_ref
+                            .as_deref()
+                            .and_then(crate::emit::sanitize_affil_ref)
+                    };
+                    match (declared, aff_idx) {
+                        (Some(refs), _) if !beamer => {
+                            let _ = write!(part, "#super[{refs}]");
                         }
+                        (None, Some(idx)) if !beamer => {
+                            let _ = write!(part, "#super[{}]", idx + text_base);
+                        }
+                        _ => {}
                     }
                     if let Some(orcid) = &author.orcid {
                         let _ = write!(
@@ -165,17 +207,29 @@ impl<'a> Emitter<'a> {
             self.out.push('\n');
 
             // Grouped affiliation footer
-            if has_affiliations {
+            if has_affiliations || !numbered.is_empty() {
                 self.out.push_str("  #v(0.3em)\n  #text(size: 0.9em)[\n");
+                let total = numbered.len() + deduped.len();
+                for (i, (n, aff_text)) in numbered.iter().enumerate() {
+                    // Already rendered Typst — escaping again would turn an
+                    // emitted `#v(-2.5mm)` into a literal `\#v(-2.5mm)`.
+                    let marker = if beamer {
+                        String::new()
+                    } else {
+                        format!("#super[{n}] ")
+                    };
+                    let brk = if i + 1 < total { " #linebreak()" } else { "" };
+                    let _ = writeln!(self.out, "    {marker}{}{brk}", aff_text.trim());
+                }
                 for (i, aff_text) in deduped.iter().enumerate() {
                     let aff_text = escape_text_for_typst_content(aff_text);
                     // Beamer: plain centered line, no superscript ref number.
                     let marker = if beamer {
                         String::new()
                     } else {
-                        format!("#super[{}] ", i + 1)
+                        format!("#super[{}] ", i + text_base)
                     };
-                    if i + 1 < deduped.len() {
+                    if numbered.len() + i + 1 < numbered.len() + deduped.len() {
                         let _ = writeln!(self.out, "    {marker}{aff_text} #linebreak()");
                     } else {
                         let _ = writeln!(self.out, "    {marker}{aff_text}");
@@ -398,7 +452,9 @@ impl<'a> Emitter<'a> {
             return;
         }
         let raw = std::mem::take(&mut self.raw_authors);
-        let mut parsed = crate::class_map::parse_authors(&raw, &self.detected_class);
+        let refs = std::mem::take(&mut self.author_affil_refs);
+        let mut parsed =
+            crate::class_map::parse_authors_with_refs(&raw, &refs, &self.detected_class);
         self.metadata.authors.append(&mut parsed);
     }
 }

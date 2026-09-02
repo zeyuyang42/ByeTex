@@ -583,6 +583,11 @@ pub(crate) struct Emitter<'a> {
     /// Set when a `#subpar.grid(...)` is emitted; triggers the conditional
     /// `#import "@preview/subpar:0.2.2"` at the top of the document in `finish()`.
     used_subpar: bool,
+    /// `\author[2,3]{…}`'s optional index list, parallel to `raw_authors` and
+    /// consumed together with it by `materialize_authors`.
+    author_affil_refs: Vec<Option<String>>,
+    /// authblk's `\affil[n]{body}` table, keyed by the declared `n`.
+    numbered_affils: std::collections::BTreeMap<u32, String>,
     /// A `\resizebox` resolved to a width, so the `byetex-fit` helper is needed.
     used_fit_width: bool,
     /// True when a `\bibliography{...}` (`bibtex_include`) command is present,
@@ -951,6 +956,32 @@ fn latex_special_letter(cmd: &str) -> Option<&'static str> {
     })
 }
 
+/// The optional `[...]` between a command's start and its `{`, e.g. the `2,3` of
+/// `\author[2,3]{Bob}`.
+fn bracket_arg_before(src: &str, start: usize, open: usize) -> Option<String> {
+    let head = src.get(start..open)?;
+    let lb = head.find('[')?;
+    let rb = head[lb + 1..].find(']')?;
+    let inner = head[lb + 1..lb + 1 + rb].trim();
+    (!inner.is_empty()).then(|| inner.to_string())
+}
+
+/// An `\author[…]` index list safe to emit as a Typst superscript: digits,
+/// commas and spaces only. Anything else (`*`, `$\dagger$`, `aff_a`) would be
+/// injected unescaped into content and can break the compile, so it is dropped.
+pub(in crate::emit) fn sanitize_affil_ref(raw: &str) -> Option<String> {
+    // VALIDATE, never filter. Stripping the non-digits out of `a2` would yield
+    // `2` and file the author under the SECOND institution — a confident wrong
+    // answer, which is worse than no superscript at all. Only a comma-separated
+    // list of numbers is a reference.
+    let parts: Vec<&str> = raw.split(',').map(str::trim).collect();
+    if parts.is_empty() || parts.iter().any(|p| p.is_empty() || !p.chars().all(|c| c.is_ascii_digit()))
+    {
+        return None;
+    }
+    Some(parts.join(","))
+}
+
 impl<'a> Emitter<'a> {
     // ─── Construction & lifecycle ──────────────────────────────────────────────
 
@@ -1051,6 +1082,8 @@ impl<'a> Emitter<'a> {
             equate_active: false,
             in_per_line_env: false,
             used_subpar: false,
+            author_affil_refs: Vec::new(),
+            numbered_affils: std::collections::BTreeMap::new(),
             used_fit_width: false,
             has_bibtex_include: false,
             had_bib_file: false,
@@ -1865,6 +1898,21 @@ impl<'a> Emitter<'a> {
         self.used_equate |= sub.used_equate;
         self.equate_active |= sub.equate_active;
         self.used_subpar |= sub.used_subpar;
+        // The numbered-affiliation state must come back too: the `\affil[n]`
+        // path never touches `raw_authors`, so without this an included preamble
+        // loses every affiliation it declared.
+        for (n, text) in sub.numbered_affils.iter() {
+            self.numbered_affils
+                .entry(*n)
+                .and_modify(|prev| {
+                    prev.push(' ');
+                    prev.push_str(text);
+                })
+                .or_insert_with(|| text.clone());
+        }
+        // NOT `author_affil_refs`: this sub-emitter path does not merge
+        // `raw_authors` either, and the two are positionally parallel — moving
+        // one without the other shifts every later author's affiliation.
         self.used_fit_width |= sub.used_fit_width;
         self.visited_includes = std::mem::take(&mut sub.visited_includes);
         for (k, v) in sub.macros.drain() {
@@ -2494,6 +2542,8 @@ impl<'a> Emitter<'a> {
                     let open = arg.start_byte();
                     if let Some(end) = brace_balanced_end(self.src.as_bytes(), open) {
                         let inner = self.src.get(open + 1..end - 1).unwrap_or("").to_string();
+                        self.author_affil_refs
+                            .push(bracket_arg_before(self.src, node.start_byte(), open));
                         self.raw_authors.push(inner);
                         // Skip every node within the author-block extent — the
                         // return value only governs raw-text gap copy; a sibling
@@ -4249,6 +4299,45 @@ impl<'a> Emitter<'a> {
                 if i < bytes.len() && bytes[i] == b'{' {
                     if let Some(end) = brace_balanced_end(bytes, i) {
                         let inner = self.src.get(i + 1..end - 1).unwrap_or("").to_string();
+                        // authblk numbers its affiliations and authors reference
+                        // them by number; discarding `[n]` put every body on the
+                        // LAST author seen and dropped the rest.
+                        // Only the affiliation commands take a numbered slot;
+                        // `\email[1]{…}` must not be filed as an affiliation.
+                        let declared = matches!(cmd.as_str(), "\\affil" | "\\address")
+                            .then(|| bracket_arg_before(self.src, name_end, i))
+                            .flatten()
+                            .and_then(|b| b.trim().parse::<u32>().ok());
+                        if let Some(n) = declared {
+                            // Render it: affil bodies routinely carry `\small{…}`,
+                            // `\ss`, `\vspace{…}`.
+                            let rendered =
+                                self.render_in_sub_emitter(&inner, false, true).trim().to_string();
+                            let rendered_for_meta = rendered.clone();
+                            // Append on a repeat rather than first-wins: a source
+                            // may spread one affiliation over two calls.
+                            self.numbered_affils
+                                .entry(n)
+                                .and_modify(|prev| {
+                                    prev.push(' ');
+                                    prev.push_str(&rendered);
+                                })
+                                .or_insert(rendered);
+                            if self.raw_authors.is_empty() {
+                                // No author context: the title block never
+                                // renders the table, so keep the text where an
+                                // external caller can still find it — and warn,
+                                // exactly as the unnumbered path does.
+                                let field = cmd.trim_start_matches('\\').to_string();
+                                self.metadata
+                                    .class_metadata
+                                    .entry(field)
+                                    .or_insert_with(|| rendered_for_meta.clone());
+                                self.warn_unsupported_command(node);
+                            }
+                            self.skip_until = self.skip_until.max(end);
+                            return node.end_byte().max(end);
+                        }
                         if !self.raw_authors.is_empty() {
                             if let Some(last) = self.raw_authors.last_mut() {
                                 last.push(' ');
@@ -4649,6 +4738,8 @@ impl<'a> Emitter<'a> {
                     let open = arg.start_byte();
                     if let Some(end) = brace_balanced_end(self.src.as_bytes(), open) {
                         let inner = self.src.get(open + 1..end - 1).unwrap_or("").to_string();
+                        self.author_affil_refs
+                            .push(bracket_arg_before(self.src, node.start_byte(), open));
                         self.raw_authors.push(inner);
                         // See `author_declaration` above: skip the whole extent so
                         // sibling nodes inside it don't re-emit into the body.
