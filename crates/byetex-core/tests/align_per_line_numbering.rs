@@ -160,3 +160,91 @@ fn nonumber_outside_a_per_line_env_still_drops_to_nothing() {
         "no revoke marker outside a per-line env; got:\n{out}"
     );
 }
+
+// ── `alignat`'s mandatory column-count argument ──────────────────────────────
+//
+// `\begin{alignat}{2}` takes a REQUIRED argument: the number of column pairs.
+// Typst's `$ … $` aligns on `&` and needs no such count, so the argument must be
+// consumed — it was instead copied into the math body and rendered as a literal
+// `{2}` at the head of the equation. 15 equations on corpus 2605.22728.
+//
+// A dogfood agent found this by eye and read it as a stray `equate`
+// sub-numbering directive; it is not — `align` (no argument) is unaffected.
+
+#[test]
+fn alignat_column_count_is_not_rendered() {
+    let t = typ("\\begin{alignat}{2}\na &= b \\\\\nc &= d\n\\end{alignat}");
+    assert!(
+        !t.contains("{2}"),
+        "alignat's column count must not reach the body; got:\n{t}"
+    );
+    assert!(t.contains("a &= b"), "the body still renders; got:\n{t}");
+    assert!(t.contains("c &= d"), "every line still renders; got:\n{t}");
+}
+
+#[test]
+fn starred_alignat_too() {
+    let t = typ("\\begin{alignat*}{3}\nx &= y\n\\end{alignat*}");
+    assert!(!t.contains("{3}"), "alignat* also takes the count; got:\n{t}");
+    assert!(t.contains("x &= y"), "the body still renders; got:\n{t}");
+}
+
+#[test]
+fn align_without_an_argument_is_unaffected() {
+    // The control: `align` has no such argument, so a change that stripped a
+    // leading group unconditionally would show up here.
+    let t = typ("\\begin{align}\np &= q\n\\end{align}");
+    assert!(t.contains("p &= q"), "align body intact; got:\n{t}");
+}
+
+#[test]
+fn a_brace_group_that_is_real_math_survives() {
+    // The other control: only the COUNT is dropped. A brace group that is part
+    // of the mathematics must not be.
+    let t = typ("\\begin{align}\n{a+b} &= c\n\\end{align}");
+    assert!(
+        t.contains("a+b"),
+        "a real brace group in the body is not an argument; got:\n{t}"
+    );
+}
+
+// ── Regressions found in review ──────────────────────────────────────────────
+
+#[test]
+fn a_nested_alignat_drops_its_count_too() {
+    // `emit_math_environment` returns early when already inside math and builds
+    // its own body list; the first fix only covered the outer path.
+    let t = typ("\\begin{equation}\\begin{alignat}{2}a &= b\\end{alignat}\\end{equation}");
+    assert!(!t.contains("{2}"), "nested alignat leaks its count; got:\n{t}");
+    assert!(t.contains("a &= b"), "nested body renders; got:\n{t}");
+}
+
+#[test]
+fn alignedat_is_covered() {
+    // `alignedat` is the ALIGNED variant, so it is normally written inside an
+    // equation — it only ever reaches the nested path, and so leaked
+    // unconditionally. Covering `alignat` alone was half the family.
+    let t = typ("\\begin{equation}\\begin{alignedat}{2}a &= b \\\\ c &= d\\end{alignedat}\\end{equation}");
+    assert!(!t.contains("{2}"), "alignedat leaks its count; got:\n{t}");
+    assert!(t.contains("a &= b"), "body renders; got:\n{t}");
+}
+
+#[test]
+fn a_comment_before_the_count_does_not_reopen_the_leak() {
+    // People annotate the environment line; the count is then not `body[0]`.
+    let t = typ("\\begin{alignat}%c\n{2}\na &= b\n\\end{alignat}");
+    assert!(!t.contains("{2}"), "a comment must not hide the count; got:\n{t}");
+    assert!(t.contains("a &= b"), "body renders; got:\n{t}");
+}
+
+#[test]
+fn a_missing_count_does_not_eat_real_mathematics() {
+    // Dropping the first brace group unconditionally silently deleted `a+b`.
+    // Losing mathematics is worse than a stray `{2}`, so the group must read as
+    // a small integer before it is treated as the count.
+    let t = typ("\\begin{alignat}\n{a+b} &= c\n\\end{alignat}");
+    assert!(
+        t.contains("a+b"),
+        "a non-numeric group is content, not the column count; got:\n{t}"
+    );
+}
