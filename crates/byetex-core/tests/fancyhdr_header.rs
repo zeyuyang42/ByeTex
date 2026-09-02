@@ -192,3 +192,17 @@ fn pagestyle_headings_is_not_safe_to_map_to_the_section_name() {
 
 
 
+
+#[test]
+fn the_centre_slot_is_not_capped_at_a_third_of_the_measure() {
+    // Three equal columns cap the centre field at a third of the text width. On
+    // 2605.31009 that wrapped the running title onto a second line and pushed
+    // the body down, where the LaTeX truth fits it on one.
+    let h = header_line(&typ(&doc(
+        "\\pagestyle{fancy}\n\\fancyhead[L]{May 2026}\n\\fancyhead[C]{A Very Long Running Title Indeed}\n\\fancyhead[R]{Denis et al.}",
+    )));
+    assert!(
+        h.contains("columns: (auto, 1fr, auto)"),
+        "the centre field must take the slack; got: {h}"
+    );
+}

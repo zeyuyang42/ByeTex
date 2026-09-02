@@ -552,8 +552,12 @@ pub(in crate::emit) fn fancy_header(
     if l.is_empty() && r.is_empty() {
         return Some(format!("align(center)[{c}]"));
     }
+    // `(auto, 1fr, auto)`, not three equal columns: LaTeX gives each field its
+    // natural width, and an equal split caps the CENTRE at a third of the
+    // measure — which wrapped 2605.31009's running title onto a second line and
+    // pushed the body down, where the truth fits it on one.
     Some(format!(
-        "grid(columns: (1fr, 1fr, 1fr), align: (left, center, right), [{l}], [{c}], [{r}])"
+        "grid(columns: (auto, 1fr, auto), align: (left, center, right), [{l}], [{c}], [{r}])"
     ))
 }
 
