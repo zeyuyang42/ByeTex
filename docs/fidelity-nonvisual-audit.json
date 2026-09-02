@@ -1727,7 +1727,7 @@
       "cluster": "float-sizing/tables",
       "papers": 18,
       "occurrences": 116,
-      "handled": false
+      "handled": true
     },
     {
       "gap": "\\item[custom-label]",
