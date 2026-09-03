@@ -359,6 +359,34 @@ impl<'a> Emitter<'a> {
     /// `#set heading(numbering)` line for beamer.
     ///
     /// Must run after `materialize_authors()` so author names are populated.
+    /// Whether this deck's beamer theme prints a frame number in the footer.
+    ///
+    /// Read from the source's `\usetheme{...}`: the classic themes built on
+    /// `infolines`/`miniframes` (Madrid, Berlin, Copenhagen, ...) carry one;
+    /// metropolis does not, and neither does a deck that names no theme.
+    fn beamer_theme_shows_frame_number(&self) -> bool {
+        const NUMBERED: &[&str] = &[
+            "Madrid", "Berlin", "Copenhagen", "Darmstadt", "Frankfurt", "Ilmenau",
+            "Dresden", "Singapore", "Szeged", "Luebeck", "Montpellier", "Warsaw",
+            "Antibes", "JuanLesPins", "Malmoe",
+        ];
+        let mut from = 0;
+        while let Some(rel) = self.src.get(from..).and_then(|r| r.find("\\usetheme{")) {
+            let at = from + rel;
+            from = at + "\\usetheme{".len();
+            if crate::emit::is_commented_out(self.src, at) {
+                continue;
+            }
+            let Some(close) = self.src.get(from..).and_then(|r| r.find('}')) else {
+                continue;
+            };
+            if NUMBERED.contains(&self.src[from..from + close].trim()) {
+                return true;
+            }
+        }
+        false
+    }
+
     pub(in crate::emit) fn build_beamer_touying_preamble(&self) -> String {
         // beamer's own slide geometry, from `[aspectratio=…]` or its 4:3 default.
         // The `config-page` width/height are what actually pin the page: touying's
@@ -431,11 +459,34 @@ impl<'a> Emitter<'a> {
         let body_size = self.layout.beamer_font_size.unwrap_or("11pt");
         let (w, h, aspect) = (&slide.width, &slide.height, &slide.aspect);
 
+        // `footer-right: none` suppresses touying's slide counter. Its metropolis
+        // store defaults `footer-right` to `utils.slide-counter.display()`, so
+        // every slide gets an "N / M" footer that the LaTeX theme does not print:
+        // truth shows it on 0 of 33 slides for gh-mtheme-demo, 0 of 26 for
+        // gh-bard-metropolis and 0 of 15 for gh-klb2-beamer, while we printed it
+        // on 27, 21 and 11. Theme-specific on purpose — `beamer-demo` uses
+        // `\usetheme{Madrid}`, whose footline DOES carry a frame number, and its
+        // truth shows one on all 8 slides.
+        // Beamer themes disagree about the frame number, and the truth renders
+        // prove it: metropolis prints none (0 of 33 slides on gh-mtheme-demo,
+        // 0 of 26 on gh-bard-metropolis, 0 of 15 on gh-klb2-beamer) while Madrid
+        // prints one on every slide (8 of 8 on beamer-demo). touying's
+        // metropolis store defaults `footer-right` to the slide counter, so it
+        // has to be switched OFF for the themes that do not show it — and left
+        // alone for the ones that do, or beamer-demo loses a footer it should
+        // have. A deck that names no theme is treated as metropolis, which is
+        // what we render it as.
+        let counter = if self.beamer_theme_shows_frame_number() {
+            String::new()
+        } else {
+            "  footer-right: none,\n".to_string()
+        };
         format!(
             "#import \"@preview/touying:0.7.3\": *\n\
              #import themes.metropolis: *\n\n\
              #show: metropolis-theme.with(\n\
              \x20 aspect-ratio: \"{aspect}\",\n\
+{counter}\
              \x20 config-page(width: {w}, height: {h}),\n{colors}\
              \x20 config-info(\n{info}  ),\n\
              )\n\
