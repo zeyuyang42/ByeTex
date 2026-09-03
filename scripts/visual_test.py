@@ -356,6 +356,28 @@ from truth_render import (  # noqa: E402,F401
 )
 
 
+def cites_without_bibliography(source_dir) -> bool:
+    """True when the source uses \\cite but ships no `.bib`/`.bbl`.
+
+    Such a paper's truth PDF contains a reference list (and resolved author-year
+    citations) that NOTHING in the source can generate, so every text-recall
+    metric understates the converter by that much. Only 2 of 71 corpus papers are
+    in this state, but one of them is the worst `ordered_recall` in the corpus.
+    """
+    from pathlib import Path
+    src = Path(source_dir)
+    try:
+        cites = any(
+            "\\cite" in f.read_text(errors="replace")
+            for f in src.rglob("*.tex")
+        )
+    except OSError:
+        return False
+    if not cites:
+        return False
+    return not any(src.rglob("*.bib")) and not any(src.rglob("*.bbl"))
+
+
 def resolve_truth_source(
     requested: str, arxiv_id: str, no_download: bool, tectonic_ok: bool
 ) -> str:
@@ -1412,6 +1434,16 @@ def process_paper(
 
     summary["toplevel_tex"] = toplevel.name
     print(f"  toplevel: {toplevel.name}", flush=True)
+
+    # A paper that cites but ships no .bib/.bbl cannot produce its own reference
+    # list, yet the truth PDF has one — so its recall is capped by MISSING INPUT,
+    # not by converter quality. On 2605.31563 the reference section is 43.6% of
+    # the truth text, and that paper is the corpus's worst `ordered_recall`;
+    # reading it as a converter gap sends work at something unfixable.
+    summary["cites_without_bibliography"] = cites_without_bibliography(source_dir)
+    if summary["cites_without_bibliography"]:
+        print("  note: source cites but ships no .bib/.bbl — recall is capped by "
+              "missing input, not converter quality", flush=True)
 
     # 2. Acquire truth PDF — arXiv canonical download or local tectonic render
     # (see --truth-source). Bundled source PDFs are unreliable, so we never
