@@ -1674,6 +1674,19 @@ impl<'a> Emitter<'a> {
                             self.base_dir.as_deref(),
                         )
                         .as_deref(),
+                        crate::emit::preamble::class_margins(
+                            self.src,
+                            self.base_dir.as_deref(),
+                            crate::emit::preamble::page_width_pt_with(
+                                &self.layout,
+                                crate::emit::preamble::paper_dims_from_project(
+                                    self.src,
+                                    self.base_dir.as_deref(),
+                                )
+                                .as_deref(),
+                            ),
+                        )
+                        .as_deref(),
                         crate::emit::preamble::caption_font_size(
                             self.src,
                             self.base_dir.as_deref(),

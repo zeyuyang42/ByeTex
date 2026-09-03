@@ -589,6 +589,118 @@ pub(in crate::emit) fn paper_from_project(
     scan_project_sources(src, base_dir, paper_in)
 }
 
+/// The page width in points, for margin arithmetic.
+///
+/// Must account for an EXPLICIT `width:` from a class option body, not just the
+/// named papers: siamart's `printtrim` default is 6.75in x 10in, and computing
+/// its right margin against us-letter's 612pt put the text block 8% too narrow
+/// (2605.22557 went 0.949 -> 0.800 before this).
+pub(in crate::emit) fn page_width_pt_with(
+    layout: &crate::class_map::Layout,
+    dims: Option<&str>,
+) -> f64 {
+    if let Some(d) = dims {
+        if let Some(rest) = d.strip_prefix("width: ") {
+            let raw = rest.split(',').next().unwrap_or("").trim();
+            if let Some(v) = latex_len_to_pt(raw) {
+                return v;
+            }
+        }
+    }
+    page_width_pt(layout)
+}
+
+pub(in crate::emit) fn page_width_pt(layout: &crate::class_map::Layout) -> f64 {
+    match layout.paper.unwrap_or("us-letter") {
+        "a4" => 595.3,
+        "a5" => 419.5,
+        "iso-b5" => 498.9,
+        "us-legal" => 612.0,
+        _ => 612.0, // us-letter
+    }
+}
+
+/// Horizontal margins a bundled class declares, as a Typst `margin:` value.
+///
+/// LaTeX puts the text block at `1in + \oddsidemargin` and makes it `\textwidth`
+/// wide; the right margin is whatever remains. Springer's classes declare both —
+/// `llncs.cls` sets 12.2cm/63pt, `svmult.cls` 117mm/63pt — and ignoring them left
+/// those papers with the generic 1in margins and a text block up to 48% too wide
+/// (`layout_text_width_ratio` 1.48 on 2605.31597).
+///
+/// BOTH lengths are required. Without `\oddsidemargin` the left edge is unknown,
+/// and guessing it would move the text block on the classes we already get right
+/// — 8 of the 13 corpus papers that declare a `\textwidth` are already within a
+/// few percent.
+pub(in crate::emit) fn class_margins(
+    src: &str,
+    base_dir: Option<&std::path::Path>,
+    page_width_pt: f64,
+) -> Option<String> {
+    let (tw, odd) = scan_project_sources(src, base_dir, class_margin_lengths)?;
+    let left = 72.0 + odd;
+    let right = page_width_pt - left - tw;
+    // A declaration that does not fit the page is a misread, not a layout.
+    if right <= 0.0 || left <= 0.0 || tw <= 0.0 {
+        return None;
+    }
+    let r = (right * 10.0).round() / 10.0;
+    Some(format!("(left: {left}pt, right: {r}pt, y: 1in)"))
+}
+
+/// `(\textwidth, \oddsidemargin)` in points, when a source declares both.
+fn class_margin_lengths(src: &str) -> Option<(f64, f64)> {
+    let tw = setlength_pt(src, "textwidth")?;
+    let odd = setlength_pt(src, "oddsidemargin")?;
+    Some((tw, odd))
+}
+
+/// `\setlength{\name}{<dim>}` / `\setlength\name{<dim>}` in POINTS.
+fn setlength_pt(src: &str, name: &str) -> Option<f64> {
+    for opener in [
+        format!("\\setlength{{\\{name}}}{{"),
+        format!("\\setlength\\{name}"),
+    ] {
+        let mut from = 0;
+        while let Some(rel) = src.get(from..)?.find(&opener) {
+            let at = from + rel;
+            from = at + opener.len();
+            if crate::emit::is_commented_out(src, at) {
+                continue;
+            }
+            let rest = src.get(from..)?;
+            let body = if opener.ends_with('{') {
+                &rest[..rest.find('}')?]
+            } else {
+                let open = rest.find('{')?;
+                if !rest[..open].trim().is_empty() {
+                    continue;
+                }
+                &rest[open + 1..open + 1 + rest[open + 1..].find('}')?]
+            };
+            if let Some(v) = latex_len_to_pt(body.trim()) {
+                return Some(v);
+            }
+        }
+    }
+    None
+}
+
+/// A LaTeX length literal in points. `\p@` is TeX's own name for 1pt.
+fn latex_len_to_pt(raw: &str) -> Option<f64> {
+    let t = raw.trim().replace("\\p@", "pt");
+    let cut = t.find(|c: char| c.is_ascii_alphabetic())?;
+    let (num, unit) = t.split_at(cut);
+    let v: f64 = num.trim().parse().ok()?;
+    Some(match unit.trim() {
+        "pt" => v,
+        "mm" => v * 72.0 / 25.4,
+        "cm" => v * 72.0 / 2.54,
+        "in" => v * 72.0,
+        _ => return None,
+    })
+}
+
 /// Explicit page DIMENSIONS a class option sets, as a Typst `width:`/`height:`
 /// fragment.
 ///
@@ -1110,6 +1222,7 @@ pub(in crate::emit) fn build_neutral_preamble(
     class: &crate::class_map::DocClass,
     detected_paper: Option<&'static str>,
     detected_dims: Option<&str>,
+    detected_margins: Option<&str>,
     caption_size: Option<&str>,
     bibliography_size: Option<&str>,
     running_header: Option<&str>,
@@ -1130,15 +1243,20 @@ pub(in crate::emit) fn build_neutral_preamble(
     // class geometry is far tighter than 1in; using 1in there narrows the
     // columns and inflates the page count (IEEEtran conference: 22779
     // page_ratio 1.38 at 1in). Approximate the IEEEtran text block on letter.
-    let margin = if layout.margin.is_default() {
+    let margin = if !layout.margin.is_default() {
+        // The DOCUMENT's own geometry beats a class declaration.
+        layout.margin.to_typst_value()
+    } else if let Some(m) = detected_margins {
+        // A class that states its own text block (`\textwidth` +
+        // `\oddsidemargin`) beats the generic default.
+        m.to_string()
+    } else {
         match class {
             crate::class_map::DocClass::IeeeTran { .. } => {
                 "(top: 0.75in, bottom: 1in, x: 0.62in)".to_string()
             }
             _ => layout.margin.to_typst_value(),
         }
-    } else {
-        layout.margin.to_typst_value()
     };
     // Body font + heading sizes are per-class profile knobs (e.g. acmart →
     // Libertinus Serif; compact conference sectioning vs article's). Unprofiled
