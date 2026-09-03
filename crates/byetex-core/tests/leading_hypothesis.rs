@@ -1,7 +1,8 @@
-//! Why the body `leading` is NOT tightened to LaTeX's 1.2 baselineskip.
+//! Why global VERTICAL SPACING constants are not the remaining layout lever.
 //!
-//! Recorded so the next person does not re-run this experiment: the reasoning is
-//! sound, the arithmetic checks out, and the change is still wrong.
+//! Two separate hypotheses were measured against the corpus and both rejected.
+//! Recorded so they are not re-run: in each case the reasoning is sound, the
+//! arithmetic checks out, and the change is still wrong.
 
 use byetex_core::{convert, ConvertOptions};
 
@@ -43,4 +44,36 @@ fn the_default_leading_is_deliberate() {
         out.contains("leading: 0.65em"),
         "the 0.65em default is load-bearing; see the comment before changing it:\n{out}"
     );
+}
+
+
+#[test]
+fn display_skips_are_not_added_either() {
+    // LaTeX puts `\abovedisplayskip`/`\belowdisplayskip` (~11pt at 11pt body)
+    // around display math; Typst gives block equations the ordinary paragraph
+    // spacing. The corpus shows the effect clearly — on 2605.30843, which has no
+    // figures at all, truth's inter-line gaps run p75 22.4 / p90 30.1 against our
+    // 16.0 / 22.9, and we pack 349 tokens per page to truth's 284.
+    //
+    // Adding `#show math.equation.where(block: true): set block(above: 11pt,
+    // below: 11pt)` gives page counts:
+    //
+    //     paper        truth  base  +disp   verdict
+    //     2605.30843      58    43     45   better
+    //     2605.30609      40    29     31   better
+    //     2605.22315       8     8      8   same
+    //     2605.22765      47    47     50   WORSE
+    //     2605.22728      22    27     29   WORSE
+    //     2605.22779      12    15     15   same
+    //
+    // 2 better, 2 worse, 2 same. It helps papers that are already SHORT of truth
+    // and hurts those already over it — and the corpus median page_ratio is
+    // exactly 1.000 (24 papers below 0.95, 20 above 1.05, 21 within 5%), so a
+    // global constant just moves the error around.
+    //
+    // The conclusion for both experiments: the remaining page-geometry deltas are
+    // per-paper — float placement, figure sizing, content specifics — not a
+    // global spacing constant that is set wrongly. A future attempt should target
+    // a paper-level cause, not a preamble number.
+    let _ = ();
 }
