@@ -34,14 +34,46 @@ def tectonic_available() -> bool:
         return False
 
 
+def _deps_bin_dirs() -> list:
+    """Every `.truth-deps/bin` worth putting on PATH, most specific first.
+
+    `.truth-deps/` is gitignored and lives in whichever checkout ran
+    `setup_truth_deps.sh` — so a WORKTREE does not have one, the prepend below
+    silently no-ops there, and tectonic falls back to whatever biber is on the
+    system. That is not hypothetical: a Homebrew biber 2.21 expects control-file
+    3.11 while tectonic's bundled biblatex 3.17 emits 3.8, so both biblatex
+    theses in the corpus failed their truth render with a version mismatch and
+    the fidelity gate went blind to them. With the pinned 2.17 they render fine.
+    So fall back to the MAIN worktree's copy, which is where setup normally runs.
+    """
+    dirs = [REPO_ROOT / ".truth-deps" / "bin"]
+    try:
+        common = subprocess.run(
+            ["git", "rev-parse", "--git-common-dir"],
+            cwd=REPO_ROOT, capture_output=True, text=True, check=True,
+        ).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return [d for d in dirs if d.is_dir()]
+    if common:
+        main_root = (REPO_ROOT / common).resolve().parent
+        dirs.append(main_root / ".truth-deps" / "bin")
+    seen, out = set(), []
+    for d in dirs:
+        if d.is_dir() and str(d) not in seen:
+            seen.add(str(d))
+            out.append(d)
+    return out
+
+
 def _truth_render_env() -> dict:
     """Subprocess env for tectonic: prepend the provisioned `.truth-deps/bin` so the
     version-matched biber (and any other provisioned tools) is found. Run
     `scripts/setup_truth_deps.sh` to populate it."""
     env = os.environ.copy()
-    deps_bin = REPO_ROOT / ".truth-deps" / "bin"
-    if deps_bin.is_dir():
-        env["PATH"] = f"{deps_bin}{os.pathsep}{env.get('PATH', '')}"
+    found = _deps_bin_dirs()
+    if found:
+        prefix = os.pathsep.join(str(d) for d in found)
+        env["PATH"] = f"{prefix}{os.pathsep}{env.get('PATH', '')}"
     return env
 
 
