@@ -21,7 +21,7 @@ fn printbibliography_renders_addbibresource() {
         \\printbibliography";
     let t = typst(src);
     assert!(
-        t.contains("#bibliography(\"refs.bib\")"),
+        t.contains("#bibliography(\"refs.bib\""),
         "biblatex \\printbibliography must render #bibliography from \\addbibresource;\noutput:\n{t}"
     );
     assert!(
