@@ -593,6 +593,45 @@ impl<'a> Emitter<'a> {
         }
     }
 
+    /// The reference-list heading, or `None` to leave Typst's default.
+    ///
+    /// LaTeX names this section `\refname` in the article classes ("References")
+    /// and `\bibname` in book/report ("Bibliography"). Typst always says
+    /// "Bibliography", which is the book answer — wrong on 30 of 71 corpus
+    /// papers. A document that redefines either name means it, so an explicit
+    /// `\renewcommand` wins over the class convention.
+    fn bibliography_title(&self) -> Option<String> {
+        // Read the redefinition from the SOURCE rather than the macro table: a
+        // zero-argument `\renewcommand{\refname}{...}` does not land there under
+        // the name this would look up, and guessing the key form is how a silent
+        // miss gets introduced.
+        for name in ["refname", "bibname"] {
+            for opener in [
+                format!("\\renewcommand{{\\{name}}}{{"),
+                format!("\\renewcommand*{{\\{name}}}{{"),
+                format!("\\def\\{name}{{"),
+            ] {
+                let Some(at) = self.src.find(&opener) else { continue };
+                if crate::emit::is_commented_out(self.src, at) {
+                    continue;
+                }
+                let start = at + opener.len();
+                let Some(close) = self.src.get(start..).and_then(|r| r.find('}')) else {
+                    continue;
+                };
+                let v = self.src[start..start + close].trim();
+                // Anything with markup is left to the class convention rather
+                // than emitted raw into a heading.
+                if !v.is_empty() && !v.contains('\\') {
+                    return Some(v.to_string());
+                }
+            }
+        }
+        // Book/report keep Typst's default; everything else is an article.
+        let book_like = self.doc_uses_chapter || self.project_uses_chapter;
+        (!book_like).then(|| "References".to_string())
+    }
+
     pub(in crate::emit) fn emit_bibliography(&mut self, node: Node<'_>) -> usize {
         let paths = extract_bib_paths(node, self.src);
         self.render_bibliography_from_paths(paths, node)
@@ -759,10 +798,29 @@ impl<'a> Emitter<'a> {
                 .join(", ");
             format!("({},)", joined)
         };
-        if let Some(s) = mapped {
-            let _ = write!(self.out, "#bibliography({}, style: \"{}\")", path_arg, s);
-        } else {
-            let _ = write!(self.out, "#bibliography({})", path_arg);
+        // Typst titles the section "Bibliography"; LaTeX's ARTICLE classes set
+        // `\refname` = "References" and only book/report use `\bibname` =
+        // "Bibliography". Emitting the book heading everywhere was wrong on 30 of
+        // 71 corpus papers. `\chapter` usage is the robust book signal the
+        // emitter already relies on elsewhere.
+        let title = self.bibliography_title();
+        match (mapped, title) {
+            (Some(s), Some(t)) => {
+                let _ = write!(
+                    self.out,
+                    "#bibliography({}, title: [{}], style: \"{}\")",
+                    path_arg, t, s
+                );
+            }
+            (Some(s), None) => {
+                let _ = write!(self.out, "#bibliography({}, style: \"{}\")", path_arg, s);
+            }
+            (None, Some(t)) => {
+                let _ = write!(self.out, "#bibliography({}, title: [{}])", path_arg, t);
+            }
+            (None, None) => {
+                let _ = write!(self.out, "#bibliography({})", path_arg);
+            }
         }
         self.emitted_bibliography = true;
         node.end_byte()
