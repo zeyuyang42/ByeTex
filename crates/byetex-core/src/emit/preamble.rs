@@ -553,6 +553,13 @@ fn scan_project_sources<T>(
             files.push(p);
         }
     }
+    // A bundled package the document loads BY PATH. `\usepackage{style/venue}`
+    // resolves to `style/venue.sty`, which the top-level sweep below never sees
+    // — corpus 2605.22507 keeps its NeurIPS style in `style/` and so kept the
+    // neutral margins while its three siblings picked up the declared block.
+    // These come first: an explicitly loaded package outranks whatever the
+    // alphabetical sweep happens to find.
+    files.extend(bundled_package_paths(src, dir));
     if let Ok(entries) = std::fs::read_dir(dir) {
         let mut local: Vec<_> = entries
             .flatten()
@@ -570,6 +577,51 @@ fn scan_project_sources<T>(
         }
     }
     None
+}
+
+/// Files under `dir` that the source loads as a package or class.
+///
+/// Only paths that actually exist are returned, so a `\usepackage{amsmath}`
+/// naming a TeX-distribution package simply yields nothing.
+fn bundled_package_paths(src: &str, dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut out = Vec::new();
+    for (kw, ext) in [
+        ("\\usepackage", "sty"),
+        ("\\RequirePackage", "sty"),
+        ("\\documentclass", "cls"),
+        ("\\LoadClass", "cls"),
+    ] {
+        for (at, _) in src.match_indices(kw) {
+            if crate::emit::is_commented_out(src, at) {
+                continue;
+            }
+            let rest = &src[at + kw.len()..];
+            // Skip a `[...]` option list, then take the `{...}` name group.
+            let rest = if rest.starts_with('[') {
+                match rest.find(']') {
+                    Some(c) => &rest[c + 1..],
+                    None => continue,
+                }
+            } else {
+                rest
+            };
+            if !rest.starts_with('{') {
+                continue;
+            }
+            let Some(close) = rest.find('}') else { continue };
+            for name in rest[1..close].split(',') {
+                let name = name.trim();
+                if name.is_empty() {
+                    continue;
+                }
+                let path = dir.join(format!("{name}.{ext}"));
+                if path.is_file() {
+                    out.push(path);
+                }
+            }
+        }
+    }
+    out
 }
 
 /// The paper size a BUNDLED class declares, when the document itself did not.
@@ -637,22 +689,129 @@ pub(in crate::emit) fn class_margins(
     base_dir: Option<&std::path::Path>,
     page_width_pt: f64,
 ) -> Option<String> {
-    let (tw, odd) = scan_project_sources(src, base_dir, class_margin_lengths)?;
-    let left = 72.0 + odd;
-    let right = page_width_pt - left - tw;
+    let (left, right) = scan_project_sources(src, base_dir, |s| {
+        // geometry is applied after any `\setlength`, so it wins within a source.
+        geometry_key_margins(s, page_width_pt).or_else(|| setlength_margins(s, page_width_pt))
+    })?;
     // A declaration that does not fit the page is a misread, not a layout.
-    if right <= 0.0 || left <= 0.0 || tw <= 0.0 {
+    if right <= 0.0 || left <= 0.0 {
         return None;
     }
+    let l = (left * 10.0).round() / 10.0;
     let r = (right * 10.0).round() / 10.0;
-    Some(format!("(left: {left}pt, right: {r}pt, y: 1in)"))
+    Some(format!("(left: {l}pt, right: {r}pt, y: 1in)"))
 }
 
-/// `(\textwidth, \oddsidemargin)` in points, when a source declares both.
-fn class_margin_lengths(src: &str) -> Option<(f64, f64)> {
+/// `(left, right)` from `\textwidth` + `\oddsidemargin`, when both are declared.
+fn setlength_margins(src: &str, page_width_pt: f64) -> Option<(f64, f64)> {
     let tw = setlength_pt(src, "textwidth")?;
     let odd = setlength_pt(src, "oddsidemargin")?;
-    Some((tw, odd))
+    if tw <= 0.0 {
+        return None;
+    }
+    let left = 72.0 + odd;
+    Some((left, page_width_pt - left - tw))
+}
+
+/// `(left, right)` from a `geometry` KEY-VALUE block.
+///
+/// The other common way a class states its text block. `neurips_2026.sty` loads
+/// geometry with only a paper option, then re-states the body inside
+/// `\AtBeginDocument{\newgeometry{textwidth=5.5in, ...}}` — which the
+/// `\setlength` probe cannot see, so those papers fell back to the neutral 1in
+/// and came out 19% too wide.
+///
+/// Later blocks win: `\newgeometry` supersedes the `\usepackage` options, and
+/// LaTeX itself applies them in source order.
+fn geometry_key_margins(src: &str, page_width_pt: f64) -> Option<(f64, f64)> {
+    let mut found = None;
+    let mut consider = |opts: &str| {
+        if let Some(v) = horizontal_from_geometry_keys(opts, page_width_pt) {
+            found = Some(v);
+        }
+    };
+    for opener in ["\\geometry{", "\\newgeometry{"] {
+        for (at, _) in src.match_indices(opener) {
+            if crate::emit::is_commented_out(src, at) {
+                continue;
+            }
+            let start = at + opener.len();
+            let Some(close) = src.get(start..).and_then(|r| r.find('}')) else {
+                continue;
+            };
+            consider(&src[start..start + close]);
+        }
+    }
+    // `\usepackage[margin=1in]{geometry}` states the same keys in an option list.
+    for (at, _) in src.match_indices("{geometry}") {
+        let head = src[..at].trim_end();
+        if !head.ends_with(']') {
+            continue;
+        }
+        let Some(open) = head.rfind('[') else { continue };
+        if crate::emit::is_commented_out(src, open) {
+            continue;
+        }
+        let before = head[..open].trim_end();
+        if !(before.ends_with("\\usepackage") || before.ends_with("\\RequirePackage")) {
+            continue;
+        }
+        consider(&head[open + 1..head.len() - 1]);
+    }
+    found
+}
+
+/// Resolve a geometry option list to `(left, right)`.
+///
+/// geometry's horizontal model is `left + body + right = page width`: any two of
+/// the three determine the third, and a lone body width is CENTRED. Anything
+/// less than that is under-determined and declines, leaving the neutral default.
+fn horizontal_from_geometry_keys(opts: &str, page_width_pt: f64) -> Option<(f64, f64)> {
+    let (mut body, mut left, mut right, mut paper_w) = (None, None, None, None);
+    for kv in opts.split(',') {
+        let Some((k, v)) = kv.split_once('=') else {
+            continue;
+        };
+        // A list value (`hmargin={2cm,3cm}`) does not parse as a length, and
+        // splitting on `,` has already broken it — declining is correct.
+        let Some(pt) = latex_len_to_pt(v.trim()) else {
+            continue;
+        };
+        match k.trim() {
+            "textwidth" | "width" | "body" => body = Some(pt),
+            "left" | "lmargin" | "inner" => left = Some(pt),
+            "right" | "rmargin" | "outer" => right = Some(pt),
+            "margin" | "hmargin" => {
+                left = Some(pt);
+                right = Some(pt);
+            }
+            "paperwidth" => paper_w = Some(pt),
+            _ => {}
+        }
+    }
+    // A block that states its OWN page width describes a different page than the
+    // one being emitted, so its margins cannot be transplanted onto ours.
+    // `eccv.sty` (corpus 2605.31597/31598) carries, inside a conditional branch
+    // the truth build does not take:
+    //   \RequirePackage[width=122mm,left=12mm,paperwidth=146mm,...]{geometry}
+    // Reading `left=12mm` against a 612pt letter page put the text block at 34pt
+    // where truth has 135pt. Declining lets the `\setlength` values in
+    // `llncs.cls` — the ones actually in force — be found instead.
+    if let Some(pw) = paper_w {
+        if (pw - page_width_pt).abs() > 1.0 {
+            return None;
+        }
+    }
+    match (body, left, right) {
+        (_, Some(l), Some(r)) => Some((l, r)),
+        (Some(w), Some(l), None) => Some((l, page_width_pt - l - w)),
+        (Some(w), None, Some(r)) => Some((page_width_pt - r - w, r)),
+        (Some(w), None, None) => {
+            let m = (page_width_pt - w) / 2.0;
+            Some((m, m))
+        }
+        _ => None,
+    }
 }
 
 /// `\setlength{\name}{<dim>}` / `\setlength\name{<dim>}` in POINTS.
