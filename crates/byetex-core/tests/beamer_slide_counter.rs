@@ -1,19 +1,16 @@
-//! touying's metropolis theme prints a slide counter; LaTeX's does not.
+//! The FORM of the beamer frame number, which differs by theme.
 //!
-//! `metropolis-theme`'s store defaults `footer-right` to
-//! `utils.slide-counter.display()`, so every slide gets an "N / M" footer. The
-//! LaTeX theme these decks actually use prints nothing there.
+//! touying's metropolis defaults `footer-right` to
+//! `slide-counter.display() + " / " + last-slide-number`. The LaTeX metropolis
+//! theme prints the number ALONE in the bottom-right — truth carries a bare
+//! frame number on 25 of 33 slides (gh-mtheme-demo), 22 of 26
+//! (gh-bard-metropolis) and 10 of 15 (gh-klb2-beamer).
 //!
-//! Measured across the corpus's metropolis-family decks — slides carrying an
-//! "N / M" marker, truth vs ours before this change:
+//! An earlier version of this rule suppressed the footer outright, on a
+//! measurement that only matched the "N / M" spelling and so reported truth as
+//! having no counter at all. It has one; only the total is wrong.
 //!
-//!   gh-mtheme-demo      truth 0/33   ours 27/33
-//!   gh-bard-metropolis  truth 0/26   ours 21/25
-//!   gh-klb2-beamer      truth 0/15   ours 11/15
-//!
-//! Not a blanket rule: `beamer-demo` uses `\usetheme{Madrid}`, whose footline
-//! DOES carry a frame number, and its truth shows one on 8 of 8 slides. This
-//! suppression is specific to the metropolis theme we emit.
+//! Madrid DOES print "N / M" — that is touying's default — so it is left alone.
 
 use byetex_core::{convert, ConvertOptions};
 
@@ -25,15 +22,19 @@ const DECK: &str = "\\documentclass{beamer}\n\\usetheme{metropolis}\n\\title{T}\
     \\begin{document}\n\\begin{frame}{One}\nBody.\n\\end{frame}\n\\end{document}";
 
 #[test]
-fn the_metropolis_theme_suppresses_the_slide_counter() {
+fn the_metropolis_theme_prints_a_bare_frame_number() {
     let t = typ(DECK);
     assert!(
         t.contains("metropolis-theme.with"),
         "expected the metropolis theme; got:\n{t}"
     );
     assert!(
-        t.contains("footer-right: none"),
-        "touying's default slide counter must be suppressed to match LaTeX; got:\n{t}"
+        t.contains("footer-right: context utils.slide-counter.display()"),
+        "metropolis prints the frame number alone; got:\n{t}"
+    );
+    assert!(
+        !t.contains("last-slide-number"),
+        "the \" / total\" half must be dropped; got:\n{t}"
     );
 }
 
@@ -64,8 +65,8 @@ fn a_theme_that_numbers_its_frames_keeps_the_counter() {
          \\begin{frame}{One}\nBody.\n\\end{frame}\n\\end{document}",
     );
     assert!(
-        !t.contains("footer-right: none"),
-        "Madrid numbers its frames; the counter must stay; got:\n{t}"
+        !t.contains("footer-right:"),
+        "Madrid's \"N / M\" IS touying's default; leave it alone; got:\n{t}"
     );
 }
 
@@ -77,5 +78,8 @@ fn a_deck_naming_no_theme_is_treated_as_metropolis() {
         "\\documentclass{beamer}\n\\title{T}\n\\begin{document}\n\
          \\begin{frame}{One}\nBody.\n\\end{frame}\n\\end{document}",
     );
-    assert!(t.contains("footer-right: none"), "no theme → no counter; got:\n{t}");
+    assert!(
+        t.contains("footer-right: context utils.slide-counter.display()"),
+        "no theme → metropolis form; got:\n{t}"
+    );
 }
