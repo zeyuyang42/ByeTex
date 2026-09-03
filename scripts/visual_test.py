@@ -356,6 +356,39 @@ from truth_render import (  # noqa: E402,F401
 )
 
 
+def missing_includes(source_dir, toplevel) -> set:
+    """`\\input`/`\\include` targets that do not exist under the source tree.
+
+    A paper can be ingested without its content files: gh-pelegs-maths-book has
+    47 such targets and converts to a single cover page. That output is CORRECT
+    for the input, but it looks exactly like catastrophic content loss, so the
+    deficit has to be visible as missing INPUT.
+    """
+    import re
+    from pathlib import Path
+
+    rx = re.compile(r"\\(?:input|include)\s*\{([^}]*)\}")
+    src, root = Path(source_dir), Path(toplevel).parent
+    missing = set()
+    for tex in src.rglob("*.tex"):
+        try:
+            body = tex.read_text(errors="replace")
+        except OSError:
+            continue
+        for m in rx.finditer(body):
+            line_start = body.rfind("\n", 0, m.start()) + 1
+            if body.rfind("%", line_start, m.start()) != -1:
+                continue  # commented out
+            raw = m.group(1).strip()
+            if not raw or "#" in raw:  # a macro parameter, not a path
+                continue
+            cands = [root / raw, root / (raw + ".tex"), tex.parent / raw,
+                     tex.parent / (raw + ".tex"), src / raw, src / (raw + ".tex")]
+            if not any(c.exists() for c in cands):
+                missing.add(raw)
+    return missing
+
+
 def cites_without_bibliography(source_dir) -> bool:
     """True when the source uses \\cite but ships no `.bib`/`.bbl`.
 
@@ -1440,6 +1473,16 @@ def process_paper(
     # not by converter quality. On 2605.31563 the reference section is 43.6% of
     # the truth text, and that paper is the corpus's worst `ordered_recall`;
     # reading it as a converter gap sends work at something unfixable.
+    # A source whose `\input`/`\include` targets are absent cannot render its own
+    # content, so a thin output is CORRECT for the input. gh-pelegs-maths-book is
+    # missing 47 chapter files and converts to a single cover page; without this
+    # flag that reads as catastrophic content loss in the converter.
+    missing = missing_includes(source_dir, toplevel)
+    summary["missing_includes"] = len(missing)
+    if missing:
+        print(f"  note: {len(missing)} \\input/\\include target(s) missing from the source "
+              f"(e.g. {', '.join(sorted(missing)[:3])}) — output is thin because the "
+              f"content is absent, not because it was dropped", flush=True)
     summary["cites_without_bibliography"] = cites_without_bibliography(source_dir)
     if summary["cites_without_bibliography"]:
         print("  note: source cites but ships no .bib/.bbl — recall is capped by "
