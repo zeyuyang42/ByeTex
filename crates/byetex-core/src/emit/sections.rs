@@ -25,6 +25,41 @@ impl<'a> Emitter<'a> {
             .cloned()
     }
 
+    /// Whether chapters open on a RECTO page, LaTeX's `twoside,openright`.
+    ///
+    /// `\documentclass{book}` defaults to it, and `\chapter` then issues
+    /// `\cleardoublepage` — gh-amberj-latex-book-template's truth has 6
+    /// near-empty pages of 16 where ours had 1 of 9.
+    ///
+    /// Deliberately narrow: applied to every chapter-bearing document it is
+    /// destructive — gh-dzwaneveld-tudelft-thesis goes 11 -> 21 pages against a
+    /// truth of 12, its class being effectively one-sided with five level-1
+    /// headings. Any `oneside`/`openany` in the sources turns it off; only a
+    /// book/report/memoir declaring neither gets recto starts.
+    pub(in crate::emit) fn opens_chapters_recto(&self) -> bool {
+        if !self.chapter_based {
+            return false;
+        }
+        let mut saw_book = false;
+        for (at, _) in self.src.match_indices("\\documentclass") {
+            if crate::emit::is_commented_out(self.src, at) {
+                continue;
+            }
+            let tail = &self.src[at..];
+            let Some(open) = tail.find('{') else { continue };
+            let Some(close) = tail[open..].find('}') else { continue };
+            if matches!(tail[open + 1..open + close].trim(), "book" | "report" | "memoir") {
+                saw_book = true;
+            }
+        }
+        saw_book
+            && !["oneside", "openany"].iter().any(|w| {
+                self.src
+                    .match_indices(*w)
+                    .any(|(at, _)| !crate::emit::is_commented_out(self.src, at))
+            })
+    }
+
     pub(in crate::emit) fn emit_section(&mut self, node: Node<'_>) -> usize {
         let kind = node.kind();
         let level = section_level(kind, self.chapter_based);
@@ -304,7 +339,15 @@ impl<'a> Emitter<'a> {
         // against an existing one (the cover's `#page` block / a frontmatter
         // numbering switch), so the first chapter never leaves a blank page.
         if self.chapter_based && level == 1 {
-            self.out.push_str("#pagebreak(weak: true)\n\n");
+            // A twoside book opens chapters RECTO — `\chapter` runs
+            // `\cleardoublepage`, leaving a blank verso. See
+            // `opens_chapters_recto` for why this is not applied to every
+            // chapter-bearing document.
+            if self.opens_chapters_recto() {
+                self.out.push_str("#pagebreak(to: \"odd\", weak: true)\n\n");
+            } else {
+                self.out.push_str("#pagebreak(weak: true)\n\n");
+            }
         }
 
         if starred {

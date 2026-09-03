@@ -1613,6 +1613,18 @@ impl<'a> Emitter<'a> {
         }
     }
 
+    /// The page break before a front-matter list. In the book class
+    /// `\tableofcontents`, `\listoffigures` and `\listoftables` are all
+    /// `\chapter*`, so under `twoside,openright` they open RECTO just as
+    /// chapters do.
+    fn frontmatter_break(&self) -> &'static str {
+        if self.opens_chapters_recto() {
+            "#pagebreak(to: \"odd\", weak: true)\n"
+        } else {
+            "#pagebreak(weak: true)\n"
+        }
+    }
+
     pub(crate) fn finish(mut self) -> FinishOutput {
         // A full document (had a `\documentclass`, or carries title/authors)
         // is rendered with the self-generated, self-contained neutral preamble
@@ -4657,10 +4669,10 @@ impl<'a> Emitter<'a> {
                     ("List of Tables", "table")
                 };
                 self.ensure_paragraph_break();
+                let br = self.frontmatter_break();
                 let _ = write!(
                     self.out,
-                    "#pagebreak(weak: true)\n#outline(title: [{title}], \
-                     target: figure.where(kind: {kind}))\n\n"
+                    "{br}#outline(title: [{title}], target: figure.where(kind: {kind}))\n\n"
                 );
                 node.end_byte()
             }
@@ -4672,10 +4684,8 @@ impl<'a> Emitter<'a> {
                 let depth = self.tocdepth.map_or(3, |d| (d + 1).clamp(1, 6));
                 // `\tableofcontents` is a `\chapter*` in the book class, so it
                 // begins a page rather than continuing the dedication's.
-                let _ = write!(
-                    self.out,
-                    "#pagebreak(weak: true)\n#outline(depth: {depth})\n\n"
-                );
+                let br = self.frontmatter_break();
+                let _ = write!(self.out, "{br}#outline(depth: {depth})\n\n");
                 node.end_byte()
             }
             // Book/report front/main-matter page numbering: `\frontmatter` → roman page
