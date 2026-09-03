@@ -4631,13 +4631,38 @@ impl<'a> Emitter<'a> {
             // chapters/sections (they convert to Typst headings). Was dropped (B-toc
             // covered only beamer); the thesis dogfood had to add this by hand.
             // depth 3 = chapter/section/subsection. Article-family keeps the drop below.
+            // `\listoffigures` / `\listoftables` → the matching Typst outline.
+            // Both were dropped with a warning; on gh-amberj-latex-book-template
+            // the truth gives each its own page and our output had neither, part
+            // of why that book rendered 6 pages against the truth's 16 with
+            // near-identical token counts. In the book class these are
+            // `\chapter*`, which begins a page, hence the leading break.
+            Some("\\listoffigures") | Some("\\listoftables") if self.chapter_based => {
+                let (title, kind) = if name.as_deref() == Some("\\listoffigures") {
+                    ("List of Figures", "image")
+                } else {
+                    ("List of Tables", "table")
+                };
+                self.ensure_paragraph_break();
+                let _ = write!(
+                    self.out,
+                    "#pagebreak(weak: true)\n#outline(title: [{title}], \
+                     target: figure.where(kind: {kind}))\n\n"
+                );
+                node.end_byte()
+            }
             Some("\\tableofcontents") if self.chapter_based => {
                 self.ensure_paragraph_break();
                 // LaTeX book/report tocdepth (0=chapter,1=section,2=subsection,3=subsubsection)
                 // → Typst outline depth = tocdepth+1 (chapter=1,section=2,…). Default depth 3
                 // (chapter/section/subsection) when no `\setcounter{tocdepth}` is present.
                 let depth = self.tocdepth.map_or(3, |d| (d + 1).clamp(1, 6));
-                let _ = write!(self.out, "#outline(depth: {depth})\n\n");
+                // `\tableofcontents` is a `\chapter*` in the book class, so it
+                // begins a page rather than continuing the dedication's.
+                let _ = write!(
+                    self.out,
+                    "#pagebreak(weak: true)\n#outline(depth: {depth})\n\n"
+                );
                 node.end_byte()
             }
             // Book/report front/main-matter page numbering: `\frontmatter` → roman page
