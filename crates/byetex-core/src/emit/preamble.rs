@@ -467,19 +467,21 @@ impl<'a> Emitter<'a> {
         // on 27, 21 and 11. Theme-specific on purpose — `beamer-demo` uses
         // `\usetheme{Madrid}`, whose footline DOES carry a frame number, and its
         // truth shows one on all 8 slides.
-        // Beamer themes disagree about the frame number, and the truth renders
-        // prove it: metropolis prints none (0 of 33 slides on gh-mtheme-demo,
-        // 0 of 26 on gh-bard-metropolis, 0 of 15 on gh-klb2-beamer) while Madrid
-        // prints one on every slide (8 of 8 on beamer-demo). touying's
-        // metropolis store defaults `footer-right` to the slide counter, so it
-        // has to be switched OFF for the themes that do not show it — and left
-        // alone for the ones that do, or beamer-demo loses a footer it should
-        // have. A deck that names no theme is treated as metropolis, which is
-        // what we render it as.
+        // Beamer themes disagree about the FORM of the frame number, not about
+        // whether to show one. touying's metropolis defaults `footer-right` to
+        // `slide-counter.display() + " / " + last-slide-number`; the LaTeX
+        // metropolis theme prints the number ALONE, bottom-right (truth: 25 of 33
+        // slides on gh-mtheme-demo, 22 of 26 on gh-bard-metropolis, 10 of 15 on
+        // gh-klb2-beamer). Madrid does print "N / M", which is touying's default,
+        // so it is left alone. A deck naming no theme is treated as metropolis,
+        // which is what we render it as.
         let counter = if self.beamer_theme_shows_frame_number() {
+            // Madrid and friends print "N / M"; that is touying's own default.
             String::new()
         } else {
-            "  footer-right: none,\n".to_string()
+            // metropolis prints the frame number ALONE. touying's default appends
+            // `" / " + last-slide-number`, so only the total is dropped.
+            "  footer-right: context utils.slide-counter.display(),\n".to_string()
         };
         format!(
             "#import \"@preview/touying:0.7.3\": *\n\
