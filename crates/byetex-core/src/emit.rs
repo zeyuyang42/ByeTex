@@ -632,11 +632,28 @@ pub(crate) struct Emitter<'a> {
 }
 
 /// Maximum allowed `\newcommand` expansion depth (see `Emitter::macro_depth`).
+///
 /// Each level allocates a fresh sub-Emitter and re-parses the body, so the
-/// per-level stack usage is high; values much above 24 can overflow test
-/// threads' default 2 MB stack. Real papers rarely nest macros more than
-/// 4-5 levels.
-const MAX_MACRO_DEPTH: u32 = 24;
+/// per-level stack usage is high and this cap must stay comfortably below the
+/// depth at which the recursion overflows a 2 MB thread stack. That ceiling is
+/// not fixed: it falls as `Emitter` gains fields, because every level clones
+/// them (`macros`, `newif_flags`, `referenced_labels`, `bibliography_keys`, …).
+///
+/// It has already been crossed once. The cap sat at 24, which was under the
+/// ceiling when written but not after later fields were added:
+/// `brace_group_recursion_capped_by_depth` — the guard for exactly this — began
+/// aborting the whole test binary with a stack overflow instead of failing
+/// loudly, so `cargo test --workspace` reported no `FAILED` line.
+///
+/// Measured on 2026-09-03 (macOS, debug, 2 MB test thread):
+///   depth 24 → stack overflow (SIGABRT) before the cap fires
+///   depth 16 → cap fires correctly
+///   depth 12 → cap fires correctly
+/// 12 is chosen for roughly 2x headroom against future `Emitter` growth. Real
+/// papers rarely nest macros more than 4-5 levels, so the usable range is
+/// untouched; a document that legitimately needs more would have to nest
+/// `\newcommand` bodies 12 deep.
+const MAX_MACRO_DEPTH: u32 = 12;
 
 /// Everything [`Emitter::finish`] produces. A named struct (vs a tuple) keeps
 /// the signature readable and avoids positional destructuring as fields grow.
