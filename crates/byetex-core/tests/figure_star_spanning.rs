@@ -109,3 +109,38 @@ fn an_oversized_spanning_float_is_still_clamped_on_2605_31586() {
     // call to an undefined name — that regressed 3 papers and acceptance caught it.
     let _ = ();
 }
+
+#[test]
+#[ignore = "measured trade-off, recorded so it is not re-litigated blind"]
+fn breakable_tables_cost_column_mismatch_and_that_trade_is_deliberate() {
+    // MEASURED, not assumed. #534's baseline audit found
+    // `layout_column_mismatch_frac` worsening on 5 papers, and I attributed it to
+    // the running heads (#527/#529) and page sizes (#532/#533). That attribution
+    // was WRONG: only one of the four papers has a header and none had a page
+    // size change from me. The cause is #523's
+    // `#show figure.where(kind: table): set block(breakable: true)`.
+    //
+    // Isolated on 2605.30718 — no header, no page-size change — by deleting just
+    // that show rule from the emitted .typ:
+    //
+    //   with the rule     column_mismatch = 0.179
+    //   without the rule  column_mismatch = 0.071   (pages_compared 28 both ways)
+    //
+    // which is exactly the baseline delta. Mechanism: a breakable table splits
+    // across a column boundary, so pages that previously held it whole now
+    // report a different column count.
+    //
+    // A CONDITIONAL rule — breakable only when the table is taller than the
+    // region — restores 0.071 on that paper, and then fails the thing #523
+    // exists for: all four pile-up papers regress to piling (2606.12411 back to
+    // 23 overprinted words). That is the same height-signal failure recorded in
+    // `an_oversized_spanning_float_is_still_clamped_on_2605_31586`: inside
+    // `layout()`, `size.height` is REMAINING space, not the page, so "is this
+    // too tall" cannot be answered there.
+    //
+    // The trade therefore stands: destroyed content (rows painted on top of each
+    // other) outweighs a report-only per-page column-count statistic. Anyone
+    // revisiting it needs a real "will be clamped" signal, not another height
+    // comparison.
+    let _ = ();
+}
