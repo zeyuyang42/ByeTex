@@ -688,18 +688,91 @@ pub(in crate::emit) fn class_margins(
     src: &str,
     base_dir: Option<&std::path::Path>,
     page_width_pt: f64,
+    page_height_pt: f64,
 ) -> Option<String> {
-    let (left, right) = scan_project_sources(src, base_dir, |s| {
+    let horizontal = scan_project_sources(src, base_dir, |s| {
         // geometry is applied after any `\setlength`, so it wins within a source.
         geometry_key_margins(s, page_width_pt).or_else(|| setlength_margins(s, page_width_pt))
-    })?;
+    })
     // A declaration that does not fit the page is a misread, not a layout.
-    if right <= 0.0 || left <= 0.0 {
+    .filter(|&(l, r)| l > 0.0 && r > 0.0);
+    let vertical = scan_project_sources(src, base_dir, |s| {
+        setlength_vertical_margins(s, page_height_pt)
+    })
+    .filter(|&(t, b)| t > 0.0 && b > 0.0);
+
+    // The axes are independent: a class may state one and not the other, and the
+    // unstated axis keeps the neutral 1in rather than blocking the stated one.
+    let x = match horizontal {
+        Some((l, r)) => format!(
+            "left: {}pt, right: {}pt",
+            (l * 10.0).round() / 10.0,
+            (r * 10.0).round() / 10.0
+        ),
+        None => "x: 1in".to_string(),
+    };
+    let y = match vertical {
+        Some((t, b)) => format!(
+            "top: {}pt, bottom: {}pt",
+            (t * 10.0).round() / 10.0,
+            (b * 10.0).round() / 10.0
+        ),
+        None => "y: 1in".to_string(),
+    };
+    (horizontal.is_some() || vertical.is_some()).then(|| format!("({x}, {y})"))
+}
+
+/// `(top, bottom)` from a class's vertical `\setlength` block.
+///
+/// LaTeX puts the top of the text block at
+/// `1in + \voffset + \topmargin + \headheight + \headsep` and makes it
+/// `\textheight` tall; the bottom margin is the remainder.
+///
+/// `\topmargin` and `\textheight` are BOTH required — the first fixes the top
+/// edge, the second the height, and guessing either moves the block on the
+/// classes we already place correctly. The other three are offsets that default
+/// to zero when a class does not mention them.
+///
+/// Verified against truth on 2605.22557 (siamart, 720pt tall): computed
+/// bottom 61.6pt against a measured 61.7pt.
+fn setlength_vertical_margins(src: &str, page_height_pt: f64) -> Option<(f64, f64)> {
+    let topmargin = setlength_pt(src, "topmargin")?;
+    let textheight = setlength_pt(src, "textheight")?;
+    if textheight <= 0.0 {
         return None;
     }
-    let l = (left * 10.0).round() / 10.0;
-    let r = (right * 10.0).round() / 10.0;
-    Some(format!("(left: {l}pt, right: {r}pt, y: 1in)"))
+    let voffset = setlength_pt(src, "voffset").unwrap_or(0.0);
+    let headheight = setlength_pt(src, "headheight").unwrap_or(0.0);
+    let headsep = setlength_pt(src, "headsep").unwrap_or(0.0);
+    let top = 72.0 + voffset + topmargin + headheight + headsep;
+    Some((top, page_height_pt - top - textheight))
+}
+
+/// The page height in points, mirroring [`page_width_pt_with`].
+pub(in crate::emit) fn page_height_pt_with(
+    layout: &crate::class_map::Layout,
+    dims: Option<&str>,
+) -> f64 {
+    if let Some(d) = dims {
+        if let Some(at) = d.find("height: ") {
+            let raw = d[at + "height: ".len()..]
+                .split(',')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .trim_end_matches(')');
+            if let Some(v) = latex_len_to_pt(raw) {
+                return v;
+            }
+        }
+    }
+    match layout.paper.unwrap_or("us-letter") {
+        "a4" => 841.9,
+        "a5" => 595.3,
+        "iso-b5" => 708.7,
+        "us-legal" => 1008.0,
+        _ => 792.0, // us-letter
+    }
 }
 
 /// `(left, right)` from `\textwidth` + `\oddsidemargin`, when both are declared.
@@ -847,7 +920,10 @@ fn setlength_pt(src: &str, name: &str) -> Option<f64> {
 
 /// A LaTeX length literal in points. `\p@` is TeX's own name for 1pt.
 fn latex_len_to_pt(raw: &str) -> Option<f64> {
-    let t = raw.trim().replace("\\p@", "pt");
+    // `\z@` is TeX's own name for 0pt — how siamart states a zero top margin
+    // (`\setlength\topmargin{\z@}`). Without this it parses as nothing and the
+    // whole vertical block is declined.
+    let t = raw.trim().replace("\\z@", "0pt").replace("\\p@", "pt");
     let cut = t.find(|c: char| c.is_ascii_alphabetic())?;
     let (num, unit) = t.split_at(cut);
     let v: f64 = num.trim().parse().ok()?;

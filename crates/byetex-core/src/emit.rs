@@ -1714,6 +1714,14 @@ impl<'a> Emitter<'a> {
                                 )
                                 .as_deref(),
                             ),
+                            crate::emit::preamble::page_height_pt_with(
+                                &self.layout,
+                                crate::emit::preamble::paper_dims_from_project(
+                                    self.src,
+                                    self.base_dir.as_deref(),
+                                )
+                                .as_deref(),
+                            ),
                         )
                         .as_deref(),
                         crate::emit::preamble::caption_font_size(
